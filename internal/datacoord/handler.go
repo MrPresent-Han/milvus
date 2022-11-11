@@ -104,12 +104,13 @@ func (h *ServerHandler) GetQueryVChanPositions(channel *channel, partitionID Uni
 		return s.InsertChannel == channel.Name
 	})
 	segmentInfos := make(map[int64]*SegmentInfo)
+	log.Info("hc---selected segments:", zap.Int("seg_count:", len(segments)), zap.Any("segs:", segments))
 	indexedSegments := FilterInIndexedSegments(h, h.s.indexCoord, segments...)
 	indexed := make(typeutil.UniqueSet)
 	for _, segment := range indexedSegments {
 		indexed.Insert(segment.GetID())
 	}
-	log.Info("GetQueryVChanPositions",
+	log.Info("GetQueryVChanPositions11111",
 		zap.Int64("collectionID", channel.CollectionID),
 		zap.String("channel", channel.Name),
 		zap.Int("numOfSegments", len(segments)),
@@ -131,10 +132,13 @@ func (h *ServerHandler) GetQueryVChanPositions(channel *channel, partitionID Uni
 		segmentInfos[s.GetID()] = s
 		if s.GetState() == commonpb.SegmentState_Dropped {
 			droppedIDs.Insert(s.GetID())
+			log.Info("hc---add dropped id:", zap.Int64("id:", s.GetID()))
 		} else if indexed.Contain(s.GetID()) {
 			indexedIDs.Insert(s.GetID())
+			log.Info("hc---add indexed id:", zap.Int64("id:", s.GetID()))
 		} else {
 			unIndexedIDs.Insert(s.GetID())
+			log.Info("hc---add unIndexed id:", zap.Int64("id:", s.GetID()))
 		}
 	}
 	for id := range unIndexedIDs {
@@ -145,6 +149,8 @@ func (h *ServerHandler) GetQueryVChanPositions(channel *channel, partitionID Uni
 			unIndexedIDs.Remove(id)
 			indexedIDs.Insert(segmentInfos[id].GetCompactionFrom()...)
 			droppedIDs.Remove(segmentInfos[id].GetCompactionFrom()...)
+			log.Info("hc---remove", zap.Int64("seg id", id),
+				zap.Int64s("insert compact from ids", segmentInfos[id].GetCompactionFrom()))
 		}
 	}
 

@@ -301,6 +301,7 @@ func (s *Server) SaveBinlogPaths(ctx context.Context, req *datapb.SaveBinlogPath
 
 // GetRecoveryInfo gets information for recovering channels
 func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInfoRequest) (*datapb.GetRecoveryInfoResponse, error) {
+	log.Info("hc----get recoveryInfo")
 	return s.dataCoord.GetRecoveryInfo(ctx, req)
 }
 

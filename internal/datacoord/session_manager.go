@@ -252,6 +252,7 @@ func (c *SessionManager) GetCompactionState() map[int64]*datapb.CompactionStateR
 			}
 			ctx, cancel := context.WithTimeout(ctx, rpcCompactionTimeout)
 			defer cancel()
+			//hc---here get datanode state
 			resp, err := cli.GetCompactionState(ctx, &datapb.CompactionStateRequest{
 				Base: commonpbutil.NewMsgBase(
 					commonpbutil.WithMsgType(commonpb.MsgType_GetSystemConfigs),

@@ -624,9 +624,11 @@ func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInf
 	for _, c := range channels {
 		channelInfo := s.handler.GetQueryVChanPositions(&channel{Name: c, CollectionID: collectionID}, partitionID)
 		channelInfos = append(channelInfos, channelInfo)
+		//hc----note this log
 		log.Info("datacoord append channelInfo in GetRecoveryInfo",
 			zap.Any("channelInfo", channelInfo),
 		)
+		//flushedSegIds
 		flushedIDs.Insert(channelInfo.GetFlushedSegmentIds()...)
 	}
 
@@ -636,6 +638,7 @@ func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInf
 	segment2InsertChannel := make(map[UniqueID]string)
 	segmentsNumOfRows := make(map[UniqueID]int64)
 	for id := range flushedIDs {
+		//hc----get segmentID
 		segment := s.meta.GetSegmentUnsafe(id)
 		if segment == nil {
 			errMsg := fmt.Sprintf("failed to get segment %d", id)

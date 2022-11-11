@@ -63,7 +63,7 @@ func (s *ShardClusterService) addShardCluster(collectionID, replicaID int64, vch
 			}
 			return result, nil
 		})
-
+	//hc----segmentDector关键
 	segmentDetector := NewEtcdShardSegmentDetector(s.client, path.Join(Params.EtcdCfg.MetaRootPath, util.SegmentMetaPrefix, strconv.FormatInt(collectionID, 10)))
 
 	cs := NewShardCluster(collectionID, replicaID, vchannelName, nodeDetector, segmentDetector,

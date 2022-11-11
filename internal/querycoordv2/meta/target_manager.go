@@ -89,7 +89,7 @@ func (mgr *TargetManager) UpdateCollectionNextTargetWithPartitions(collectionID 
 			zap.Int64s("partitionIDs", partitionIDs))
 		return errors.New(msg)
 	}
-
+	log.Info("hc----UpdateCollectionNextTargetWithPartitions")
 	return mgr.updateCollectionNextTarget(collectionID, partitionIDs...)
 }
 
@@ -114,10 +114,11 @@ func (mgr *TargetManager) UpdateCollectionNextTarget(collectionID int64) error {
 			})
 		}
 	}
-
+	log.Info("hc----UpdateCollectionNextTarget")
 	return mgr.updateCollectionNextTarget(collectionID, partitionIDs...)
 }
 
+// hc---the meaning of 'next target'
 func (mgr *TargetManager) updateCollectionNextTarget(collectionID int64, partitionIDs ...int64) error {
 	log := log.With(zap.Int64("collectionID", collectionID))
 
@@ -130,7 +131,7 @@ func (mgr *TargetManager) updateCollectionNextTarget(collectionID int64, partiti
 	}
 
 	mgr.next.updateCollectionTarget(collectionID, newTarget)
-
+	//hc--- note this log
 	log.Info("finish to update next targets for collection",
 		zap.Int64s("segments", newTarget.GetAllSegmentIDs()),
 		zap.Strings("channels", newTarget.GetAllDmChannelNames()))
@@ -149,6 +150,7 @@ func (mgr *TargetManager) PullNextTarget(broker Broker, collectionID int64, part
 		log.Debug("get recovery info...",
 			zap.Int64("collectionID", collectionID),
 			zap.Int64("partitionID", partitionID))
+		//hc---note get segment info
 		vChannelInfos, binlogs, err := broker.GetRecoveryInfo(context.TODO(), collectionID, partitionID)
 		if err != nil {
 			return nil, err

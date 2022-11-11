@@ -409,7 +409,7 @@ func (job *LoadPartitionJob) Execute() error {
 			zap.Int64("replicaID", replica.GetID()),
 			zap.Int64s("nodes", replica.GetNodes()))
 	}
-
+	log.Info("hc----LoadCollection Job:UpdateCollectionNextTargetWithPartitions")
 	err = job.targetMgr.UpdateCollectionNextTargetWithPartitions(req.GetCollectionID(), req.GetPartitionIDs()...)
 	if err != nil {
 		msg := "failed to update next targets for collection"

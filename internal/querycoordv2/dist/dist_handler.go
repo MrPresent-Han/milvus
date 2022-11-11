@@ -154,7 +154,7 @@ func (dh *distHandler) updateSegmentsDistribution(resp *querypb.GetDataDistribut
 		}
 		updates = append(updates, segment)
 	}
-
+	log.Info("hc---Update segment dist Manager:", zap.Int("segCount", len(updates)))
 	dh.dist.SegmentDistManager.Update(resp.GetNodeID(), updates...)
 }
 

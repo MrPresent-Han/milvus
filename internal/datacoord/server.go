@@ -546,6 +546,7 @@ func (s *Server) handleDataNodeTimetickMsgstream(ctx context.Context, ttMsgStrea
 	}
 }
 
+//hc---note
 func (s *Server) handleTimetickMessage(ctx context.Context, ttMsg *msgstream.DataNodeTtMsg) error {
 	ch := ttMsg.GetChannelName()
 	ts := ttMsg.GetTimestamp()

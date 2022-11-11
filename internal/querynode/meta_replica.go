@@ -604,8 +604,10 @@ func (replica *metaReplica) addSegmentPrivate(segmentID UniqueID, partitionID Un
 
 	switch segType {
 	case segmentTypeGrowing:
+		log.Info("hc---add growing segment", zap.Int64("segId", segment.segmentID))
 		replica.growingSegments[segmentID] = segment
 	case segmentTypeSealed:
+		log.Info("hc---add sealed segment", zap.Int64("segId", segment.segmentID))
 		replica.sealedSegments[segmentID] = segment
 	default:
 		return fmt.Errorf("unexpected segment type, segmentID = %d, segmentType = %s", segmentID, segType.String())
@@ -637,6 +639,7 @@ func (replica *metaReplica) setSegment(segment *Segment) error {
 }
 
 // removeSegment removes a segment from collectionReplica
+// hc---update segment
 func (replica *metaReplica) removeSegment(segmentID UniqueID, segType segmentType) {
 	replica.mu.Lock()
 	defer replica.mu.Unlock()

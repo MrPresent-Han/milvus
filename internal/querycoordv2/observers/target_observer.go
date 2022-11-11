@@ -86,14 +86,21 @@ func (ob *TargetObserver) schedule(ctx context.Context) {
 }
 
 func (ob *TargetObserver) tryUpdateTarget() {
-	collections := ob.meta.GetAll()
+	collections := ob.meta.CollectionManager.GetAll()
+	log.Info("hc---tryUpdateTarget",
+		zap.Int("collection_size:", len(collections)))
 	for _, collectionID := range collections {
 		if ob.shouldUpdateCurrentTarget(collectionID) {
+			log.Info("hc----updateCurrentTarget")
 			ob.updateCurrentTarget(collectionID)
 		}
-
+		log.Info("hc---tryUpdateTarget",
+			zap.Bool("!IsNextTargetExist:", !ob.targetMgr.IsNextTargetExist(collectionID)),
+			zap.Bool("ob.isNextTargetExpired(collectionID):", ob.isNextTargetExpired(collectionID)))
+		//hc---here, shouldUpdateNextTarget return false constantly
 		if ob.shouldUpdateNextTarget(collectionID) {
 			// update next target in collection level
+			log.Info("hc----ob.UpdateNextTarget")
 			ob.UpdateNextTarget(collectionID)
 		}
 	}
@@ -117,7 +124,7 @@ func (ob *TargetObserver) isNextTargetExpired(collectionID int64) bool {
 
 func (ob *TargetObserver) UpdateNextTarget(collectionID int64) {
 	log := log.With(zap.Int64("collectionID", collectionID))
-
+	//hc---note target observer also trigger one time
 	log.Warn("observer trigger update next target")
 	err := ob.targetMgr.UpdateCollectionNextTarget(collectionID)
 	if err != nil {

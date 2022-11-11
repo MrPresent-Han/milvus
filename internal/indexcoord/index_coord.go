@@ -803,7 +803,8 @@ func (i *IndexCoord) DropIndex(ctx context.Context, req *indexpb.DropIndexReques
 
 // GetIndexInfos gets the index file paths from IndexCoord.
 func (i *IndexCoord) GetIndexInfos(ctx context.Context, req *indexpb.GetIndexInfoRequest) (*indexpb.GetIndexInfoResponse, error) {
-	log.RatedInfo(5, "IndexCoord GetIndexInfos", zap.Int64("collectionID", req.CollectionID),
+	//hc---note index coord working status, alter log here
+	log.Info("IndexCoord GetIndexInfos111", zap.Int64("collectionID", req.CollectionID),
 		zap.String("indexName", req.GetIndexName()), zap.Int64s("segIDs", req.GetSegmentIDs()))
 	if !i.isHealthy() {
 		log.Warn(msgIndexCoordIsUnhealthy(i.serverID))
@@ -854,8 +855,8 @@ func (i *IndexCoord) GetIndexInfos(ctx context.Context, req *indexpb.GetIndexInf
 			}
 		}
 	}
-
-	log.RatedInfo(5, "IndexCoord GetIndexInfos successfully", zap.Int64("collectionID", req.CollectionID),
+	//hc----alter log
+	log.Info("IndexCoord GetIndexInfos successfully111", zap.Int64("collectionID", req.CollectionID),
 		zap.String("indexName", req.GetIndexName()))
 
 	return ret, nil

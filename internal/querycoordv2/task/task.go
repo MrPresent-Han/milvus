@@ -235,6 +235,7 @@ type SegmentTask struct {
 // NewSegmentTask creates a SegmentTask with actions,
 // all actions must process the same segment,
 // empty actions is not allowed
+// hc---here, init segment task
 func NewSegmentTask(ctx context.Context,
 	timeout time.Duration,
 	sourceID,

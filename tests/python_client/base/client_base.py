@@ -63,6 +63,7 @@ class Base:
             for collection_object in self.collection_object_list:
                 if collection_object.collection is not None and collection_object.name in collection_list:
                     collection_object.drop(check_task=ct.CheckTasks.check_nothing)
+                    log.info("hc---drop collection2222")
 
         except Exception as e:
             log.debug(str(e))

@@ -166,7 +166,7 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 	ibNode.DisplayStatistics(seg2Upload)
 
 	segmentsToSync := ibNode.Sync(fgMsg, seg2Upload, endPositions[0])
-
+	//hc---here， write tt msg！！！
 	ibNode.WriteTimeTick(fgMsg.timeRange.timestampMax, seg2Upload)
 
 	res := flowGraphMsg{
@@ -614,7 +614,7 @@ func newInsertBufferNode(ctx context.Context, collID UniqueID, flushCh <-chan fl
 	log.Info("datanode AsProducer", zap.String("TimeTickChannelName", Params.CommonCfg.DataCoordTimeTick))
 	var wTtMsgStream msgstream.MsgStream = wTt
 	wTtMsgStream.Start()
-
+	//hc----note mt
 	mt := newMergedTimeTickerSender(func(ts Timestamp, segmentIDs []int64) error {
 		stats := make([]*datapb.SegmentStats, 0, len(segmentIDs))
 		for _, sid := range segmentIDs {

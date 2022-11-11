@@ -579,7 +579,7 @@ func (t *compactionTask) compact() (*datapb.CompactionResult, error) {
 	defer func() {
 		log.Info("uninject elapse in ms", zap.Int64("planID", t.plan.GetPlanID()), zap.Float64("elapse", nano2Milli(uninjectEnd.Sub(uninjectStart))))
 	}()
-
+	//hc----compaction key log
 	log.Info("compaction done",
 		zap.Int64("planID", t.plan.GetPlanID()),
 		zap.Int64("targetSegmentID", targetSegID),

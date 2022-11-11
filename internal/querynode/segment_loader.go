@@ -197,6 +197,7 @@ func (loader *segmentLoader) LoadSegment(ctx context.Context, req *querypb.LoadS
 
 	// set segment to meta replica
 	for _, s := range newSegments {
+		log.Info("hc---load new segments", zap.Int64("SID", s.segmentID))
 		err = loader.metaReplica.setSegment(s)
 		if err != nil {
 			log.Error("load segment failed, set segment to meta failed",

@@ -536,6 +536,7 @@ func (sc *ShardCluster) watchNodes(evtCh <-chan nodeEvent) {
 }
 
 // watchSegments handles segment events.
+// hc---note here
 func (sc *ShardCluster) watchSegments(evtCh <-chan segmentEvent) {
 	log := sc.getLogger()
 	for {

@@ -123,6 +123,8 @@ func (broker *CoordinatorBroker) GetRecoveryInfo(ctx context.Context, collection
 		CollectionID: collectionID,
 		PartitionID:  partitionID,
 	}
+	//hc----get segments INFO!!
+	log.Info("hc---GetRecoveryINFO---queryCoord---GetRecoveryInfo")
 	recoveryInfo, err := broker.dataCoord.GetRecoveryInfo(ctx, getRecoveryInfoRequest)
 	if err != nil {
 		log.Error("get recovery info failed", zap.Int64("collectionID", collectionID), zap.Int64("partitionID", partitionID), zap.Error(err))

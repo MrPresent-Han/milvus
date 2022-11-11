@@ -80,6 +80,7 @@ func (c *SegmentChecker) checkReplica(ctx context.Context, replica *meta.Replica
 
 	// compare with targets to find the lack and redundancy of segments
 	lacks, redundancies := c.getHistoricalSegmentDiff(c.targetMgr, c.dist, c.meta, replica.GetCollectionID(), replica.GetID())
+	log.Info("hc----createSegmentLoadTasks", zap.Any("lacks:", lacks))
 	tasks := c.createSegmentLoadTasks(ctx, lacks, replica)
 	ret = append(ret, tasks...)
 
@@ -166,25 +167,37 @@ func (c *SegmentChecker) getHistoricalSegmentDiff(targetMgr *meta.TargetManager,
 	}
 	dist := c.getHistoricalSegmentsDist(distMgr, replica)
 	distMap := typeutil.NewUniqueSet()
+
+	var distSegIds []int64
+	var curSegIds []int64
+	var nextSegIds []int64
 	for _, s := range dist {
 		distMap.Insert(s.GetID())
+		distSegIds = append(distSegIds, s.GetID())
 	}
 
 	nextTargetMap := targetMgr.GetHistoricalSegmentsByCollection(collectionID, meta.NextTarget)
 	currentTargetMap := targetMgr.GetHistoricalSegmentsByCollection(collectionID, meta.CurrentTarget)
 
+	for segmentID, _ := range currentTargetMap {
+		curSegIds = append(curSegIds, segmentID)
+	}
+
 	//get segment which exist on next target, but not on dist
 	for segmentID, segment := range nextTargetMap {
+		nextSegIds = append(nextSegIds, segmentID)
 		if !distMap.Contain(segmentID) {
 			toLoad = append(toLoad, segment)
 		}
 	}
+	log.Info("hc---ids:", zap.Int64s("distSegs:", distSegIds),
+		zap.Int64s("nextSegs:", nextSegIds),
+		zap.Int64s("curSegs:", curSegIds))
 
 	// get segment which exist on dist, but not on current target and next target
 	for _, segment := range dist {
 		_, existOnCurrent := currentTargetMap[segment.GetID()]
 		_, existOnNext := nextTargetMap[segment.GetID()]
-
 		if !existOnNext && !existOnCurrent {
 			toRelease = append(toRelease, segment)
 		}
@@ -269,6 +282,7 @@ func (c *SegmentChecker) createSegmentLoadTasks(ctx context.Context, segments []
 	for i := range plans {
 		plans[i].ReplicaID = replica.GetID()
 	}
+
 	return balance.CreateSegmentTasksFromPlans(ctx, c.ID(), Params.QueryCoordCfg.SegmentTaskTimeout, plans)
 }
 
@@ -284,7 +298,7 @@ func (c *SegmentChecker) createSegmentReduceTasks(ctx context.Context, segments 
 			replicaID,
 			action,
 		)
-
+		log.Info("hc---create reduce task", zap.Int64("segId", s.GetID()))
 		if err != nil {
 			log.Warn("Create segment reduce task failed",
 				zap.Int64("collection", s.GetCollectionID()),

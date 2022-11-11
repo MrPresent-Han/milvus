@@ -17,6 +17,8 @@
 package meta
 
 import (
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 	"sync"
 	"time"
 
@@ -257,6 +259,9 @@ func (m *CollectionManager) GetAll() []int64 {
 	defer m.rwmutex.RUnlock()
 
 	ids := typeutil.NewUniqueSet()
+	log.Info("hc---m:",
+		zap.Int("m.collections.size", len(m.collections)),
+		zap.Any("m.collections:", &(m.collections)))
 	for _, collection := range m.collections {
 		ids.Insert(collection.GetCollectionID())
 	}
@@ -345,7 +350,8 @@ func (m *CollectionManager) putCollection(collection *Collection, withSave bool)
 	}
 	collection.UpdatedAt = time.Now()
 	m.collections[collection.CollectionID] = collection
-
+	log.Info("hc---m.collections:", zap.Int("coll_count", len(m.collections)),
+		zap.Any("m.collections:", &(m.collections)))
 	return nil
 }
 

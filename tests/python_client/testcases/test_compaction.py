@@ -1209,10 +1209,13 @@ class TestCompactionOperation(TestcaseBase):
 
         t.join()
         collection_w.load()
+        #as QueryCoord observe segment interval is 10s
+        #so here we wait 11s to ensure that the latest compaction state has been detected by query node
+        sleep(20)
         replicas = collection_w.get_replicas()[0]
         replica_num = len(replicas.groups)
         seg_info = self.utility_wrap.get_query_segment_info(collection_w.name)[0]
-        assert len(seg_info) == 2*replica_num
+        assert len(seg_info) == 2 * replica_num
 
     @pytest.mark.tags(CaseLabel.L2)
     def test_compact_during_index(self):

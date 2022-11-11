@@ -75,6 +75,7 @@ func (c *compactionExecutor) start(ctx context.Context) {
 	}
 }
 
+// hc---note execute compaction task
 func (c *compactionExecutor) executeTask(task compactor) {
 	defer func() {
 		c.toCompleteState(task)

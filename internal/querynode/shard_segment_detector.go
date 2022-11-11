@@ -144,6 +144,7 @@ func (sd *etcdShardSegmentDetector) watch(ch clientv3.WatchChan, collectionID in
 	}
 }
 
+// hc---note this event handler
 func (sd *etcdShardSegmentDetector) handlePutEvent(e *clientv3.Event, collectionID int64, replicaID int64, vchannel string) {
 	info, err := sd.parseSegmentInfo(e.Kv.Value)
 	if err != nil {

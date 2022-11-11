@@ -29,6 +29,7 @@ func CreateSegmentTasksFromPlans(ctx context.Context, checkerID int64, timeout t
 	ret := make([]task.Task, 0)
 	for _, p := range plans {
 		actions := make([]task.Action, 0)
+		// hc---note here, trigger adding or reducing segments
 		if p.To != -1 {
 			action := task.NewSegmentAction(p.To, task.ActionTypeGrow, p.Segment.GetInsertChannel(), p.Segment.GetID())
 			actions = append(actions, action)
@@ -45,6 +46,11 @@ func CreateSegmentTasksFromPlans(ctx context.Context, checkerID int64, timeout t
 			p.ReplicaID,
 			actions...,
 		)
+		log.Info("Create segment Task", zap.Int64("collection", p.Segment.GetCollectionID()),
+			zap.Int64("replica", p.ReplicaID),
+			zap.String("channel", p.Segment.GetInsertChannel()),
+			zap.Int64("From", p.From),
+			zap.Int64("To", p.To))
 		if err != nil {
 			log.Warn("Create segment task from plan failed",
 				zap.Int64("collection", p.Segment.GetCollectionID()),

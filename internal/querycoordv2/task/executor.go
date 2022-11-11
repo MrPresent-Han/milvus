@@ -116,6 +116,7 @@ func (ex *Executor) Execute(task Task, step int) bool {
 	return true
 }
 
+// hc---what's the meaning of merge?
 func (ex *Executor) scheduleRequests() {
 	ex.wg.Add(1)
 	go func() {
@@ -269,7 +270,7 @@ func (ex *Executor) loadSegment(task *SegmentTask, step int) error {
 		return err
 	}
 	log = log.With(zap.Int64("shardLeader", leader))
-
+	//hc--- here, we load seg infos
 	req := packLoadSegmentRequest(task, action, schema, loadMeta, loadInfo, segment)
 	loadTask := NewLoadSegmentsTask(task, step, req)
 	ex.merger.Add(loadTask)

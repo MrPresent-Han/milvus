@@ -213,6 +213,7 @@ func (c *compactionPlanHandler) setSegmentsCompacting(plan *datapb.CompactionPla
 
 // complete a compaction task
 // not threadsafe, only can be used internally
+// hc----note
 func (c *compactionPlanHandler) completeCompaction(result *datapb.CompactionResult) error {
 	planID := result.PlanID
 	if _, ok := c.plans[planID]; !ok {

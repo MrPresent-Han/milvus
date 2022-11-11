@@ -442,7 +442,7 @@ func (node *QueryNode) LoadSegments(ctx context.Context, in *querypb.LoadSegment
 		}
 		return status, nil
 	}
-
+	//hc---the meaning of need transfer
 	if in.GetNeedTransfer() {
 		return node.TransferLoad(ctx, in)
 	}
@@ -1140,7 +1140,7 @@ func (node *QueryNode) SyncReplicaSegments(ctx context.Context, req *querypb.Syn
 	return &commonpb.Status{ErrorCode: commonpb.ErrorCode_Success}, nil
 }
 
-//ShowConfigurations returns the configurations of queryNode matching req.Pattern
+// ShowConfigurations returns the configurations of queryNode matching req.Pattern
 func (node *QueryNode) ShowConfigurations(ctx context.Context, req *internalpb.ShowConfigurationsRequest) (*internalpb.ShowConfigurationsResponse, error) {
 	if !node.isHealthy() {
 		log.Warn("QueryNode.ShowConfigurations failed",
@@ -1257,6 +1257,7 @@ func (node *QueryNode) GetDataDistribution(ctx context.Context, req *querypb.Get
 	}
 
 	growingSegments := node.metaReplica.getGrowingSegments()
+	log.Info("hc---GetDataDistribution:getSealedSegments")
 	sealedSegments := node.metaReplica.getSealedSegments()
 	shardClusters := node.ShardClusterService.GetShardClusters()
 
@@ -1270,6 +1271,7 @@ func (node *QueryNode) GetDataDistribution(ctx context.Context, req *querypb.Get
 	}
 
 	segmentVersionInfos := make([]*querypb.SegmentVersionInfo, 0, len(sealedSegments))
+	log.Info("hc---segmentVersionInfos:", zap.Int("segCount", len(sealedSegments)))
 	for _, s := range sealedSegments {
 		info := &querypb.SegmentVersionInfo{
 			ID:         s.ID(),

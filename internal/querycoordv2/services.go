@@ -198,7 +198,7 @@ func (s *Server) LoadCollection(ctx context.Context, req *querypb.LoadCollection
 		metrics.QueryCoordLoadCount.WithLabelValues(metrics.FailLabel).Inc()
 		return utils.WrapStatus(commonpb.ErrorCode_UnexpectedError, msg, ErrNotHealthy), nil
 	}
-
+	//hc----here start a load collection job
 	loadJob := job.NewLoadCollectionJob(ctx,
 		req,
 		s.dist,

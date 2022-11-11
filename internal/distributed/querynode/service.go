@@ -269,6 +269,7 @@ func (s *Server) UnsubDmChannel(ctx context.Context, req *querypb.UnsubDmChannel
 }
 
 // LoadSegments loads the segments to search.
+// hc---only load once?
 func (s *Server) LoadSegments(ctx context.Context, req *querypb.LoadSegmentsRequest) (*commonpb.Status, error) {
 	// ignore ctx
 	return s.querynode.LoadSegments(ctx, req)
