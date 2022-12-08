@@ -1197,6 +1197,7 @@ type dataCoordConfig struct {
 	MinSegmentToMerge                 int
 	MaxSegmentToMerge                 int
 	SegmentSmallProportion            float64
+	SegmentMaxRowNum                  int64
 	SegmentCompactableProportion      float64
 	CompactionTimeoutInSeconds        int32
 	CompactionCheckIntervalInSeconds  int64
@@ -1299,7 +1300,7 @@ func (p *dataCoordConfig) initEnableAutoCompaction() {
 }
 
 func (p *dataCoordConfig) initCompactionMinSegment() {
-	p.MinSegmentToMerge = p.Base.ParseIntWithDefault("dataCoord.compaction.min.segment", 4)
+	p.MinSegmentToMerge = p.Base.ParseIntWithDefault("dataCoord.compaction.min.segment", 2)
 }
 
 func (p *dataCoordConfig) initCompactionMaxSegment() {
@@ -1308,6 +1309,10 @@ func (p *dataCoordConfig) initCompactionMaxSegment() {
 
 func (p *dataCoordConfig) initSegmentSmallProportion() {
 	p.SegmentSmallProportion = p.Base.ParseFloatWithDefault("dataCoord.segment.smallProportion", 0.5)
+}
+
+func (p *dataCoordConfig) initSegmentMaxRowNum() {
+	p.SegmentMaxRowNum = p.Base.ParseInt64WithDefault("dataCoord.segment.maxRowNum", 2000000)
 }
 
 func (p *dataCoordConfig) initSegmentCompactableProportion() {

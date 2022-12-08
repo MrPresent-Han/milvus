@@ -450,9 +450,7 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, force bool, c
 	for _, segment := range segments {
 		segment := segment.ShadowClone()
 		// TODO should we trigger compaction periodically even if the segment has no obvious reason to be compacted?
-		if force || t.ShouldDoSingleCompaction(segment, compactTime) {
-			prioritizedCandidates = append(prioritizedCandidates, segment)
-		} else if t.isSmallSegment(segment) {
+		if t.isSmallSegment(segment) {
 			smallCandidates = append(smallCandidates, segment)
 		}
 	}
@@ -519,7 +517,7 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, force bool, c
 		smallCandidates = smallCandidates[1:]
 
 		var result []*SegmentInfo
-		free := segment.GetMaxRowNum() - segment.GetNumOfRows()
+		free := Params.DataCoordCfg.SegmentMaxRowNum - segment.GetNumOfRows()
 		// for small segment merge, we pick one largest segment and merge as much as small segment together with it
 		// Why reverse?	 try to merge as many segments as expected.
 		// for instance, if a 255M and 255M is the largest small candidates, they will never be merged because of the MinSegmentToMerge limit.
@@ -616,7 +614,8 @@ func (t *compactionTrigger) getCandidateSegments(channel string, partitionID Uni
 }
 
 func (t *compactionTrigger) isSmallSegment(segment *SegmentInfo) bool {
-	return segment.GetNumOfRows() < int64(float64(segment.GetMaxRowNum())*Params.DataCoordCfg.SegmentSmallProportion)
+	return segment.GetNumOfRows() <
+		int64(float64(Params.DataCoordCfg.SegmentMaxRowNum)*Params.DataCoordCfg.SegmentSmallProportion)
 }
 
 func (t *compactionTrigger) fillOriginPlan(plan *datapb.CompactionPlan) error {
