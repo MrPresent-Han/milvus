@@ -152,6 +152,16 @@ func parseSearchParams(searchParamsPair []*commonpb.KeyValuePair) (string, error
 	return searchParamStr, nil
 }
 
+func maybeLenientSearch(originalTopK int64) (topK int64) {
+	tmpK := originalTopK
+	if Params.ProxyCfg.UseLenientSearch {
+		tmpK = int64(float64(tmpK) * Params.ProxyCfg.LenientSearchRate)
+	}
+	log.Debug("hc--maybeLenientSearch:", zap.Int64("tmpK:", tmpK), zap.Bool("useLenientSearch",
+		Params.ProxyCfg.UseLenientSearch), zap.Float64("lenientSearchRate", Params.ProxyCfg.LenientSearchRate))
+	return tmpK
+}
+
 // parseSearchInfo returns QueryInfo and offset
 func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryInfo, int64, error) {
 	topKStr, err := funcutil.GetAttrByKeyFromRepeatedKV(TopKKey, searchParamsPair)
@@ -159,6 +169,7 @@ func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryIn
 		return nil, 0, errors.New(TopKKey + " not found in search_params")
 	}
 	topK, err := strconv.ParseInt(topKStr, 0, 64)
+	topK = maybeLenientSearch(topK)
 	if err != nil {
 		return nil, 0, fmt.Errorf("%s [%s] is invalid", TopKKey, topKStr)
 	}

@@ -163,6 +163,8 @@ proxy:
   maxTaskNum: 1024 # max task number of proxy task queue
   # please adjust in embedded Milvus: false
   ginLogging: true # Whether to produce gin logs.
+  useLenientSearch: true
+  lenientSearchRate: 0.3
   grpc:
     serverMaxRecvSize: 67108864 # 64M
     serverMaxSendSize: 67108864 # 64M

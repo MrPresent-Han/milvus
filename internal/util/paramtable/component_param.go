@@ -535,6 +535,8 @@ type proxyConfig struct {
 	GinLogging               bool
 	MaxUserNum               int
 	MaxRoleNum               int
+	UseLenientSearch         bool
+	LenientSearchRate        float64
 
 	// required from QueryCoord
 	SearchResultChannelNames   []string
@@ -564,6 +566,8 @@ func (p *proxyConfig) init(base *BaseTable) {
 	p.initGinLogging()
 	p.initMaxUserNum()
 	p.initMaxRoleNum()
+	p.initUseLenientSearch()
+	p.initLenientSearchRate()
 
 	p.initSoPath()
 }
@@ -686,6 +690,15 @@ func (p *proxyConfig) initMaxRoleNum() {
 		panic(err)
 	}
 	p.MaxRoleNum = int(maxRoleNum)
+}
+
+func (p *proxyConfig) initUseLenientSearch() {
+	useLenientSearch := p.Base.ParseBool("proxy.useLenientSearch", true)
+	p.UseLenientSearch = useLenientSearch
+}
+
+func (p *proxyConfig) initLenientSearchRate() {
+	p.LenientSearchRate = p.Base.ParseFloatWithDefault("proxy.lenientSearchRate", 0.3)
 }
 
 // /////////////////////////////////////////////////////////////////////////////
