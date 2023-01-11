@@ -732,6 +732,9 @@ type queryCoordConfig struct {
 	CheckHandoffInterval                time.Duration
 	EnableActiveStandby                 bool
 	RefreshTargetsIntervalSeconds       time.Duration
+
+	//broker
+	BrokerRPCContextAliveSeconds time.Duration
 }
 
 func (p *queryCoordConfig) init(base *BaseTable) {
@@ -902,6 +905,15 @@ func (p *queryCoordConfig) initRefreshTargetsIntervalSeconds() {
 		panic(err)
 	}
 	p.RefreshTargetsIntervalSeconds = time.Duration(refreshInterval) * time.Second
+}
+
+func (p *queryCoordConfig) initBrokerRpcContextAliveSeconds() {
+	brokerRpcContextAliveSecondsStr := p.Base.LoadWithDefault("queryCoord.brokerRPCContextAliveSeconds", "600")
+	brokerRpcContextAliveSecondsCount, err := strconv.ParseInt(brokerRpcContextAliveSecondsStr, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	p.BrokerRPCContextAliveSeconds = time.Duration(brokerRpcContextAliveSecondsCount) * time.Second
 }
 
 // /////////////////////////////////////////////////////////////////////////////
