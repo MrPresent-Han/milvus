@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"time"
 
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/parser/planparserv2"
@@ -483,6 +484,7 @@ func (t *searchTask) searchShard(ctx context.Context, nodeID int64, qn types.Que
 		DmlChannels: channelIDs,
 		Scope:       querypb.DataScope_All,
 	}
+	context.WithTimeout(ctx, 36000*time.Second)
 	result, err := qn.Search(ctx, req)
 	if err != nil {
 		log.Ctx(ctx).Warn("QueryNode search return error", zap.Int64("msgID", t.ID()),
