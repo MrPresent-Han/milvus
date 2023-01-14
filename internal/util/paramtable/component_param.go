@@ -1494,6 +1494,8 @@ type dataNodeConfig struct {
 
 	CreatedTime time.Time
 	UpdatedTime time.Time
+
+	LoadSegmentBF bool
 }
 
 func (p *dataNodeConfig) init(base *BaseTable) {
@@ -1506,6 +1508,7 @@ func (p *dataNodeConfig) init(base *BaseTable) {
 	p.initBinlogMaxSize()
 	p.initSyncPeriod()
 	p.initIOConcurrency()
+	p.initLoadSegmentBF()
 
 	p.initChannelWatchPath()
 }
@@ -1558,6 +1561,10 @@ func (p *dataNodeConfig) initChannelWatchPath() {
 
 func (p *dataNodeConfig) initIOConcurrency() {
 	p.IOConcurrency = p.Base.ParseIntWithDefault("dataNode.dataSync.ioConcurrency", 10)
+}
+
+func (p *dataNodeConfig) initLoadSegmentBF() {
+	p.LoadSegmentBF = p.Base.ParseBool("dataNode.segment.loadBf", true)
 }
 
 func (p *dataNodeConfig) SetNodeID(id UniqueID) {

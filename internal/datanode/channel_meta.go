@@ -298,6 +298,11 @@ func (c *ChannelMeta) InitPKstats(ctx context.Context, s *Segment, statsBinlogs 
 		}
 	}
 
+	if !Params.DataNodeCfg.LoadSegmentBF {
+		log.Warn("skip loading segmentBloomFilter due to the value of loadSegmentBf is true")
+		return nil
+	}
+
 	// filter stats binlog files which is pk field stats log
 	var bloomFilterFiles []string
 	for _, binlog := range statsBinlogs {
