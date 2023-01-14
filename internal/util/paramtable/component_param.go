@@ -1227,6 +1227,7 @@ type dataCoordConfig struct {
 	SingleCompactionExpiredLogMaxSize int64
 	SingleCompactionDeltalogMaxNum    int64
 	GlobalCompactionInterval          time.Duration
+	GlobalCompactionNodeParallel      int
 
 	// Garbage Collection
 	EnableGarbageCollection bool
@@ -1264,6 +1265,7 @@ func (p *dataCoordConfig) init(base *BaseTable) {
 	p.initSingleCompactionExpiredLogMaxSize()
 	p.initSingleCompactionDeltalogMaxNum()
 	p.initGlobalCompactionInterval()
+	p.initGlobalCompactionParallel()
 
 	p.initEnableGarbageCollection()
 	p.initGCInterval()
@@ -1343,6 +1345,10 @@ func (p *dataCoordConfig) initCompactionTimeoutInSeconds() {
 
 func (p *dataCoordConfig) initCompactionCheckIntervalInSeconds() {
 	p.CompactionCheckIntervalInSeconds = p.Base.ParseInt64WithDefault("dataCoord.compaction.check.interval", 10)
+}
+
+func (p *dataCoordConfig) initGlobalCompactionParallel() {
+	p.GlobalCompactionNodeParallel = p.Base.ParseIntWithDefault("dataCoord.compaction.node.parallel", 2)
 }
 
 // if total delete entities is large than a ratio of total entities, trigger single compaction.
