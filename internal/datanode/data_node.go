@@ -82,7 +82,7 @@ const (
 
 	// ImportCallTimeout is the timeout used in Import() method calls
 	// This value is equal to RootCoord's task expire time
-	ImportCallTimeout = 15 * 60 * time.Second
+	ImportCallTimeout = 60 * 60 * time.Second
 )
 
 var getFlowGraphServiceAttempts = uint(50)
