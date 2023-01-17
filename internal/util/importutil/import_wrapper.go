@@ -46,7 +46,7 @@ const (
 	// this limitation is to avoid this OOM risk:
 	// for column-based file, we read all its data into memory, if user input a large file, the read() method may
 	// cost extra memory and lear to OOM.
-	MaxFileSize = 16 * 1024 * 1024 * 1024 // 16GB
+	MaxFileSize = 64 * 1024 * 1024 * 1024 // 48GB
 
 	// this limitation is to avoid this OOM risk:
 	// simetimes system segment max size is a large number, a single segment fields data might cause OOM.

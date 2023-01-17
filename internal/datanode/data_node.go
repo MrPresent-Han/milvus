@@ -134,6 +134,9 @@ type DataNode struct {
 	closer io.Closer
 
 	factory dependency.Factory
+
+	//parameters
+	importCallTimeout time.Duration
 }
 
 // NewDataNode will return a DataNode with abnormal state.
@@ -151,8 +154,9 @@ func NewDataNode(ctx context.Context, factory dependency.Factory) *DataNode {
 		segmentCache:       newCache(),
 		compactionExecutor: newCompactionExecutor(),
 
-		flowgraphManager: newFlowgraphManager(),
-		clearSignal:      make(chan string, 100),
+		flowgraphManager:  newFlowgraphManager(),
+		clearSignal:       make(chan string, 100),
+		importCallTimeout: time.Duration(Params.DataNodeCfg.ImportCallTimeOutSeconds) * time.Second,
 	}
 	node.UpdateStateCode(commonpb.StateCode_Abnormal)
 	return node
@@ -987,7 +991,7 @@ func (node *DataNode) Import(ctx context.Context, req *datapb.ImportTaskRequest)
 	importResult.Infos = append(importResult.Infos, &commonpb.KeyValuePair{Key: importutil.ProgressPercent, Value: "0"})
 
 	// Spawn a new context to ignore cancellation from parental context.
-	newCtx, cancel := context.WithTimeout(context.TODO(), ImportCallTimeout)
+	newCtx, cancel := context.WithTimeout(context.TODO(), node.importCallTimeout)
 	defer cancel()
 	// func to report import state to RootCoord.
 	reportFunc := func(res *rootcoordpb.ImportResult) error {

@@ -1494,6 +1494,9 @@ type dataNodeConfig struct {
 
 	CreatedTime time.Time
 	UpdatedTime time.Time
+
+	// parameters for import
+	ImportCallTimeOutSeconds int
 }
 
 func (p *dataNodeConfig) init(base *BaseTable) {
@@ -1530,6 +1533,11 @@ func (p *dataNodeConfig) initFlushInsertBufferSize() {
 		panic(err)
 	}
 	p.FlushInsertBufferSize = bs
+}
+
+func (p *dataNodeConfig) initImportCallTimeoutSeconds() {
+	timeoutSeconds := p.Base.ParseIntWithDefault("datanode.import.timeoutSeconds", 60*60)
+	p.ImportCallTimeOutSeconds = timeoutSeconds
 }
 
 func (p *dataNodeConfig) initFlushDeleteBufferSize() {
