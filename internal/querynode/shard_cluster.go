@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
+	"time"
 
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -936,6 +937,7 @@ func (sc *ShardCluster) Search(ctx context.Context, req *querypb.SearchRequest, 
 	// concurrent visiting nodes
 	var wg sync.WaitGroup
 	reqCtx, cancel := context.WithCancel(ctx)
+	context.WithTimeout(reqCtx, 36000*time.Second)
 	defer cancel()
 
 	var err error
