@@ -17,6 +17,8 @@
 package balance
 
 import (
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 	"sort"
 
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
@@ -97,6 +99,8 @@ func (b *RoundRobinBalancer) AssignSegment(segments []*meta.Segment, nodes []int
 			From:    -1,
 			To:      nodesInfo[i%len(nodesInfo)].ID(),
 		}
+		log.Info("generate segment assign plan:",
+			zap.Int64("segID", plan.Segment.ID), zap.Int64("nodeID", plan.To))
 		ret = append(ret, plan)
 	}
 	return ret

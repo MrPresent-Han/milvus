@@ -35,6 +35,7 @@ type RowCountBasedBalancer struct {
 	targetMgr *meta.TargetManager
 }
 
+/*
 func (b *RowCountBasedBalancer) AssignSegment(segments []*meta.Segment, nodes []int64) []SegmentAssignPlan {
 	nodeItems := b.convertToNodeItems(nodes)
 	if len(nodeItems) == 0 {
@@ -65,7 +66,7 @@ func (b *RowCountBasedBalancer) AssignSegment(segments []*meta.Segment, nodes []
 		queue.push(ni)
 	}
 	return plans
-}
+}*/
 
 func (b *RowCountBasedBalancer) convertToNodeItems(nodeIDs []int64) []*nodeItem {
 	ret := make([]*nodeItem, 0, len(nodeIDs))
