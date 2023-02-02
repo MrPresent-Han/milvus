@@ -128,6 +128,8 @@ func (s *searchTask) searchOnHistorical() error {
 	// check ctx timeout
 	ctx := s.Ctx()
 	if !funcutil.CheckCtxValid(ctx) {
+		log.Ctx(ctx).Error("search context timeout", zap.Int64("msgID", s.ID()),
+			zap.Int64("collectionID", s.CollectionID))
 		return errors.New("search context timeout")
 	}
 
@@ -146,12 +148,16 @@ func (s *searchTask) searchOnHistorical() error {
 	segmentIDs := s.req.GetSegmentIDs()
 	searchReq, err2 := newSearchRequest(s.QS.collection, s.req, s.PlaceholderGroup)
 	if err2 != nil {
+		log.Ctx(ctx).Error("failed to newSearchRequest", zap.Int64("msgID", s.ID()),
+			zap.Int64("collectionID", s.CollectionID), zap.Error(err2))
 		return err2
 	}
 	defer searchReq.delete()
 
 	partResults, _, _, err := searchHistorical(ctx, s.QS.metaReplica, searchReq, s.CollectionID, nil, segmentIDs)
 	if err != nil {
+		log.Ctx(ctx).Error("failed to searchHistorical", zap.Int64("msgID", s.ID()),
+			zap.Int64("collectionID", s.CollectionID), zap.Error(err))
 		return err
 	}
 	defer deleteSearchResults(partResults)

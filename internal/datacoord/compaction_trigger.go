@@ -453,9 +453,10 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, force bool, i
 	for _, segment := range segments {
 		segment := segment.ShadowClone()
 		// TODO should we trigger compaction periodically even if the segment has no obvious reason to be compacted?
-		if force || t.ShouldDoSingleCompaction(segment, isDiskIndex, compactTime) {
+		/*if force || t.ShouldDoSingleCompaction(segment, isDiskIndex, compactTime) {
 			prioritizedCandidates = append(prioritizedCandidates, segment)
-		} else if t.isSmallSegment(segment) {
+		} else */
+		if t.isSmallSegment(segment) {
 			smallCandidates = append(smallCandidates, segment)
 		}
 	}

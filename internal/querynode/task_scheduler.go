@@ -336,7 +336,7 @@ func (s *taskScheduler) processReadTask(t readTask) {
 
 	err = t.Execute(s.ctx)
 	if err != nil {
-		log.Warn(err.Error())
+		log.Warn("processReadTask run across error:", zap.Any("Error", err.Error()))
 		return
 	}
 	err = t.PostExecute(s.ctx)

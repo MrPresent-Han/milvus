@@ -850,6 +850,7 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 		historicalTask, err2 := newSearchTask(ctx, req)
 		if err2 != nil {
 			failRet.Status.Reason = err2.Error()
+			log.Ctx(ctx).Error("sub search new search task failed:", zap.String("err", failRet.Status.Reason))
 			return failRet, nil
 		}
 		historicalTask.QS = qs
@@ -857,12 +858,14 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 		err2 = node.scheduler.AddReadTask(ctx, historicalTask)
 		if err2 != nil {
 			failRet.Status.Reason = err2.Error()
+			log.Ctx(ctx).Error("sub search add read task failed:", zap.String("err", failRet.Status.Reason))
 			return failRet, nil
 		}
 
 		err2 = historicalTask.WaitToFinish()
 		if err2 != nil {
 			failRet.Status.Reason = err2.Error()
+			log.Ctx(ctx).Error("sub search WaitToFinish read task failed:", zap.String("err", failRet.Status.Reason))
 			return failRet, nil
 		}
 
