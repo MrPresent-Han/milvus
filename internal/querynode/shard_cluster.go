@@ -22,7 +22,6 @@ import (
 	"fmt"
 	"runtime"
 	"sync"
-	"time"
 
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -984,7 +983,7 @@ func (sc *ShardCluster) Search(ctx context.Context, req *querypb.SearchRequest, 
 			queryNode := GetQueryNode()
 			var partialResult *internalpb.SearchResults
 			var nodeErr error
-			context.WithTimeout(reqCtx, 7200*time.Second)
+
 			if queryNode != nil && queryNode.IsStandAlone {
 				partialResult, nodeErr = queryNode.Search(reqCtx, nodeReq)
 			} else {
