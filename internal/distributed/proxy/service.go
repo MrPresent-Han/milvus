@@ -677,6 +677,9 @@ func (s *Server) Delete(ctx context.Context, request *milvuspb.DeleteRequest) (*
 }
 
 func (s *Server) Search(ctx context.Context, request *milvuspb.SearchRequest) (*milvuspb.SearchResults, error) {
+	ddl, _ := ctx.Deadline()
+	log.Info("proxy context time", zap.Time("time-now:", time.Now()),
+		zap.Time("context.ddl:", ddl))
 	return s.proxy.Search(ctx, request)
 }
 
