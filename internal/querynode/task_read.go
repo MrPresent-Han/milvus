@@ -144,6 +144,7 @@ func (b *baseReadTask) Ready() (bool, error) {
 		b.waitTSafeTr = timerecord.NewTimeRecorder("waitTSafeTimeRecorder")
 	}
 	if b.Timeout() {
+		log.Error("read task timeout err", zap.Int64("taskID", b.ID()))
 		return false, b.TimeoutError()
 	}
 	var channel Channel
@@ -179,6 +180,8 @@ func (b *baseReadTask) Ready() (bool, error) {
 			)
 			return false, WrapErrTsLagTooLarge(lag, maxLag)
 		}
+		log.Debug("guaranteeTs lag behind serviceTime, task was postponed",
+			zap.Int64("task", b.ID()), zap.Time("st", st), zap.Time("gt", gt))
 		return false, nil
 	}
 	log.Debug("query msg can do",
