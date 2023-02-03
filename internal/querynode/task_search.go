@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/milvus-io/milvus/internal/parser/planparserv2"
 	"github.com/milvus-io/milvus/internal/proto/planpb"
@@ -128,8 +129,11 @@ func (s *searchTask) searchOnHistorical() error {
 	// check ctx timeout
 	ctx := s.Ctx()
 	if !funcutil.CheckCtxValid(ctx) {
+		ddl, _ := ctx.Deadline()
 		log.Ctx(ctx).Error("search context timeout", zap.Int64("msgID", s.ID()),
-			zap.Int64("collectionID", s.CollectionID))
+			zap.Int64("collectionID", s.CollectionID),
+			zap.Time("time-now:", time.Now()),
+			zap.Time("context.ddl:", ddl))
 		return errors.New("search context timeout")
 	}
 
