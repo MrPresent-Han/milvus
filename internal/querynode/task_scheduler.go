@@ -125,7 +125,7 @@ func (s *taskScheduler) taskLoop() {
 				t := s.queue.PopUnissuedTask()
 				select {
 				case <-t.Ctx().Done():
-					log.Error("selected other task is done and notify to cancel context",
+					log.Error("hc--selected other task is done and notify to cancel context",
 						zap.Int64("taskID", t.ID()))
 					t.Notify(context.Canceled)
 					continue
@@ -151,10 +151,10 @@ func (s *taskScheduler) Start() {
 func (s *taskScheduler) tryEvictUnsolvedReadTask(headCount int) {
 	after := headCount + s.unsolvedReadTasks.Len()
 	diff := int32(after) - Params.QueryNodeCfg.MaxUnsolvedQueueSize
-	log.Debug("try to evict unsolved read task",
+	log.Debug("hc--try to evict unsolved read task",
 		zap.Int("headCount", headCount), zap.Int("after", after))
 	if diff <= 0 {
-		log.Debug("skip evicting unsolved read task because task diff is less than zero")
+		log.Debug("hc--skip evicting unsolved read task because task diff is less than zero")
 		return
 	}
 	var next *list.Element
@@ -168,7 +168,7 @@ func (s *taskScheduler) tryEvictUnsolvedReadTask(headCount int) {
 			continue
 		}
 		if t.Timeout() {
-			log.Debug("task was removed from unsolvedReadTasks because of timeout", zap.Int64("id", t.ID()))
+			log.Debug("hc--task was removed from unsolvedReadTasks because of timeout", zap.Int64("id", t.ID()))
 			s.unsolvedReadTasks.Remove(e)
 			rateCol.rtCounter.sub(t, unsolvedQueueType)
 			t.Notify(t.TimeoutError())
@@ -178,7 +178,7 @@ func (s *taskScheduler) tryEvictUnsolvedReadTask(headCount int) {
 	if diff <= 0 {
 		return
 	}
-	log.Error("try to evict tasks due to busy server", zap.Int32("count", diff))
+	log.Error("hc--try to evict tasks due to busy server", zap.Int32("count", diff))
 	metrics.QueryNodeEvictedReadReqCount.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID())).Add(float64(diff))
 	busyErr := fmt.Errorf("server is busy")
 	for e := s.unsolvedReadTasks.Front(); e != nil && diff > 0; e = next {
@@ -290,7 +290,7 @@ func (s *taskScheduler) executeReadTasks() {
 		defer taskWg.Done()
 		if t.Timeout() {
 			ddl, _ := t.Ctx().Deadline()
-			log.Error("readTask was timeout, notify to timeout error",
+			log.Error("hc--readTask was timeout, notify to timeout error",
 				zap.Time("task deadline", ddl))
 			t.Notify(t.TimeoutError())
 		} else {
@@ -338,18 +338,18 @@ func (s *taskScheduler) processReadTask(t readTask) {
 
 	defer func() {
 		if err != nil {
-			log.Error("read task defer notify err", zap.Error(err))
+			log.Error("hc--read task defer notify err", zap.Error(err))
 		}
 		t.Notify(err)
 	}()
 	if err != nil {
-		log.Warn("processReadTask ran across error:", zap.Error(err))
+		log.Warn("hc--processReadTask ran across error:", zap.Error(err))
 		return
 	}
 
 	err = t.Execute(s.ctx)
 	if err != nil {
-		log.Warn("processReadTask ran across error:", zap.Any("Error", err.Error()))
+		log.Warn("hc--processReadTask ran across error:", zap.Any("Error", err.Error()))
 		return
 	}
 	err = t.PostExecute(s.ctx)
@@ -372,7 +372,7 @@ func (s *taskScheduler) tryMergeReadTasks() {
 		}
 		ready, err := t.Ready()
 		if err != nil {
-			log.Error("wait for read task ready ran across err", zap.Error(err))
+			log.Error("hc--wait for read task ready ran across err", zap.Error(err))
 			s.unsolvedReadTasks.Remove(e)
 			rateCol.rtCounter.sub(t, unsolvedQueueType)
 			t.Notify(err)

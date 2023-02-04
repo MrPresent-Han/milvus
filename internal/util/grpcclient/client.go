@@ -246,15 +246,18 @@ func (c *ClientBase[T]) connect(ctx context.Context) error {
 func (c *ClientBase[T]) callOnce(ctx context.Context, caller func(client T) (any, error)) (any, error) {
 	client, err := c.GetGrpcClient(ctx)
 	if err != nil {
+		log.Error("hc---after getGrpcClient error", zap.Error(err))
 		return generic.Zero[T](), err
 	}
 
 	ret, err2 := caller(client)
 	if err2 == nil {
+		log.Error("hc---after caller err2", zap.Error(err2))
 		return ret, nil
 	}
 
 	if !funcutil.CheckCtxValid(ctx) {
+		log.Error("hc---after caller check invalid", zap.Error(ctx.Err()))
 		return generic.Zero[T](), err2
 	}
 	if !funcutil.IsGrpcErr(err2) {

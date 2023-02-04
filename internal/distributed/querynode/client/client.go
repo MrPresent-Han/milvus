@@ -19,6 +19,8 @@ package grpcquerynodeclient
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 
 	"google.golang.org/grpc"
 
@@ -253,6 +255,8 @@ func (c *Client) ReleaseSegments(ctx context.Context, req *querypb.ReleaseSegmen
 func (c *Client) Search(ctx context.Context, req *querypb.SearchRequest) (*internalpb.SearchResults, error) {
 	ret, err := c.grpcClient.Call(ctx, func(client querypb.QueryNodeClient) (any, error) {
 		if !funcutil.CheckCtxValid(ctx) {
+			ddl, _ := ctx.Deadline()
+			log.Error("hc---before Search invalid", zap.Time("ddl", ddl), zap.Error(ctx.Err()))
 			return nil, ctx.Err()
 		}
 		return client.Search(ctx, req)
