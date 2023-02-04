@@ -907,16 +907,19 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 	withStreaming := func(ctx context.Context) error {
 		streamingTask, err := newSearchTask(searchCtx, req)
 		if err != nil {
+			log.Error("hc---new streaming task， err", zap.Error(err))
 			return err
 		}
 		streamingTask.QS = qs
 		streamingTask.DataScope = querypb.DataScope_Streaming
 		err = node.scheduler.AddReadTask(searchCtx, streamingTask)
 		if err != nil {
+			log.Error("hc---add streaming task， err", zap.Error(err))
 			return err
 		}
 		err = streamingTask.WaitToFinish()
 		if err != nil {
+			log.Error("hc---wait to finish streaming task， err", zap.Error(err))
 			return err
 		}
 		metrics.QueryNodeSQLatencyInQueue.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()),

@@ -90,7 +90,12 @@ func (s *searchTask) searchOnStreaming() error {
 	// check ctx timeout
 	ctx := s.Ctx()
 	if !funcutil.CheckCtxValid(ctx) {
-		return errors.New("search context timeout")
+		ddl, _ := ctx.Deadline()
+		log.Ctx(ctx).Error("hc---search context invalid", zap.Int64("msgID", s.ID()),
+			zap.Int64("collectionID", s.CollectionID),
+			zap.Time("time-now:", time.Now()),
+			zap.Time("context.ddl:", ddl), zap.Error(ctx.Err()))
+		return errors.New("search context invalid")
 	}
 
 	if len(s.req.GetDmlChannels()) <= 0 {
@@ -130,11 +135,11 @@ func (s *searchTask) searchOnHistorical() error {
 	ctx := s.Ctx()
 	if !funcutil.CheckCtxValid(ctx) {
 		ddl, _ := ctx.Deadline()
-		log.Ctx(ctx).Error("search context timeout", zap.Int64("msgID", s.ID()),
+		log.Ctx(ctx).Error("hc---search context invalid", zap.Int64("msgID", s.ID()),
 			zap.Int64("collectionID", s.CollectionID),
 			zap.Time("time-now:", time.Now()),
-			zap.Time("context.ddl:", ddl))
-		return errors.New("search context timeout")
+			zap.Time("context.ddl:", ddl), zap.Error(ctx.Err()))
+		return errors.New("search context invalid")
 	}
 
 	// check if collection has been released, check streaming since it's released first
@@ -152,7 +157,7 @@ func (s *searchTask) searchOnHistorical() error {
 	segmentIDs := s.req.GetSegmentIDs()
 	searchReq, err2 := newSearchRequest(s.QS.collection, s.req, s.PlaceholderGroup)
 	if err2 != nil {
-		log.Ctx(ctx).Error("failed to newSearchRequest", zap.Int64("msgID", s.ID()),
+		log.Ctx(ctx).Error("hc---failed to newSearchRequest", zap.Int64("msgID", s.ID()),
 			zap.Int64("collectionID", s.CollectionID), zap.Error(err2))
 		return err2
 	}
@@ -160,7 +165,7 @@ func (s *searchTask) searchOnHistorical() error {
 
 	partResults, _, _, err := searchHistorical(ctx, s.QS.metaReplica, searchReq, s.CollectionID, nil, segmentIDs)
 	if err != nil {
-		log.Ctx(ctx).Error("failed to searchHistorical", zap.Int64("msgID", s.ID()),
+		log.Ctx(ctx).Error("hc---failed to searchHistorical", zap.Int64("msgID", s.ID()),
 			zap.Int64("collectionID", s.CollectionID), zap.Error(err))
 		return err
 	}

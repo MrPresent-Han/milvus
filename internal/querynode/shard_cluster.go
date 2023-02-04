@@ -20,11 +20,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"runtime"
-	"sync"
-
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"runtime"
+	"sync"
 
 	"github.com/golang/protobuf/proto"
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
@@ -983,7 +982,6 @@ func (sc *ShardCluster) Search(ctx context.Context, req *querypb.SearchRequest, 
 			queryNode := GetQueryNode()
 			var partialResult *internalpb.SearchResults
 			var nodeErr error
-
 			if queryNode != nil && queryNode.IsStandAlone {
 				partialResult, nodeErr = queryNode.Search(reqCtx, nodeReq)
 			} else {

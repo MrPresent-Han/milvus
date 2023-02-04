@@ -252,7 +252,6 @@ func (c *ClientBase[T]) callOnce(ctx context.Context, caller func(client T) (any
 
 	ret, err2 := caller(client)
 	if err2 == nil {
-		log.Error("hc---after caller err2", zap.Error(err2))
 		return ret, nil
 	}
 
