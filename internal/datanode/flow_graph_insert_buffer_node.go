@@ -158,6 +158,7 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 		pos := proto.Clone(fgMsg.startPositions[idx]).(*internalpb.MsgPosition)
 		pos.ChannelName = ibNode.channelName
 		startPositions = append(startPositions, pos)
+		log.Info("hc--startPosition:", zap.Any("startPos", pos))
 	}
 	fgMsg.startPositions = startPositions
 	endPositions := make([]*internalpb.MsgPosition, 0, len(fgMsg.endPositions))
@@ -165,6 +166,7 @@ func (ibNode *insertBufferNode) Operate(in []Msg) []Msg {
 		pos := proto.Clone(fgMsg.endPositions[idx]).(*internalpb.MsgPosition)
 		pos.ChannelName = ibNode.channelName
 		endPositions = append(endPositions, pos)
+		log.Info("hc--endPosition:", zap.Any("endPos", pos))
 	}
 	fgMsg.endPositions = endPositions
 
