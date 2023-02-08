@@ -20,6 +20,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -305,6 +306,8 @@ func (mr *MilvusRoles) Run(local bool, alias string) {
 	}
 
 	metrics.Register(Registry)
+	runtime.SetMutexProfileFraction(1)
+	runtime.SetBlockProfileRate(1)
 	management.ServeHTTP()
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc,
