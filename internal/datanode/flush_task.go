@@ -46,7 +46,8 @@ type flushDeleteTask interface {
 
 // flushTaskRunner controls a single flush task lifetime
 // this runner will wait insert data flush & del data flush done
-//  then call the notifyFunc
+//
+//	then call the notifyFunc
 type flushTaskRunner struct {
 	sync.WaitGroup
 	kv.BaseKV
@@ -116,6 +117,7 @@ func (ti *taskInjection) injectDone(success bool) {
 // init initializes flushTaskRunner with provided actions and signal
 func (t *flushTaskRunner) init(f notifyMetaFunc, postFunc taskPostFunc, signal <-chan struct{}) {
 	t.initOnce.Do(func() {
+		//hc---
 		t.startSignal = signal
 		t.finishSignal = make(chan struct{})
 		go t.waitFinish(f, postFunc)

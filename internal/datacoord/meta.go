@@ -518,6 +518,7 @@ func (m *meta) UpdateFlushSegmentsInfo(
 		}
 		return nil
 	}
+	//hc---update startPositions for all new segments
 	for _, pos := range startPositions {
 		if len(pos.GetStartPosition().GetMsgID()) == 0 {
 			continue

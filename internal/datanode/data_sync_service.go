@@ -235,7 +235,8 @@ func (dsService *dataSyncService) initNodes(vchanInfo *datapb.VchannelInfo, tick
 				numOfRows:    segment.GetNumOfRows(),
 				statsBinLogs: segment.Statslogs,
 				endPos:       segment.GetDmlPosition(),
-				recoverTs:    vchanInfo.GetSeekPosition().GetTimestamp()}); err != nil {
+				//hc---recoverTs is only used to get correct schema
+				recoverTs: vchanInfo.GetSeekPosition().GetTimestamp()}); err != nil {
 				return nil, err
 			}
 			tickler.inc()

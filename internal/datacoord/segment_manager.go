@@ -104,13 +104,14 @@ var _ Manager = (*SegmentManager)(nil)
 
 // SegmentManager handles segment related logic
 type SegmentManager struct {
-	meta                *meta
-	mu                  sync.RWMutex
-	allocator           allocator
-	helper              allocHelper
-	segments            []UniqueID
-	estimatePolicy      calUpperLimitPolicy
-	allocPolicy         AllocatePolicy
+	meta           *meta
+	mu             sync.RWMutex
+	allocator      allocator
+	helper         allocHelper
+	segments       []UniqueID
+	estimatePolicy calUpperLimitPolicy
+	allocPolicy    AllocatePolicy
+	//hc---note that segment seal policy control segment seal action
 	segmentSealPolicies []segmentSealPolicy
 	channelSealPolicies []channelSealPolicy
 	flushPolicy         flushPolicy

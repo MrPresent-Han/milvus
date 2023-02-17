@@ -90,7 +90,8 @@ var _ flushManager = (*rendezvousFlushManager)(nil)
 type orderFlushQueue struct {
 	sync.Once
 	segmentID UniqueID
-	injectCh  chan *taskInjection
+	//hc--- caution injectCh
+	injectCh chan *taskInjection
 
 	// MsgID => flushTask
 	working    sync.Map
@@ -364,7 +365,7 @@ func (m *rendezvousFlushManager) flushBufferData(data *BufferData, segmentID Uni
 
 	// encode data and convert output data
 	inCodec := storage.NewInsertCodec(meta)
-
+	// hc---in the process of serializing, double-time memory will be consumed
 	binLogs, statsBinlogs, err := inCodec.Serialize(partID, segmentID, data.buffer)
 	if err != nil {
 		return nil, err
@@ -551,6 +552,7 @@ func (m *rendezvousFlushManager) notifyAllFlushed() {
 	close(m.dropHandler.allFlushed)
 }
 
+// hc---caution the protocol of taskID
 func getSyncTaskID(pos *internalpb.MsgPosition) string {
 	// use msgID & timestamp to generate unique taskID, see also #20926
 	return fmt.Sprintf("%s%d", string(pos.GetMsgID()), pos.GetTimestamp())
@@ -624,6 +626,7 @@ func NewRendezvousFlushManager(allocator allocatorInterface, cm storage.ChunkMan
 		ChunkManager:       cm,
 		notifyFunc:         f,
 		Channel:            channel,
+		//hc---caution dropHandler
 		dropHandler: dropHandler{
 			flushAndDrop: drop,
 		},
@@ -642,6 +645,7 @@ func getFieldBinlogs(fieldID UniqueID, binlogs []*datapb.FieldBinlog) *datapb.Fi
 	return nil
 }
 
+// hc---caution this
 func dropVirtualChannelFunc(dsService *dataSyncService, opts ...retry.Option) flushAndDropFunc {
 	return func(packs []*segmentFlushPack) {
 		req := &datapb.DropVirtualChannelRequest{
@@ -808,9 +812,9 @@ func flushNotifyFunc(dsService *dataSyncService, opts ...retry.Option) notifyMet
 			Field2BinlogPaths:   fieldInsert,
 			Field2StatslogPaths: fieldStats,
 			Deltalogs:           deltaInfos,
-
+			//hc---why checkPoints？ there is only one checkpoint
 			CheckPoints: checkPoints,
-
+			//hc---why stored all new segments startPos
 			StartPositions: startPos,
 			Flushed:        pack.flushed,
 			Dropped:        pack.dropped,

@@ -647,6 +647,7 @@ func (c *ChannelMeta) listNotFlushedSegmentIDs() []UniqueID {
 	return segIDs
 }
 
+// hc--note channel checkpoint
 func (c *ChannelMeta) getChannelCheckpoint(ttPos *internalpb.MsgPosition) *internalpb.MsgPosition {
 	c.segMu.RLock()
 	defer c.segMu.RUnlock()
