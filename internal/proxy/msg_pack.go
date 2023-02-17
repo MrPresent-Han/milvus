@@ -32,7 +32,8 @@ import (
 	"go.uber.org/zap"
 )
 
-func assignSegmentID(ctx context.Context, insertMsg *msgstream.InsertMsg, result *milvuspb.MutationResult, channelNames []string, idAllocator *allocator.IDAllocator, segIDAssigner *segIDAssigner) (*msgstream.MsgPack, error) {
+func assignSegmentID(ctx context.Context, insertMsg *msgstream.InsertMsg, result *milvuspb.MutationResult, channelNames []string,
+	idAllocator *allocator.IDAllocator, segIDAssigner *segIDAssigner) (*msgstream.MsgPack, error) {
 	threshold := Params.PulsarCfg.MaxMessageSize.GetAsInt()
 	log.Debug("assign segmentid", zap.Int("threshold", threshold))
 

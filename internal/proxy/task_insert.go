@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"strconv"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
@@ -150,6 +151,8 @@ func (it *insertTask) PreExecute(ctx context.Context) error {
 	// set insertTask.timeStamps
 	rowNum := it.insertMsg.NRows()
 	it.insertMsg.Timestamps = make([]uint64, rowNum)
+	beginTs, _ := tsoutil.ParseTS(it.insertMsg.BeginTimestamp)
+	log.Info("hc--insertMsg.BeginTimestamp", zap.Time("beginTs", beginTs))
 	for index := range it.insertMsg.Timestamps {
 		it.insertMsg.Timestamps[index] = it.insertMsg.BeginTimestamp
 	}

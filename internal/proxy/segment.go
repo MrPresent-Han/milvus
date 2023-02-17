@@ -385,7 +385,8 @@ func (sa *segIDAssigner) GetSegmentID(collID UniqueID, partitionID UniqueID, cha
 		partitionID: partitionID,
 		channelName: channelName,
 		count:       count,
-		timestamp:   ts,
+		//hc---what's the sense of this ts?
+		timestamp: ts,
 	}
 	sa.Reqs <- req
 	if err := req.Wait(); err != nil {
