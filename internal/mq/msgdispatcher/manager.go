@@ -95,6 +95,7 @@ func (c *dispatcherManager) Add(vchannel string, pos *Pos, subPos SubPos) (<-cha
 	}
 	t := newTarget(vchannel, pos)
 	d.AddTarget(t)
+	//hc---note the difference between main dispatcher and soloDispatcher
 	if isMain {
 		c.mainDispatcher = d
 		log.Info("add main dispatcher")

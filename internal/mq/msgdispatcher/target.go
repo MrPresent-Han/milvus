@@ -38,6 +38,7 @@ type target struct {
 	closed    bool
 }
 
+// hc---note msg target
 func newTarget(vchannel string, pos *Pos) *target {
 	t := &target{
 		vchannel: vchannel,

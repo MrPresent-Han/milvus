@@ -105,9 +105,10 @@ func NewDispatcher(factory msgstream.Factory,
 	}
 
 	d := &Dispatcher{
-		done:          make(chan struct{}, 1),
-		isMain:        isMain,
-		pchannel:      pchannel,
+		done:     make(chan struct{}, 1),
+		isMain:   isMain,
+		pchannel: pchannel,
+		//hc---what's the sense of lag**
 		lagNotifyChan: lagNotifyChan,
 		lagTargets:    lagTargets,
 		targets:       make(map[string]*target),
