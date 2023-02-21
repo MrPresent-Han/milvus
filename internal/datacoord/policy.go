@@ -65,7 +65,7 @@ func AvgAssignRegisterPolicy(store ROChannelStore, nodeID int64) ChannelOpSet {
 	for _, info := range avaNodes {
 		channelNum += len(info.Channels)
 	}
-	chPerNode := channelNum / (len(store.GetNodes()) + 1)
+	chPerNode := channelNum / (len(avaNodes) + 1)
 	if chPerNode == 0 {
 		return nil
 	}
@@ -118,6 +118,7 @@ func AvgAssignRegisterPolicy(store ROChannelStore, nodeID int64) ChannelOpSet {
 			}
 		}
 		if hasReleaseCount >= chPerNode {
+			log.Info("Has got enough channels to release", zap.Int("hasReleaseCount", hasReleaseCount))
 			break
 		}
 	}
