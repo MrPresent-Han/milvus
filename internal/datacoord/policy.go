@@ -72,7 +72,7 @@ func AvgAssignRegisterPolicy(store ROChannelStore, nodeID int64) ChannelOpSet {
 
 	// sort in descending order and reallocate
 	sort.Slice(avaNodes, func(i, j int) bool {
-		return len(avaNodes[i].Channels) > len(avaNodes[j].Channels)
+		return getNoReleasingChannelsCount(avaNodes[i].Channels) > getNoReleasingChannelsCount(avaNodes[j].Channels)
 	})
 
 	releases := make(map[int64][]*channel)
@@ -92,8 +92,8 @@ func AvgAssignRegisterPolicy(store ROChannelStore, nodeID int64) ChannelOpSet {
 	////////////////////////////////
 	hasReleaseCount := 0
 	for i := 0; i < len(avaNodes); i++ {
-		toRelease := avaNodes[i]
-		curChCount := len(toRelease.Channels)
+		toReleaseNode := avaNodes[i]
+		curChCount := len(toReleaseNode.Channels)
 		if curChCount <= (chPerNode + 1) {
 			// As all current available nodes have been sorted in desc order, when running across the first node
 			// with insufficient channels, it means the find process should stop
@@ -102,20 +102,23 @@ func AvgAssignRegisterPolicy(store ROChannelStore, nodeID int64) ChannelOpSet {
 			break
 		}
 		toReleaseCount := curChCount - chPerNode - 1
-		for _, ch := range toRelease.Channels {
+		for _, ch := range toReleaseNode.Channels {
 			if ch.IsReleasing == true {
 				log.Info("Channel is being released, skip it when balancing again for registering new node",
-					zap.Int64("toReleaseNodeID", toRelease.NodeID), zap.String("channel", ch.Name))
+					zap.Int64("toReleaseNodeID", toReleaseNode.NodeID), zap.String("channel", ch.Name))
 				continue
 			}
-			releases[toRelease.NodeID] = append(releases[toRelease.NodeID], ch)
-			log.Info("Add channel to release list", zap.Int64("toReleaseNodeID", toRelease.NodeID),
+			releases[toReleaseNode.NodeID] = append(releases[toReleaseNode.NodeID], ch)
+			log.Info("Add channel to release list", zap.Int64("toReleaseNodeID", toReleaseNode.NodeID),
 				zap.String("channel", ch.Name))
 			toReleaseCount--
 			hasReleaseCount++
 			if toReleaseCount == 0 || hasReleaseCount >= chPerNode {
 				break
 			}
+		}
+		if hasReleaseCount >= chPerNode {
+			break
 		}
 	}
 
@@ -125,6 +128,16 @@ func AvgAssignRegisterPolicy(store ROChannelStore, nodeID int64) ChannelOpSet {
 		opSet.Add(k, v)
 	}
 	return opSet
+}
+
+func getNoReleasingChannelsCount(Channels []*channel) int {
+	count := 0
+	for _, channel := range Channels {
+		if channel != nil && channel.IsReleasing == false {
+			count++
+		}
+	}
+	return count
 }
 
 // filterNode filters out node-channel info where node ID == `nodeID`.
