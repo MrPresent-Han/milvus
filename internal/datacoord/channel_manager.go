@@ -63,6 +63,7 @@ type channel struct {
 	CollectionID   UniqueID
 	StartPositions []*commonpb.KeyDataPair
 	Schema         *schemapb.CollectionSchema
+	IsReleasing    bool
 }
 
 // String implement Stringer.
@@ -111,7 +112,7 @@ func NewChannelManager(
 	for _, opt := range options {
 		opt(c)
 	}
-
+	//hc---pay attention to these policy
 	c.registerPolicy = c.factory.NewRegisterPolicy()
 	c.deregisterPolicy = c.factory.NewDeregisterPolicy()
 	c.assignPolicy = c.factory.NewAssignPolicy()
@@ -638,6 +639,8 @@ func (c *ChannelManager) processAck(e *ackEvent) {
 
 	case releaseSuccessAck:
 		// Delete and Reassign
+		log.Info("datanode successfully release channel, will trigger reassign",
+			zap.Int64("nodeID", e.nodeID), zap.String("channel name", e.channelName))
 		err := c.Reassign(e.nodeID, e.channelName)
 		if err != nil {
 			log.Warn("fail to response to release success ACK",

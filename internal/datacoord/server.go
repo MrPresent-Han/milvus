@@ -420,6 +420,7 @@ func (s *Server) initGarbageCollection(cli storage.ChunkManager) {
 
 func (s *Server) initServiceDiscovery() error {
 	r := semver.MustParseRange(">=2.1.2")
+
 	sessions, rev, err := s.session.GetSessionsWithVersionRange(typeutil.DataNodeRole, r)
 	if err != nil {
 		log.Warn("DataCoord failed to init service discovery", zap.Error(err))

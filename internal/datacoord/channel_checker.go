@@ -37,8 +37,9 @@ type channelStateTimer struct {
 
 	runningTimers     sync.Map
 	runningTimerStops sync.Map // channel name to timer stop channels
-	etcdWatcher       clientv3.WatchChan
-	timeoutWatcher    chan *ackEvent
+	//hc---caution
+	etcdWatcher    clientv3.WatchChan
+	timeoutWatcher chan *ackEvent
 }
 
 func newChannelStateTimer(kv kv.MetaKv) *channelStateTimer {
@@ -93,6 +94,7 @@ func (c *channelStateTimer) startOne(watchState datapb.ChannelWatchState, channe
 
 	stop := make(chan struct{})
 	ticker := time.NewTimer(timeout)
+	//hc---remove previous timer?
 	c.removeTimers([]string{channelName})
 	c.runningTimerStops.Store(channelName, stop)
 	c.runningTimers.Store(channelName, ticker)

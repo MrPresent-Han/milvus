@@ -76,17 +76,47 @@ func AvgAssignRegisterPolicy(store ROChannelStore, nodeID int64) ChannelOpSet {
 	})
 
 	releases := make(map[int64][]*channel)
-	for i := 0; i < chPerNode; i++ {
+	////////
+	/*for i := 0; i < chPerNode; i++ {
 		// Pick a node with its channel to release.
 		toRelease := avaNodes[i%len(avaNodes)]
 		// Pick a channel that will be reassigned to the new node later.
 		chIdx := i / len(avaNodes)
 		if chIdx >= len(toRelease.Channels) {
-			// Node has too few channels, simply skip. No re-picking.
+
 			// TODO: Consider re-picking in case assignment is extremely uneven?
 			continue
 		}
 		releases[toRelease.NodeID] = append(releases[toRelease.NodeID], toRelease.Channels[chIdx])
+	}*/
+	////////////////////////////////
+	hasReleaseCount := 0
+	for i := 0; i < len(avaNodes); i++ {
+		toRelease := avaNodes[i]
+		curChCount := len(toRelease.Channels)
+		if curChCount <= (chPerNode + 1) {
+			// As all current available nodes have been sorted in desc order, when running across the first node
+			// with insufficient channels, it means the find process should stop
+			// The reason why we add 1 to chPerNode is that we tend to reduce the reassign actions to the best
+			// so when the number of channels on one node is only 1 more than the average, we don't move it
+			break
+		}
+		toReleaseCount := curChCount - chPerNode - 1
+		for _, ch := range toRelease.Channels {
+			if ch.IsReleasing == true {
+				log.Info("Channel is being released, skip it when balancing again for registering new node",
+					zap.Int64("toReleaseNodeID", toRelease.NodeID), zap.String("channel", ch.Name))
+				continue
+			}
+			releases[toRelease.NodeID] = append(releases[toRelease.NodeID], ch)
+			log.Info("Add channel to release list", zap.Int64("toReleaseNodeID", toRelease.NodeID),
+				zap.String("channel", ch.Name))
+			toReleaseCount--
+			hasReleaseCount++
+			if toReleaseCount == 0 || hasReleaseCount >= chPerNode {
+				break
+			}
+		}
 	}
 
 	opSet = ChannelOpSet{}

@@ -221,10 +221,14 @@ func (c *ChannelStore) Update(opSet ChannelOpSet) error {
 	return c.update(operations)
 }
 
-func (c *ChannelStore) checkIfExist(nodeID int64, channel *channel) bool {
+func (c *ChannelStore) checkExistAndSetReleasingState(nodeID int64, channel *channel, state datapb.ChannelWatchState) bool {
+	if state == datapb.ChannelWatchState_ToRelease {
+		channel.IsReleasing = true
+	}
 	if _, ok := c.channelsInfo[nodeID]; ok {
-		for _, ch := range c.channelsInfo[nodeID].Channels {
+		for idx, ch := range c.channelsInfo[nodeID].Channels {
 			if channel.Name == ch.Name && channel.CollectionID == ch.CollectionID {
+				c.channelsInfo[nodeID].Channels[idx] = channel
 				return true
 			}
 		}
@@ -243,8 +247,8 @@ func (c *ChannelStore) update(opSet ChannelOpSet) error {
 	for _, op := range opSet {
 		switch op.Type {
 		case Add:
-			for _, ch := range op.Channels {
-				if c.checkIfExist(op.NodeID, ch) {
+			for idx, ch := range op.Channels {
+				if c.checkExistAndSetReleasingState(op.NodeID, ch, op.ChannelWatchInfos[idx].State) {
 					continue // prevent adding duplicated channel info
 				}
 				// Append target channels to channel store.

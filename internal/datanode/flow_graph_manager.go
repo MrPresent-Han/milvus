@@ -62,6 +62,8 @@ func (fm *flowgraphManager) addAndStart(dn *DataNode, vchan *datapb.VchannelInfo
 func (fm *flowgraphManager) release(vchanName string) {
 	if fg, loaded := fm.flowgraphs.LoadAndDelete(vchanName); loaded {
 		fg.(*dataSyncService).close()
+		log.Info("DataNode released vchan flowgraph", zap.Int64("nodeID", Params.DataNodeCfg.GetNodeID()),
+			zap.String("vchanName", vchanName))
 		metrics.DataNodeNumFlowGraphs.WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID())).Dec()
 	}
 	rateCol.removeFlowGraphChannel(vchanName)

@@ -453,7 +453,8 @@ func (node *DataNode) handleDeleteEvent(vChanName string) {
 
 // tryToReleaseFlowgraph tries to release a flowgraph
 func (node *DataNode) tryToReleaseFlowgraph(vChanName string) {
-	log.Info("try to release flowgraph", zap.String("vChanName", vChanName))
+	log.Info("try to release flowgraph", zap.String("vChanName", vChanName),
+		zap.Int64("nodeID", Params.DataNodeCfg.GetNodeID()))
 	node.flowgraphManager.release(vChanName)
 }
 
