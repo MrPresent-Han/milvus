@@ -361,6 +361,12 @@ func ConsistentHashDeregisterPolicy(hashRing *consistent.Consistent) DeregisterP
 	}
 }
 
+type BalanceChannelPolicy func(store ROChannelStore, ts time.Time) ChannelOpSet
+
+func AvgBalanceChannelPolicy(store ROChannelStore, ts time.Time) ChannelOpSet {
+	return nil
+}
+
 // ChannelReassignPolicy is a policy for reassigning channels
 type ChannelReassignPolicy func(store ROChannelStore, reassigns []*NodeChannelInfo) ChannelOpSet
 
@@ -369,8 +375,13 @@ func EmptyReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) Cha
 	return nil
 }
 
-// AverageReassignPolicy is a reassigning policy that evenly assign channels
-func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) ChannelOpSet {
+// EmptyBalancePolicy is a dummy balance policy
+func EmptyBalancePolicy(store ROChannelStore, ts time.Time) ChannelOpSet {
+	return nil
+}
+
+// RoundRobinReassignPolicy is a reassigning policy that evenly assign channels
+func RoundRobinReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) ChannelOpSet {
 	allNodes := store.GetNodesChannels()
 	filterMap := make(map[int64]struct{})
 	for _, reassign := range reassigns {
@@ -424,9 +435,9 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 	return ret
 }
 
-// AverageBalanceReassignPolicy is a reassigning policy that evenly balance channels amone datanodes
+// AverageReassignPolicy is a reassigning policy that evenly balance channels among datanodes
 // which is used by bgChecker
-func AverageBalanceReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) ChannelOpSet {
+func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) ChannelOpSet {
 	allNodes := store.GetNodesChannels()
 	filterMap := make(map[int64]struct{})
 	for _, reassign := range reassigns {
@@ -525,75 +536,72 @@ func (rallocates ReAllocates) MarshalLogArray(enc zapcore.ArrayEncoder) error {
 	return nil
 }
 
-// BgBalanceCheck returns a ChannelBGChecker with `Params.DataCoordCfg.MaxWatchDuration`.
-func BgBalanceCheck() ChannelBGChecker {
-	return func(nodeChannels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelInfo, error) {
-		avaNodeNum := len(nodeChannels)
-		reAllocations := make(ReAllocates, 0, avaNodeNum)
-		if avaNodeNum == 0 {
-			return reAllocations, nil
-		}
-		totalChannelNum := 0
-		for _, nodeChs := range nodeChannels {
-			totalChannelNum += len(nodeChs.Channels)
-		}
-		channelCountPerNode := totalChannelNum / avaNodeNum
-		for _, nChannels := range nodeChannels {
-			chCount := len(nChannels.Channels)
-			if chCount <= channelCountPerNode+1 {
-				log.Info("node channel count is not much larger than average, skip reallocate",
-					zap.Int64("nodeID", nChannels.NodeID), zap.Int("channelCount", chCount),
-					zap.Int("channelCountPerNode", channelCountPerNode))
-				continue
-			}
-			reallocate := &NodeChannelInfo{
-				NodeID:   nChannels.NodeID,
-				Channels: make([]*channel, 0),
-			}
-			toReleaseCount := chCount - channelCountPerNode - 1
-			for _, ch := range nChannels.Channels {
-				reallocate.Channels = append(reallocate.Channels, ch)
-				toReleaseCount -= 1
-				if toReleaseCount <= 0 {
-					break
-				}
-			}
-			reAllocations = append(reAllocations, reallocate)
-		}
-		log.Info("Channel Balancer got new reAllocations:", zap.Array("reAllocations", reAllocations))
-		/*for _, ch := range channels {
-			cinfo := &NodeChannelInfo{
-				NodeID:   ch.NodeID,
-				Channels: make([]*channel, 0),
-			}
-			for _, c := range ch.Channels {
-				k := buildNodeChannelKey(ch.NodeID, c.Name)
-				v, err := kv.Load(k)
-				if err != nil {
-					return nil, err
-				}
-				watchInfo := &datapb.ChannelWatchInfo{}
-				if err := proto.Unmarshal([]byte(v), watchInfo); err != nil {
-					return nil, err
-				}
-				reviseVChannelInfo(watchInfo.GetVchan())
-				// if a channel is not watched or update watch progress after WatchTimeoutInterval,
-				// then we reallocate it to another node
-				if watchInfo.State == datapb.ChannelWatchState_Complete || watchInfo.State == datapb.ChannelWatchState_WatchSuccess {
-					continue
-				}
-				startTime := time.Unix(watchInfo.StartTs, 0)
-				d := ts.Sub(startTime)
-				if d >= Params.DataCoordCfg.WatchTimeoutInterval {
-					cinfo.Channels = append(cinfo.Channels, c)
-				}
-			}
-			if len(cinfo.Channels) != 0 {
-				reAllocations = append(reAllocations, cinfo)
-			}
-		}*/
+func BgBalanceCheck(nodeChannels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelInfo, error) {
+	avaNodeNum := len(nodeChannels)
+	reAllocations := make(ReAllocates, 0, avaNodeNum)
+	if avaNodeNum == 0 {
 		return reAllocations, nil
 	}
+	totalChannelNum := 0
+	for _, nodeChs := range nodeChannels {
+		totalChannelNum += len(nodeChs.Channels)
+	}
+	channelCountPerNode := totalChannelNum / avaNodeNum
+	for _, nChannels := range nodeChannels {
+		chCount := len(nChannels.Channels)
+		if chCount <= channelCountPerNode+1 {
+			log.Info("node channel count is not much larger than average, skip reallocate",
+				zap.Int64("nodeID", nChannels.NodeID), zap.Int("channelCount", chCount),
+				zap.Int("channelCountPerNode", channelCountPerNode))
+			continue
+		}
+		reallocate := &NodeChannelInfo{
+			NodeID:   nChannels.NodeID,
+			Channels: make([]*channel, 0),
+		}
+		toReleaseCount := chCount - channelCountPerNode - 1
+		for _, ch := range nChannels.Channels {
+			reallocate.Channels = append(reallocate.Channels, ch)
+			toReleaseCount -= 1
+			if toReleaseCount <= 0 {
+				break
+			}
+		}
+		reAllocations = append(reAllocations, reallocate)
+	}
+	log.Info("Channel Balancer got new reAllocations:", zap.Array("reAllocations", reAllocations))
+	/*for _, ch := range channels {
+		cinfo := &NodeChannelInfo{
+			NodeID:   ch.NodeID,
+			Channels: make([]*channel, 0),
+		}
+		for _, c := range ch.Channels {
+			k := buildNodeChannelKey(ch.NodeID, c.Name)
+			v, err := kv.Load(k)
+			if err != nil {
+				return nil, err
+			}
+			watchInfo := &datapb.ChannelWatchInfo{}
+			if err := proto.Unmarshal([]byte(v), watchInfo); err != nil {
+				return nil, err
+			}
+			reviseVChannelInfo(watchInfo.GetVchan())
+			// if a channel is not watched or update watch progress after WatchTimeoutInterval,
+			// then we reallocate it to another node
+			if watchInfo.State == datapb.ChannelWatchState_Complete || watchInfo.State == datapb.ChannelWatchState_WatchSuccess {
+				continue
+			}
+			startTime := time.Unix(watchInfo.StartTs, 0)
+			d := ts.Sub(startTime)
+			if d >= Params.DataCoordCfg.WatchTimeoutInterval {
+				cinfo.Channels = append(cinfo.Channels, c)
+			}
+		}
+		if len(cinfo.Channels) != 0 {
+			reAllocations = append(reAllocations, cinfo)
+		}
+	}*/
+	return reAllocations, nil
 }
 
 func formatNodeIDs(ids []int64) []string {

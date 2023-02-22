@@ -51,8 +51,8 @@ type ChannelManager struct {
 	deregisterPolicy DeregisterPolicy
 	assignPolicy     ChannelAssignPolicy
 	reassignPolicy   ChannelReassignPolicy
-	bgChecker        ChannelBGChecker
-	bgReassignPolicy ChannelReassignPolicy
+	//bgChecker        ChannelBGChecker
+	bgBalancePolicy  BalanceChannelPolicy
 	msgstreamFactory msgstream.Factory
 
 	stateChecker channelStateChecker
@@ -120,8 +120,8 @@ func NewChannelManager(
 	c.deregisterPolicy = c.factory.NewDeregisterPolicy()
 	c.assignPolicy = c.factory.NewAssignPolicy()
 	c.reassignPolicy = c.factory.NewReassignPolicy()
-	c.bgChecker = c.factory.NewBgChecker()
-	c.bgReassignPolicy = c.factory.NewBgReassignPolicy()
+	//c.bgChecker = c.factory.NewBgChecker()
+	c.bgBalancePolicy = c.factory.NewBgReassignPolicy()
 	c.lastActiveTimestamp = time.Now()
 	return c, nil
 }
@@ -168,13 +168,11 @@ func (c *ChannelManager) Startup(ctx context.Context, nodes []int64) error {
 		log.Info("starting etcd states checker")
 	}
 
-	if c.bgChecker != nil {
-		//hc-- is here a thread leak?
-		ctx1, cancel := context.WithCancel(ctx)
-		c.stopChecker = cancel
-		go c.bgCheckChannelsWork(ctx1)
-		log.Info("starting background balance checker")
-	}
+	bgCtx, cancel := context.WithCancel(ctx)
+	//hc---note stop checker here
+	c.stopChecker = cancel
+	go c.bgCheckChannelsWork(bgCtx)
+	log.Info("starting background balance checker")
 
 	log.Info("cluster start up",
 		zap.Int64s("nodes", nodes),
@@ -269,26 +267,13 @@ func (c *ChannelManager) bgCheckChannelsWork(ctx context.Context) {
 		case <-timer.C:
 			c.mu.Lock()
 			if c.IsSilent() == false {
-				log.Info("ChannelManager is not silent, skip channel balance")
+				log.Info("ChannelManager is not silent, skip channel balance this round")
 				continue
 			}
-			channels := c.store.GetNodesChannels()
-			reallocates, err := c.bgChecker(channels, time.Now())
-			if err != nil {
-				log.Warn("channel manager bg check failed", zap.Error(err))
-				c.mu.Unlock()
-				continue
-			}
-
-			updates := c.bgReassignPolicy(c.store, reallocates)
-			log.Info("channel manager bg check reassign", zap.Array("updates", updates))
-			for _, update := range updates {
-				if update.Type == Add {
-					c.fillChannelWatchInfo(update)
-				}
-			}
-
-			if err := c.store.Update(updates); err != nil {
+			updates := c.bgBalancePolicy(c.store, time.Now())
+			log.Info("channel manager bg check balance", zap.Array("updates", updates))
+			//hc---toRelease is right all the time?
+			if err := c.updateWithTimer(updates, datapb.ChannelWatchState_ToRelease); err != nil {
 				log.Warn("channel store update error", zap.Error(err))
 			}
 
@@ -638,14 +623,17 @@ func (c *ChannelManager) processAck(e *ackEvent) {
 	case watchSuccessAck:
 		log.Info("datanode successfully watched channel", zap.Int64("nodeID", e.nodeID), zap.String("channel name", e.channelName))
 	case watchFailAck, watchTimeoutAck: // failure acks from toWatch
+		log.Warn("datanode watch channel failed or timeout, will release", zap.Int64("nodeID", e.nodeID),
+			zap.String("channel", e.channelName))
 		err := c.Release(e.nodeID, e.channelName)
 		if err != nil {
 			log.Warn("fail to set channels to release for watch failure ACKs",
 				zap.Int64("nodeID", e.nodeID), zap.String("channel name", e.channelName), zap.Error(err))
 		}
-
 	case releaseFailAck, releaseTimeoutAck: // failure acks from toRelease
 		// Cleanup, Delete and Reassign
+		log.Warn("datanode release channel failed or timeout, will cleanup and reassign", zap.Int64("nodeID", e.nodeID),
+			zap.String("channel", e.channelName))
 		err := c.CleanupAndReassign(e.nodeID, e.channelName)
 		if err != nil {
 			log.Warn("fail to clean and reassign channels for release failure ACKs",
@@ -654,6 +642,8 @@ func (c *ChannelManager) processAck(e *ackEvent) {
 
 	case releaseSuccessAck:
 		// Delete and Reassign
+		log.Warn("datanode release channel successfully, will reassign", zap.Int64("nodeID", e.nodeID),
+			zap.String("channel", e.channelName))
 		err := c.Reassign(e.nodeID, e.channelName)
 		if err != nil {
 			log.Warn("fail to response to release success ACK",
@@ -754,19 +744,19 @@ func (c *ChannelManager) Release(nodeID UniqueID, channelName string) error {
 }
 
 // Reassign reassigns a channel to another DataNode.
-func (c *ChannelManager) Reassign(nodeID UniqueID, channelName string) error {
+func (c *ChannelManager) Reassign(originNodeID UniqueID, channelName string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	ch := c.getChannelByNodeAndName(nodeID, channelName)
+	ch := c.getChannelByNodeAndName(originNodeID, channelName)
 	if ch == nil {
-		return fmt.Errorf("fail to find matching nodeID: %d with channelName: %s", nodeID, channelName)
+		return fmt.Errorf("fail to find matching nodeID: %d with channelName: %s", originNodeID, channelName)
 	}
 
-	reallocates := &NodeChannelInfo{nodeID, []*channel{ch}}
+	reallocates := &NodeChannelInfo{originNodeID, []*channel{ch}}
 
 	if c.isMarkedDrop(channelName) {
-		if err := c.remove(nodeID, ch); err != nil {
+		if err := c.remove(originNodeID, ch); err != nil {
 			return fmt.Errorf("failed to remove watch info: %v,%s", ch, err.Error())
 		}
 		if err := c.h.FinishDropChannel(channelName); err != nil {
@@ -781,13 +771,13 @@ func (c *ChannelManager) Reassign(nodeID UniqueID, channelName string) error {
 	if len(updates) <= 0 {
 		// Skip the remove if reassign to the original node.
 		log.Warn("failed to reassign channel to other nodes, assigning to the original DataNode",
-			zap.Int64("nodeID", nodeID),
+			zap.Int64("nodeID", originNodeID),
 			zap.String("channel name", channelName))
-		updates.Add(nodeID, []*channel{ch})
+		updates.Add(originNodeID, []*channel{ch})
 	}
 
 	log.Info("channel manager reassigning channels",
-		zap.Int64("old node ID", nodeID),
+		zap.Int64("old node ID", originNodeID),
 		zap.Array("updates", updates))
 	return c.updateWithTimer(updates, datapb.ChannelWatchState_ToWatch)
 }

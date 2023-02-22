@@ -163,7 +163,7 @@ func (c *channelStateTimer) resetIfExist(channel string, interval time.Duration)
 // Note here the reading towards c.running are not protected by mutex
 // because it's meaningless, since we cannot guarantee the following add/delete node operations
 func (c *channelStateTimer) hasRunningTimers() bool {
-	return c.runningTimerCount == 0
+	return c.runningTimerCount != 0
 }
 
 func parseWatchInfo(key string, data []byte) (*datapb.ChannelWatchInfo, error) {

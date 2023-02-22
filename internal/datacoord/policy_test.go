@@ -361,7 +361,7 @@ func TestAverageReassignPolicy(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := AverageReassignPolicy(tt.args.store, tt.args.reassigns)
+			got := RoundRobinReassignPolicy(tt.args.store, tt.args.reassigns)
 			assert.EqualValues(t, tt.want, got)
 		})
 	}
