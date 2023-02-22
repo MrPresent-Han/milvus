@@ -19,6 +19,8 @@ package datacoord
 import (
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/log"
+	"go.uber.org/zap"
 	"math"
 	"strconv"
 	"strings"
@@ -160,6 +162,8 @@ func (c *ChannelStore) Reload() error {
 			Schema:       cw.GetSchema(),
 		}
 		c.channelsInfo[nodeID].Channels = append(c.channelsInfo[nodeID].Channels, channel)
+		log.Info("channel store reload channel",
+			zap.Int64("nodeID", nodeID), zap.String("channel", channel.Name))
 		metrics.DataCoordDmlChannelNum.WithLabelValues(strconv.FormatInt(nodeID, 10)).Set(float64(len(c.channelsInfo[nodeID].Channels)))
 	}
 	return nil

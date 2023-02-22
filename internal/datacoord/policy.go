@@ -453,19 +453,37 @@ func RoundRobinReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo
 // which is used by bgChecker
 func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) ChannelOpSet {
 	allNodes := store.GetNodesChannels()
+	log.Info("hc---allNodes", zap.Int("allNodesCount", len(allNodes)))
+	for _, node := range allNodes {
+		log.Info("hc---node", zap.Int64("nodeID", node.NodeID),
+			zap.Int("chCount", len(node.Channels)))
+		for _, ch := range node.Channels {
+			log.Info("hc---channel", zap.String("channelName", ch.Name), zap.Int64("nodeID", node.NodeID))
+		}
+		log.Info("hc--------------------------------")
+	}
+	for _, node := range reassigns {
+		log.Info("hc---reassign", zap.Int64("nodeID", node.NodeID))
+		for _, ch := range node.Channels {
+			log.Info("hc---reassign", zap.String("channelName", ch.Name), zap.Int64("nodeID", node.NodeID))
+		}
+		log.Info("hc--------------------------------")
+	}
+
 	filterMap := make(map[int64]struct{})
 	for _, reassign := range reassigns {
 		filterMap[reassign.NodeID] = struct{}{}
 	}
 	avaNodes := make([]*NodeChannelInfo, 0, len(allNodes))
 	totalChannelNum := 0
-	for _, c := range allNodes {
-		totalChannelNum += len(c.Channels)
-		if _, ok := filterMap[c.NodeID]; ok {
+	for _, node := range allNodes {
+		totalChannelNum += len(node.Channels)
+		if _, ok := filterMap[node.NodeID]; ok {
 			continue
 		}
-		avaNodes = append(avaNodes, c)
+		avaNodes = append(avaNodes, node)
 	}
+	log.Info("hc---", zap.Int("avaNodesCount", len(avaNodes)), zap.Int("totalChannelNum", totalChannelNum))
 	ret := make([]*ChannelOp, 0)
 	if len(avaNodes) == 0 {
 		// if no node is left, do not reassign
@@ -473,6 +491,7 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 		return ret
 	}
 	channelCountPerNode := totalChannelNum / len(allNodes)
+	log.Info("hc---", zap.Int("channelCountPerNode", channelCountPerNode))
 	sort.Slice(avaNodes, func(i, j int) bool {
 		return len(avaNodes[i].Channels) <= len(avaNodes[j].Channels)
 	})
@@ -485,12 +504,15 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 			Channels: reassign.Channels,
 			NodeID:   reassign.NodeID,
 		}
+		log.Info("delete reassgin", zap.Int64("node", reassign.NodeID))
 		ret = append(ret, deleteUpdate)
-		nodeIdx := 0
 		for _, ch := range reassign.Channels {
+			nodeIdx := 0
 			for {
 				targetID := avaNodes[nodeIdx%len(avaNodes)].NodeID
+				log.Info("hc---targetID", zap.Int64("targetID", targetID))
 				existedChannelCount := store.GetNodeChannelCount(targetID)
+				log.Info("hc---existedChannelCount", zap.Int("existedChannelCount", existedChannelCount))
 				if _, ok := addUpdates[targetID]; !ok {
 					if existedChannelCount >= channelCountPerNode {
 						log.Info("targetNodeID has had more channels than average, skip", zap.Int64("targetID",
@@ -500,6 +522,7 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 					}
 				} else {
 					addingChannelCount := len(addUpdates[targetID].Channels)
+					log.Info("hc---addingChannelCount", zap.Int("addingChannelCount", addingChannelCount))
 					if existedChannelCount+addingChannelCount >= channelCountPerNode {
 						log.Info("targetNodeID has had more channels than average, skip", zap.Int64("targetID",
 							targetID), zap.Int("currentChannelCount", existedChannelCount+addingChannelCount))
@@ -507,6 +530,7 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 						continue
 					}
 				}
+				log.Info("hc---nodeIdx", zap.Int("nodeIdx", nodeIdx))
 				if _, ok := addUpdates[targetID]; !ok {
 					addUpdates[targetID] = &ChannelOp{
 						Type:     Add,
@@ -516,10 +540,14 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 				} else {
 					addUpdates[targetID].Channels = append(addUpdates[targetID].Channels, ch)
 				}
+				log.Info("hc---break loop1")
 				break
 			}
+			log.Info("hc---break loop2")
 		}
+		log.Info("hc---break loop3")
 	}
+	log.Info("hc---addUpdates", zap.Int("addUpdates", len(addUpdates)))
 	for _, update := range addUpdates {
 		ret = append(ret, update)
 	}
