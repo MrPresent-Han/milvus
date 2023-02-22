@@ -409,10 +409,10 @@ func RoundRobinReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo
 		}
 		avaNodes = append(avaNodes, c)
 	}
-
+	ret := make([]*ChannelOp, 0)
 	if len(avaNodes) == 0 {
 		// if no node is left, do not reassign
-		return nil
+		return ret
 	}
 	sort.Slice(avaNodes, func(i, j int) bool {
 		return len(avaNodes[i].Channels) <= len(avaNodes[j].Channels)
@@ -420,7 +420,6 @@ func RoundRobinReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo
 
 	// reassign channels to remaining nodes
 	i := 0
-	ret := make([]*ChannelOp, 0)
 	addUpdates := make(map[int64]*ChannelOp)
 	for _, reassign := range reassigns {
 		deleteUpdate := &ChannelOp{
@@ -467,10 +466,11 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 		}
 		avaNodes = append(avaNodes, c)
 	}
-
+	ret := make([]*ChannelOp, 0)
 	if len(avaNodes) == 0 {
 		// if no node is left, do not reassign
-		return nil
+		log.Warn("there is no avaiable nodes, return")
+		return ret
 	}
 	channelCountPerNode := totalChannelNum / len(allNodes)
 	sort.Slice(avaNodes, func(i, j int) bool {
@@ -478,7 +478,6 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 	})
 
 	// reassign channels to remaining nodes
-	ret := make([]*ChannelOp, 0)
 	addUpdates := make(map[int64]*ChannelOp)
 	for _, reassign := range reassigns {
 		deleteUpdate := &ChannelOp{
@@ -494,12 +493,16 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 				existedChannelCount := store.GetNodeChannelCount(targetID)
 				if _, ok := addUpdates[targetID]; !ok {
 					if existedChannelCount >= channelCountPerNode {
+						log.Info("targetNodeID has had more channels than average, skip", zap.Int64("targetID",
+							targetID), zap.Int("existedChannelCount", existedChannelCount))
 						nodeIdx++
 						continue
 					}
 				} else {
 					addingChannelCount := len(addUpdates[targetID].Channels)
 					if existedChannelCount+addingChannelCount >= channelCountPerNode {
+						log.Info("targetNodeID has had more channels than average, skip", zap.Int64("targetID",
+							targetID), zap.Int("currentChannelCount", existedChannelCount+addingChannelCount))
 						nodeIdx++
 						continue
 					}
