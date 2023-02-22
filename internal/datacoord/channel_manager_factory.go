@@ -34,7 +34,7 @@ type ChannelPolicyFactory interface {
 	// NewBgChecker creates a new background checker.
 	NewBgChecker() ChannelBGChecker
 	// NewBgChecker creates a new background checker.
-	NewBgReassignPolicy() BalanceChannelPolicy
+	NewBgBalancePolicy() BalanceChannelPolicy
 }
 
 // ChannelPolicyFactoryV1 equal to policy batch
@@ -72,7 +72,7 @@ func (f *ChannelPolicyFactoryV1) NewBgChecker() ChannelBGChecker {
 	return BgBalanceCheck
 }
 
-func (f *ChannelPolicyFactoryV1) NewBgReassignPolicy() BalanceChannelPolicy {
+func (f *ChannelPolicyFactoryV1) NewBgBalancePolicy() BalanceChannelPolicy {
 	return AvgBalanceChannelPolicy
 }
 
@@ -113,6 +113,6 @@ func (f *ConsistentHashChannelPolicyFactory) NewBgChecker() ChannelBGChecker {
 	return EmptyBgChecker
 }
 
-func (f *ConsistentHashChannelPolicyFactory) NewBgReassignPolicy() BalanceChannelPolicy {
+func (f *ConsistentHashChannelPolicyFactory) NewBgBalancePolicy() BalanceChannelPolicy {
 	return EmptyBalancePolicy
 }

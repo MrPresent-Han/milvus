@@ -364,7 +364,22 @@ func ConsistentHashDeregisterPolicy(hashRing *consistent.Consistent) DeregisterP
 type BalanceChannelPolicy func(store ROChannelStore, ts time.Time) ChannelOpSet
 
 func AvgBalanceChannelPolicy(store ROChannelStore, ts time.Time) ChannelOpSet {
-	return nil
+	channelOps := make(ChannelOpSet, 0)
+	reAllocates, err := BgBalanceCheck(store.GetNodesChannels(), ts)
+	if err != nil {
+		log.Error("Failed to balance node channels", zap.Error(err))
+		return channelOps
+	}
+	for _, reAlloc := range reAllocates {
+		toRelease := &ChannelOp{
+			Type:     Add,
+			Channels: reAlloc.Channels,
+			NodeID:   reAlloc.NodeID,
+		}
+		channelOps = append(channelOps, toRelease)
+	}
+
+	return channelOps
 }
 
 // ChannelReassignPolicy is a policy for reassigning channels

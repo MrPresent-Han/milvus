@@ -121,7 +121,7 @@ func NewChannelManager(
 	c.assignPolicy = c.factory.NewAssignPolicy()
 	c.reassignPolicy = c.factory.NewReassignPolicy()
 	//c.bgChecker = c.factory.NewBgChecker()
-	c.bgBalancePolicy = c.factory.NewBgReassignPolicy()
+	c.bgBalancePolicy = c.factory.NewBgBalancePolicy()
 	c.lastActiveTimestamp = time.Now()
 	return c, nil
 }
@@ -270,10 +270,11 @@ func (c *ChannelManager) bgCheckChannelsWork(ctx context.Context) {
 				log.Info("ChannelManager is not silent, skip channel balance this round")
 				continue
 			}
-			updates := c.bgBalancePolicy(c.store, time.Now())
-			log.Info("channel manager bg check balance", zap.Array("updates", updates))
+			toReleases := c.bgBalancePolicy(c.store, time.Now())
+			log.Info("channel manager bg check balance", zap.Array("toReleases", toReleases))
 			//hc---toRelease is right all the time?
-			if err := c.updateWithTimer(updates, datapb.ChannelWatchState_ToRelease); err != nil {
+			if err := c.updateWithTimer(toReleases, datapb.ChannelWatchState_ToRelease); err != nil {
+				//hc---is here right for just logging error?
 				log.Warn("channel store update error", zap.Error(err))
 			}
 
