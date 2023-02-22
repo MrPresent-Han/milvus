@@ -420,7 +420,7 @@ func TestBgCheckWithMaxWatchDuration(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			policy := BgCheckWithMaxWatchDuration(tt.args.kv)
+			policy := BgBalanceCheck()
 			got, err := policy(tt.args.channels, tt.args.timestamp)
 			assert.Equal(t, tt.wantErr, err)
 			assert.EqualValues(t, tt.want, got)

@@ -17,14 +17,12 @@
 package datacoord
 
 import (
+	"go.uber.org/zap/zapcore"
 	"sort"
 	"strconv"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-	"github.com/milvus-io/milvus/internal/kv"
 	"github.com/milvus-io/milvus/internal/log"
-	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"go.uber.org/zap"
 	"stathat.com/c/consistent"
 )
@@ -426,6 +424,79 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 	return ret
 }
 
+// AverageBalanceReassignPolicy is a reassigning policy that evenly balance channels amone datanodes
+// which is used by bgChecker
+func AverageBalanceReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) ChannelOpSet {
+	allNodes := store.GetNodesChannels()
+	filterMap := make(map[int64]struct{})
+	for _, reassign := range reassigns {
+		filterMap[reassign.NodeID] = struct{}{}
+	}
+	avaNodes := make([]*NodeChannelInfo, 0, len(allNodes))
+	totalChannelNum := 0
+	for _, c := range allNodes {
+		totalChannelNum += len(c.Channels)
+		if _, ok := filterMap[c.NodeID]; ok {
+			continue
+		}
+		avaNodes = append(avaNodes, c)
+	}
+
+	if len(avaNodes) == 0 {
+		// if no node is left, do not reassign
+		return nil
+	}
+	channelCountPerNode := totalChannelNum / len(allNodes)
+	sort.Slice(avaNodes, func(i, j int) bool {
+		return len(avaNodes[i].Channels) <= len(avaNodes[j].Channels)
+	})
+
+	// reassign channels to remaining nodes
+	ret := make([]*ChannelOp, 0)
+	addUpdates := make(map[int64]*ChannelOp)
+	for _, reassign := range reassigns {
+		deleteUpdate := &ChannelOp{
+			Type:     Delete,
+			Channels: reassign.Channels,
+			NodeID:   reassign.NodeID,
+		}
+		ret = append(ret, deleteUpdate)
+		nodeIdx := 0
+		for _, ch := range reassign.Channels {
+			for {
+				targetID := avaNodes[nodeIdx%len(avaNodes)].NodeID
+				existedChannelCount := store.GetNodeChannelCount(targetID)
+				if _, ok := addUpdates[targetID]; !ok {
+					if existedChannelCount >= channelCountPerNode {
+						nodeIdx++
+						continue
+					}
+				} else {
+					addingChannelCount := len(addUpdates[targetID].Channels)
+					if existedChannelCount+addingChannelCount >= channelCountPerNode {
+						nodeIdx++
+						continue
+					}
+				}
+				if _, ok := addUpdates[targetID]; !ok {
+					addUpdates[targetID] = &ChannelOp{
+						Type:     Add,
+						NodeID:   targetID,
+						Channels: []*channel{ch},
+					}
+				} else {
+					addUpdates[targetID].Channels = append(addUpdates[targetID].Channels, ch)
+				}
+				break
+			}
+		}
+	}
+	for _, update := range addUpdates {
+		ret = append(ret, update)
+	}
+	return ret
+}
+
 // ChannelBGChecker check nodes' channels and return the channels needed to be reallocated.
 type ChannelBGChecker func(channels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelInfo, error)
 
@@ -434,11 +505,63 @@ func EmptyBgChecker(channels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelIn
 	return nil, nil
 }
 
-// BgCheckWithMaxWatchDuration returns a ChannelBGChecker with `Params.DataCoordCfg.MaxWatchDuration`.
-func BgCheckWithMaxWatchDuration(kv kv.TxnKV) ChannelBGChecker {
-	return func(channels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelInfo, error) {
-		reAllocations := make([]*NodeChannelInfo, 0, len(channels))
-		for _, ch := range channels {
+type ReAllocates []*NodeChannelInfo
+
+func (rallocates ReAllocates) MarshalLogArray(enc zapcore.ArrayEncoder) error {
+	for _, nChannelInfo := range rallocates {
+		enc.AppendString("nodeID:")
+		enc.AppendInt64(nChannelInfo.NodeID)
+		cstr := "["
+		if len(nChannelInfo.Channels) > 0 {
+			for _, s := range nChannelInfo.Channels {
+				cstr += s.Name
+				cstr += ", "
+			}
+			cstr = cstr[:len(cstr)-2]
+		}
+		cstr += "]"
+		enc.AppendString(cstr)
+	}
+	return nil
+}
+
+// BgBalanceCheck returns a ChannelBGChecker with `Params.DataCoordCfg.MaxWatchDuration`.
+func BgBalanceCheck() ChannelBGChecker {
+	return func(nodeChannels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelInfo, error) {
+		avaNodeNum := len(nodeChannels)
+		reAllocations := make(ReAllocates, 0, avaNodeNum)
+		if avaNodeNum == 0 {
+			return reAllocations, nil
+		}
+		totalChannelNum := 0
+		for _, nodeChs := range nodeChannels {
+			totalChannelNum += len(nodeChs.Channels)
+		}
+		channelCountPerNode := totalChannelNum / avaNodeNum
+		for _, nChannels := range nodeChannels {
+			chCount := len(nChannels.Channels)
+			if chCount <= channelCountPerNode+1 {
+				log.Info("node channel count is not much larger than average, skip reallocate",
+					zap.Int64("nodeID", nChannels.NodeID), zap.Int("channelCount", chCount),
+					zap.Int("channelCountPerNode", channelCountPerNode))
+				continue
+			}
+			reallocate := &NodeChannelInfo{
+				NodeID:   nChannels.NodeID,
+				Channels: make([]*channel, 0),
+			}
+			toReleaseCount := chCount - channelCountPerNode - 1
+			for _, ch := range nChannels.Channels {
+				reallocate.Channels = append(reallocate.Channels, ch)
+				toReleaseCount -= 1
+				if toReleaseCount <= 0 {
+					break
+				}
+			}
+			reAllocations = append(reAllocations, reallocate)
+		}
+		log.Info("Channel Balancer got new reAllocations:", zap.Array("reAllocations", reAllocations))
+		/*for _, ch := range channels {
 			cinfo := &NodeChannelInfo{
 				NodeID:   ch.NodeID,
 				Channels: make([]*channel, 0),
@@ -468,7 +591,7 @@ func BgCheckWithMaxWatchDuration(kv kv.TxnKV) ChannelBGChecker {
 			if len(cinfo.Channels) != 0 {
 				reAllocations = append(reAllocations, cinfo)
 			}
-		}
+		}*/
 		return reAllocations, nil
 	}
 }

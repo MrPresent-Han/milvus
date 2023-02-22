@@ -33,6 +33,8 @@ type ChannelPolicyFactory interface {
 	NewReassignPolicy() ChannelReassignPolicy
 	// NewBgChecker creates a new background checker.
 	NewBgChecker() ChannelBGChecker
+	// NewBgChecker creates a new background checker.
+	NewBgReassignPolicy() ChannelReassignPolicy
 }
 
 // ChannelPolicyFactoryV1 equal to policy batch
@@ -67,7 +69,11 @@ func (f *ChannelPolicyFactoryV1) NewReassignPolicy() ChannelReassignPolicy {
 
 // NewBgChecker implementing ChannelPolicyFactory
 func (f *ChannelPolicyFactoryV1) NewBgChecker() ChannelBGChecker {
-	return BgCheckWithMaxWatchDuration(f.kv)
+	return BgBalanceCheck()
+}
+
+func (f *ChannelPolicyFactoryV1) NewBgReassignPolicy() ChannelReassignPolicy {
+	return AverageBalanceReassignPolicy
 }
 
 // ConsistentHashChannelPolicyFactory use consistent hash to determine channel assignment
@@ -105,4 +111,8 @@ func (f *ConsistentHashChannelPolicyFactory) NewReassignPolicy() ChannelReassign
 // NewBgChecker creates a new background checker
 func (f *ConsistentHashChannelPolicyFactory) NewBgChecker() ChannelBGChecker {
 	return EmptyBgChecker
+}
+
+func (f *ConsistentHashChannelPolicyFactory) NewBgReassignPolicy() ChannelReassignPolicy {
+	return EmptyReassignPolicy
 }

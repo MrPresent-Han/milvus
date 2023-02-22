@@ -88,6 +88,8 @@ type ROChannelStore interface {
 	GetBufferChannelInfo() *NodeChannelInfo
 	// GetNodes gets all node ids in store.
 	GetNodes() []int64
+	// GetNodeChannelCount
+	GetNodeChannelCount(nodeID int64) int
 }
 
 // RWChannelStore is the read write channel store for channels and nodes.
@@ -310,6 +312,15 @@ func (c *ChannelStore) GetNode(nodeID int64) *NodeChannelInfo {
 		}
 	}
 	return nil
+}
+
+func (c *ChannelStore) GetNodeChannelCount(nodeID int64) int {
+	for id, info := range c.channelsInfo {
+		if id == nodeID {
+			return len(info.Channels)
+		}
+	}
+	return 0
 }
 
 // Delete removes the given node from the channel store and returns its channels.

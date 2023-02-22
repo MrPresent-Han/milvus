@@ -37,7 +37,8 @@ import (
 	"stathat.com/c/consistent"
 )
 
-const bgCheckInterval = 3 * time.Second
+const bgCheckInterval = 10 * time.Second
+const bgSilenceDuration = 120 * time.Second
 
 // ChannelManager manages the allocation and the balance between channels and data nodes.
 type ChannelManager struct {
@@ -51,11 +52,14 @@ type ChannelManager struct {
 	assignPolicy     ChannelAssignPolicy
 	reassignPolicy   ChannelReassignPolicy
 	bgChecker        ChannelBGChecker
+	bgReassignPolicy ChannelReassignPolicy
 	msgstreamFactory msgstream.Factory
 
 	stateChecker channelStateChecker
 	stopChecker  context.CancelFunc
 	stateTimer   *channelStateTimer
+
+	lastActiveTimestamp time.Time
 }
 
 type channel struct {
@@ -117,6 +121,8 @@ func NewChannelManager(
 	c.assignPolicy = c.factory.NewAssignPolicy()
 	c.reassignPolicy = c.factory.NewReassignPolicy()
 	c.bgChecker = c.factory.NewBgChecker()
+	c.bgReassignPolicy = c.factory.NewBgReassignPolicy()
+	c.lastActiveTimestamp = time.Now()
 	return c, nil
 }
 
@@ -160,6 +166,14 @@ func (c *ChannelManager) Startup(ctx context.Context, nodes []int64) error {
 		c.stopChecker = cancel
 		go c.stateChecker(ctx1)
 		log.Info("starting etcd states checker")
+	}
+
+	if c.bgChecker != nil {
+		//hc-- is here a thread leak?
+		ctx1, cancel := context.WithCancel(ctx)
+		c.stopChecker = cancel
+		go c.bgCheckChannelsWork(ctx1)
+		log.Info("starting background balance checker")
 	}
 
 	log.Info("cluster start up",
@@ -246,7 +260,6 @@ func (c *ChannelManager) unwatchDroppedChannels() {
 	}
 }
 
-// NOT USED.
 func (c *ChannelManager) bgCheckChannelsWork(ctx context.Context) {
 	timer := time.NewTicker(bgCheckInterval)
 	for {
@@ -255,17 +268,19 @@ func (c *ChannelManager) bgCheckChannelsWork(ctx context.Context) {
 			return
 		case <-timer.C:
 			c.mu.Lock()
-
+			if c.IsSilent() == false {
+				log.Info("ChannelManager is not silent, skip channel balance")
+				continue
+			}
 			channels := c.store.GetNodesChannels()
 			reallocates, err := c.bgChecker(channels, time.Now())
 			if err != nil {
 				log.Warn("channel manager bg check failed", zap.Error(err))
-
 				c.mu.Unlock()
 				continue
 			}
 
-			updates := c.reassignPolicy(c.store, reallocates)
+			updates := c.bgReassignPolicy(c.store, reallocates)
 			log.Info("channel manager bg check reassign", zap.Array("updates", updates))
 			for _, update := range updates {
 				if update.Type == Add {
@@ -609,6 +624,7 @@ func (c *ChannelManager) updateWithTimer(updates ChannelOpSet, state datapb.Chan
 		log.Warn("fail to update", zap.Array("updates", updates), zap.Error(err))
 		c.stateTimer.removeTimers(channelsWithTimer)
 	}
+	c.lastActiveTimestamp = time.Now()
 	return err
 }
 
@@ -862,4 +878,15 @@ func getReleaseOp(nodeID UniqueID, ch *channel) ChannelOpSet {
 	var op ChannelOpSet
 	op.Add(nodeID, []*channel{ch})
 	return op
+}
+
+func (c *ChannelManager) IsSilent() bool {
+	if c.stateTimer.hasRunningTimers() {
+		return false
+	}
+	silentDuration := time.Now().Sub(c.lastActiveTimestamp)
+	if silentDuration < bgSilenceDuration {
+		return false
+	}
+	return true
 }

@@ -39,6 +39,11 @@ type channelStateTimer struct {
 	runningTimerStops sync.Map // channel name to timer stop channels
 	etcdWatcher       clientv3.WatchChan
 	timeoutWatcher    chan *ackEvent
+	//Warning, we don't use atomic here because we assume that all updateWithTimer op
+	//will be protected by mutex and are executed sequentially
+	//Also, modifies afterwards must guarantee that runningTimerCount is updated synchronized with runningTimers
+	//in order to keep consistency
+	runningTimerCount int
 }
 
 func newChannelStateTimer(kv kv.MetaKv) *channelStateTimer {
@@ -96,6 +101,7 @@ func (c *channelStateTimer) startOne(watchState datapb.ChannelWatchState, channe
 	c.removeTimers([]string{channelName})
 	c.runningTimerStops.Store(channelName, stop)
 	c.runningTimers.Store(channelName, ticker)
+	c.runningTimerCount += 1
 
 	go func() {
 		log.Info("timer started",
@@ -134,6 +140,7 @@ func (c *channelStateTimer) removeTimers(channels []string) {
 		if stop, ok := c.runningTimerStops.LoadAndDelete(channel); ok {
 			close(stop.(chan struct{}))
 			c.runningTimers.Delete(channel)
+			c.runningTimerCount -= 1
 		}
 	}
 }
@@ -151,6 +158,12 @@ func (c *channelStateTimer) resetIfExist(channel string, interval time.Duration)
 		timer := value.(*time.Timer)
 		timer.Reset(interval)
 	}
+}
+
+// Note here the reading towards c.running are not protected by mutex
+// because it's meaningless, since we cannot guarantee the following add/delete node operations
+func (c *channelStateTimer) hasRunningTimers() bool {
+	return c.runningTimerCount == 0
 }
 
 func parseWatchInfo(key string, data []byte) (*datapb.ChannelWatchInfo, error) {
