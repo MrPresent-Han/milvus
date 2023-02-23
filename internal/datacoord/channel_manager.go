@@ -166,13 +166,15 @@ func (c *ChannelManager) Startup(ctx context.Context, nodes []int64) error {
 		c.stopChecker = cancel
 		go c.stateChecker(ctx1)
 		log.Info("starting etcd states checker")
+		go c.bgCheckChannelsWork(ctx1)
+		log.Info("starting background balance checker")
 	}
 
 	//bgCtx, cancel := context.WithCancel(ctx)
 	//hc---note stop checker here
 	//c.stopChecker = cancel
 	//go c.bgCheckChannelsWork(bgCtx)
-	log.Info("skip---starting background balance checker")
+	//log.Info("skip---starting background balance checker")
 
 	log.Info("cluster start up",
 		zap.Int64s("nodes", nodes),
