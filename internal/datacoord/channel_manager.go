@@ -51,7 +51,7 @@ type ChannelManager struct {
 	deregisterPolicy DeregisterPolicy
 	assignPolicy     ChannelAssignPolicy
 	reassignPolicy   ChannelReassignPolicy
-	//bgChecker        ChannelBGChecker
+	bgChecker        ChannelBGChecker
 	bgBalancePolicy  BalanceChannelPolicy
 	msgstreamFactory msgstream.Factory
 
@@ -92,6 +92,10 @@ func withMsgstreamFactory(f msgstream.Factory) ChannelManagerOpt {
 
 func withStateChecker() ChannelManagerOpt {
 	return func(c *ChannelManager) { c.stateChecker = c.watchChannelStatesLoop }
+}
+
+func withBgChecker() ChannelManagerOpt {
+	return func(c *ChannelManager) { c.bgChecker = c.bgCheckChannelsWork }
 }
 
 // NewChannelManager creates and returns a new ChannelManager instance.
@@ -166,7 +170,12 @@ func (c *ChannelManager) Startup(ctx context.Context, nodes []int64) error {
 		c.stopChecker = cancel
 		go c.stateChecker(ctx1)
 		log.Info("starting etcd states checker")
-		go c.bgCheckChannelsWork(ctx1)
+	}
+
+	if c.bgChecker != nil {
+		ctx1, _ := context.WithCancel(ctx)
+		//c.stopChecker = cancel
+		go c.bgChecker(ctx1)
 		log.Info("starting background balance checker")
 	}
 
@@ -270,16 +279,15 @@ func (c *ChannelManager) bgCheckChannelsWork(ctx context.Context) {
 			c.mu.Lock()
 			if c.IsSilent() == false {
 				log.Info("ChannelManager is not silent, skip channel balance this round")
-				continue
+			} else {
+				toReleases := c.bgBalancePolicy(c.store, time.Now())
+				log.Info("channel manager bg check balance", zap.Array("toReleases", toReleases))
+				//hc---toRelease is right all the time?
+				if err := c.updateWithTimer(toReleases, datapb.ChannelWatchState_ToRelease); err != nil {
+					//hc---is here right for just logging error?
+					log.Warn("channel store update error", zap.Error(err))
+				}
 			}
-			toReleases := c.bgBalancePolicy(c.store, time.Now())
-			log.Info("channel manager bg check balance", zap.Array("toReleases", toReleases))
-			//hc---toRelease is right all the time?
-			if err := c.updateWithTimer(toReleases, datapb.ChannelWatchState_ToRelease); err != nil {
-				//hc---is here right for just logging error?
-				log.Warn("channel store update error", zap.Error(err))
-			}
-
 			c.mu.Unlock()
 		}
 	}

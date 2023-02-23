@@ -18,6 +18,7 @@ package datacoord
 
 import (
 	"fmt"
+	"go.uber.org/atomic"
 	"path"
 	"strconv"
 	"sync"
@@ -43,7 +44,7 @@ type channelStateTimer struct {
 	//will be protected by mutex and are executed sequentially
 	//Also, modifies afterwards must guarantee that runningTimerCount is updated synchronized with runningTimers
 	//in order to keep consistency
-	runningTimerCount int
+	runningTimerCount atomic.Int32
 }
 
 func newChannelStateTimer(kv kv.MetaKv) *channelStateTimer {
@@ -101,8 +102,8 @@ func (c *channelStateTimer) startOne(watchState datapb.ChannelWatchState, channe
 	c.removeTimers([]string{channelName})
 	c.runningTimerStops.Store(channelName, stop)
 	c.runningTimers.Store(channelName, ticker)
-	c.runningTimerCount += 1
-
+	c.runningTimerCount.Inc()
+	log.Info("startOneNewTimer", zap.Int32("timerCount", c.runningTimerCount.Load()))
 	go func() {
 		log.Info("timer started",
 			zap.String("watch state", watchState.String()),
@@ -140,7 +141,9 @@ func (c *channelStateTimer) removeTimers(channels []string) {
 		if stop, ok := c.runningTimerStops.LoadAndDelete(channel); ok {
 			close(stop.(chan struct{}))
 			c.runningTimers.Delete(channel)
-			c.runningTimerCount -= 1
+			c.runningTimerCount.Dec()
+			log.Info("delete timer for channel", zap.String("channel", channel),
+				zap.Int32("timerCount", c.runningTimerCount.Load()))
 		}
 	}
 }
@@ -150,6 +153,9 @@ func (c *channelStateTimer) stopIfExist(e *ackEvent) {
 	if ok && e.ackType != watchTimeoutAck && e.ackType != releaseTimeoutAck {
 		close(stop.(chan struct{}))
 		c.runningTimers.Delete(e.channelName)
+		c.runningTimerCount.Dec()
+		log.Info("stop timer for channel", zap.String("channel", e.channelName),
+			zap.Int32("timerCount", c.runningTimerCount.Load()))
 	}
 }
 
@@ -163,7 +169,8 @@ func (c *channelStateTimer) resetIfExist(channel string, interval time.Duration)
 // Note here the reading towards c.running are not protected by mutex
 // because it's meaningless, since we cannot guarantee the following add/delete node operations
 func (c *channelStateTimer) hasRunningTimers() bool {
-	return c.runningTimerCount != 0
+	log.Info("hc---runningTimers count", zap.Int32("count", c.runningTimerCount.Load()))
+	return c.runningTimerCount.Load() != 0
 }
 
 func parseWatchInfo(key string, data []byte) (*datapb.ChannelWatchInfo, error) {

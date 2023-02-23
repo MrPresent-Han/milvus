@@ -17,6 +17,7 @@
 package datacoord
 
 import (
+	"context"
 	"go.uber.org/zap/zapcore"
 	"sort"
 	"strconv"
@@ -555,7 +556,7 @@ func AverageReassignPolicy(store ROChannelStore, reassigns []*NodeChannelInfo) C
 }
 
 // ChannelBGChecker check nodes' channels and return the channels needed to be reallocated.
-type ChannelBGChecker func(channels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelInfo, error)
+type ChannelBGChecker func(ctx context.Context)
 
 // EmptyBgChecker does nothing
 func EmptyBgChecker(channels []*NodeChannelInfo, ts time.Time) ([]*NodeChannelInfo, error) {
