@@ -542,6 +542,7 @@ func (s *Server) handleDataNodeTimetickMsgstream(ctx context.Context, ttMsgStrea
 		case <-ctx.Done():
 			log.Info("DataNode timetick loop shutdown")
 			return
+			//hc---datacoord receive msg from timetick stream
 		case msgPack, ok := <-ttMsgStream.Chan():
 			if !ok || msgPack == nil || len(msgPack.Msgs) == 0 {
 				log.Info("receive nil timetick msg and shutdown timetick channel")
@@ -588,7 +589,7 @@ func (s *Server) handleTimetickMessage(ctx context.Context, ttMsg *msgstream.Dat
 	if err := s.segmentManager.ExpireAllocations(ch, ts); err != nil {
 		return fmt.Errorf("expire allocations: %w", err)
 	}
-
+	//hc---attention here
 	flushableIDs, err := s.segmentManager.GetFlushableSegments(ctx, ch, ts)
 	if err != nil {
 		return fmt.Errorf("get flushable segments: %w", err)

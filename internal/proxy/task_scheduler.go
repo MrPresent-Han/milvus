@@ -168,13 +168,13 @@ func (queue *baseTaskQueue) Enqueue(t task) error {
 	if err != nil {
 		return err
 	}
-
+	//hc---set ts for insert task
 	ts, err := queue.tsoAllocatorIns.AllocOne()
 	if err != nil {
 		return err
 	}
 	t.SetTs(ts)
-
+	//hc---use ts as msgID
 	// we always use same msg id and ts for now.
 	t.SetID(UniqueID(ts))
 

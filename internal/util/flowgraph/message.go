@@ -43,7 +43,8 @@ func NewBaseMsg(isCloseMsg bool) BaseMsg {
 // MsgStreamMsg is a wrapper of TsMsg in flowgraph
 type MsgStreamMsg struct {
 	BaseMsg
-	tsMessages     []msgstream.TsMsg
+	tsMessages []msgstream.TsMsg
+	//hc---tsmin/max
 	timestampMin   Timestamp
 	timestampMax   Timestamp
 	startPositions []*MsgPosition

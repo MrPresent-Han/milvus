@@ -134,7 +134,8 @@ func (inNode *InputNode) Operate(in []Msg) []Msg {
 	}
 
 	var msgStreamMsg Msg = &MsgStreamMsg{
-		tsMessages:     msgPack.Msgs,
+		tsMessages: msgPack.Msgs,
+		//hc---timestampMin/Max
 		timestampMin:   msgPack.BeginTs,
 		timestampMax:   msgPack.EndTs,
 		startPositions: msgPack.StartPositions,

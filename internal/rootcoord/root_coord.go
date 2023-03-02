@@ -235,6 +235,7 @@ func (c *Core) startTimeTickLoop() {
 	}
 }
 
+// hc--what for?
 func (c *Core) tsLoop() {
 	defer c.wg.Done()
 	tsoTicker := time.NewTicker(tso.UpdateTimestampStep)

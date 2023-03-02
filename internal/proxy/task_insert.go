@@ -62,6 +62,7 @@ func (it *insertTask) BeginTs() Timestamp {
 	return it.BeginTimestamp
 }
 
+// hc---set begin/end
 func (it *insertTask) SetTs(ts Timestamp) {
 	it.BeginTimestamp = ts
 	it.EndTimestamp = ts
@@ -256,7 +257,7 @@ func (it *insertTask) PreExecute(ctx context.Context) error {
 
 func (it *insertTask) assignSegmentID(channelNames []string) (*msgstream.MsgPack, error) {
 	threshold := Params.PulsarCfg.MaxMessageSize
-
+	//hc---begin end
 	result := &msgstream.MsgPack{
 		BeginTs: it.BeginTs(),
 		EndTs:   it.EndTs(),

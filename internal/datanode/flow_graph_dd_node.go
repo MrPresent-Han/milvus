@@ -143,6 +143,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 	var fgMsg = flowGraphMsg{
 		insertMessages: make([]*msgstream.InsertMsg, 0),
 		timeRange: TimeRange{
+			//hc--tsMin/Max
 			timestampMin: msMsg.TimestampMin(),
 			timestampMax: msMsg.TimestampMax(),
 		},

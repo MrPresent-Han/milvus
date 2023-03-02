@@ -62,6 +62,7 @@ func newMergedTimeTickerSender(send sendTimeTick) *mergedTimeTickerSender {
 func (mt *mergedTimeTickerSender) bufferTs(ts Timestamp, segmentIDs []int64) {
 	mt.mu.Lock()
 	defer mt.mu.Unlock()
+	//hc---is it correct here to simple store input ts as mt.ts
 	mt.ts = ts
 	for _, sid := range segmentIDs {
 		mt.segmentIDs[sid] = struct{}{}
@@ -94,6 +95,7 @@ func (mt *mergedTimeTickerSender) isClosed() bool {
 	}
 }
 
+// hc---send last ts
 func (mt *mergedTimeTickerSender) work() {
 	defer mt.wg.Done()
 	lastTs := uint64(0)

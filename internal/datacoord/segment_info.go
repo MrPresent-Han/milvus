@@ -33,6 +33,7 @@ type SegmentsInfo struct {
 // SegmentInfo wraps datapb.SegmentInfo and patches some extra info on it
 type SegmentInfo struct {
 	*datapb.SegmentInfo
+	//hc---when to update currRows?
 	currRows      int64
 	allocations   []*Allocation
 	lastFlushTime time.Time
@@ -155,6 +156,7 @@ func (s *SegmentsInfo) AddAllocation(segmentID UniqueID, allocation *Allocation)
 // uses `ShadowClone` since internal SegmentInfo is not changed
 func (s *SegmentsInfo) SetCurrentRows(segmentID UniqueID, rows int64) {
 	if segment, ok := s.segments[segmentID]; ok {
+		//hc---setCurr
 		s.segments[segmentID] = segment.ShadowClone(SetCurrentRows(rows))
 	}
 }

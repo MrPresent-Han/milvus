@@ -41,6 +41,7 @@ type MessageID = mqwrapper.MessageID
 
 // MsgPack represents a batch of msg in msgstream
 type MsgPack struct {
+	//hc--msg pack, begin/end
 	BeginTs        Timestamp
 	EndTs          Timestamp
 	Msgs           []TsMsg

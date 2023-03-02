@@ -168,6 +168,7 @@ func (t *timestampOracle) ResetUserTimestamp(tso uint64) error {
 // 1. The saved time is monotonically increasing.
 // 2. The physical time is monotonically increasing.
 // 3. The physical time is always less than the saved timestamp.
+// hc---attention
 func (t *timestampOracle) UpdateTimestamp() error {
 	prev := (*atomicObject)(atomic.LoadPointer(&t.TSO))
 	now := time.Now()
@@ -218,6 +219,7 @@ func (t *timestampOracle) ResetTimestamp() {
 	zero := &atomicObject{
 		physical: time.Now(),
 	}
+	//hc---attention!
 	// atomic unsafe pointer
 	/* #nosec G103 */
 	atomic.StorePointer(&t.TSO, unsafe.Pointer(zero))
