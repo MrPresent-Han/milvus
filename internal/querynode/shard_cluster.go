@@ -936,6 +936,8 @@ func getSearchWithStreamingFunc(searchCtx context.Context, req *querypb.SearchRe
 			metrics.SearchLabel).Observe(float64(streamingTask.queueDur.Milliseconds()))
 		metrics.QueryNodeReduceLatency.WithLabelValues(fmt.Sprint(nodeID),
 			metrics.SearchLabel).Observe(float64(streamingTask.reduceDur.Milliseconds()))
+		log.Debug("hc---search streaming task",
+			zap.Int64("streamingTask.Ret", streamingTask.Ret.TopK))
 		return nil, streamingTask.Ret
 	}
 }

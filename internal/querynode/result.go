@@ -218,6 +218,9 @@ func decodeSearchResults(searchResults []*internalpb.SearchResults) ([]*schemapb
 	results := make([]*schemapb.SearchResultData, 0)
 	for _, partialSearchResult := range searchResults {
 		if partialSearchResult.SlicedBlob == nil {
+			log.Debug("hc---partialSearchResult sliceBlob is null",
+				zap.Strings("chs", partialSearchResult.ChannelIDsSearched),
+				zap.Int64s("segs", partialSearchResult.SealedSegmentIDsSearched))
 			continue
 		}
 
@@ -318,6 +321,7 @@ func mergeInternalRetrieveResult(ctx context.Context, retrieveResults []*interna
 }
 
 func mergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcorepb.RetrieveResults, limit int64) (*segcorepb.RetrieveResults, error) {
+	//hc---here limit==-1?
 	log.Ctx(ctx).Debug("mergeSegcoreRetrieveResults",
 		zap.Int64("limit", limit),
 		zap.Int("len(retrieveResults)", len(retrieveResults)),

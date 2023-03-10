@@ -108,7 +108,8 @@ func (s *searchTask) searchOnStreaming() error {
 			zap.Int64("collectionID", s.CollectionID))
 		return fmt.Errorf("retrieve failed, collection has been released, collectionID = %d", s.CollectionID)
 	}
-
+	log.Debug("hc---search streaming req",
+		zap.Int64("s.req.TopK", s.iReq.Topk), zap.Int64("s.req.NQ", s.iReq.Nq))
 	searchReq, err2 := newSearchRequest(s.QS.collection, s.req, s.PlaceholderGroup)
 	if err2 != nil {
 		return err2
@@ -145,6 +146,8 @@ func (s *searchTask) searchOnHistorical() error {
 	}
 
 	segmentIDs := s.req.GetSegmentIDs()
+	log.Debug("hc---search historical req",
+		zap.Int64("s.req.TopK", s.iReq.Topk), zap.Int64("s.req.NQ", s.iReq.Nq))
 	searchReq, err2 := newSearchRequest(s.QS.collection, s.req, s.PlaceholderGroup)
 	if err2 != nil {
 		return err2
@@ -223,6 +226,7 @@ func (s *searchTask) reduceResults(ctx context.Context, searchReq *searchRequest
 	var t *searchTask
 	s.tr.RecordSpan()
 	if !isEmpty {
+		log.Debug("hc--segmentResultCount not empty", zap.Int("resultLen", len(results)))
 		sInfo := parseSliceInfo(s.OrigNQs, s.OrigTopKs, s.NQ)
 		numSegment := int64(len(results))
 		blobs, err := reduceSearchResultsAndFillData(searchReq.plan, results, numSegment, sInfo.sliceNQs, sInfo.sliceTopKs)
@@ -244,6 +248,7 @@ func (s *searchTask) reduceResults(ctx context.Context, searchReq *searchRequest
 				return err
 			}
 			bs := make([]byte, len(blob))
+			log.Debug("hc---CSearchResult.blob.length", zap.Int("blobLength", len(blob)))
 			copy(bs, blob)
 			if i == 0 {
 				t = s
@@ -261,6 +266,7 @@ func (s *searchTask) reduceResults(ctx context.Context, searchReq *searchRequest
 			}
 		}
 	} else {
+		log.Debug("hc--segmentResultCount is empty, return empty result")
 		for i := 0; i < cnt; i++ {
 			if i == 0 {
 				t = s

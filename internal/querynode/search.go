@@ -73,6 +73,7 @@ func searchSegments(ctx context.Context, replica ReplicaInterface, segType segme
 			searchResult, err := seg.search(ctx, searchReq)
 			errs[i] = err
 			resultCh <- searchResult
+			log.Debug("hc---addSearchResult", zap.Int64("segID", segID))
 			// update metrics
 			elapsed := tr.ElapseSpan().Milliseconds()
 			metrics.QueryNodeSQSegmentLatency.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()),
@@ -85,6 +86,7 @@ func searchSegments(ctx context.Context, replica ReplicaInterface, segType segme
 	close(resultCh)
 
 	searchResults := make([]*SearchResult, 0, len(segIDs))
+	log.Debug("hc---, resultCh length", zap.Int("len", len(resultCh)))
 	for result := range resultCh {
 		searchResults = append(searchResults, result)
 	}

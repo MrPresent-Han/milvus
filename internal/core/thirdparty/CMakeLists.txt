@@ -70,7 +70,7 @@ if ( LINUX AND BUILD_DISK_ANN STREQUAL "ON" )
 endif()
 
 # ******************************* Thirdparty google cloud sdk ********************************
-if ( LINUX OR APPLE )
+if ( LINUX )
     add_subdirectory( google_cloud_sdk )
 endif()
 

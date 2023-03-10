@@ -237,6 +237,8 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	}
 	t.queryParams = queryParams
 	t.RetrieveRequest.Limit = queryParams.limit + queryParams.offset
+	log.Debug("proxy_parseQueryParams:", zap.Int64("offset:", queryParams.offset),
+		zap.Int64("limit:", queryParams.limit))
 
 	loaded, err := checkIfLoaded(ctx, t.qc, collectionName, t.RetrieveRequest.GetPartitionIDs())
 	if err != nil {

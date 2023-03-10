@@ -386,9 +386,10 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 	t.SearchRequest.Nq = nq
 
-	log.Ctx(ctx).Debug("search PreExecute done.", zap.Int64("msgID", t.ID()),
+	log.Ctx(ctx).Debug("hc---search PreExecute done.", zap.Int64("msgID", t.ID()),
 		zap.Uint64("travel_ts", travelTimestamp), zap.Uint64("guarantee_ts", guaranteeTs),
-		zap.Uint64("timeout_ts", t.SearchRequest.GetTimeoutTimestamp()))
+		zap.Uint64("timeout_ts", t.SearchRequest.GetTimeoutTimestamp()), zap.Int64("topK", t.Topk),
+		zap.Int64("NQ", t.Nq))
 
 	return nil
 }
@@ -619,6 +620,8 @@ func decodeSearchResults(ctx context.Context, searchResults []*internalpb.Search
 	results := make([]*schemapb.SearchResultData, 0)
 	for _, partialSearchResult := range searchResults {
 		if partialSearchResult.SlicedBlob == nil {
+			log.Debug("partialSearchResult blob is nil, skip",
+				zap.Int64("topK", partialSearchResult.GetTopK()))
 			continue
 		}
 

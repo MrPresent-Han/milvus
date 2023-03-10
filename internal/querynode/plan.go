@@ -138,7 +138,8 @@ func newSearchRequest(collection *Collection, req *querypb.SearchRequest, placeh
 	}
 
 	ret := &searchRequest{
-		plan:              plan,
+		plan: plan,
+		//hc---the meaning of placeHolderGroup
 		cPlaceholderGroup: cPlaceholderGroup,
 		timestamp:         req.Req.GetTravelTimestamp(),
 		msgID:             req.GetReq().GetBase().GetMsgID(),

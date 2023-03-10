@@ -79,7 +79,6 @@ func (q *queryTask) queryOnStreaming() error {
 		return err
 	}
 	defer plan.delete()
-
 	sResults, _, _, sErr := retrieveStreaming(ctx, q.QS.metaReplica, plan, q.CollectionID, q.iReq.GetPartitionIDs(), q.QS.channel, q.QS.vectorChunkManager)
 	if sErr != nil {
 		return sErr

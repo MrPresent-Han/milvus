@@ -860,6 +860,8 @@ func (node *QueryNode) searchWithDmlChannel(ctx context.Context, req *querypb.Se
 		latency := tr.ElapseSpan()
 		metrics.QueryNodeSQReqLatency.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()), metrics.SearchLabel, metrics.FromLeader).Observe(float64(latency.Milliseconds()))
 		metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(Params.QueryNodeCfg.GetNodeID()), metrics.SearchLabel, metrics.SuccessLabel).Inc()
+		log.Debug("hc---search historical req",
+			zap.Int64("historicalTask.TopK", historicalTask.TopK), zap.Int64("historicalTask.NQ", historicalTask.NQ))
 		return historicalTask.Ret, nil
 	}
 
