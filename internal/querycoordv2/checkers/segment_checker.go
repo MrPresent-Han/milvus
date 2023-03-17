@@ -97,7 +97,7 @@ func (c *SegmentChecker) checkReplica(ctx context.Context, replica *meta.Replica
 	task.SetReason("redundancies of segment", tasks...)
 	ret = append(ret, tasks...)
 
-	// compare with target to find the lack and redundancy of segments
+	//
 	_, redundancies = c.getStreamingSegmentDiff(c.targetMgr, c.dist, c.meta, replica.GetCollectionID(), replica.GetID())
 	tasks = c.createSegmentReduceTasks(ctx, redundancies, replica.GetID(), querypb.DataScope_Streaming)
 	task.SetReason("streaming segment not exists in target", tasks...)
