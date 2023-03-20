@@ -48,7 +48,8 @@ type SegmentDistManager struct {
 	rwmutex sync.RWMutex
 
 	// nodeID -> []*Segment
-	segments map[UniqueID][]*Segment
+	segments        map[UniqueID][]*Segment
+	loadingSegments map[UniqueID][]*Segment
 }
 
 func NewSegmentDistManager() *SegmentDistManager {
