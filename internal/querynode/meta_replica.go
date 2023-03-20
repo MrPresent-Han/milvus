@@ -887,6 +887,7 @@ func (replica *metaReplica) freeAll() {
 	replica.partitions = make(map[UniqueID]*Partition)
 	replica.growingSegments = make(map[UniqueID]*Segment)
 	replica.sealedSegments = make(map[UniqueID]*Segment)
+	replica.loadingSegments = make(map[UniqueID]*Segment)
 }
 
 func (replica *metaReplica) addSegmentToLoadingList(segment *Segment) {
@@ -957,6 +958,7 @@ func newCollectionReplica() ReplicaInterface {
 		partitions:      make(map[UniqueID]*Partition),
 		growingSegments: make(map[UniqueID]*Segment),
 		sealedSegments:  make(map[UniqueID]*Segment),
+		loadingSegments: make(map[UniqueID]*Segment),
 
 		excludedSegments: make(map[UniqueID][]*datapb.SegmentInfo),
 

@@ -63,6 +63,7 @@ func (b *RowCountBasedBalancer) AssignSegment(segments []*meta.Segment, nodes []
 		p := ni.getPriority()
 		ni.setPriority(p + int(s.GetNumOfRows()))
 		queue.push(ni)
+		log.Info("hc---Generate plan:", zap.Int64("dstNode", ni.nodeID), zap.Int64("segID", s.GetID()))
 	}
 	return plans
 }
@@ -71,11 +72,17 @@ func (b *RowCountBasedBalancer) convertToNodeItems(nodeIDs []int64) []*nodeItem 
 	ret := make([]*nodeItem, 0, len(nodeIDs))
 	for _, nodeInfo := range b.getNodes(nodeIDs) {
 		node := nodeInfo.ID()
-		segments := b.dist.SegmentDistManager.GetByNode(node)
+		loadedSealedSegments := b.dist.SegmentDistManager.GetByNode(node)
+		loadingSegments := b.dist.SegmentDistManager.GetLoadingSegmentsByNode(node)
 		rowcnt := 0
-		for _, s := range segments {
+		for _, s := range loadedSealedSegments {
 			rowcnt += int(s.GetNumOfRows())
 		}
+		log.Info("hc---, loadedSegmentsRowCount", zap.Int("rCount", rowcnt), zap.Int64("nodeID", node))
+		for _, s := range loadingSegments {
+			rowcnt += int(s.GetNumOfRows())
+		}
+		log.Info("hc---, loaded + loading SegmentsRowCount", zap.Int("rCount", rowcnt), zap.Int64("nodeID", node))
 		// more row count, less priority
 		nodeItem := newNodeItem(rowcnt, node)
 		ret = append(ret, &nodeItem)
