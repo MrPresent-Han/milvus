@@ -275,7 +275,7 @@ func (c *SegmentChecker) createSegmentLoadTasks(ctx context.Context, segments []
 	availableNodes := lo.Filter(replica.Replica.GetNodes(), func(node int64, _ int) bool {
 		return !outboundNodes.Contain(node)
 	})
-	plans := c.balancer.AssignSegment(packedSegments, availableNodes)
+	plans := c.balancer.AssignSegment(packedSegments, availableNodes, replica.GetCollectionID())
 	for i := range plans {
 		plans[i].ReplicaID = replica.GetID()
 	}

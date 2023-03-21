@@ -24,6 +24,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 )
@@ -35,8 +36,8 @@ type RowCountBasedBalancer struct {
 	targetMgr *meta.TargetManager
 }
 
-func (b *RowCountBasedBalancer) AssignSegment(segments []*meta.Segment, nodes []int64) []SegmentAssignPlan {
-	nodeItems := b.convertToNodeItems(nodes)
+func (b *RowCountBasedBalancer) AssignSegment(segments []*meta.Segment, nodes []int64, collectionID typeutil.UniqueID) []SegmentAssignPlan {
+	nodeItems := b.convertToNodeItems(nodes, collectionID)
 	if len(nodeItems) == 0 {
 		return nil
 	}
@@ -68,12 +69,12 @@ func (b *RowCountBasedBalancer) AssignSegment(segments []*meta.Segment, nodes []
 	return plans
 }
 
-func (b *RowCountBasedBalancer) convertToNodeItems(nodeIDs []int64) []*nodeItem {
+func (b *RowCountBasedBalancer) convertToNodeItems(nodeIDs []int64, collectionID typeutil.UniqueID) []*nodeItem {
 	ret := make([]*nodeItem, 0, len(nodeIDs))
 	for _, nodeInfo := range b.getNodes(nodeIDs) {
 		node := nodeInfo.ID()
-		loadedSealedSegments := b.dist.SegmentDistManager.GetByNode(node)
-		loadingSegments := b.dist.SegmentDistManager.GetLoadingSegmentsByNode(node)
+		loadedSealedSegments := b.dist.SegmentDistManager.GetByCollectionAndNode(collectionID, node)
+		loadingSegments := b.dist.SegmentDistManager.GetLoadingSegmentsByCollectionAndNode(collectionID, node)
 		rowcnt := 0
 		for _, s := range loadedSealedSegments {
 			rowcnt += int(s.GetNumOfRows())
@@ -110,9 +111,24 @@ func (b *RowCountBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignP
 	return segmentPlans, channelPlans
 }
 
+func (b *RowCountBasedBalancer) shouldSkipReplica(replicaID typeutil.UniqueID, collectionID typeutil.UniqueID, nodes []int64) bool {
+	for _, nodeID := range nodes {
+		loadingSegments := b.dist.SegmentDistManager.GetLoadingSegmentsByCollectionAndNode(collectionID, nodeID)
+		if len(loadingSegments) > 0 {
+			log.Info("there are segments loading on node for collection, skip balance",
+				zap.Int64("replicaID", replicaID), zap.Int64("collectionID", collectionID), zap.Int64("nodeID", nodeID))
+			return true
+		}
+	}
+	return false
+}
+
 func (b *RowCountBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAssignPlan, []ChannelAssignPlan) {
 	nodes := replica.GetNodes()
 	if len(nodes) == 0 {
+		return nil, nil
+	}
+	if b.shouldSkipReplica(replica.GetID(), replica.GetCollectionID(), nodes) {
 		return nil, nil
 	}
 	nodesRowCnt := make(map[int64]int)

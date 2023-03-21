@@ -22,6 +22,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
 
 type Weight = int
@@ -69,7 +70,7 @@ type ChannelAssignPlan struct {
 }
 
 type Balance interface {
-	AssignSegment(segments []*meta.Segment, nodes []int64) []SegmentAssignPlan
+	AssignSegment(segments []*meta.Segment, nodes []int64, collectionID typeutil.UniqueID) []SegmentAssignPlan
 	AssignChannel(channels []*meta.DmChannel, nodes []int64) []ChannelAssignPlan
 	Balance() ([]SegmentAssignPlan, []ChannelAssignPlan)
 }

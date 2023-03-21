@@ -84,6 +84,18 @@ func (m *SegmentDistManager) GetLoadingSegmentsByNode(nodeID UniqueID) []*Segmen
 	return m.loadingSegments[nodeID]
 }
 
+func (m *SegmentDistManager) GetLoadingSegmentsByCollectionAndNode(collectionID UniqueID, nodeID int64) []*Segment {
+	m.rwmutex.RLock()
+	defer m.rwmutex.RUnlock()
+	ret := make([]*Segment, 0)
+	for _, segment := range m.loadingSegments[nodeID] {
+		if segment.GetCollectionID() == collectionID {
+			ret = append(ret, segment)
+		}
+	}
+	return ret
+}
+
 func (m *SegmentDistManager) Get(id UniqueID) []*Segment {
 	m.rwmutex.RLock()
 	defer m.rwmutex.RUnlock()
