@@ -266,6 +266,7 @@ func (s *Server) initQueryCoord() error {
 		s.dist,
 		s.targetMgr,
 		s.balancer,
+		s.nodeMgr,
 		s.taskScheduler,
 	)
 

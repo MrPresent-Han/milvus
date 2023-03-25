@@ -119,6 +119,8 @@ type Scheduler interface {
 	RemoveByNode(node int64)
 	GetNodeSegmentDelta(nodeID int64) int
 	GetNodeChannelDelta(nodeID int64) int
+	GetChannelTaskNum() int
+	GetSegmentTaskNum() int
 }
 
 type taskScheduler struct {
@@ -366,6 +368,20 @@ func (scheduler *taskScheduler) GetNodeChannelDelta(nodeID int64) int {
 	defer scheduler.rwmutex.RUnlock()
 
 	return calculateNodeDelta(nodeID, scheduler.channelTasks)
+}
+
+func (scheduler *taskScheduler) GetChannelTaskNum() int {
+	scheduler.rwmutex.RLock()
+	defer scheduler.rwmutex.RUnlock()
+
+	return len(scheduler.channelTasks)
+}
+
+func (scheduler *taskScheduler) GetSegmentTaskNum() int {
+	scheduler.rwmutex.RLock()
+	defer scheduler.rwmutex.RUnlock()
+
+	return len(scheduler.segmentTasks)
 }
 
 func calculateNodeDelta[K comparable, T ~map[K]Task](nodeID int64, tasks T) int {
