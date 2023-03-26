@@ -1102,6 +1102,8 @@ type queryCoordConfig struct {
 	CheckNodeInReplicaInterval ParamItem `refreshable:"false"`
 	CheckResourceGroupInterval ParamItem `refreshable:"false"`
 	EnableRGAutoRecover        ParamItem `refreshable:"true"`
+
+	NonUrgentTasksLimit ParamItem `refreshable:"true"`
 }
 
 func (p *queryCoordConfig) init(base *BaseTable) {
@@ -1297,6 +1299,14 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 		PanicIfEmpty: true,
 	}
 	p.EnableRGAutoRecover.Init(base.mgr)
+	
+	p.NonUrgentTasksLimit = ParamItem{
+		Key:          "queryCoord.nonUrgentTasksLimit",
+		Version:      "2.2.3",
+		DefaultValue: "5",
+		PanicIfEmpty: true,
+	}
+	p.NonUrgentTasksLimit.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

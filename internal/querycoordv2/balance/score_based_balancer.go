@@ -134,6 +134,7 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAss
 
 	// calculate stopping nodes and available nodes.
 	for _, nid := range nodes {
+		//TODO: balance operations should be based on prospective distribution, rather than the prev distribution
 		segments := b.dist.SegmentDistManager.GetByCollectionAndNode(replica.GetCollectionID(), nid)
 		// Only balance segments in targets
 		segments = lo.Filter(segments, func(segment *meta.Segment, _ int) bool {

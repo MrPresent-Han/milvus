@@ -103,7 +103,8 @@ type Balance interface {
 	Balance() ([]SegmentAssignPlan, []ChannelAssignPlan)
 	PrintNewBalancePlans(collectionID int64, replicaID int64, segmentPlans []SegmentAssignPlan, channelPlans []ChannelAssignPlan)
 	PrintCurrentReplicaDist(replica *meta.Replica,
-		stoppingNodesSegments map[int64][]*meta.Segment, nodeSegments map[int64][]*meta.Segment)
+		stoppingNodesSegments map[int64][]*meta.Segment, nodeSegments map[int64][]*meta.Segment,
+		channelManager *meta.ChannelDistManager)
 }
 
 type RoundRobinBalancer struct {

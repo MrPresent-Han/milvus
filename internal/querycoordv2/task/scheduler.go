@@ -19,6 +19,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"runtime"
 	"sync"
 	"time"
@@ -284,9 +285,26 @@ func (scheduler *taskScheduler) preAdd(task Task) error {
 
 			return merr.WrapErrServiceInternal("task with the same channel exists")
 		}
-
 	default:
 		panic(fmt.Sprintf("preAdd: forget to process task type: %+v", task))
+	}
+
+	//limit non-urgent task(especially for normal balance task)
+	nonUrgentTaskNum := 0
+	for _, segmentTask := range scheduler.segmentTasks {
+		if segmentTask.Priority() != TaskPriorityHigh {
+			nonUrgentTaskNum += 1
+		}
+	}
+	for _, chanTask := range scheduler.channelTasks {
+		if chanTask.Priority() != TaskPriorityHigh {
+			nonUrgentTaskNum += 1
+		}
+	}
+	if nonUrgentTaskNum >= params.Params.QueryCoordCfg.NonUrgentTasksLimit.GetAsInt() {
+		return merr.WrapErrServiceInternal(
+			fmt.Sprintf("there have been too many non-urgent tasks, limiting task added. non-urgent task count: %d",
+				nonUrgentTaskNum))
 	}
 
 	return nil
