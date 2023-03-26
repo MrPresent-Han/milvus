@@ -131,7 +131,7 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAss
 
 	outboundNodes := b.meta.ResourceManager.CheckOutboundNodes(replica)
 
-	// calculate stopping notes and available nodes.
+	// calculate stopping nodes and available nodes.
 	for _, nid := range nodes {
 		segments := b.dist.SegmentDistManager.GetByCollectionAndNode(replica.GetCollectionID(), nid)
 		// Only balance segments in targets
@@ -168,7 +168,7 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAss
 		return nil, nil
 	}
 
-	if len(nodesSegments) <= 1 {
+	if len(nodesSegments) <= 0 {
 		log.Warn("No nodes is available in resource group, skip balance replica",
 			zap.Int64("collection", replica.CollectionID),
 			zap.Int64("replica id", replica.Replica.GetID()),
@@ -197,14 +197,7 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAss
 func (b *ScoreBasedBalancer) getStoppedSegmentPlan(replica *meta.Replica, nodesSegments map[int64][]*meta.Segment, stoppingNodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan {
 	segmentPlans := make([]SegmentAssignPlan, 0)
 	// generate candidates
-	nodeItems := make([]*nodeItem, 0, len(nodesSegments))
-	for _, nodeInfo := range b.getNodes(lo.Keys(nodesSegments)) {
-		node := nodeInfo.ID()
-		priority := b.calculatePriority(replica.GetCollectionID(), node)
-		nodeItem := newNodeItem(priority, node)
-		nodeItems = append(nodeItems, &nodeItem)
-	}
-
+	nodeItems := b.convertToNodeItems(replica.GetCollectionID(), lo.Keys(nodesSegments))
 	queue := newPriorityQueue()
 	for _, item := range nodeItems {
 		queue.push(item)
@@ -266,14 +259,7 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 	}
 	segmentPlans := make([]SegmentAssignPlan, 0)
 	// generate candidates
-	nodeItems := make([]*nodeItem, 0, len(nodesSegments))
-	for _, nodeInfo := range b.getNodes(lo.Keys(nodesSegments)) {
-		node := nodeInfo.ID()
-		// should not calculate by current states, because when we went through multiple replicas, global placement actually changed.
-		priority := b.calculatePriority(replica.GetCollectionID(), node)
-		nodeItem := newNodeItem(priority, node)
-		nodeItems = append(nodeItems, &nodeItem)
-	}
+	nodeItems := b.convertToNodeItems(replica.GetCollectionID(), lo.Keys(nodesSegments))
 
 	minQueue := newPriorityQueue()
 	for _, item := range nodeItems {
@@ -299,6 +285,7 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 
 		// TODO we shouldn't use calculatePriority, because it it's balanced by replica, then global segment count will not be stable
 		// Better way is to calculate priority while a segment distribution map
+		//hc---should not use the same snapshot from distribution throughout the process
 		fromPriority := b.calculatePriority(replica.GetCollectionID(), fromNode.(*nodeItem).nodeID)
 		toPriority := b.calculatePriority(replica.GetCollectionID(), toNode.(*nodeItem).nodeID)
 
@@ -321,7 +308,6 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 				minQueue.push(toNode)
 				fromNode.setPriority(-nextFromPriority)
 				maxQueue.push(fromNode)
-				break
 			} else {
 				nextInbalance := nextToPriority - nextFromPriority
 				if int(float64(nextInbalance)*inbalanceFactor) < inbalance {
