@@ -17,11 +17,12 @@
 package balance
 
 import (
-	"sort"
-
+	"fmt"
+	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
+	"sort"
 )
 
 type Weight = int
@@ -60,6 +61,18 @@ type SegmentAssignPlan struct {
 	Weight    Weight
 }
 
+func (segPlan SegmentAssignPlan) ToString() string {
+	str := "SegmentPlan:["
+	str += fmt.Sprintf("collectionID: %d, ", segPlan.Segment.CollectionID)
+	str += fmt.Sprintf("segmentID: %d, ", segPlan.Segment.ID)
+	str += fmt.Sprintf("replicaID: %d, ", segPlan.ReplicaID)
+	str += fmt.Sprintf("from: %d, ", segPlan.From)
+	str += fmt.Sprintf("to: %d, ", segPlan.To)
+	str += fmt.Sprintf("weight: %d, ", segPlan.Weight)
+	str += "]\n"
+	return str
+}
+
 type ChannelAssignPlan struct {
 	Channel   *meta.DmChannel
 	ReplicaID int64
@@ -68,10 +81,27 @@ type ChannelAssignPlan struct {
 	Weight    Weight
 }
 
+func (chanPlan ChannelAssignPlan) ToString() string {
+	str := "ChannelPlan:["
+	str += fmt.Sprintf("collectionID: %d, ", chanPlan.Channel.CollectionID)
+	str += fmt.Sprintf("channel: %d, ", chanPlan.Channel.ChannelName)
+	str += fmt.Sprintf("replicaID: %d, ", chanPlan.ReplicaID)
+	str += fmt.Sprintf("from: %d, ", chanPlan.From)
+	str += fmt.Sprintf("to: %d, ", chanPlan.To)
+	str += fmt.Sprintf("weight: %d, ", chanPlan.Weight)
+	str += "]\n"
+	return str
+}
+
+const (
+	BalanceInfoPrefix = "Balance-Info:"
+)
+
 type Balance interface {
 	AssignSegment(collectionID int64, segments []*meta.Segment, nodes []int64) []SegmentAssignPlan
 	AssignChannel(channels []*meta.DmChannel, nodes []int64) []ChannelAssignPlan
 	Balance() ([]SegmentAssignPlan, []ChannelAssignPlan)
+	//PrintNewBalancePlans() ([]SegmentAssignPlan, []ChannelAssignPlan)
 }
 
 type RoundRobinBalancer struct {
@@ -146,4 +176,17 @@ func NewRoundRobinBalancer(scheduler task.Scheduler, nodeManager *session.NodeMa
 		scheduler:   scheduler,
 		nodeManager: nodeManager,
 	}
+}
+
+func (b *RoundRobinBalancer) PrintNewBalancePlans(segmentPlans []SegmentAssignPlan,
+	channelPlans []ChannelAssignPlan) {
+	balanceInfo := BalanceInfoPrefix + "{"
+	for _, segmentPlan := range segmentPlans {
+		balanceInfo += segmentPlan.ToString()
+	}
+	for _, channelPlan := range channelPlans {
+		balanceInfo += channelPlan.ToString()
+	}
+	balanceInfo += "}"
+	log.Debug(balanceInfo)
 }
