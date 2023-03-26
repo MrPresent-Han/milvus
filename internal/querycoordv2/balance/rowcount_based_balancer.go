@@ -286,43 +286,16 @@ func (b *RowCountBasedBalancer) collectionStoppingSegments(stoppingNodesSegments
 
 func (b *RowCountBasedBalancer) getChannelPlan(replica *meta.Replica, onlineNodes []int64, offlineNodes []int64) []ChannelAssignPlan {
 	channelPlans := make([]ChannelAssignPlan, 0)
-	toBalanceChannels := make([]*meta.DmChannel, 0)
-
-	//1. for offlineNodes
 	for _, nodeID := range offlineNodes {
 		dmChannels := b.dist.ChannelDistManager.GetByCollectionAndNode(replica.GetCollectionID(), nodeID)
-		for _, dmlChan := range dmChannels {
-			toBalanceChannels = append(toBalanceChannels, dmlChan)
+		plans := b.AssignChannel(dmChannels, onlineNodes)
+		for i := range plans {
+			plans[i].From = nodeID
+			plans[i].ReplicaID = replica.ID
+			plans[i].Weight = GetWeight(1)
 		}
+		channelPlans = append(channelPlans, plans...)
 	}
-
-	//2. for unbalanced node channels
-	dmlChannels := b.dist.ChannelDistManager.GetAll()
-	availableNodesCount := len(onlineNodes)
-	avgChannelCount := len(dmlChannels) / availableNodesCount
-
-	toBalanceTargetNodes := make([]int64, 0)
-	for _, nodeID := range onlineNodes {
-		channelsOnNode := b.dist.ChannelDistManager.GetByNode(nodeID)
-		if len(channelsOnNode) < avgChannelCount {
-			toBalanceTargetNodes = append(toBalanceTargetNodes, nodeID)
-			continue
-		}
-		toRemoveChannelCount := len(channelsOnNode) - avgChannelCount
-		for idx, channel := range channelsOnNode {
-			if idx >= toRemoveChannelCount {
-				break
-			}
-			toBalanceChannels = append(toBalanceChannels, channel)
-		}
-	}
-
-	plans := b.AssignChannel(toBalanceChannels, toBalanceTargetNodes)
-	for i := range plans {
-		plans[i].ReplicaID = replica.ID
-		plans[i].Weight = GetWeight(1)
-	}
-	channelPlans = append(channelPlans, plans...)
 	return channelPlans
 }
 

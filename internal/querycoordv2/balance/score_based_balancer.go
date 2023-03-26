@@ -113,9 +113,10 @@ func (b *ScoreBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignPlan
 	for _, cid := range loadedCollections {
 		replicas := b.meta.ReplicaManager.GetByCollection(cid)
 		for _, replica := range replicas {
-			splans, cplans := b.balanceReplica(replica)
-			segmentPlans = append(segmentPlans, splans...)
-			channelPlans = append(channelPlans, cplans...)
+			sPlans, cPlans := b.balanceReplica(replica)
+			b.PrintNewBalancePlans(cid, replica.GetID(), sPlans, cPlans)
+			segmentPlans = append(segmentPlans, sPlans...)
+			channelPlans = append(channelPlans, cPlans...)
 		}
 	}
 	return segmentPlans, channelPlans
@@ -177,7 +178,8 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAss
 		)
 		return nil, nil
 	}
-
+	//print current distribution before generating plans
+	b.PrintCurrentReplicaDist(replica, stoppingNodesSegments, nodesSegments, b.dist.ChannelDistManager)
 	if len(stoppingNodesSegments) != 0 {
 		log.Info("Handle stopping nodes",
 			zap.Int64("collection", replica.CollectionID),
@@ -191,7 +193,7 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAss
 	}
 
 	// normal balance, find segments from largest score nodes and transfer to smallest score nodes.
-	return b.getNormalSegmentPlan(replica, nodesSegments), b.getNormalChannelPlan(replica)
+	return b.getNormalSegmentPlan(replica, nodesSegments), b.getNormalChannelPlan(replica, lo.Keys(nodesSegments))
 }
 
 func (b *ScoreBasedBalancer) getStoppedSegmentPlan(replica *meta.Replica, nodesSegments map[int64][]*meta.Segment, stoppingNodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan {
@@ -339,11 +341,40 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 	return segmentPlans
 }
 
-func (b *ScoreBasedBalancer) getNormalChannelPlan(replica *meta.Replica) []ChannelAssignPlan {
+func (b *ScoreBasedBalancer) getNormalChannelPlan(replica *meta.Replica, onlineNodes []int64) []ChannelAssignPlan {
 	// TODO
 	if b.scheduler.GetChannelTaskNum() == 0 {
 		// scheduler is handling channel task, skip
 		return nil
 	}
-	return nil
+
+	channelPlans := make([]ChannelAssignPlan, 0)
+	dmlChannels := b.dist.ChannelDistManager.GetAll()
+	availableNodesCount := len(onlineNodes)
+	avgChannelCount := len(dmlChannels) / availableNodesCount
+
+	toBalanceTargetNodes := make([]int64, 0)
+	toBalanceChannels := make([]*meta.DmChannel, 0)
+	for _, nodeID := range onlineNodes {
+		channelsOnNode := b.dist.ChannelDistManager.GetByNode(nodeID)
+		if len(channelsOnNode) < avgChannelCount {
+			toBalanceTargetNodes = append(toBalanceTargetNodes, nodeID)
+			continue
+		}
+		toRemoveChannelCount := len(channelsOnNode) - avgChannelCount
+		for idx, channel := range channelsOnNode {
+			if idx >= toRemoveChannelCount {
+				break
+			}
+			toBalanceChannels = append(toBalanceChannels, channel)
+		}
+	}
+
+	plans := b.AssignChannel(toBalanceChannels, toBalanceTargetNodes)
+	for i := range plans {
+		plans[i].ReplicaID = replica.ID
+		plans[i].Weight = GetWeight(1)
+	}
+	channelPlans = append(channelPlans, plans...)
+	return channelPlans
 }

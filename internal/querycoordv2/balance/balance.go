@@ -101,7 +101,9 @@ type Balance interface {
 	AssignSegment(collectionID int64, segments []*meta.Segment, nodes []int64) []SegmentAssignPlan
 	AssignChannel(channels []*meta.DmChannel, nodes []int64) []ChannelAssignPlan
 	Balance() ([]SegmentAssignPlan, []ChannelAssignPlan)
-	//PrintNewBalancePlans() ([]SegmentAssignPlan, []ChannelAssignPlan)
+	PrintNewBalancePlans(collectionID int64, replicaID int64, segmentPlans []SegmentAssignPlan, channelPlans []ChannelAssignPlan)
+	PrintCurrentReplicaDist(replica *meta.Replica,
+		stoppingNodesSegments map[int64][]*meta.Segment, nodeSegments map[int64][]*meta.Segment)
 }
 
 type RoundRobinBalancer struct {
@@ -178,9 +180,10 @@ func NewRoundRobinBalancer(scheduler task.Scheduler, nodeManager *session.NodeMa
 	}
 }
 
-func (b *RoundRobinBalancer) PrintNewBalancePlans(segmentPlans []SegmentAssignPlan,
+func (b *RoundRobinBalancer) PrintNewBalancePlans(collectionID int64, replicaID int64, segmentPlans []SegmentAssignPlan,
 	channelPlans []ChannelAssignPlan) {
 	balanceInfo := BalanceInfoPrefix + "{"
+	balanceInfo += fmt.Sprintf("collectionID:%d, replicaID:%d, ", collectionID, replicaID)
 	for _, segmentPlan := range segmentPlans {
 		balanceInfo += segmentPlan.ToString()
 	}
@@ -189,4 +192,66 @@ func (b *RoundRobinBalancer) PrintNewBalancePlans(segmentPlans []SegmentAssignPl
 	}
 	balanceInfo += "}"
 	log.Debug(balanceInfo)
+}
+
+func (b *RoundRobinBalancer) PrintCurrentReplicaDist(replica *meta.Replica,
+	stoppingNodesSegments map[int64][]*meta.Segment, nodeSegments map[int64][]*meta.Segment,
+	channelManager *meta.ChannelDistManager) {
+	distInfo := BalanceInfoPrefix + "{"
+	distInfo += fmt.Sprintf("collectionID:%d, replicaID:%d, ", replica.CollectionID, replica.GetID())
+	//1. print stopping nodes segment distribution
+	distInfo += fmt.Sprintf("[stoppingNodesSegmentDist:")
+	for stoppingNodeID, stoppedSegments := range stoppingNodesSegments {
+		distInfo += fmt.Sprintf("[nodeID:%d, ", stoppingNodeID)
+		distInfo += "stopped-segments:["
+		for _, stoppedSegment := range stoppedSegments {
+			distInfo += fmt.Sprintf("%d,", stoppedSegment.GetID())
+		}
+		distInfo += "]]"
+	}
+	distInfo += "]\n"
+	//2. print normal nodes segment distribution
+	distInfo += "[normalNodesSegmentDist:"
+	for normalNodeID, normalNodeSegments := range nodeSegments {
+		distInfo += fmt.Sprintf("[nodeID:%d, ", normalNodeID)
+		distInfo += "loaded-segments:["
+		nodeRowSum := int64(0)
+		for _, normalSegment := range normalNodeSegments {
+			distInfo += fmt.Sprintf("[segmentID: %d,", normalSegment.GetID())
+			distInfo += fmt.Sprintf("rowCount: %d]", normalSegment.GetNumOfRows())
+			nodeRowSum += normalSegment.GetNumOfRows()
+		}
+		distInfo += fmt.Sprintf("] nodeRowSum:%d]", nodeRowSum)
+	}
+	distInfo += "]\n"
+
+	//3. print stopping nodes channel distribution
+	distInfo += "[stoppingNodesChannelDist:"
+	for stoppingNodeID, _ := range stoppingNodesSegments {
+		distInfo += fmt.Sprintf("[nodeID:%d, ", stoppingNodeID)
+		stoppingNodeChannels := channelManager.GetByNode(stoppingNodeID)
+		distInfo += fmt.Sprintf("count:%d, ", len(stoppingNodeChannels))
+		distInfo += "channels:["
+		for _, stoppingChan := range stoppingNodeChannels {
+			distInfo += fmt.Sprintf("%s,", stoppingChan.GetChannelName())
+		}
+		distInfo += "]]"
+	}
+	distInfo += "]\n"
+
+	//4. print normal nodes channel distribution
+	distInfo += "[normalNodesChannelDist:"
+	for normalNodeID, _ := range nodeSegments {
+		distInfo += fmt.Sprintf("[nodeID:%d, ", normalNodeID)
+		normalNodeChannels := channelManager.GetByNode(normalNodeID)
+		distInfo += fmt.Sprintf("count:%d, ", len(normalNodeChannels))
+		distInfo += "channels:["
+		for _, normalNodeChan := range normalNodeChannels {
+			distInfo += fmt.Sprintf("%s,", normalNodeChan.GetChannelName())
+		}
+		distInfo += "]]"
+	}
+	distInfo += "]\n"
+
+	log.Debug(distInfo)
 }
