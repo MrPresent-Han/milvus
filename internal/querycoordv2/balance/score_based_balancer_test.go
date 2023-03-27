@@ -66,8 +66,6 @@ func (suite *ScoreBasedBalancerTestSuite) SetupTest() {
 	distManager := meta.NewDistributionManager()
 	suite.mockScheduler = task.NewMockScheduler(suite.T())
 	suite.balancer = NewScoreBasedBalancer(suite.mockScheduler, nodeManager, distManager, testMeta, testTarget)
-
-	suite.broker.EXPECT().GetPartitions(mock.Anything, int64(1)).Return([]int64{1}, nil).Maybe()
 }
 
 func (suite *ScoreBasedBalancerTestSuite) TearDownTest() {
@@ -263,6 +261,79 @@ func (suite *ScoreBasedBalancerTestSuite) TestBalance() {
 			},
 			expectChannelPlans: []ChannelAssignPlan{},
 		},
+		{
+			name:          "normal balance for one collection only",
+			nodes:         []int64{1, 2},
+			collectionIDs: []int64{1},
+			replicaIDs:    []int64{1},
+			collectionsSegments: [][]*datapb.SegmentBinlogs{
+				{
+					{SegmentID: 1}, {SegmentID: 2}, {SegmentID: 3},
+				},
+			},
+			states: []session.State{session.NodeStateNormal, session.NodeStateNormal},
+			distributions: map[int64][]*meta.Segment{
+				1: {{SegmentInfo: &datapb.SegmentInfo{ID: 1, CollectionID: 1, NumOfRows: 10}, Node: 1}},
+				2: {
+					{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 1, NumOfRows: 20}, Node: 2},
+					{SegmentInfo: &datapb.SegmentInfo{ID: 3, CollectionID: 1, NumOfRows: 30}, Node: 2},
+				},
+			},
+			expectPlans: []SegmentAssignPlan{
+				{Segment: &meta.Segment{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 1, NumOfRows: 20}, Node: 2}, From: 2, To: 1, ReplicaID: 1},
+			},
+			expectChannelPlans: []ChannelAssignPlan{},
+		},
+		{
+			name:          "already balanced for one collection only",
+			nodes:         []int64{1, 2},
+			collectionIDs: []int64{1},
+			replicaIDs:    []int64{1},
+			collectionsSegments: [][]*datapb.SegmentBinlogs{
+				{
+					{SegmentID: 1}, {SegmentID: 2}, {SegmentID: 3},
+				},
+			},
+			states: []session.State{session.NodeStateNormal, session.NodeStateNormal},
+			distributions: map[int64][]*meta.Segment{
+				1: {
+					{SegmentInfo: &datapb.SegmentInfo{ID: 1, CollectionID: 1, NumOfRows: 10}, Node: 1},
+					{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 1, NumOfRows: 20}, Node: 1},
+				},
+				2: {
+					{SegmentInfo: &datapb.SegmentInfo{ID: 3, CollectionID: 1, NumOfRows: 30}, Node: 2},
+				},
+			},
+			expectPlans:        []SegmentAssignPlan{},
+			expectChannelPlans: []ChannelAssignPlan{},
+		},
+		{
+			name:          "balance considering both global rowCounts and collection rowCounts",
+			nodes:         []int64{1, 2, 3, 4},
+			collectionIDs: []int64{1, 2},
+			replicaIDs:    []int64{1, 2},
+			collectionsSegments: [][]*datapb.SegmentBinlogs{
+				{
+					{SegmentID: 1}, {SegmentID: 2},
+				},
+				{
+					{SegmentID: 3}, {SegmentID: 4},
+				},
+			},
+			states: []session.State{session.NodeStateNormal, session.NodeStateNormal},
+			distributions: map[int64][]*meta.Segment{
+				1: {
+					{SegmentInfo: &datapb.SegmentInfo{ID: 1, CollectionID: 1, NumOfRows: 20}, Node: 1},
+					{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 2, NumOfRows: 20}, Node: 1},
+				},
+				2: {
+					{SegmentInfo: &datapb.SegmentInfo{ID: 3, CollectionID: 1, NumOfRows: 20}, Node: 2},
+					{SegmentInfo: &datapb.SegmentInfo{ID: 4, CollectionID: 2, NumOfRows: 20}, Node: 2},
+				},
+			},
+			expectPlans:        []SegmentAssignPlan{},
+			expectChannelPlans: []ChannelAssignPlan{},
+		},
 	}
 
 	for _, c := range cases {
@@ -278,6 +349,7 @@ func (suite *ScoreBasedBalancerTestSuite) TestBalance() {
 				collections = append(collections, collection)
 				suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, c.collectionIDs[i], c.replicaIDs[i]).Return(
 					nil, c.collectionsSegments[i], nil)
+				suite.broker.EXPECT().GetPartitions(mock.Anything, c.collectionIDs[i]).Return([]int64{c.collectionIDs[i]}, nil).Maybe()
 				balancer.targetMgr.UpdateCollectionNextTargetWithPartitions(c.collectionIDs[i], c.collectionIDs[i])
 				balancer.targetMgr.UpdateCollectionCurrentTarget(c.collectionIDs[i], c.collectionIDs[i])
 				collection.LoadPercentage = 100
