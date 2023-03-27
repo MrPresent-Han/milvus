@@ -45,9 +45,6 @@ func NewScoreBasedBalancer(scheduler task.Scheduler,
 	}
 }
 
-// this is to avoid balance back and force
-var inbalanceFactor = 1.1
-
 // TODO assign channel need to think of global channels
 func (b *ScoreBasedBalancer) AssignSegment(collectionID int64, segments []*meta.Segment, nodes []int64) []SegmentAssignPlan {
 	nodeItems := b.convertToNodeItems(collectionID, nodes)
@@ -266,7 +263,7 @@ func (b *ScoreBasedBalancer) getStoppedChannelPlan(replica *meta.Replica, online
 }
 
 func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan {
-	if b.scheduler.GetSegmentTaskNum() == 0 {
+	if b.scheduler.GetSegmentTaskNum() != 0 {
 		// scheduler is handling segment task, skip
 		return nil
 	}
@@ -289,27 +286,38 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 		toNode := minQueue.pop()
 		fromNode := maxQueue.pop()
 
-		// pick largest segment from fromNode, try to assign to toNode see if the cluster becomes more balance.
+		// pick the largest segment from fromNode, try to assign to toNode see if the cluster becomes more balance.
 		fromSegments := b.dist.SegmentDistManager.GetByCollectionAndNode(replica.CollectionID, fromNode.(*nodeItem).nodeID)
-
+		// sort the segments in asc order, try to mitigate to-from-unbalance
 		sort.Slice(fromSegments, func(i, j int) bool {
-			return fromSegments[i].GetNumOfRows() > fromSegments[j].GetNumOfRows()
+			return fromSegments[i].GetNumOfRows() < fromSegments[j].GetNumOfRows()
 		})
 
 		// TODO we shouldn't use calculatePriority, because it it's balanced by replica, then global segment count will not be stable
-		// Better way is to calculate priority while a segment distribution map
-		//hc---should not use the same snapshot from distribution throughout the process
+		// Better way is to calculate priority with a segment distribution map
+		// should not use the same snapshot from distribution throughout the process
 		fromPriority := b.calculatePriority(replica.GetCollectionID(), fromNode.(*nodeItem).nodeID)
 		toPriority := b.calculatePriority(replica.GetCollectionID(), toNode.(*nodeItem).nodeID)
 
 		inbalance := fromPriority - toPriority
-		balanced := false
+		havingBalanced := false
+
+		updatePriority := func(nextToPriority int, toNode item, nextFromPriority int, fromNode item) {
+			havingBalanced = true
+			toNode.setPriority(nextToPriority)
+			minQueue.push(toNode)
+			fromNode.setPriority(-nextFromPriority)
+			maxQueue.push(fromNode)
+			fromPriority = nextFromPriority
+			toPriority = nextToPriority
+		}
+
 		for _, s := range fromSegments {
 			nextFromPriority := fromPriority - int(s.GetNumOfRows()) - int(float64(s.GetNumOfRows())*
 				params.Params.QueryCoordCfg.GlobalRowCountFactor.GetAsFloat())
 			nextToPriority := toPriority + int(s.GetNumOfRows()) + int(float64(s.GetNumOfRows())*
 				params.Params.QueryCoordCfg.GlobalRowCountFactor.GetAsFloat())
-			if nextToPriority < nextFromPriority {
+			if nextToPriority <= nextFromPriority {
 				plan := SegmentAssignPlan{
 					ReplicaID: replica.GetID(),
 					From:      fromNode.(*nodeItem).nodeID,
@@ -318,14 +326,10 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 					Weight:    GetWeight(0),
 				}
 				segmentPlans = append(segmentPlans, plan)
-				balanced = true
-				toNode.setPriority(nextToPriority)
-				minQueue.push(toNode)
-				fromNode.setPriority(-nextFromPriority)
-				maxQueue.push(fromNode)
+				updatePriority(nextToPriority, toNode, nextFromPriority, fromNode)
 			} else {
 				nextInbalance := nextToPriority - nextFromPriority
-				if int(float64(nextInbalance)*inbalanceFactor) < inbalance {
+				if int(float64(nextInbalance)*params.Params.QueryCoordCfg.ScoreUnbalanceTolerationFactor.GetAsFloat()) < inbalance {
 					plan := SegmentAssignPlan{
 						ReplicaID: replica.GetID(),
 						From:      fromNode.(*nodeItem).nodeID,
@@ -334,18 +338,17 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 						Weight:    GetWeight(0),
 					}
 					segmentPlans = append(segmentPlans, plan)
-					balanced = true
-					toNode.setPriority(nextToPriority)
-					minQueue.push(toNode)
-					fromNode.setPriority(-nextFromPriority)
-					maxQueue.push(fromNode)
+					updatePriority(nextToPriority, toNode, nextFromPriority, fromNode)
+					break
+				} else {
+					havingBalanced = false
 					break
 				}
 			}
 		}
 
 		// if toNode and fromNode can not find segment to balance, break, else try to balance the next round
-		if !balanced {
+		if !havingBalanced {
 			// nothing to balance
 			break
 		}
@@ -356,12 +359,11 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 
 func (b *ScoreBasedBalancer) getNormalChannelPlan(replica *meta.Replica, onlineNodes []int64) []ChannelAssignPlan {
 	// TODO
-	if b.scheduler.GetChannelTaskNum() == 0 {
+	if b.scheduler.GetChannelTaskNum() != 0 {
 		// scheduler is handling channel task, skip
 		return nil
 	}
 
-	channelPlans := make([]ChannelAssignPlan, 0)
 	dmlChannels := b.dist.ChannelDistManager.GetAll()
 	availableNodesCount := len(onlineNodes)
 	avgChannelCount := len(dmlChannels) / availableNodesCount
@@ -382,7 +384,10 @@ func (b *ScoreBasedBalancer) getNormalChannelPlan(replica *meta.Replica, onlineN
 			toBalanceChannels = append(toBalanceChannels, channel)
 		}
 	}
-
+	channelPlans := make([]ChannelAssignPlan, 0)
+	if len(toBalanceChannels) == 0 {
+		return channelPlans
+	}
 	plans := b.AssignChannel(toBalanceChannels, toBalanceTargetNodes)
 	for i := range plans {
 		plans[i].ReplicaID = replica.ID

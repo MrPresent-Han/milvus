@@ -1085,6 +1085,7 @@ type queryCoordConfig struct {
 	//---- Balance ---
 	AutoBalance                         ParamItem `refreshable:"true"`
 	GlobalRowCountFactor                ParamItem `refreshable:"true"`
+	ScoreUnbalanceTolerationFactor      ParamItem `refreshable:"true"`
 	OverloadedMemoryThresholdPercentage ParamItem `refreshable:"true"`
 	BalanceIntervalSeconds              ParamItem `refreshable:"true"`
 	MemoryUsageMaxDifferencePercentage  ParamItem `refreshable:"true"`
@@ -1168,6 +1169,16 @@ func (p *queryCoordConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.GlobalRowCountFactor.Init(base.mgr)
+
+	p.ScoreUnbalanceTolerationFactor = ParamItem{
+		Key:          "queryCoord.scoreUnbalanceTolerationFactor",
+		Version:      "2.0.0",
+		DefaultValue: "1.1",
+		PanicIfEmpty: true,
+		Doc:          "the largest value for unbalanced extent between from and to nodes when doing balance",
+		Export:       true,
+	}
+	p.ScoreUnbalanceTolerationFactor.Init(base.mgr)
 
 	p.OverloadedMemoryThresholdPercentage = ParamItem{
 		Key:          "queryCoord.overloadedMemoryThresholdPercentage",

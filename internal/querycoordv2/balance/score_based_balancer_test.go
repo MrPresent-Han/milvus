@@ -18,10 +18,12 @@ package balance
 import (
 	etcdkv "github.com/milvus-io/milvus/internal/kv/etcd"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
+	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	. "github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
+	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
 	"github.com/milvus-io/milvus/internal/util/etcd"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -221,6 +223,95 @@ func (suite *ScoreBasedBalancerTestSuite) TestAssignSegment() {
 			}
 		})
 	}
+}
+
+func (suite *ScoreBasedBalancerTestSuite) TestBalance() {
+	cases := []struct {
+		name                 string
+		nodes                []int64
+		notExistedNodes      []int64
+		collectionIDs        []int64
+		replicaIDs           []int64
+		collectionsSegments  [][]*datapb.SegmentBinlogs
+		states               []session.State
+		shouldMock           bool
+		distributions        map[int64][]*meta.Segment
+		distributionChannels map[int64][]*meta.DmChannel
+		expectPlans          []SegmentAssignPlan
+		expectChannelPlans   []ChannelAssignPlan
+	}{
+		{
+			name:          "normal balance for one collection only",
+			nodes:         []int64{1, 2},
+			collectionIDs: []int64{1},
+			replicaIDs:    []int64{1},
+			collectionsSegments: [][]*datapb.SegmentBinlogs{
+				{
+					{SegmentID: 1}, {SegmentID: 2}, {SegmentID: 3},
+				},
+			},
+			states: []session.State{session.NodeStateNormal, session.NodeStateNormal},
+			distributions: map[int64][]*meta.Segment{
+				1: {{SegmentInfo: &datapb.SegmentInfo{ID: 1, CollectionID: 1, NumOfRows: 10}, Node: 1}},
+				2: {
+					{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 1, NumOfRows: 20}, Node: 2},
+					{SegmentInfo: &datapb.SegmentInfo{ID: 3, CollectionID: 1, NumOfRows: 30}, Node: 2},
+				},
+			},
+			expectPlans: []SegmentAssignPlan{
+				{Segment: &meta.Segment{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 1, NumOfRows: 20}, Node: 2}, From: 2, To: 1, ReplicaID: 1},
+			},
+			expectChannelPlans: []ChannelAssignPlan{},
+		},
+	}
+
+	for _, c := range cases {
+		suite.Run(c.name, func() {
+			suite.SetupSuite()
+			defer suite.TearDownTest()
+			balancer := suite.balancer
+
+			//1. set up target for multi collections
+			collections := make([]*meta.Collection, 0, len(c.collectionIDs))
+			for i := range c.collectionIDs {
+				collection := utils.CreateTestCollection(c.collectionIDs[i], int32(c.replicaIDs[i]))
+				collections = append(collections, collection)
+				suite.broker.EXPECT().GetRecoveryInfo(mock.Anything, c.collectionIDs[i], c.replicaIDs[i]).Return(
+					nil, c.collectionsSegments[i], nil)
+				balancer.targetMgr.UpdateCollectionNextTargetWithPartitions(c.collectionIDs[i], c.collectionIDs[i])
+				balancer.targetMgr.UpdateCollectionCurrentTarget(c.collectionIDs[i], c.collectionIDs[i])
+				collection.LoadPercentage = 100
+				collection.Status = querypb.LoadStatus_Loaded
+				collection.LoadType = querypb.LoadType_LoadCollection
+				balancer.meta.CollectionManager.PutCollection(collection)
+				balancer.meta.ReplicaManager.Put(utils.CreateTestReplica(int64(c.replicaIDs[i]), c.collectionIDs[i],
+					append(c.nodes, c.notExistedNodes...)))
+			}
+
+			//2. set up target for distribution for multi collections
+			for node, s := range c.distributions {
+				balancer.dist.SegmentDistManager.Update(node, s...)
+			}
+			for node, v := range c.distributionChannels {
+				balancer.dist.ChannelDistManager.Update(node, v...)
+			}
+
+			//3. set up nodes info and resourceManager for balancer
+			for i := range c.nodes {
+				nodeInfo := session.NewNodeInfo(c.nodes[i], "127.0.0.1:0")
+				nodeInfo.UpdateStats(session.WithChannelCnt(len(c.distributionChannels[c.nodes[i]])))
+				nodeInfo.SetState(c.states[i])
+				suite.balancer.nodeManager.Add(nodeInfo)
+				suite.balancer.meta.ResourceManager.AssignNode(meta.DefaultResourceGroupName, c.nodes[i])
+			}
+
+			//4. balance and verify result
+			segmentPlans, channelPlans := balancer.Balance()
+			suite.ElementsMatch(c.expectChannelPlans, channelPlans)
+			suite.ElementsMatch(c.expectPlans, segmentPlans)
+		})
+	}
+
 }
 
 func TestScoreBasedBalancerSuite(t *testing.T) {
