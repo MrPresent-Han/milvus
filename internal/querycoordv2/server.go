@@ -251,7 +251,7 @@ func (s *Server) initQueryCoord() error {
 
 	// Init balancer
 	log.Info("init balancer")
-	s.balancer = balance.NewRowCountBasedBalancer(
+	s.balancer = balance.NewScoreBasedBalancer(
 		s.taskScheduler,
 		s.nodeMgr,
 		s.dist,

@@ -17,6 +17,9 @@
 package balance
 
 import (
+	"github.com/milvus-io/milvus/internal/querycoordv2/params"
+	"github.com/milvus-io/milvus/internal/querycoordv2/session"
+	"github.com/milvus-io/milvus/internal/querycoordv2/task"
 	"sort"
 
 	"go.uber.org/zap"
@@ -30,13 +33,17 @@ import (
 
 type ScoreBasedBalancer struct {
 	*RowCountBasedBalancer
-	dist      *meta.DistributionManager
-	meta      *meta.Meta
-	targetMgr *meta.TargetManager
 }
 
-// TODO, make this configurable
-var globalFactor = 0.1
+func NewScoreBasedBalancer(scheduler task.Scheduler,
+	nodeManager *session.NodeManager,
+	dist *meta.DistributionManager,
+	meta *meta.Meta,
+	targetMgr *meta.TargetManager) *ScoreBasedBalancer {
+	return &ScoreBasedBalancer{
+		RowCountBasedBalancer: NewRowCountBasedBalancer(scheduler, nodeManager, dist, meta, targetMgr),
+	}
+}
 
 // this is to avoid balance back and force
 var inbalanceFactor = 1.1
@@ -69,7 +76,8 @@ func (b *ScoreBasedBalancer) AssignSegment(collectionID int64, segments []*meta.
 		plans = append(plans, plan)
 		// change node's priority and push back, should count for both collection factor and local factor
 		p := ni.getPriority()
-		ni.setPriority(p + int(s.GetNumOfRows()) + int(float64(s.GetNumOfRows())*globalFactor))
+		ni.setPriority(p + int(s.GetNumOfRows()) +
+			int(float64(s.GetNumOfRows())*params.Params.QueryCoordCfg.GlobalRowCountFactor.GetAsFloat()))
 		queue.push(ni)
 	}
 	return plans
@@ -98,7 +106,8 @@ func (b *ScoreBasedBalancer) calculatePriority(collectionID, nodeId int64) int {
 	for _, s := range collectionSegments {
 		collectionRowCount += int(s.GetNumOfRows())
 	}
-	return collectionRowCount + int(float64(rowcnt)*globalFactor)
+	return collectionRowCount + int(float64(rowcnt)*
+		params.Params.QueryCoordCfg.GlobalRowCountFactor.GetAsFloat())
 }
 
 func (b *ScoreBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignPlan) {
@@ -233,7 +242,8 @@ func (b *ScoreBasedBalancer) getStoppedSegmentPlan(replica *meta.Replica, nodesS
 		segmentPlans = append(segmentPlans, plan)
 		// change node's priority and push back, should count for both collection factor and local factor
 		p := ni.getPriority()
-		ni.setPriority(p + int(s.GetNumOfRows()) + int(float64(s.GetNumOfRows())*globalFactor))
+		ni.setPriority(p + int(s.GetNumOfRows()) + int(float64(s.GetNumOfRows())*
+			params.Params.QueryCoordCfg.GlobalRowCountFactor.GetAsFloat()))
 		queue.push(ni)
 	}
 
@@ -295,8 +305,10 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 		inbalance := fromPriority - toPriority
 		balanced := false
 		for _, s := range fromSegments {
-			nextFromPriority := fromPriority - int(s.GetNumOfRows()) - int(float64(s.GetNumOfRows())*globalFactor)
-			nextToPriority := toPriority + int(s.GetNumOfRows()) + int(float64(s.GetNumOfRows())*globalFactor)
+			nextFromPriority := fromPriority - int(s.GetNumOfRows()) - int(float64(s.GetNumOfRows())*
+				params.Params.QueryCoordCfg.GlobalRowCountFactor.GetAsFloat())
+			nextToPriority := toPriority + int(s.GetNumOfRows()) + int(float64(s.GetNumOfRows())*
+				params.Params.QueryCoordCfg.GlobalRowCountFactor.GetAsFloat())
 			if nextToPriority < nextFromPriority {
 				plan := SegmentAssignPlan{
 					ReplicaID: replica.GetID(),

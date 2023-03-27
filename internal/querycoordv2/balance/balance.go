@@ -84,7 +84,7 @@ type ChannelAssignPlan struct {
 func (chanPlan ChannelAssignPlan) ToString() string {
 	str := "ChannelPlan:["
 	str += fmt.Sprintf("collectionID: %d, ", chanPlan.Channel.CollectionID)
-	str += fmt.Sprintf("channel: %d, ", chanPlan.Channel.ChannelName)
+	str += fmt.Sprintf("channel: %s, ", chanPlan.Channel.ChannelName)
 	str += fmt.Sprintf("replicaID: %d, ", chanPlan.ReplicaID)
 	str += fmt.Sprintf("from: %d, ", chanPlan.From)
 	str += fmt.Sprintf("to: %d, ", chanPlan.To)
