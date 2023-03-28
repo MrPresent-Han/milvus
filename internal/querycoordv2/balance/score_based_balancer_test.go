@@ -280,8 +280,8 @@ func (suite *ScoreBasedBalancerTestSuite) TestBalance() {
 				},
 			},
 			expectPlans: []SegmentAssignPlan{
-				{Segment: &meta.Segment{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 1, NumOfRows: 20}, Node: 2}, From: 2, To: 1, ReplicaID: 1},
-			},
+				{Segment: &meta.Segment{SegmentInfo: &datapb.SegmentInfo{ID: 2, CollectionID: 1, NumOfRows: 20},
+					Node: 2}, From: 2, To: 1, ReplicaID: 1}},
 			expectChannelPlans: []ChannelAssignPlan{},
 		},
 		{
@@ -314,13 +314,14 @@ func (suite *ScoreBasedBalancerTestSuite) TestBalance() {
 			replicaIDs:    []int64{1, 2},
 			collectionsSegments: [][]*datapb.SegmentBinlogs{
 				{
-					{SegmentID: 1}, {SegmentID: 2},
+					{SegmentID: 1}, {SegmentID: 3},
 				},
 				{
-					{SegmentID: 3}, {SegmentID: 4},
+					{SegmentID: 2}, {SegmentID: 4},
 				},
 			},
-			states: []session.State{session.NodeStateNormal, session.NodeStateNormal},
+			states: []session.State{session.NodeStateNormal, session.NodeStateNormal,
+				session.NodeStateNormal, session.NodeStateNormal},
 			distributions: map[int64][]*meta.Segment{
 				1: {
 					{SegmentInfo: &datapb.SegmentInfo{ID: 1, CollectionID: 1, NumOfRows: 20}, Node: 1},
@@ -331,7 +332,32 @@ func (suite *ScoreBasedBalancerTestSuite) TestBalance() {
 					{SegmentInfo: &datapb.SegmentInfo{ID: 4, CollectionID: 2, NumOfRows: 20}, Node: 2},
 				},
 			},
-			expectPlans:        []SegmentAssignPlan{},
+			expectPlans: []SegmentAssignPlan{
+				{
+					Segment: &meta.Segment{
+						SegmentInfo: &datapb.SegmentInfo{
+							ID:           1,
+							CollectionID: 1,
+							NumOfRows:    20,
+						},
+						Node: 1},
+					From:      1,
+					To:        3,
+					ReplicaID: 1,
+				},
+				{
+					Segment: &meta.Segment{
+						SegmentInfo: &datapb.SegmentInfo{
+							ID:           3,
+							CollectionID: 1,
+							NumOfRows:    20,
+						},
+						Node: 2},
+					From:      2,
+					To:        4,
+					ReplicaID: 1,
+				},
+			},
 			expectChannelPlans: []ChannelAssignPlan{},
 		},
 	}

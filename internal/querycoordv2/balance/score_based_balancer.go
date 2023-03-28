@@ -20,6 +20,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
+	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"sort"
 
 	"go.uber.org/zap"
@@ -116,10 +117,12 @@ func (b *ScoreBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignPlan
 	})
 
 	segmentPlans, channelPlans := make([]SegmentAssignPlan, 0), make([]ChannelAssignPlan, 0)
+
+	copiedSegmentsMap := b.dist.SegmentDistManager.SnapshotSegmentDist()
 	for _, cid := range loadedCollections {
 		replicas := b.meta.ReplicaManager.GetByCollection(cid)
 		for _, replica := range replicas {
-			sPlans, cPlans := b.balanceReplica(replica)
+			sPlans, cPlans := b.balanceReplica(replica, copiedSegmentsMap)
 			b.PrintNewBalancePlans(cid, replica.GetID(), sPlans, cPlans)
 			segmentPlans = append(segmentPlans, sPlans...)
 			channelPlans = append(channelPlans, cPlans...)
@@ -128,7 +131,18 @@ func (b *ScoreBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignPlan
 	return segmentPlans, channelPlans
 }
 
-func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAssignPlan, []ChannelAssignPlan) {
+func (b *ScoreBasedBalancer) getSegmentsByCollectionAndNode(collectionID int64, nodeID typeutil.UniqueID,
+	dist map[typeutil.UniqueID][]*meta.Segment) []*meta.Segment {
+	ret := make([]*meta.Segment, 0)
+	for _, segment := range dist[nodeID] {
+		if segment.CollectionID == collectionID {
+			ret = append(ret, segment)
+		}
+	}
+	return ret
+}
+
+func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica, distMap map[typeutil.UniqueID][]*meta.Segment) ([]SegmentAssignPlan, []ChannelAssignPlan) {
 	nodes := replica.GetNodes()
 	if len(nodes) == 0 {
 		return nil, nil
@@ -140,8 +154,7 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAss
 
 	// calculate stopping nodes and available nodes.
 	for _, nid := range nodes {
-		//TODO: balance operations should be based on prospective distribution, rather than the prev distribution
-		segments := b.dist.SegmentDistManager.GetByCollectionAndNode(replica.GetCollectionID(), nid)
+		segments := b.getSegmentsByCollectionAndNode(replica.GetCollectionID(), nid, distMap)
 		// Only balance segments in targets
 		segments = lo.Filter(segments, func(segment *meta.Segment, _ int) bool {
 			return b.targetMgr.GetHistoricalSegment(segment.GetCollectionID(), segment.GetID(), meta.CurrentTarget) != nil
@@ -296,8 +309,8 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 		// TODO we shouldn't use calculatePriority, because it it's balanced by replica, then global segment count will not be stable
 		// Better way is to calculate priority with a segment distribution map
 		// should not use the same snapshot from distribution throughout the process
-		fromPriority := b.calculatePriority(replica.GetCollectionID(), fromNode.(*nodeItem).nodeID)
-		toPriority := b.calculatePriority(replica.GetCollectionID(), toNode.(*nodeItem).nodeID)
+		fromPriority := -fromNode.(*nodeItem).priority
+		toPriority := toNode.(*nodeItem).priority
 
 		inbalance := fromPriority - toPriority
 		havingBalanced := false
@@ -359,40 +372,5 @@ func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSe
 
 func (b *ScoreBasedBalancer) getNormalChannelPlan(replica *meta.Replica, onlineNodes []int64) []ChannelAssignPlan {
 	// TODO
-	if b.scheduler.GetChannelTaskNum() != 0 {
-		// scheduler is handling channel task, skip
-		return nil
-	}
-
-	dmlChannels := b.dist.ChannelDistManager.GetAll()
-	availableNodesCount := len(onlineNodes)
-	avgChannelCount := len(dmlChannels) / availableNodesCount
-
-	toBalanceTargetNodes := make([]int64, 0)
-	toBalanceChannels := make([]*meta.DmChannel, 0)
-	for _, nodeID := range onlineNodes {
-		channelsOnNode := b.dist.ChannelDistManager.GetByNode(nodeID)
-		if len(channelsOnNode) < avgChannelCount {
-			toBalanceTargetNodes = append(toBalanceTargetNodes, nodeID)
-			continue
-		}
-		toRemoveChannelCount := len(channelsOnNode) - avgChannelCount
-		for idx, channel := range channelsOnNode {
-			if idx >= toRemoveChannelCount {
-				break
-			}
-			toBalanceChannels = append(toBalanceChannels, channel)
-		}
-	}
-	channelPlans := make([]ChannelAssignPlan, 0)
-	if len(toBalanceChannels) == 0 {
-		return channelPlans
-	}
-	plans := b.AssignChannel(toBalanceChannels, toBalanceTargetNodes)
-	for i := range plans {
-		plans[i].ReplicaID = replica.ID
-		plans[i].Weight = GetWeight(1)
-	}
-	channelPlans = append(channelPlans, plans...)
-	return channelPlans
+	return make([]ChannelAssignPlan, 0)
 }

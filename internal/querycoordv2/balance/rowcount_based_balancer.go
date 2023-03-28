@@ -84,36 +84,6 @@ func (b *RowCountBasedBalancer) convertToNodeItems(nodeIDs []int64) []*nodeItem 
 	return ret
 }
 
-func (b *RowCountBasedBalancer) AssignChannel(channels []*meta.DmChannel, nodes []int64) []ChannelAssignPlan {
-	existedChannelCount := 0
-	for _, node := range nodes {
-		existedChannelCount += len(b.dist.ChannelDistManager.GetByNode(node))
-	}
-	totalBalanceChannelCount := existedChannelCount + len(channels)
-	avgChannelCount := (totalBalanceChannelCount / len(nodes)) + 1
-	sort.Slice(nodes, func(i, j int) bool {
-		return len(b.dist.ChannelDistManager.GetByNode(nodes[i])) < len(b.dist.ChannelDistManager.GetByNode(nodes[j]))
-	})
-	ret := make([]ChannelAssignPlan, 0, len(channels))
-	channelIdx := 0
-	for _, node := range nodes {
-		if channelIdx >= len(channels) {
-			break
-		}
-		toAssignCount := avgChannelCount - len(b.dist.ChannelDistManager.GetByNode(node))
-		for i := 0; i < toAssignCount; i++ {
-			plan := ChannelAssignPlan{
-				Channel: channels[channelIdx],
-				From:    channels[channelIdx].Node,
-				To:      node,
-			}
-			ret = append(ret, plan)
-			channelIdx += 1
-		}
-	}
-	return ret
-}
-
 func (b *RowCountBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignPlan) {
 	ids := b.meta.CollectionManager.GetAll()
 
