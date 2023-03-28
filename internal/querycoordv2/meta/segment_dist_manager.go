@@ -175,18 +175,3 @@ func (m *SegmentDistManager) GetByCollectionAndNode(collectionID, nodeID UniqueI
 	}
 	return ret
 }
-
-func (m *SegmentDistManager) SnapshotSegmentDist() map[UniqueID][]*Segment {
-	m.rwmutex.RLock()
-	defer m.rwmutex.RUnlock()
-
-	copiedDist := make(map[UniqueID][]*Segment)
-	for nodeID, segments := range m.segments {
-		copiedSegments := make([]*Segment, 0, len(segments))
-		for _, segment := range segments {
-			copiedSegments = append(copiedSegments, segment)
-		}
-		copiedDist[nodeID] = copiedSegments
-	}
-	return copiedDist
-}

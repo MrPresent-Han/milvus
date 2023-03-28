@@ -34,6 +34,7 @@ import (
 
 type ScoreBasedBalancer struct {
 	*RowCountBasedBalancer
+	balancedCollectionsCurrentRound typeutil.UniqueSet
 }
 
 func NewScoreBasedBalancer(scheduler task.Scheduler,
@@ -42,7 +43,8 @@ func NewScoreBasedBalancer(scheduler task.Scheduler,
 	meta *meta.Meta,
 	targetMgr *meta.TargetManager) *ScoreBasedBalancer {
 	return &ScoreBasedBalancer{
-		RowCountBasedBalancer: NewRowCountBasedBalancer(scheduler, nodeManager, dist, meta, targetMgr),
+		RowCountBasedBalancer:           NewRowCountBasedBalancer(scheduler, nodeManager, dist, meta, targetMgr),
+		balancedCollectionsCurrentRound: typeutil.NewUniqueSet(),
 	}
 }
 
@@ -117,32 +119,37 @@ func (b *ScoreBasedBalancer) Balance() ([]SegmentAssignPlan, []ChannelAssignPlan
 	})
 
 	segmentPlans, channelPlans := make([]SegmentAssignPlan, 0), make([]ChannelAssignPlan, 0)
-
-	copiedSegmentsMap := b.dist.SegmentDistManager.SnapshotSegmentDist()
+	hasUnBalancedCollections := false
 	for _, cid := range loadedCollections {
+		if b.balancedCollectionsCurrentRound.Contain(cid) {
+			log.Debug("ScoreBasedBalancer has balanced collection, skip balancing in this round",
+				zap.Int64("collectionID", cid))
+			continue
+		}
+		hasUnBalancedCollections = true
 		replicas := b.meta.ReplicaManager.GetByCollection(cid)
 		for _, replica := range replicas {
-			sPlans, cPlans := b.balanceReplica(replica, copiedSegmentsMap)
+			sPlans, cPlans := b.balanceReplica(replica)
 			b.PrintNewBalancePlans(cid, replica.GetID(), sPlans, cPlans)
 			segmentPlans = append(segmentPlans, sPlans...)
 			channelPlans = append(channelPlans, cPlans...)
 		}
+		b.balancedCollectionsCurrentRound.Insert(cid)
+		if len(segmentPlans) != 0 || len(channelPlans) != 0 {
+			log.Debug("ScoreBasedBalancer has generated balance plans for", zap.Int64("collectionID", cid))
+			break
+		}
 	}
+	if !hasUnBalancedCollections {
+		b.balancedCollectionsCurrentRound.Clear()
+		log.Debug("ScoreBasedBalancer has balanced all " +
+			"collections in one round, clear collectionIDs for this round")
+	}
+
 	return segmentPlans, channelPlans
 }
 
-func (b *ScoreBasedBalancer) getSegmentsByCollectionAndNode(collectionID int64, nodeID typeutil.UniqueID,
-	dist map[typeutil.UniqueID][]*meta.Segment) []*meta.Segment {
-	ret := make([]*meta.Segment, 0)
-	for _, segment := range dist[nodeID] {
-		if segment.CollectionID == collectionID {
-			ret = append(ret, segment)
-		}
-	}
-	return ret
-}
-
-func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica, distMap map[typeutil.UniqueID][]*meta.Segment) ([]SegmentAssignPlan, []ChannelAssignPlan) {
+func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica) ([]SegmentAssignPlan, []ChannelAssignPlan) {
 	nodes := replica.GetNodes()
 	if len(nodes) == 0 {
 		return nil, nil
@@ -154,7 +161,7 @@ func (b *ScoreBasedBalancer) balanceReplica(replica *meta.Replica, distMap map[t
 
 	// calculate stopping nodes and available nodes.
 	for _, nid := range nodes {
-		segments := b.getSegmentsByCollectionAndNode(replica.GetCollectionID(), nid, distMap)
+		segments := b.dist.SegmentDistManager.GetByCollectionAndNode(replica.GetCollectionID(), nid)
 		// Only balance segments in targets
 		segments = lo.Filter(segments, func(segment *meta.Segment, _ int) bool {
 			return b.targetMgr.GetHistoricalSegment(segment.GetCollectionID(), segment.GetID(), meta.CurrentTarget) != nil
