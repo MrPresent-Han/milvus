@@ -3,7 +3,10 @@ package integration
 import (
 	"context"
 	"errors"
+	"github.com/milvus-io/milvus-proto/go-api/msgpb"
+	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/pkg/common"
+	"github.com/milvus-io/milvus/pkg/util/commonpbutil"
 	"github.com/milvus-io/milvus/pkg/util/distance"
 	"go.uber.org/zap"
 	"strconv"
@@ -84,13 +87,13 @@ func showCollections(t *testing.T, cluster *MiniCluster, ctx context.Context) {
 }
 
 func insertData(t *testing.T, cluster *MiniCluster, ctx context.Context, dbName string,
-	collectionName string, hashKeys []uint32, rowNum uint32,
+	collectionName string, rowNum uint32,
 	data ...*schemapb.FieldData) {
 	insertResult, err := cluster.proxy.Insert(ctx, &milvuspb.InsertRequest{
 		DbName:         dbName,
 		CollectionName: collectionName,
 		FieldsData:     data,
-		HashKeys:       hashKeys,
+		HashKeys:       []uint32{},
 		NumRows:        rowNum,
 	})
 	assert.NoError(t, err)
@@ -170,7 +173,8 @@ func createIndex(t *testing.T, cluster *MiniCluster, ctx context.Context, collec
 	assert.Equal(t, commonpb.ErrorCode_Success, createIndexStatus.GetErrorCode())
 }
 
-func loadIndex(t *testing.T, cluster *MiniCluster, ctx context.Context, dbName string, collectionName string) {
+func loadIndex(t *testing.T, cluster *MiniCluster, ctx context.Context, dbName string,
+	collectionName string, sync bool) {
 	// load
 	loadStatus, err := cluster.proxy.LoadCollection(ctx, &milvuspb.LoadCollectionRequest{
 		DbName:         dbName,
@@ -181,16 +185,44 @@ func loadIndex(t *testing.T, cluster *MiniCluster, ctx context.Context, dbName s
 		log.Warn("loadStatus fail reason", zap.String("reason", loadStatus.GetReason()))
 	}
 	assert.Equal(t, commonpb.ErrorCode_Success, loadStatus.GetErrorCode())
-	for {
-		loadProgress, err := cluster.proxy.GetLoadingProgress(ctx, &milvuspb.GetLoadingProgressRequest{
-			CollectionName: collectionName,
-		})
-		if err != nil {
-			panic("GetLoadingProgress fail")
+	if sync {
+		for {
+			loadProgress, err := cluster.proxy.GetLoadingProgress(ctx, &milvuspb.GetLoadingProgressRequest{
+				CollectionName: collectionName,
+			})
+			if err != nil {
+				panic("GetLoadingProgress fail")
+			}
+			if loadProgress.GetProgress() == 100 {
+				break
+			}
+			time.Sleep(500 * time.Millisecond)
 		}
-		if loadProgress.GetProgress() == 100 {
-			break
-		}
-		time.Sleep(500 * time.Millisecond)
 	}
+}
+
+type BalanceSegmentInfo struct {
+	collectionID int64
+	segmentID    int64
+}
+
+func getSegmentsDistOnQueryNodes(t *testing.T, cluster *MiniCluster, ctx context.Context) map[int64][]*BalanceSegmentInfo {
+	dist := make(map[int64][]*BalanceSegmentInfo, 0)
+	for _, qnode := range cluster.queryNodes {
+		resp, err := qnode.GetDataDistribution(ctx, &querypb.GetDataDistributionRequest{
+			Base: commonpbutil.NewMsgBase(
+				commonpbutil.WithMsgType(commonpb.MsgType_GetDistribution),
+			),
+			Checkpoints: make(map[string]*msgpb.MsgPosition),
+		})
+		assert.NoError(t, err)
+		dist[resp.GetNodeID()] = make([]*BalanceSegmentInfo, 0, len(resp.GetSegments()))
+		for _, segInfo := range resp.GetSegments() {
+			dist[resp.GetNodeID()] = append(dist[resp.GetNodeID()], &BalanceSegmentInfo{
+				collectionID: segInfo.GetCollection(),
+				segmentID:    segInfo.GetID(),
+			})
+		}
+	}
+	return dist
 }
