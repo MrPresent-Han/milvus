@@ -109,8 +109,8 @@ func TestHelloMilvus(t *testing.T) {
 		log.Warn("createCollectionStatus fail reason", zap.String("reason", createCollectionStatus.GetReason()))
 	}
 	assert.Equal(t, createCollectionStatus.GetErrorCode(), commonpb.ErrorCode_Success)
-
 	log.Info("CreateCollection result", zap.Any("createCollectionStatus", createCollectionStatus))
+
 	showCollectionsResp, err := c.proxy.ShowCollections(ctx, &milvuspb.ShowCollectionsRequest{})
 	assert.NoError(t, err)
 	assert.Equal(t, showCollectionsResp.GetStatus().GetErrorCode(), commonpb.ErrorCode_Success)
