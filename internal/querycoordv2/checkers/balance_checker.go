@@ -18,6 +18,9 @@ package checkers
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
+	"github.com/samber/lo"
 	"time"
 
 	"github.com/milvus-io/milvus/internal/querycoordv2/balance"
@@ -29,11 +32,13 @@ import (
 type BalanceChecker struct {
 	baseChecker
 	balance.Balance
+	meta *meta.Meta
 }
 
-func NewBalanceChecker(balancer balance.Balance) *BalanceChecker {
+func NewBalanceChecker(meta *meta.Meta, balancer balance.Balance) *BalanceChecker {
 	return &BalanceChecker{
 		Balance: balancer,
+		meta:    meta,
 	}
 }
 
@@ -46,6 +51,13 @@ func (b *BalanceChecker) Check(ctx context.Context) []task.Task {
 	if !Params.QueryCoordCfg.AutoBalance.GetAsBool() {
 		return ret
 	}
+
+	ids := b.meta.CollectionManager.GetAll()
+	// loading collection should skip balance
+	loadedCollections := lo.Filter(ids, func(cid int64, _ int) bool {
+		return b.meta.CalculateLoadStatus(cid) == querypb.LoadStatus_Loaded
+	})
+
 	segmentPlans, channelPlans := b.Balance.Balance()
 
 	tasks := balance.CreateSegmentTasksFromPlans(ctx, b.ID(), Params.QueryCoordCfg.SegmentTaskTimeout.GetAsDuration(time.Millisecond), segmentPlans)
