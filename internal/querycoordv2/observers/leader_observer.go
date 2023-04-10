@@ -95,7 +95,7 @@ func (o *LeaderObserver) observeCollection(ctx context.Context, collection int64
 			dists := o.dist.SegmentDistManager.GetByShardWithReplica(ch, replica)
 			needLoaded, needRemoved := o.findNeedLoadedSegments(leaderView, dists),
 				o.findNeedRemovedSegments(leaderView, dists)
-			o.sync(ctx, leaderView, append(needLoaded, needRemoved...))
+			o.sync(ctx, replica.GetID(), leaderView, append(needLoaded, needRemoved...))
 		}
 	}
 }
@@ -142,7 +142,7 @@ func (o *LeaderObserver) findNeedRemovedSegments(leaderView *meta.LeaderView, di
 	return ret
 }
 
-func (o *LeaderObserver) sync(ctx context.Context, leaderView *meta.LeaderView, diffs []*querypb.SyncAction) {
+func (o *LeaderObserver) sync(ctx context.Context, replicaID int64, leaderView *meta.LeaderView, diffs []*querypb.SyncAction) {
 	if len(diffs) == 0 {
 		return
 	}
@@ -152,13 +152,33 @@ func (o *LeaderObserver) sync(ctx context.Context, leaderView *meta.LeaderView, 
 		zap.Int64("collectionID", leaderView.CollectionID),
 		zap.String("channel", leaderView.Channel),
 	)
+
+	schema, err := o.broker.GetCollectionSchema(ctx, leaderView.CollectionID)
+	if err != nil {
+		log.Error("sync distribution failed, cannot get schema of collection", zap.Error(err))
+		return
+	}
+	partitions, err := utils.GetPartitions(o.meta.CollectionManager, leaderView.CollectionID)
+	if err != nil {
+		log.Error("sync distribution failed, cannot get partitions of collection", zap.Error(err))
+		return
+	}
+
 	req := &querypb.SyncDistributionRequest{
 		Base: commonpbutil.NewMsgBase(
 			commonpbutil.WithMsgType(commonpb.MsgType_SyncDistribution),
 		),
 		CollectionID: leaderView.CollectionID,
+		ReplicaID:    replicaID,
 		Channel:      leaderView.Channel,
 		Actions:      diffs,
+		Schema:       schema,
+		LoadMeta: &querypb.LoadMetaInfo{
+			LoadType:     o.meta.GetLoadType(leaderView.CollectionID),
+			CollectionID: leaderView.CollectionID,
+			PartitionIDs: partitions,
+		},
+		Version: time.Now().UnixNano(),
 	}
 	resp, err := o.cluster.SyncDistribution(ctx, leaderView.ID, req)
 	if err != nil {

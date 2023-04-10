@@ -1345,6 +1345,8 @@ func (node *QueryNode) SyncDistribution(ctx context.Context, req *querypb.SyncDi
 		}
 		return status, nil
 	}
+
+	// get shard cluster
 	shardCluster, ok := node.ShardClusterService.getShardCluster(req.GetChannel())
 	if !ok {
 		log.Warn("failed to find shard cluster when sync ", zap.String("channel", req.GetChannel()))
@@ -1353,6 +1355,8 @@ func (node *QueryNode) SyncDistribution(ctx context.Context, req *querypb.SyncDi
 			Reason:    "shard not exist",
 		}, nil
 	}
+
+	//translate segment action
 	for _, action := range req.GetActions() {
 		log.Info("sync action", zap.String("Action", action.GetType().String()), zap.Int64("segmentID", action.SegmentID))
 		switch action.GetType() {
