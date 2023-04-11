@@ -32,13 +32,15 @@ import (
 type BalanceChecker struct {
 	baseChecker
 	balance.Balance
-	meta *meta.Meta
+	meta      *meta.Meta
+	scheduler task.Scheduler
 }
 
-func NewBalanceChecker(meta *meta.Meta, balancer balance.Balance) *BalanceChecker {
+func NewBalanceChecker(meta *meta.Meta, balancer balance.Balance, scheduler task.Scheduler) *BalanceChecker {
 	return &BalanceChecker{
-		Balance: balancer,
-		meta:    meta,
+		Balance:   balancer,
+		meta:      meta,
+		scheduler: scheduler,
 	}
 }
 
@@ -46,17 +48,30 @@ func (b *BalanceChecker) Description() string {
 	return "BalanceChecker checks the cluster distribution and generates balance tasks"
 }
 
-func (b *BalanceChecker) Check(ctx context.Context) []task.Task {
-	ret := make([]task.Task, 0)
+func (b *BalanceChecker) shouldDoBalance() (bool, []int64) {
+	//if configured no auto balance, skip balance
 	if !Params.QueryCoordCfg.AutoBalance.GetAsBool() {
-		return ret
+		return false, nil
 	}
-
-	ids := b.meta.CollectionManager.GetAll()
+	//if there are still tasks running in the scheduler, skip balance
+	//to avoid increase instability
+	if b.scheduler.GetSegmentTaskNum() != 0 || b.scheduler.GetChannelTaskNum() != 0 {
+		return false, nil
+	}
 	// loading collection should skip balance
+	ids := b.meta.CollectionManager.GetAll()
 	loadedCollections := lo.Filter(ids, func(cid int64, _ int) bool {
 		return b.meta.CalculateLoadStatus(cid) == querypb.LoadStatus_Loaded
 	})
+	return len(loadedCollections) == 0, loadedCollections
+}
+
+func (b *BalanceChecker) Check(ctx context.Context) []task.Task {
+	ret := make([]task.Task, 0)
+	shouldDoBalance, collectionsToBalance := b.shouldDoBalance()
+	if !shouldDoBalance {
+		return ret
+	}
 
 	segmentPlans, channelPlans := b.Balance.Balance()
 
