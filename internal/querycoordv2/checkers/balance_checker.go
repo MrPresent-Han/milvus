@@ -18,29 +18,45 @@ package checkers
 
 import (
 	"context"
-	"github.com/milvus-io/milvus/internal/proto/querypb"
-	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
-	"github.com/samber/lo"
+	"github.com/milvus-io/milvus/internal/querycoordv2/session"
+	"golang.org/x/exp/maps"
+	"sort"
 	"time"
 
+	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querycoordv2/balance"
+	"github.com/milvus-io/milvus/internal/querycoordv2/meta"
 	. "github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
+	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/util/typeutil"
+
+	"github.com/samber/lo"
+	"go.uber.org/zap"
 )
 
 // BalanceChecker checks the cluster distribution and generates balance tasks.
 type BalanceChecker struct {
 	baseChecker
-	balance.Balance
-	meta      *meta.Meta
-	scheduler task.Scheduler
+	policy                          balance.Policy
+	meta                            *meta.Meta
+	scheduler                       task.Scheduler
+	balancedCollectionsCurrentRound typeutil.UniqueSet
+	dist                            *meta.DistributionManager
+	targetMgr                       *meta.TargetManager
+	nodeMgr                         *session.NodeManager
 }
 
-func NewBalanceChecker(meta *meta.Meta, balancer balance.Balance, scheduler task.Scheduler) *BalanceChecker {
+func NewBalanceChecker(meta *meta.Meta, policy balance.Policy, scheduler task.Scheduler, dist *meta.DistributionManager,
+	targetManager *meta.TargetManager, nodeManager *session.NodeManager) *BalanceChecker {
 	return &BalanceChecker{
-		Balance:   balancer,
-		meta:      meta,
-		scheduler: scheduler,
+		policy:                          policy,
+		meta:                            meta,
+		scheduler:                       scheduler,
+		balancedCollectionsCurrentRound: typeutil.NewUniqueSet(),
+		dist:                            dist,
+		targetMgr:                       targetManager,
+		nodeMgr:                         nodeManager,
 	}
 }
 
@@ -68,13 +84,51 @@ func (b *BalanceChecker) shouldDoBalance() (bool, []int64) {
 
 func (b *BalanceChecker) Check(ctx context.Context) []task.Task {
 	ret := make([]task.Task, 0)
-	shouldDoBalance, collectionsToBalance := b.shouldDoBalance()
+	shouldDoBalance, loadedCollections := b.shouldDoBalance()
 	if !shouldDoBalance {
 		return ret
 	}
+	sort.Slice(loadedCollections, func(i, j int) bool {
+		return loadedCollections[i] < loadedCollections[j]
+	})
+	hasUnBalancedCollections := false
+	for _, cid := range loadedCollections {
+		if b.balancedCollectionsCurrentRound.Contain(cid) {
+			log.Debug("ScoreBasedBalancer has balanced collection, skip balancing in this round",
+				zap.Int64("collectionID", cid))
+			continue
+		}
+		hasUnBalancedCollections = true
+		replicas := b.meta.ReplicaManager.GetByCollection(cid)
 
-	segmentPlans, channelPlans := b.Balance.Balance()
+		segmentPlans, channelPlans := make([]balance.SegmentAssignPlan, 0), make([]balance.ChannelAssignPlan, 0)
+		for _, replica := range replicas {
+			sPlans, cPlans := b.balanceReplica(replica)
+			balance.PrintNewBalancePlans(cid, replica.GetID(), sPlans, cPlans)
+			segmentPlans = append(segmentPlans, sPlans...)
+			channelPlans = append(channelPlans, cPlans...)
+		}
+		if len(segmentPlans) != 0 || len(channelPlans) != 0 {
+			log.Info("ScoreBasedBalancer has generated balance plans for", zap.Int64("collectionID", cid))
+			break
+		}
+		segmentTasks := b.createSegmentTasksWithPriority(ctx, segmentPlans)
+		channelTasks := balance.CreateChannelTasksFromPlans(ctx, b.ID(),
+			Params.QueryCoordCfg.ChannelTaskTimeout.GetAsDuration(time.Millisecond), channelPlans)
+		ret = append(ret, segmentTasks...)
+		ret = append(ret, channelTasks...)
+		b.balancedCollectionsCurrentRound.Insert(cid)
+	}
+	if !hasUnBalancedCollections {
+		b.balancedCollectionsCurrentRound.Clear()
+		log.Debug("BalanceChecker has balanced all " +
+			"collections in one round, clear collectionIDs for this round")
+	}
 
+	return ret
+}
+
+func (b *BalanceChecker) createSegmentTasksWithPriority(ctx context.Context, segmentPlans []balance.SegmentAssignPlan) []task.Task {
 	tasks := balance.CreateSegmentTasksFromPlans(ctx, b.ID(), Params.QueryCoordCfg.SegmentTaskTimeout.GetAsDuration(time.Millisecond), segmentPlans)
 	task.SetPriorityWithFunc(func(t task.Task) task.Priority {
 		if t.Priority() == task.TaskPriorityHigh {
@@ -82,9 +136,76 @@ func (b *BalanceChecker) Check(ctx context.Context) []task.Task {
 		}
 		return task.TaskPriorityLow
 	}, tasks...)
-	ret = append(ret, tasks...)
+	return tasks
+}
 
-	tasks = balance.CreateChannelTasksFromPlans(ctx, b.ID(), Params.QueryCoordCfg.ChannelTaskTimeout.GetAsDuration(time.Millisecond), channelPlans)
-	ret = append(ret, tasks...)
-	return ret
+func (b *BalanceChecker) balanceReplica(replica *meta.Replica) ([]balance.SegmentAssignPlan, []balance.ChannelAssignPlan) {
+	nodes := replica.GetNodes()
+	if len(nodes) == 0 {
+		return nil, nil
+	}
+
+	nodesSegments := make(map[int64][]*meta.Segment)
+	stoppingNodesSegments := make(map[int64][]*meta.Segment)
+	outboundNodes := b.meta.ResourceManager.CheckOutboundNodes(replica)
+
+	// get stopping nodes and available nodes.
+	for _, nid := range nodes {
+		segments := b.dist.SegmentDistManager.GetByCollectionAndNode(replica.GetCollectionID(), nid)
+		// Only balance segments in current targets
+		segments = lo.Filter(segments, func(segment *meta.Segment, _ int) bool {
+			return b.targetMgr.GetHistoricalSegment(segment.GetCollectionID(), segment.GetID(), meta.CurrentTarget) != nil
+		})
+
+		if isStopping, err := b.nodeMgr.IsStoppingNode(nid); err != nil {
+			log.Info("not existed node", zap.Int64("nid", nid), zap.Any("segments", segments), zap.Error(err))
+			continue
+		} else if isStopping {
+			stoppingNodesSegments[nid] = segments
+		} else if outboundNodes.Contain(nid) {
+			log.RatedInfo(10, "meet outbound node, try to move out all segment/channel",
+				zap.Int64("collectionID", replica.GetCollectionID()),
+				zap.Int64("replicaID", replica.GetCollectionID()),
+				zap.Int64("node", nid),
+			)
+			stoppingNodesSegments[nid] = segments
+		} else {
+			nodesSegments[nid] = segments
+		}
+	}
+
+	if len(nodes) == len(stoppingNodesSegments) {
+		// no available nodes to balance
+		log.Warn("All nodes is under stopping mode or outbound, skip balance replica",
+			zap.Int64("collection", replica.CollectionID),
+			zap.Int64("replica id", replica.Replica.GetID()),
+			zap.String("replica group", replica.Replica.GetResourceGroup()),
+			zap.Int64s("nodes", replica.Replica.GetNodes()),
+		)
+		return nil, nil
+	}
+
+	if len(nodesSegments) <= 0 {
+		log.Warn("No nodes is available in resource group, skip balance replica",
+			zap.Int64("collection", replica.CollectionID),
+			zap.Int64("replica id", replica.Replica.GetID()),
+			zap.String("replica group", replica.Replica.GetResourceGroup()),
+			zap.Int64s("nodes", replica.Replica.GetNodes()),
+		)
+		return nil, nil
+	}
+
+	//print current distribution before generating plans
+	balance.PrintCurrentReplicaDist(replica, stoppingNodesSegments, nodesSegments, b.dist.ChannelDistManager)
+	if len(stoppingNodesSegments) != 0 {
+		log.Info("Handle stopping nodes", zap.Int64("collection", replica.CollectionID),
+			zap.Int64("replica id", replica.Replica.GetID()),
+			zap.String("replica group", replica.Replica.GetResourceGroup()),
+			zap.Any("stopping nodes", maps.Keys(stoppingNodesSegments)),
+			zap.Any("available nodes", maps.Keys(nodesSegments)),
+		)
+		return b.getStoppedSegmentPlan(replica, nodesSegments, stoppingNodesSegments), b.getStoppedChannelPlan(replica, lo.Keys(nodesSegments), lo.Keys(stoppingNodesSegments))
+	}
+
+	return b.getNormalSegmentPlan(replica, nodesSegments), b.getNormalChannelPlan(replica, lo.Keys(nodesSegments))
 }
