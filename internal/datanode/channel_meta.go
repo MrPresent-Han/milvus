@@ -495,7 +495,8 @@ func (c *ChannelMeta) updateSegmentMemorySize(segID UniqueID, memorySize int64) 
 		return
 	}
 
-	log.Warn("update segment memorySize not exist", zap.Int64("segID", segID))
+	log.Warn("update segment memorySize failed", zap.Int64("segID", segID), zap.Bool("exist", ok),
+		zap.Bool("isNotFlushed", seg.notFlushed()))
 }
 
 // getSegmentStatisticsUpdates gives current segment's statistics updates.
