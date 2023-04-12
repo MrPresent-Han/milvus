@@ -83,10 +83,19 @@ func (fm *flowgraphManager) execute(totalMemory uint64) {
 		return true
 	})
 	if len(channels) == 0 {
+		log.Info("there is no channels to sync, skip doing force sync")
 		return
 	}
 
+	toMB := func(memInBytes uint64) uint64 {
+		return memInBytes / 1024 / 1024
+	}
+
 	if float64(total) < float64(totalMemory)*Params.DataNodeCfg.MemoryWatermark {
+		log.Info("total used memory is not high enough to trigger force sync",
+			zap.Int64("channels-total-used MB", total/1024/1024),
+			zap.Uint64("hardware-total-used MB", toMB(hardware.GetUsedMemoryCount())),
+			zap.Uint64("total-memory MB", toMB(totalMemory)))
 		return
 	}
 
