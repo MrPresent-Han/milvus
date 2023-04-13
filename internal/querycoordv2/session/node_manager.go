@@ -71,6 +71,17 @@ func (m *NodeManager) IsStoppingNode(nodeID int64) (bool, error) {
 	return node.IsStoppingState(), nil
 }
 
+func (m *NodeManager) HasStoppingNodes() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	for _, nodeInfo := range m.GetAll() {
+		if nodeInfo.IsStoppingState() {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *NodeManager) Get(nodeID int64) *NodeInfo {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

@@ -9,8 +9,12 @@ import (
 
 type Policy interface {
 	AssignSegment(collectionID int64, segments []*meta.Segment, nodeInfos []*session.NodeInfo, deltaMap map[int64]int) []SegmentAssignPlan
-	AssignChannel(channels []*meta.DmChannel, nodeInfos []*session.NodeInfo) []ChannelAssignPlan
-	BalanceReplica(replica *meta.Replica) ([]SegmentAssignPlan, []ChannelAssignPlan)
+	AssignChannel(channels []*meta.DmChannel, nodeInfos []*session.NodeInfo, deltaMap map[int64]int) []ChannelAssignPlan
+	BalanceStoppingSegments(replica *meta.Replica, onlineNodesSegments map[int64][]*meta.Segment,
+		stoppingNodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan
+	BalanceNormalSegments(replica *meta.Replica, onlineNodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan
+	BalanceStoppingChannels(replica *meta.Replica, onlineNodes []int64, stoppingNodes []int64) []ChannelAssignPlan
+	BalanceNormalChannels(replica *meta.Replica, onlineNodes []int64) []ChannelAssignPlan
 }
 
 type RoundRobinPolicy struct {
@@ -60,7 +64,19 @@ func (roundRobinPolicy *RoundRobinPolicy) AssignChannel(channels []*meta.DmChann
 	return ret
 }
 
-func (roundRobinPolicy *RoundRobinPolicy) Balance() ([]SegmentAssignPlan, []ChannelAssignPlan) {
+func (roundRobinPolicy *RoundRobinPolicy) BalanceStoppingSegments(replica *meta.Replica, onlineNodesSegments map[int64][]*meta.Segment,
+	stoppingNodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan {
+	return nil
+}
 
-	return segmentPlans, channelPlans
+func (roundRobinPolicy *RoundRobinPolicy) BalanceNormalSegments(replica *meta.Replica, onlineNodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan {
+	return nil
+}
+
+func (roundRobinPolicy *RoundRobinPolicy) BalanceStoppingChannels(replica *meta.Replica, onlineNodes []int64, stoppingNodes []int64) []ChannelAssignPlan {
+	return nil
+}
+
+func (roundRobinPolicy *RoundRobinPolicy) BalanceNormalChannels(replica *meta.Replica, onlineNodes []int64) []ChannelAssignPlan {
+	return nil
 }

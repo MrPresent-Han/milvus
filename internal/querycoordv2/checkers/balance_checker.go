@@ -65,6 +65,15 @@ func (b *BalanceChecker) Description() string {
 }
 
 func (b *BalanceChecker) shouldDoBalance() (bool, []int64) {
+	// loading collection should skip balance
+	ids := b.meta.CollectionManager.GetAll()
+	loadedCollections := lo.Filter(ids, func(cid int64, _ int) bool {
+		return b.meta.CalculateLoadStatus(cid) == querypb.LoadStatus_Loaded
+	})
+	// if there's stopping nodes, do balance
+	if b.nodeMgr.HasStoppingNodes() {
+		return len(loadedCollections) == 0, loadedCollections
+	}
 	//if configured no auto balance, skip balance
 	if !Params.QueryCoordCfg.AutoBalance.GetAsBool() {
 		return false, nil
@@ -74,11 +83,6 @@ func (b *BalanceChecker) shouldDoBalance() (bool, []int64) {
 	if b.scheduler.GetSegmentTaskNum() != 0 || b.scheduler.GetChannelTaskNum() != 0 {
 		return false, nil
 	}
-	// loading collection should skip balance
-	ids := b.meta.CollectionManager.GetAll()
-	loadedCollections := lo.Filter(ids, func(cid int64, _ int) bool {
-		return b.meta.CalculateLoadStatus(cid) == querypb.LoadStatus_Loaded
-	})
 	return len(loadedCollections) == 0, loadedCollections
 }
 
