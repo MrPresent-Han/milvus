@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"runtime"
 	"strconv"
 
 	"github.com/milvus-io/milvus/internal/log"
@@ -62,6 +63,8 @@ func Register(h *HTTPHandler) {
 }
 
 func ServeHTTP() {
+	runtime.SetMutexProfileFraction(1)
+	runtime.SetBlockProfileRate(1)
 	registerDefaults()
 	go func() {
 		bindAddr := getHTTPAddr()
