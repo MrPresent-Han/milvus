@@ -409,9 +409,17 @@ func (sc *ShardCluster) watchNodes(evtCh <-chan nodeEvent) {
 			}
 			switch evt.eventType {
 			case nodeAdd:
+				log.Info("start handling nodeAdd event", zap.Int64("nodeID", evt.nodeID),
+					zap.String("nodeAddr", evt.nodeAddr))
 				sc.addNode(evt)
+				log.Info("finish handling nodeAdd event", zap.Int64("nodeID", evt.nodeID),
+					zap.String("nodeAddr", evt.nodeAddr))
 			case nodeDel:
+				log.Info("start handling nodeDel event", zap.Int64("nodeID", evt.nodeID),
+					zap.String("nodeAddr", evt.nodeAddr))
 				sc.removeNode(evt)
+				log.Info("finish handling nodeDel event", zap.Int64("nodeID", evt.nodeID),
+					zap.String("nodeAddr", evt.nodeAddr))
 			}
 		case <-sc.closeCh:
 			log.Info("ShardCluster watchNode quit")
@@ -511,13 +519,14 @@ func (sc *ShardCluster) LoadSegments(ctx context.Context, req *querypb.LoadSegme
 		segmentIDs = append(segmentIDs, info.SegmentID)
 	}
 	log = log.With(zap.Int64s("segmentIDs", segmentIDs))
-
+	log.Info("shard cluster start loading segments")
 	// notify follower to load segment
 	node, ok := sc.getNode(req.GetDstNodeID())
 	if !ok {
 		log.Warn("node not in cluster")
 		return fmt.Errorf("node not in cluster %d", req.GetDstNodeID())
 	}
+	log.Info("found follower node")
 
 	req = proto.Clone(req).(*querypb.LoadSegmentsRequest)
 	req.Base.TargetID = req.GetDstNodeID()
@@ -534,6 +543,7 @@ func (sc *ShardCluster) LoadSegments(ctx context.Context, req *querypb.LoadSegme
 		log.Warn("follower load segment failed", zap.String("reason", resp.GetReason()))
 		return fmt.Errorf("follower %d failed to load segment, reason %s", req.DstNodeID, resp.GetReason())
 	}
+	log.Info("follower finish loading segments", zap.String("resp", resp.String()))
 
 	// update allocation
 	for _, info := range req.Infos {
@@ -545,7 +555,7 @@ func (sc *ShardCluster) LoadSegments(ctx context.Context, req *querypb.LoadSegme
 			version:     req.GetVersion(),
 		})
 	}
-
+	log.Info("shard cluster finish loading segments")
 	return nil
 }
 
