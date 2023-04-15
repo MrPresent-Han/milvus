@@ -731,7 +731,8 @@ func (s *Session) LivenessCheck(ctx context.Context, callback func()) {
 				for _, event := range resp.Events {
 					switch event.Type {
 					case mvccpb.PUT:
-						log.Info("register session success", zap.String("role", s.ServerName), zap.String("key", string(event.Kv.Key)))
+						log.Info("register session success", zap.String("role", s.ServerName),
+							zap.String("key", string(event.Kv.Key)), zap.String("value", string(event.Kv.Value)))
 					case mvccpb.DELETE:
 						log.Info("session key is deleted, exit...", zap.String("role", s.ServerName), zap.String("key", string(event.Kv.Key)))
 						if s.keepAliveCancel != nil {

@@ -172,10 +172,10 @@ func (dh *distHandler) updateChannelsDistribution(resp *querypb.GetDataDistribut
 func (dh *distHandler) updateLeaderView(resp *querypb.GetDataDistributionResponse) {
 	updates := make([]*meta.LeaderView, 0, len(resp.GetLeaderViews()))
 	for _, lview := range resp.GetLeaderViews() {
-		segments := make(map[int64]*meta.Segment)
+		growingSegments := make(map[int64]*meta.Segment)
 
 		for ID, position := range lview.GrowingSegments {
-			segments[ID] = &meta.Segment{
+			growingSegments[ID] = &meta.Segment{
 				SegmentInfo: &datapb.SegmentInfo{
 					ID:            ID,
 					CollectionID:  lview.GetCollection(),
@@ -200,7 +200,7 @@ func (dh *distHandler) updateLeaderView(resp *querypb.GetDataDistributionRespons
 			Channel:         lview.GetChannel(),
 			Version:         version,
 			Segments:        lview.GetSegmentDist(),
-			GrowingSegments: segments,
+			GrowingSegments: growingSegments,
 		}
 		updates = append(updates, view)
 	}

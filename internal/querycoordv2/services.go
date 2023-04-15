@@ -909,11 +909,12 @@ func (s *Server) GetShardLeaders(ctx context.Context, req *querypb.GetShardLeade
 			}
 			// Check whether QueryNodes are online and available
 			isAvailable := true
-			for _, version := range leader.Segments {
-				if s.nodeMgr.Get(version.NodeID) == nil {
-					log.Info("leader is not available due to QueryNode not available", zap.Int64("nodeID", version.GetNodeID()))
+			for segID, segDist := range leader.Segments {
+				if s.nodeMgr.Get(segDist.NodeID) == nil {
+					log.Info("leader is not available due to segment dist queryNode not available", zap.Int64("segmentID", segID),
+						zap.Int64("nodeID", segDist.GetNodeID()))
 					isAvailable = false
-					multierr.AppendInto(&channelErr, WrapErrNodeOffline(version.GetNodeID()))
+					multierr.AppendInto(&channelErr, WrapErrNodeOffline(segDist.GetNodeID()))
 					break
 				}
 			}
