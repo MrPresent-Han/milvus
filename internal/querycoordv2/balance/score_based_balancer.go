@@ -238,10 +238,6 @@ func (b *ScoreBasedBalancer) getStoppedChannelPlan(replica *meta.Replica, online
 }
 
 func (b *ScoreBasedBalancer) getNormalSegmentPlan(replica *meta.Replica, nodesSegments map[int64][]*meta.Segment) []SegmentAssignPlan {
-	if b.scheduler.GetSegmentTaskNum() != 0 {
-		// scheduler is handling segment task, skip
-		return nil
-	}
 	segmentPlans := make([]SegmentAssignPlan, 0)
 
 	// generate candidates

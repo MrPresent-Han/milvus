@@ -39,14 +39,16 @@ type BalanceChecker struct {
 	meta                            *meta.Meta
 	nodeManager                     *session.NodeManager
 	balancedCollectionsCurrentRound typeutil.UniqueSet
+	scheduler                       task.Scheduler
 }
 
-func NewBalanceChecker(meta *meta.Meta, balancer balance.Balance, nodeMgr *session.NodeManager) *BalanceChecker {
+func NewBalanceChecker(meta *meta.Meta, balancer balance.Balance, nodeMgr *session.NodeManager, scheduler task.Scheduler) *BalanceChecker {
 	return &BalanceChecker{
 		Balance:                         balancer,
 		meta:                            meta,
 		nodeManager:                     nodeMgr,
 		balancedCollectionsCurrentRound: typeutil.NewUniqueSet(),
+		scheduler:                       scheduler,
 	}
 }
 
@@ -85,6 +87,12 @@ func (b *BalanceChecker) collectionsToBalance() []int64 {
 	if !Params.QueryCoordCfg.AutoBalance {
 		return make([]int64, 0)
 	}
+
+	// scheduler is handling segment task, skip
+	if b.scheduler.GetSegmentTaskNum() != 0 {
+		return make([]int64, 0)
+	}
+
 	//iterator one normal collection in one round
 	normalCollectionsToBalance := make([]int64, 0)
 	hasUnBalancedCollections := false
