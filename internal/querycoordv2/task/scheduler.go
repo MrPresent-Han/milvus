@@ -140,6 +140,7 @@ type Scheduler interface {
 	GetNodeChannelDelta(nodeID int64) int
 	GetChannelTaskNum() int
 	GetSegmentTaskNum() int
+	IsEmpty() chan struct{}
 }
 
 type taskScheduler struct {
@@ -160,6 +161,7 @@ type taskScheduler struct {
 	channelTasks map[replicaChannelIndex]Task
 	processQueue *taskQueue
 	waitQueue    *taskQueue
+	emptyCh      chan struct{}
 }
 
 func NewScheduler(ctx context.Context,
@@ -190,6 +192,7 @@ func NewScheduler(ctx context.Context,
 		channelTasks: make(map[replicaChannelIndex]Task),
 		processQueue: newTaskQueue(),
 		waitQueue:    newTaskQueue(),
+		emptyCh:      make(chan struct{}),
 	}
 }
 
@@ -702,8 +705,19 @@ func (scheduler *taskScheduler) remove(task Task) {
 		log = log.With(zap.String("channel", task.Channel()))
 		metrics.QueryCoordTaskNum.WithLabelValues(metrics.WatchDmlChannelLabel).Set(float64(len(scheduler.channelTasks)))
 	}
-
+	scheduler.checkEmpty()
 	log.Info("task removed")
+}
+
+func (scheduler *taskScheduler) checkEmpty() {
+	if len(scheduler.segmentTasks) == 0 && len(scheduler.channelTasks) == 0 {
+		log.Info("queryCoord scheduler has become empty")
+		scheduler.emptyCh <- struct{}{}
+	}
+}
+
+func (scheduler *taskScheduler) IsEmpty() chan struct{} {
+	return scheduler.emptyCh
 }
 
 func (scheduler *taskScheduler) checkCanceled(task Task) bool {

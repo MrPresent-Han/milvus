@@ -97,6 +97,7 @@ func (controller *CheckerController) Start(ctx context.Context) {
 				controller.check(ctx)
 
 			case <-controller.checkCh:
+			case <-controller.scheduler.IsEmpty():
 				ticker.Stop()
 				controller.check(ctx)
 				ticker.Reset(Params.QueryCoordCfg.CheckInterval)
