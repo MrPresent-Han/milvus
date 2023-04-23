@@ -782,6 +782,13 @@ func (scheduler *taskScheduler) checkStale(task Task) bool {
 			log.Warn("the task is stale, the target node is offline")
 			return true
 		}
+		if action.Type() == ActionTypeGrow {
+			isStoppingNode, _ := scheduler.nodeMgr.IsStoppingNode(action.Node())
+			if isStoppingNode {
+				log.Warn("task stale due to dst node for growing has been stopping", zap.Int64("dstNode", action.Node()))
+				return true
+			}
+		}
 	}
 
 	return false
@@ -812,6 +819,15 @@ func (scheduler *taskScheduler) checkSegmentTaskStale(task *SegmentTask) bool {
 				log.Warn("task stale due to leader not found")
 				return true
 			}
+			isStoppingNode, err := scheduler.nodeMgr.IsStoppingNode(action.Node())
+			if isStoppingNode {
+				log.Warn("task stale due to dst node for loading has been stopping", zap.Int64("dstNode", action.Node()))
+				return true
+			}
+			if err != nil {
+				log.Warn("task stale due to dst node has not existed", zap.Int64("dstNode", action.Node()))
+				return true
+			}
 
 		case ActionTypeReduce:
 			// Do nothing here,
@@ -838,7 +854,7 @@ func (scheduler *taskScheduler) checkChannelTaskStale(task *ChannelTask) bool {
 
 		case ActionTypeReduce:
 			// Do nothing here,
-			// the task should succeeded if the channel not exists
+			// the task should succeed if the channel not exists
 		}
 	}
 	return false
