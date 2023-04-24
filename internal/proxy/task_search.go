@@ -330,7 +330,7 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 	t.SearchRequest.TravelTimestamp = travelTimestamp
-
+	//hc---gt? timeoutStamp?
 	guaranteeTs := t.request.GetGuaranteeTimestamp()
 	guaranteeTs = parseGuaranteeTs(guaranteeTs, t.BeginTs())
 	t.SearchRequest.GuaranteeTimestamp = guaranteeTs
@@ -338,8 +338,9 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	if deadline, ok := t.TraceCtx().Deadline(); ok {
 		t.SearchRequest.TimeoutTimestamp = tsoutil.ComposeTSByTime(deadline, 0)
 	}
-
+	//hc--dsl?
 	t.SearchRequest.Dsl = t.request.Dsl
+	//hc--placeholderGroup?
 	t.SearchRequest.PlaceholderGroup = t.request.PlaceholderGroup
 
 	log.Ctx(ctx).Debug("search PreExecute done.",
