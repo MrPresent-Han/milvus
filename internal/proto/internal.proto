@@ -133,6 +133,8 @@ message RetrieveRequest {
   int64 limit = 11; // Optional
   bool ignoreGrowing = 12;
   bool is_count = 13;
+  bool use_iterator_cache = 14;
+  uint64 iterator_cache_id = 15;
 }
 
 message RetrieveResults {

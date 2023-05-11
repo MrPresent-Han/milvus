@@ -163,6 +163,9 @@ func (node *QueryNode) queryChannel(ctx context.Context, req *querypb.QueryReque
 		metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.QueryLabel, metrics.SuccessLabel).Inc()
 		return results, nil
 	}
+
+	//hc---req.Req.UseIteratorCache
+
 	// From Proxy
 	tr := timerecord.NewTimeRecorder("queryDelegator")
 	// get delegator
@@ -216,6 +219,22 @@ func (node *QueryNode) queryChannel(ctx context.Context, req *querypb.QueryReque
 	metrics.QueryNodeSQReqLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.QueryLabel, metrics.Leader).Observe(float64(latency.Milliseconds()))
 	metrics.QueryNodeSQCount.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.QueryLabel, metrics.SuccessLabel).Inc()
 	return ret, nil
+}
+
+func (node *QueryNode) maybeUseIteratorCache(req *querypb.QueryRequest) (bool, uint64, *internalpb.RetrieveResults) {
+	var (
+		doCompute bool
+		cacheID   uint64
+		ret       *internalpb.RetrieveResults
+	)
+	if req.Req.UseIteratorCache && req.Req.IteratorCacheId == 0 {
+		cacheID = node.iteratorCacheManager.applyNewItCacheID()
+		doCompute = true
+		ret = nil
+	} else if req.Req.UseIteratorCache && req.Req.IteratorCacheId != 0 {
+		
+	}
+	return doCompute, cacheID, ret
 }
 
 func (node *QueryNode) querySegments(ctx context.Context, req *querypb.QueryRequest) (*internalpb.RetrieveResults, error) {

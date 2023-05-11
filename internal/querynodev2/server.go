@@ -30,6 +30,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"os"
 	"path"
 	"plugin"
@@ -40,6 +41,7 @@ import (
 	"unsafe"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
@@ -123,17 +125,42 @@ type QueryNode struct {
 		knnPool *conc.Pool*/
 
 	// parameter turning hook
-	queryHook queryHook
+	queryHook            queryHook
+	iteratorCacheManager *IteratorCacheManager
+}
+
+type IteratorCache struct {
+	res  *internalpb.RetrieveResults
+	next *IteratorCache
+}
+
+type IteratorCacheManager struct {
+	//iterator cache
+	iteratorCacheID  atomic.Uint64
+	iteratorCacheMap map[string]map[int64]*IteratorCache
+}
+
+func newIteratorCacheManager() *IteratorCacheManager {
+	itCacheManager := &IteratorCacheManager{
+		iteratorCacheMap: make(map[string]map[int64]*IteratorCache),
+	}
+	itCacheManager.iteratorCacheID.Store(0)
+	return itCacheManager
+}
+
+func (itCacheManager *IteratorCacheManager) applyNewItCacheID() uint64 {
+	return itCacheManager.iteratorCacheID.Inc()
 }
 
 // NewQueryNode will return a QueryNode with abnormal state.
 func NewQueryNode(ctx context.Context, factory dependency.Factory) *QueryNode {
 	ctx, cancel := context.WithCancel(ctx)
 	node := &QueryNode{
-		ctx:      ctx,
-		cancel:   cancel,
-		factory:  factory,
-		lifetime: lifetime.NewLifetime(commonpb.StateCode_Abnormal),
+		ctx:                  ctx,
+		cancel:               cancel,
+		factory:              factory,
+		lifetime:             lifetime.NewLifetime(commonpb.StateCode_Abnormal),
+		iteratorCacheManager: newIteratorCacheManager(),
 	}
 
 	node.tSafeManager = tsafe.NewTSafeReplica()
@@ -321,7 +348,6 @@ func (node *QueryNode) Init() error {
 				gc.NewTuner(paramtable.Get().QueryNodeCfg.OverloadedMemoryThresholdPercentage.GetAsFloat(), uint32(paramtable.Get().QueryNodeCfg.MinimumGOGCConfig.GetAsInt()), uint32(paramtable.Get().QueryNodeCfg.MaximumGOGCConfig.GetAsInt()), action)
 			}
 		}
-
 		log.Info("query node init successfully",
 			zap.Int64("queryNodeID", paramtable.GetNodeID()),
 			zap.String("Address", node.address),
