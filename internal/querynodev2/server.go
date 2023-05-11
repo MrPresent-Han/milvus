@@ -137,12 +137,12 @@ type IteratorCache struct {
 type IteratorCacheManager struct {
 	//iterator cache
 	iteratorCacheID  atomic.Uint64
-	iteratorCacheMap map[string]map[int64]*IteratorCache
+	iteratorCacheMap map[string]map[uint64]*IteratorCache
 }
 
 func newIteratorCacheManager() *IteratorCacheManager {
 	itCacheManager := &IteratorCacheManager{
-		iteratorCacheMap: make(map[string]map[int64]*IteratorCache),
+		iteratorCacheMap: make(map[string]map[uint64]*IteratorCache),
 	}
 	itCacheManager.iteratorCacheID.Store(0)
 	return itCacheManager
@@ -150,6 +150,24 @@ func newIteratorCacheManager() *IteratorCacheManager {
 
 func (itCacheManager *IteratorCacheManager) applyNewItCacheID() uint64 {
 	return itCacheManager.iteratorCacheID.Inc()
+}
+
+func (itCacheManager *IteratorCacheManager) getIteratorCache(channel string, cacheID uint64) *internalpb.RetrieveResults {
+	channelCacheMap, ok := itCacheManager.iteratorCacheMap[channel]
+	if !ok {
+		return nil
+	}
+	itCache, cacheExisted := channelCacheMap[cacheID]
+	if !cacheExisted {
+		return nil
+	}
+	ret := itCache.res
+	if itCache.next != nil {
+		channelCacheMap[cacheID] = itCache.next
+	} else {
+		delete(channelCacheMap, cacheID)
+	}
+	return ret
 }
 
 // NewQueryNode will return a QueryNode with abnormal state.

@@ -221,7 +221,7 @@ func (node *QueryNode) queryChannel(ctx context.Context, req *querypb.QueryReque
 	return ret, nil
 }
 
-func (node *QueryNode) maybeUseIteratorCache(req *querypb.QueryRequest) (bool, uint64, *internalpb.RetrieveResults) {
+func (node *QueryNode) maybeUseIteratorCache(req *querypb.QueryRequest, channel string) (bool, uint64, *internalpb.RetrieveResults) {
 	var (
 		doCompute bool
 		cacheID   uint64
@@ -232,7 +232,7 @@ func (node *QueryNode) maybeUseIteratorCache(req *querypb.QueryRequest) (bool, u
 		doCompute = true
 		ret = nil
 	} else if req.Req.UseIteratorCache && req.Req.IteratorCacheId != 0 {
-		
+		node.iteratorCacheManager.
 	}
 	return doCompute, cacheID, ret
 }
