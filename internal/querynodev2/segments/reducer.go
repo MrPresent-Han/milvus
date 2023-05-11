@@ -17,6 +17,8 @@ type internalReducer interface {
 func CreateInternalReducer(req *querypb.QueryRequest, schema *schemapb.CollectionSchema) internalReducer {
 	if req.GetReq().GetIsCount() {
 		return &cntReducer{}
+	} else if req.GetReq().GetUseIteratorCache() {
+
 	}
 	return newDefaultLimitReducer(req, schema)
 }

@@ -152,7 +152,7 @@ func (itCacheManager *IteratorCacheManager) applyNewItCacheID() uint64 {
 	return itCacheManager.iteratorCacheID.Inc()
 }
 
-func (itCacheManager *IteratorCacheManager) getIteratorCache(channel string, cacheID uint64) *internalpb.RetrieveResults {
+func (itCacheManager *IteratorCacheManager) getIteratorCacheResult(channel string, cacheID uint64) *internalpb.RetrieveResults {
 	channelCacheMap, ok := itCacheManager.iteratorCacheMap[channel]
 	if !ok {
 		return nil
