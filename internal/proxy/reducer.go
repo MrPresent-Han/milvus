@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/pkg/util/typeutil"
 
 	"github.com/milvus-io/milvus/internal/proto/planpb"
 
@@ -17,6 +18,8 @@ type milvusReducer interface {
 func createMilvusReducer(ctx context.Context, params *queryParams, req *internalpb.RetrieveRequest, schema *schemapb.CollectionSchema, plan *planpb.PlanNode, collectionName string) milvusReducer {
 	if plan.GetQuery().GetIsCount() {
 		return &cntReducer{}
+	} else if req.GetIterationExtensionReduce() {
+		params.limit = typeutil.Unlimited
 	}
 	return newDefaultLimitReducer(ctx, params, req, schema, collectionName)
 }
