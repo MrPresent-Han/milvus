@@ -548,7 +548,7 @@ func (t *compactionTrigger) generatePlans(segments []*SegmentInfo, force bool, i
 			size += s.getSegmentSize()
 			row += s.GetNumOfRows()
 		}
-		log.Info("generate a plan for priority candidates", zap.Any("plan", plan),
+		log.Info("generate a plan for priority candidates", zap.Int64s("plan segment IDs", lo.Map(bucket, getSegmentIDs)),
 			zap.Int64("target segment row", row), zap.Int64("target segment size", size))
 		plans = append(plans, plan)
 	}

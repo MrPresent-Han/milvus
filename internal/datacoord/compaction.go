@@ -183,8 +183,11 @@ func (c *compactionPlanHandler) execCompactionPlan(signal *compactionSignal, pla
 	c.executingTaskNum++
 
 	go func() {
-		log.Info("acquire queue", zap.Int64("nodeID", nodeID), zap.Int64("planID", plan.GetPlanID()))
+		start := time.Now()
+		log.Info("start acquiring node compaction queue", zap.Int64("nodeID", nodeID), zap.Int64("planID", plan.GetPlanID()))
 		c.acquireQueue(nodeID)
+		log.Info("finish acquiring  node compaction queue", zap.Int64("nodeID", nodeID),
+			zap.Int64("planID", plan.GetPlanID()), zap.Int64("time cost in ms", time.Since(start).Milliseconds()))
 
 		ts, err := c.allocator.allocTimestamp(context.TODO())
 		if err != nil {
@@ -205,7 +208,9 @@ func (c *compactionPlanHandler) execCompactionPlan(signal *compactionSignal, pla
 			// release queue will be done in `updateCompaction`
 			return
 		}
-		log.Info("start compaction", zap.Int64("nodeID", nodeID), zap.Int64("planID", plan.GetPlanID()))
+		log.Info("start compaction", zap.Int64("nodeID", nodeID),
+			zap.Int64("planID", plan.GetPlanID()),
+			zap.Int("executing compaction task number", c.executingTaskNum))
 	}()
 	return nil
 }
