@@ -18,6 +18,7 @@ package checkers
 
 import (
 	"context"
+	"time"
 
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -28,6 +29,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querycoordv2/session"
 	"github.com/milvus-io/milvus/internal/querycoordv2/task"
 	"github.com/milvus-io/milvus/internal/querycoordv2/utils"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
@@ -138,7 +140,27 @@ func (c *SegmentChecker) getStreamingSegmentDiff(targetMgr *meta.TargetManager,
 						zap.Int64("segmentID", segment.GetID()),
 					)
 					toRelease = append(toRelease, segment)
+				} else {
+					segmentTime, _ := tsoutil.ParseTS(timestampInSegment)
+					targetTime, _ := tsoutil.ParseTS(timestampInTarget)
+					if segmentTime.Sub(targetTime) > Params.DataNodeCfg.CpLagPeriod {
+						log.Info("growing segment not exist in target but segment ts is much larger than that of channel checkpoint",
+							zap.Int64("segmentID", segment.GetID()),
+							zap.Time("segmentTs", segmentTime),
+							zap.Time("targetTs", targetTime),
+						)
+					}
 				}
+			}
+		} else {
+			segmentStartTime, _ := tsoutil.ParseTS(segment.GetStartPosition().GetTimestamp())
+			if time.Since(segmentStartTime) > Params.DataNodeCfg.CpLagPeriod {
+				log.Info("segment start time has lagged too behind but it's still in the target",
+					zap.Int64("segmentID", segment.GetID()),
+					zap.Time("segmentStartTime", segmentStartTime),
+					zap.Bool("in current target", currentTargetSegmentIDs.Contain(segment.GetID())),
+					zap.Bool("in next target", nextTargetSegmentIDs.Contain(segment.GetID())),
+				)
 			}
 		}
 	}

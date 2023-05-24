@@ -819,7 +819,12 @@ func (s *Server) GetRecoveryInfoV2(ctx context.Context, req *datapb.GetRecoveryI
 		}
 		channelInfos = append(channelInfos, channelInfo)
 		log.Info("datacoord append channelInfo in GetRecoveryInfo",
-			zap.Any("channelInfo", channelInfo),
+			zap.Int("unFlushedSegment_count", len(channelInfo.GetUnflushedSegmentIds())),
+			zap.Int("FlushedSegment_count", len(channelInfo.GetFlushedSegments())),
+			zap.Int("DroppedSegment_count", len(channelInfo.GetDroppedSegments())),
+			zap.Int64s("unFlushedSegmentIDs", channelInfo.GetUnflushedSegmentIds()),
+			zap.Int64s("FlushedSegmentIDs", channelInfo.GetFlushedSegmentIds()),
+			zap.Int64s("DroppedSegmentIDs", channelInfo.GetDroppedSegmentIds()),
 		)
 		flushedIDs.Insert(channelInfo.GetFlushedSegmentIds()...)
 	}
