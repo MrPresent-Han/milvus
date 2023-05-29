@@ -4260,7 +4260,7 @@ func (node *Proxy) GetCompactionStateWithPlans(ctx context.Context, req *milvusp
 
 // GetFlushState gets the flush state of multiple segments
 func (node *Proxy) GetFlushState(ctx context.Context, req *milvuspb.GetFlushStateRequest) (*milvuspb.GetFlushStateResponse, error) {
-	log.Info("received get flush state request", zap.Any("request", req))
+	log.Info("received get flush state request", zap.Int64s("segmentIDs", req.GetSegmentIDs()))
 	var err error
 	resp := &milvuspb.GetFlushStateResponse{}
 	if !node.checkHealthy() {

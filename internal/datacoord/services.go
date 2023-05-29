@@ -677,9 +677,9 @@ func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInf
 			return resp, nil
 		}
 		channelInfos = append(channelInfos, channelInfo)
-		log.Debug("dataCoord append channelInfo in GetRecoveryInfo",
-			zap.Any("channelInfo", channelInfo),
-		)
+		//log.Debug("dataCoord append channelInfo in GetRecoveryInfo",
+		//	zap.Any("channelInfo", channelInfo),
+		//)
 		flushedIDs.Insert(channelInfo.GetFlushedSegmentIds()...)
 	}
 
@@ -820,8 +820,8 @@ func (s *Server) GetRecoveryInfoV2(ctx context.Context, req *datapb.GetRecoveryI
 		channelInfos = append(channelInfos, channelInfo)
 		log.Info("datacoord append channelInfo in GetRecoveryInfo",
 			zap.Int("unFlushedSegment_count", len(channelInfo.GetUnflushedSegmentIds())),
-			zap.Int("FlushedSegment_count", len(channelInfo.GetFlushedSegments())),
-			zap.Int("DroppedSegment_count", len(channelInfo.GetDroppedSegments())),
+			zap.Int("FlushedSegment_count", len(channelInfo.GetFlushedSegmentIds())),
+			zap.Int("DroppedSegment_count", len(channelInfo.GetDroppedSegmentIds())),
 			zap.Int64s("unFlushedSegmentIDs", channelInfo.GetUnflushedSegmentIds()),
 			zap.Int64s("FlushedSegmentIDs", channelInfo.GetFlushedSegmentIds()),
 			zap.Int64s("DroppedSegmentIDs", channelInfo.GetDroppedSegmentIds()),
@@ -1410,6 +1410,8 @@ func (s *Server) UpdateChannelCheckpoint(ctx context.Context, req *datapb.Update
 		resp.Reason = err.Error()
 		return resp, nil
 	}
+	log.Info("success update checkpoint", zap.String("channel", req.GetVChannel()),
+		zap.Uint64("ts", req.GetPosition().GetTimestamp()))
 
 	return &commonpb.Status{
 		ErrorCode: commonpb.ErrorCode_Success,
