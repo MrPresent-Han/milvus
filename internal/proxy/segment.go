@@ -21,6 +21,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/metrics"
+	"strconv"
 	"time"
 
 	"go.uber.org/zap"
@@ -309,7 +311,8 @@ func (sa *segIDAssigner) syncSegments() (bool, error) {
 		PeerRole:          typeutil.ProxyRole,
 		SegmentIDRequests: sa.segReqs,
 	}
-
+	metrics.ProxySyncSegmentRequestLength.WithLabelValues(
+		strconv.FormatInt(Params.ProxyCfg.GetNodeID(), 10)).Observe(float64(len(sa.segReqs)))
 	sa.segReqs = nil
 
 	resp, err := sa.dataCoord.AssignSegmentID(context.Background(), req)
