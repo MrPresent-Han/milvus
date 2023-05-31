@@ -231,9 +231,14 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 	partitionID UniqueID, channelName string, requestRows int64) ([]*Allocation, error) {
 	sp, _ := trace.StartSpanFromContext(ctx)
 	defer sp.Finish()
+	log := log.With(zap.Int64("collectionID", collectionID), zap.Int64("partitionID", partitionID),
+		zap.String("channelName", channelName), zap.Int64("requestRows", requestRows))
+	beforeAcquireLockTime := time.Now()
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
+	log.Info("acquire segment_manager alloc time",
+		zap.Int64("spentMs", time.Since(beforeAcquireLockTime).Milliseconds()))
+	beforeAllocTime := time.Now()
 	// filter segments
 	segments := make([]*SegmentInfo, 0)
 	for _, segmentID := range s.segments {
@@ -279,7 +284,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 			return nil, err
 		}
 	}
-
+	log.Info("Add allocation time cost", zap.Int64("spentMs", time.Since(beforeAllocTime).Milliseconds()))
 	allocations := append(newSegmentAllocations, existedSegmentAllocations...)
 	return allocations, nil
 }

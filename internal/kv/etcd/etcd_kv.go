@@ -725,7 +725,7 @@ func (kv *EtcdKV) CompareVersionAndSwapBytes(key string, source int64, target []
 // CheckElapseAndWarn checks the elapsed time and warns if it is too long.
 func CheckElapseAndWarn(start time.Time, message string, fields ...zap.Field) bool {
 	elapsed := time.Since(start)
-	if elapsed.Milliseconds() > 2000 {
+	if elapsed.Milliseconds() > 1000 {
 		log.Warn(message, append([]zap.Field{zap.String("time spent", elapsed.String())}, fields...)...)
 		return true
 	}
