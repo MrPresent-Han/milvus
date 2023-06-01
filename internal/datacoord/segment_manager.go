@@ -20,10 +20,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/metastore"
 	"sync"
 	"time"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
+	cached "github.com/milvus-io/milvus/internal/allocator"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/types"
@@ -112,6 +114,41 @@ type SegmentManager struct {
 	channelSealPolicies []channelSealPolicy
 	flushPolicy         flushPolicy
 	rcc                 types.RootCoord
+	cataReqCacher       *catalogReqCacher
+}
+
+type cataRequest struct {
+	cached.BaseRequest
+	allocationsToAdd  []*Allocation
+	segmentsToPersist []*SegmentInfo
+}
+
+type catalogReqCacher struct {
+	cached.CachedAllocator
+	catalog metastore.DataCoordCatalog
+}
+
+func (cataReqCacher *catalogReqCacher) cacheCataReq(newAllocations []*Allocation, newSegments []*SegmentInfo) error {
+	cataRequest := &cataRequest{
+		BaseRequest:       cached.BaseRequest{Done: make(chan error), Valid: false},
+		allocationsToAdd:  newAllocations,
+		segmentsToPersist: newSegments,
+	}
+	cataReqCacher.Reqs <- cataRequest
+	return cataRequest.Wait()
+}
+
+func newCatalogReqCacher(ctx context.Context, dcCatalog metastore.DataCoordCatalog) (*catalogReqCacher, error) {
+	cacherCtx, cancel := context.WithCancel(ctx)
+	cataCacher := &catalogReqCacher{
+		CachedAllocator: cached.CachedAllocator{
+			Ctx:        cacherCtx,
+			CancelFunc: cancel,
+			Role:       "CatalogReqCacher",
+		},
+		catalog: dcCatalog,
+	}
+	return cataCacher, nil
 }
 
 type allocHelper struct {
@@ -197,6 +234,12 @@ func defaultFlushPolicy() flushPolicy {
 
 // newSegmentManager should be the only way to retrieve SegmentManager.
 func newSegmentManager(meta *meta, allocator allocator, rcc types.RootCoord, opts ...allocOption) *SegmentManager {
+	catalogReqCacher, err := newCatalogReqCacher(meta.ctx, meta.catalog)
+	if err == nil {
+		catalogReqCacher.Init()
+	} else {
+		catalogReqCacher = nil
+	}
 	manager := &SegmentManager{
 		meta:                meta,
 		allocator:           allocator,
@@ -208,6 +251,7 @@ func newSegmentManager(meta *meta, allocator allocator, rcc types.RootCoord, opt
 		channelSealPolicies: []channelSealPolicy{},      // no default channel seal policy
 		flushPolicy:         defaultFlushPolicy(),
 		rcc:                 rcc,
+		cataReqCacher:       catalogReqCacher,
 	}
 	for _, opt := range opts {
 		opt.apply(manager)
@@ -229,13 +273,28 @@ func (s *SegmentManager) loadSegmentsFromMeta() {
 // AllocSegment allocate segment per request collcation, partication, channel and rows
 func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID,
 	partitionID UniqueID, channelName string, requestRows int64) ([]*Allocation, error) {
+	allocationsToAdd, newSegmentsToPersist, err := s.allocSegmentInMemory(ctx, collectionID, partitionID, channelName, requestRows)
+	if err != nil {
+		return nil, err
+	}
+	//wait etcd persistent finish
+	err = s.cataReqCacher.cacheCataReq(allocationsToAdd, newSegmentsToPersist)
+	//update memory status for allocation
+	if err == nil {
+		return allocationsToAdd, nil
+	}
+	return nil, err
+}
+
+func (s *SegmentManager) allocSegmentInMemory(ctx context.Context, collectionID UniqueID,
+	partitionID UniqueID, channelName string, requestRows int64) ([]*Allocation, []*SegmentInfo, error) {
 	sp, _ := trace.StartSpanFromContext(ctx)
 	defer sp.Finish()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// filter segments
-	segments := make([]*SegmentInfo, 0)
+	// filter candidate segments
+	candidateSegments := make([]*SegmentInfo, 0)
 	for _, segmentID := range s.segments {
 		segment := s.meta.GetHealthySegment(segmentID)
 		if segment == nil {
@@ -245,43 +304,37 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 		if !satisfy(segment, collectionID, partitionID, channelName) || !isGrowing(segment) {
 			continue
 		}
-		segments = append(segments, segment)
+		candidateSegments = append(candidateSegments, segment)
 	}
 
 	// Apply allocation policy.
 	maxCountPerSegment, err := s.estimateMaxNumOfRows(collectionID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	newSegmentAllocations, existedSegmentAllocations := s.allocPolicy(segments,
+	newSegmentAllocations, existedSegmentAllocations := s.allocPolicy(candidateSegments,
 		requestRows, int64(maxCountPerSegment))
-
 	// create new segments and add allocations
 	expireTs, err := s.genExpireTs(ctx, false)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	newSegmentsToPersist := make([]*SegmentInfo, 0)
 	for _, allocation := range newSegmentAllocations {
-		segment, err := s.openNewSegment(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Growing)
+		newSegment, err := s.openNewSegmentInMemory(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Growing)
+		newSegmentsToPersist = append(newSegmentsToPersist, newSegment)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		allocation.ExpireTime = expireTs
-		allocation.SegmentID = segment.GetID()
-		if err := s.meta.AddAllocation(segment.GetID(), allocation); err != nil {
-			return nil, err
-		}
+		allocation.SegmentID = newSegment.GetID()
 	}
 
 	for _, allocation := range existedSegmentAllocations {
 		allocation.ExpireTime = expireTs
-		if err := s.meta.AddAllocation(allocation.SegmentID, allocation); err != nil {
-			return nil, err
-		}
 	}
-
-	allocations := append(newSegmentAllocations, existedSegmentAllocations...)
-	return allocations, nil
+	allocationsToAdd := append(newSegmentAllocations, existedSegmentAllocations...)
+	return allocationsToAdd, newSegmentsToPersist, nil
 }
 
 // allocSegmentForImport allocates one segment allocation for bulk insert.
@@ -301,7 +354,7 @@ func (s *SegmentManager) allocSegmentForImport(ctx context.Context, collectionID
 		return nil, err
 	}
 
-	segment, err := s.openNewSegment(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Importing)
+	segment, err := s.openNewSegmentInMemory(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Importing)
 	if err != nil {
 		return nil, err
 	}
@@ -344,7 +397,7 @@ func (s *SegmentManager) genExpireTs(ctx context.Context, isImport bool) (Timest
 	return expireTs, nil
 }
 
-func (s *SegmentManager) openNewSegment(ctx context.Context, collectionID UniqueID, partitionID UniqueID,
+func (s *SegmentManager) openNewSegmentInMemory(ctx context.Context, collectionID UniqueID, partitionID UniqueID,
 	channelName string, segmentState commonpb.SegmentState) (*SegmentInfo, error) {
 	sp, _ := trace.StartSpanFromContext(ctx)
 	defer sp.Finish()
@@ -373,8 +426,8 @@ func (s *SegmentManager) openNewSegment(ctx context.Context, collectionID Unique
 		segmentInfo.IsImporting = true
 	}
 	segment := NewSegmentInfo(segmentInfo)
-	if err := s.meta.AddSegment(segment); err != nil {
-		log.Error("failed to add segment to DataCoord", zap.Error(err))
+	if err := s.meta.AddSegmentInMemory(segment); err != nil {
+		log.Error("failed to add segment to DataCoord memory", zap.Error(err))
 		return nil, err
 	}
 	s.segments = append(s.segments, id)

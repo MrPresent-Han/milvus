@@ -277,6 +277,18 @@ func (m *meta) AddSegment(segment *SegmentInfo) error {
 	return nil
 }
 
+func (m *meta) AddSegmentInMemory(segment *SegmentInfo) error {
+	log.Info("meta update: adding segment",
+		zap.Int64("segment ID", segment.GetID()))
+	m.Lock()
+	defer m.Unlock()
+	m.segments.SetSegment(segment.GetID(), segment)
+	metrics.DataCoordNumSegments.WithLabelValues(segment.GetState().String()).Inc()
+	log.Info("meta update: adding segment - complete",
+		zap.Int64("segment ID", segment.GetID()))
+	return nil
+}
+
 // DropSegment remove segment with provided id, etcd persistence also removed
 func (m *meta) DropSegment(segmentID UniqueID) error {
 	log.Info("meta update: dropping segment",
