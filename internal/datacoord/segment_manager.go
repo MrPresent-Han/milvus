@@ -31,6 +31,7 @@ import (
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 )
 
@@ -119,23 +120,73 @@ type SegmentManager struct {
 
 type cataRequest struct {
 	cached.BaseRequest
+	id                int64
 	allocationsToAdd  []*Allocation
-	segmentsToPersist []*SegmentInfo
+	segmentsToPersist []*datapb.SegmentInfo
 }
 
 type catalogReqCacher struct {
 	cached.CachedAllocator
 	catalog metastore.DataCoordCatalog
+	reqID   atomic.Int64
+	resMap  map[int64]*cataRes
 }
 
-func (cataReqCacher *catalogReqCacher) cacheCataReq(newAllocations []*Allocation, newSegments []*SegmentInfo) error {
+type cataRes struct {
+	finished bool
+	err      error
+}
+
+func (cataReqCacher *catalogReqCacher) cacheCataReq(newAllocations []*Allocation, newSegments []*datapb.SegmentInfo) error {
 	cataRequest := &cataRequest{
 		BaseRequest:       cached.BaseRequest{Done: make(chan error), Valid: false},
+		id:                cataReqCacher.reqID.Inc(),
 		allocationsToAdd:  newAllocations,
 		segmentsToPersist: newSegments,
 	}
 	cataReqCacher.Reqs <- cataRequest
 	return cataRequest.Wait()
+}
+
+func (cataReqCacher *catalogReqCacher) syncCatalogs(bool, error) {
+	currentLen := 0
+	currentSegmentInfos := make([]*datapb.SegmentInfo, 0)
+	currentAllocations := make([]*Allocation, 0)
+	for _, toDoReq := range cataReqCacher.ToDoReqs {
+		cataReq := toDoReq.(*cataRequest)
+		len1 := kvLen(cataReq.segmentsToPersist)
+		len2 := kvLen(cataReq.allocationsToAdd)
+		currentLen = currentLen + len1 + len2
+		if currentLen < MAX_OP_PER_ROUND {
+			currentSegmentInfos = append(currentSegmentInfos, cataReq.segmentsToPersist...)
+			currentAllocations = append(currentAllocations, cataReq.allocationsToAdd...)
+		} else {
+			err = cataReqCacher.catalog.AddSegmentsByBatch(nil, currentSegmentInfos)
+			err = cataReqCacher.catalog.AddAllocationsByBatch(nil, currentAllocations)
+			if err == nil {
+				
+			}
+			currentLen = 0
+			currentSegmentInfos = make([]*datapb.SegmentInfo, 0)
+			currentAllocations = make([]*Allocation, 0)
+		}
+
+	}
+
+}
+
+const (
+	MAX_OP_PER_ROUND = 128
+)
+
+func (cataReqCacher *catalogReqCacher) pickCanDoFunc() {
+	if cataReqCacher.ToDoReqs == nil {
+		return
+	}
+	for _, req := range cataReqCacher.ToDoReqs {
+		cataReq := req.(*cataRequest)
+		cataReq.allocationsToAdd
+	}
 }
 
 func newCatalogReqCacher(ctx context.Context, dcCatalog metastore.DataCoordCatalog) (*catalogReqCacher, error) {
@@ -147,7 +198,9 @@ func newCatalogReqCacher(ctx context.Context, dcCatalog metastore.DataCoordCatal
 			Role:       "CatalogReqCacher",
 		},
 		catalog: dcCatalog,
+		resMap:  make(map[int64]*cataRes),
 	}
+	cataCacher.reqID.Store(0)
 	return cataCacher, nil
 }
 
@@ -287,7 +340,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 }
 
 func (s *SegmentManager) allocSegmentInMemory(ctx context.Context, collectionID UniqueID,
-	partitionID UniqueID, channelName string, requestRows int64) ([]*Allocation, []*SegmentInfo, error) {
+	partitionID UniqueID, channelName string, requestRows int64) ([]*Allocation, []*datapb.SegmentInfo, error) {
 	sp, _ := trace.StartSpanFromContext(ctx)
 	defer sp.Finish()
 	s.mu.Lock()
@@ -319,10 +372,10 @@ func (s *SegmentManager) allocSegmentInMemory(ctx context.Context, collectionID 
 	if err != nil {
 		return nil, nil, err
 	}
-	newSegmentsToPersist := make([]*SegmentInfo, 0)
+	newSegmentsToPersist := make([]*datapb.SegmentInfo, 0)
 	for _, allocation := range newSegmentAllocations {
 		newSegment, err := s.openNewSegmentInMemory(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Growing)
-		newSegmentsToPersist = append(newSegmentsToPersist, newSegment)
+		newSegmentsToPersist = append(newSegmentsToPersist, newSegment.SegmentInfo)
 		if err != nil {
 			return nil, nil, err
 		}

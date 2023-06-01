@@ -231,6 +231,24 @@ func (kc *Catalog) AddSegment(ctx context.Context, segment *datapb.SegmentInfo) 
 	return kc.MetaKv.MultiSave(kvs)
 }
 
+func (kc *Catalog) AddMultiSegments(ctx context.Context, segments []*datapb.SegmentInfo) (error, int) {
+	allKvs := make(map[string]string)
+	completedIdx := -1
+	for i, segment := range segments {
+		kvs, err := buildSegmentAndBinlogsKvs(segment)
+		if err != nil {
+			return err, completedIdx
+		}
+		allLen := len(allKvs) + len(kvs)
+		if allLen > maxEtcdTxnNum {
+			break
+		}
+		//hc---merge kv into allKvs
+		completedIdx = i
+	}
+	return kc.MetaKv.MultiSave(allKvs), completedIdx
+}
+
 // LoadFromSegmentPath loads segment info from persistent storage by given segment path.
 // # TESTING ONLY #
 func (kc *Catalog) LoadFromSegmentPath(colID, partID, segID typeutil.UniqueID) (*datapb.SegmentInfo, error) {
@@ -447,6 +465,7 @@ func (kc *Catalog) RevertAlterSegmentsAndAddNewSegment(ctx context.Context, oldS
 	return nil
 }
 
+// hc--- save in batch?
 func (kc *Catalog) SaveDroppedSegmentsInBatch(ctx context.Context, segments []*datapb.SegmentInfo) error {
 	if len(segments) == 0 {
 		return nil

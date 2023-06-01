@@ -106,6 +106,7 @@ func (t AlterType) String() string {
 type DataCoordCatalog interface {
 	ListSegments(ctx context.Context) ([]*datapb.SegmentInfo, error)
 	AddSegment(ctx context.Context, segment *datapb.SegmentInfo) error
+	AddMultiSegments(ctx context.Context, segments []*datapb.SegmentInfo) (error, int)
 	// TODO Remove this later, we should update flush segments info for each segment separately, so far we still need transaction
 	AlterSegments(ctx context.Context, newSegments []*datapb.SegmentInfo) error
 	// AlterSegmentsAndAddNewSegment for transaction
