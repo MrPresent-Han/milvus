@@ -27,6 +27,8 @@ import (
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/logutil"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
@@ -231,7 +233,11 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 	partitionID UniqueID, channelName string, requestRows int64) ([]*Allocation, error) {
 	sp, _ := trace.StartSpanFromContext(ctx)
 	defer sp.Finish()
+	log := logutil.Logger(ctx)
+	method := "AllocSegment"
+	tr := timerecord.NewTimeRecorder(method)
 	s.mu.Lock()
+	tr.CtxRecord(ctx, "hc---ObtainSegmentManagerMuLock")
 	defer s.mu.Unlock()
 
 	// filter segments
@@ -247,6 +253,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 		}
 		segments = append(segments, segment)
 	}
+	tr.CtxRecord(ctx, "hc---filter segments for allocation")
 
 	// Apply allocation policy.
 	maxCountPerSegment, err := s.estimateMaxNumOfRows(collectionID)
@@ -255,31 +262,36 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 	}
 	newSegmentAllocations, existedSegmentAllocations := s.allocPolicy(segments,
 		requestRows, int64(maxCountPerSegment))
+	tr.CtxRecord(ctx, "hc---alloc segments based on policy")
 
 	// create new segments and add allocations
 	expireTs, err := s.genExpireTs(ctx, false)
 	if err != nil {
 		return nil, err
 	}
+	tr.CtxRecord(ctx, "hc----s.genExpireTs")
 	for _, allocation := range newSegmentAllocations {
 		segment, err := s.openNewSegment(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Growing)
+		tr.CtxRecord(ctx, "hc---opened new segment")
 		if err != nil {
 			return nil, err
 		}
 		allocation.ExpireTime = expireTs
 		allocation.SegmentID = segment.GetID()
-		if err := s.meta.AddAllocation(segment.GetID(), allocation); err != nil {
+		if err := s.meta.AddAllocation(ctx, segment.GetID(), allocation); err != nil {
 			return nil, err
 		}
+		tr.CtxRecord(ctx, "hc---AddNewAllocation")
 	}
 
 	for _, allocation := range existedSegmentAllocations {
 		allocation.ExpireTime = expireTs
-		if err := s.meta.AddAllocation(allocation.SegmentID, allocation); err != nil {
+		if err := s.meta.AddAllocation(ctx, allocation.SegmentID, allocation); err != nil {
 			return nil, err
 		}
+		tr.CtxRecord(ctx, "hc---AddExistedAllocation")
 	}
-
+	log.Info("Finish allocating", zap.Duration("time_cost", tr.ElapseSpan()))
 	allocations := append(newSegmentAllocations, existedSegmentAllocations...)
 	return allocations, nil
 }
@@ -314,7 +326,7 @@ func (s *SegmentManager) allocSegmentForImport(ctx context.Context, collectionID
 
 	allocation.ExpireTime = expireTs
 	allocation.SegmentID = segment.GetID()
-	if err := s.meta.AddAllocation(segment.GetID(), allocation); err != nil {
+	if err := s.meta.AddAllocation(ctx, segment.GetID(), allocation); err != nil {
 		return nil, err
 	}
 	return allocation, nil
@@ -330,7 +342,10 @@ func isGrowing(segment *SegmentInfo) bool {
 }
 
 func (s *SegmentManager) genExpireTs(ctx context.Context, isImport bool) (Timestamp, error) {
+	log := logutil.Logger(ctx)
+	beforeAllocTs := time.Now()
 	ts, err := s.allocator.allocTimestamp(ctx)
+	log.Info("hc---allocTs from rootCoord", zap.Duration("time cost", time.Since(beforeAllocTs)))
 	if err != nil {
 		return 0, err
 	}
@@ -378,7 +393,7 @@ func (s *SegmentManager) openNewSegment(ctx context.Context, collectionID Unique
 		return nil, err
 	}
 	s.segments = append(s.segments, id)
-	log.Info("datacoord: estimateTotalRows: ",
+	logutil.Logger(ctx).Info("datacoord: estimateTotalRows: ",
 		zap.Int64("CollectionID", segmentInfo.CollectionID),
 		zap.Int64("SegmentID", segmentInfo.ID),
 		zap.Int("Rows", maxNumOfRows),
