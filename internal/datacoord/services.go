@@ -19,18 +19,19 @@ package datacoord
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"strconv"
-	"sync"
-
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"math/rand"
+	"strconv"
+	"sync"
+	"time"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
 	"github.com/milvus-io/milvus/internal/common"
 	"github.com/milvus-io/milvus/internal/log"
+	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/commonpbutil"
@@ -142,7 +143,7 @@ func (s *Server) AssignSegmentID(ctx context.Context, req *datapb.AssignSegmentI
 	}
 
 	assigns := make([]*datapb.SegmentIDAssignment, 0, len(req.SegmentIDRequests))
-
+	beforeAssign := time.Now()
 	for _, r := range req.SegmentIDRequests {
 		log.Info("handle assign segment request",
 			zap.Int64("collectionID", r.GetCollectionID()),
@@ -201,6 +202,12 @@ func (s *Server) AssignSegmentID(ctx context.Context, req *datapb.AssignSegmentI
 			assigns = append(assigns, result)
 		}
 	}
+	assignSegmentsDuration := time.Since(beforeAssign)
+	if assignSegmentsDuration > 100*time.Millisecond {
+		log.Warn("assign segments time cost too much",
+			zap.Int64("assignDurationMs", assignSegmentsDuration.Milliseconds()))
+	}
+	metrics.DataCoordAssignSegmentsDuration.WithLabelValues().Observe(float64(assignSegmentsDuration.Milliseconds()))
 	return &datapb.AssignSegmentIDResponse{
 		Status: &commonpb.Status{
 			ErrorCode: commonpb.ErrorCode_Success,

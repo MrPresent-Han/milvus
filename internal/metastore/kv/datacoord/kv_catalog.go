@@ -19,11 +19,15 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/samber/lo"
 	"path"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
@@ -49,10 +53,120 @@ type Catalog struct {
 	MetaKv               kv.MetaKv
 	ChunkManagerRootPath string
 	metaRootpath         string
+	asyncUpdater         *asyncMetaUpdater
+}
+
+type asyncMetaUpdater struct {
+	lastMap      map[string]string
+	currentMap   map[string]string
+	mapLock      sync.RWMutex
+	syncLock     sync.Mutex
+	lastUpdateTs time.Time
+	stopped      *atomic.Bool
+	metaKv       kv.MetaKv
+}
+
+func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
+	ticker := time.NewTicker(20 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("asyncMetaUpdater stop running")
+			asyncUpdater.stopped.Store(true)
+			asyncUpdater.tryToSyncMeta()
+			asyncUpdater.switchMap()
+			asyncUpdater.tryToSyncMeta()
+			return
+		case <-ticker.C:
+			if !asyncUpdater.stopped.Load() {
+				if len(asyncUpdater.currentMap) > 0 {
+					asyncUpdater.switchMap()
+					err := asyncUpdater.tryToSyncMeta()
+					if err != nil {
+						log.Error("sync meta to etcd failed, stop enabling "+
+							"async meta until sync meta process recover", zap.Error(err))
+						asyncUpdater.stopped.Store(true)
+					}
+				}
+			} else {
+				if err := asyncUpdater.tryToSyncMeta(); err != nil {
+					log.Error("retry sync last meta to etcd failed, keep asyncUpdater in stopped status")
+					continue
+				}
+				asyncUpdater.switchMap()
+				if err := asyncUpdater.tryToSyncMeta(); err != nil {
+					log.Error("retry sync current meta to etcd failed, keep asyncUpdater in stopped status")
+					continue
+				}
+				log.Info("async last and current meta success, recover metaUpdater to normal status")
+				asyncUpdater.stopped.Store(false)
+			}
+		}
+	}
+}
+
+func (asyncUpdater *asyncMetaUpdater) switchMap() {
+	asyncUpdater.mapLock.Lock()
+	asyncUpdater.lastMap = asyncUpdater.currentMap
+	asyncUpdater.currentMap = make(map[string]string)
+	asyncUpdater.mapLock.Unlock()
+}
+
+func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta() error {
+	if asyncUpdater.lastMap == nil || len(asyncUpdater.lastMap) == 0 {
+		return nil
+	}
+
+	saveFn := func(partialKvs map[string]string) error {
+		return asyncUpdater.metaKv.MultiSave(partialKvs)
+	}
+	asyncUpdater.syncLock.Lock()
+	defer asyncUpdater.syncLock.Unlock()
+	if err := etcd.SaveByBatch(asyncUpdater.lastMap, saveFn); err != nil {
+		log.Error("save meta by batch failed, there could be some meta incorrectness", zap.Error(err))
+		return err
+	}
+	asyncUpdater.lastMap = nil
+	return nil
+}
+
+func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
+	if asyncUpdater.stopped.Load() {
+		return fmt.Errorf("cannot cache meta kv to stopped asyncMetaUpdater")
+	}
+	asyncUpdater.mapLock.Lock()
+	for key, value := range kvs {
+		asyncUpdater.currentMap[key] = value
+	}
+	asyncUpdater.mapLock.Unlock()
+	log.Debug("AsyncMetaUpdater cache kvs", zap.Any("kvs", kvs))
+	return nil
+}
+
+func (asyncUpdater *asyncMetaUpdater) invalidateKVs(kvs map[string]string) {
+	asyncUpdater.syncLock.Lock()
+	asyncUpdater.mapLock.Lock()
+	defer asyncUpdater.mapLock.Unlock()
+	defer asyncUpdater.syncLock.Unlock()
+	for _, key := range lo.Keys(kvs) {
+		delete(asyncUpdater.lastMap, key)
+		delete(asyncUpdater.currentMap, key)
+	}
+}
+
+func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
+	return &asyncMetaUpdater{
+		lastMap:    make(map[string]string),
+		currentMap: make(map[string]string),
+		stopped:    atomic.NewBool(false),
+		metaKv:     mtKV,
+	}
 }
 
 func NewCatalog(MetaKv kv.MetaKv, chunkManagerRootPath string, metaRootpath string) *Catalog {
-	return &Catalog{MetaKv: MetaKv, ChunkManagerRootPath: chunkManagerRootPath, metaRootpath: metaRootpath}
+	return &Catalog{MetaKv: MetaKv, ChunkManagerRootPath: chunkManagerRootPath,
+		metaRootpath: metaRootpath, asyncUpdater: newAsyncMetaUpdater(MetaKv)}
 }
 
 func (kc *Catalog) ListSegments(ctx context.Context) ([]*datapb.SegmentInfo, error) {
@@ -314,7 +428,30 @@ func (kc *Catalog) AlterSegment(ctx context.Context, newSegment *datapb.SegmentI
 	}
 
 	kc.collectMetrics(newSegment)
+	kc.asyncUpdater.invalidateKVs(kvs)
 	return kc.MetaKv.MultiSave(kvs)
+}
+
+func (kc *Catalog) AsyncAlterSegmentExcludeLogs(ctx context.Context, newSegment *datapb.SegmentInfo, oldSegment *datapb.SegmentInfo) error {
+	kvs := make(map[string]string)
+	noBinlogSegment, _, _, _ := CloneSegmentWithExcludeBinlogs(newSegment)
+	// save segment info
+	segInfoKey, segInfoVal, err := buildSegmentKv(noBinlogSegment)
+	if err != nil {
+		return err
+	}
+	kvs[segInfoKey] = segInfoVal
+	if newSegment.State == commonpb.SegmentState_Flushed && oldSegment.State != commonpb.SegmentState_Flushed {
+		flushSegKey := buildFlushedSegmentPath(newSegment.GetCollectionID(), newSegment.GetPartitionID(), newSegment.GetID())
+		newSeg := &datapb.SegmentInfo{ID: newSegment.GetID()}
+		segBytes, err := marshalSegmentInfo(newSeg)
+		if err != nil {
+			return err
+		}
+		kvs[flushSegKey] = segBytes
+	}
+	kc.collectMetrics(newSegment)
+	return kc.asyncUpdater.cache(kvs)
 }
 
 func (kc *Catalog) collectMetrics(s *datapb.SegmentInfo) {
@@ -629,6 +766,16 @@ func (kc *Catalog) GcConfirm(ctx context.Context, collectionID, partitionID type
 		return false
 	}
 	return len(keys) == 0 && len(values) == 0
+}
+
+func (kc *Catalog) Start(ctx context.Context) error {
+	if kc.asyncUpdater != nil {
+		go kc.asyncUpdater.startLoop(ctx)
+		log.Info("Catalog has started successfully")
+		return nil
+	} else {
+		return fmt.Errorf("catalog async Updater is not initialized")
+	}
 }
 
 func fillLogPathByLogID(chunkManagerRootPath string, binlogType storage.BinlogType, collectionID, partitionID,
