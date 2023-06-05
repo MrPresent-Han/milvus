@@ -52,27 +52,31 @@ type Catalog struct {
 	MetaKv               kv.MetaKv
 	ChunkManagerRootPath string
 	metaRootpath         string
-	asyncUpdater         asyncMetaUpdater
+	asyncUpdater         *asyncMetaUpdater
 }
 
 type asyncMetaUpdater struct {
 	lastMap      map[string]string
 	currentMap   map[string]string
 	mu           sync.RWMutex
-	lastUpdating *atomic.Bool
+	state        *atomic.Int64
 	lastUpdateTs time.Time
 	stopped      *atomic.Bool
 	metaKv       kv.MetaKv
 }
 
 const (
-	ASYNC_UPDATE_INTERVAL_SECONDS = 10
-	ASYNC_LAG_WARN_THRED_SECONDS  = 30
-	ASYNC_LAG_FATAL_THRED_SECONDS = 60
+	AsyncUpdateIntervalSeconds    = 10
+	AsyncLagWarnThresholdSeconds  = 30
+	AsyncLagFatalThresholdSeconds = 60
+
+	MetaNormal     = 0
+	MetaUpdating   = 1
+	MetaUpdateFail = 2
 )
 
 func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
-	ticker := time.NewTicker(ASYNC_UPDATE_INTERVAL_SECONDS * time.Second)
+	ticker := time.NewTicker(AsyncUpdateIntervalSeconds * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -80,27 +84,30 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 			log.Info("asyncMetaUpdater stop running")
 			return
 		case <-ticker.C:
-			if asyncUpdater.lastUpdating.Load() {
+			if asyncUpdater.state.Load() == MetaUpdateFail {
+				log.Warn("running across failure of syncing meta, rerun for sync updates")
+				go asyncUpdater.syncLastMeta()
+				continue
+			}
+			if asyncUpdater.state.Load() == MetaUpdating {
 				lagDuration := time.Since(asyncUpdater.lastUpdateTs)
-				if lagDuration > time.Second*ASYNC_LAG_WARN_THRED_SECONDS {
+				if lagDuration > time.Second*AsyncLagWarnThresholdSeconds {
 					log.Warn("Async meta update has lagged too behind, there is a risk for losing some meta",
 						zap.Float64("logDurationInSeconds", lagDuration.Seconds()))
 					continue
-				} else if lagDuration > time.Second*ASYNC_LAG_FATAL_THRED_SECONDS {
+				} else if lagDuration > time.Second*AsyncLagFatalThresholdSeconds {
 					log.Error("Async meta update has lagged too behind, it's highly risky for losing some meta, "+
 						"we have to stop caching following meta to avoid case continuously aggravate",
 						zap.Float64("logDurationInSeconds", lagDuration.Seconds()))
 					asyncUpdater.stopped.Store(true)
 					continue
 				}
-			} else {
-				asyncUpdater.stopped.Store(false)
 			}
 			asyncUpdater.mu.Lock()
 			if len(asyncUpdater.currentMap) > 0 {
 				asyncUpdater.lastMap = asyncUpdater.currentMap
 				asyncUpdater.currentMap = make(map[string]string)
-				asyncUpdater.lastUpdating.Store(true)
+				asyncUpdater.state.Store(MetaUpdating)
 				go asyncUpdater.syncLastMeta()
 			}
 			asyncUpdater.mu.Unlock()
@@ -109,8 +116,15 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 }
 
 func (asyncUpdater *asyncMetaUpdater) syncLastMeta() {
-	asyncUpdater.metaKv.MultiSave(asyncUpdater.lastMap)
-	asyncUpdater.lastUpdating.Store(false)
+	err := asyncUpdater.metaKv.MultiSave(asyncUpdater.lastMap)
+	if err != nil {
+		log.Warn("failed to sync meta async, stop async instantly", zap.Any("kvs", asyncUpdater.lastMap))
+		asyncUpdater.stopped.Store(true)
+		asyncUpdater.state.Store(MetaUpdateFail)
+		return
+	}
+	asyncUpdater.state.Store(MetaNormal)
+	asyncUpdater.lastUpdateTs = time.Now()
 }
 
 func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
@@ -127,16 +141,17 @@ func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
 
 func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
 	return &asyncMetaUpdater{
-		lastMap:      make(map[string]string),
-		currentMap:   make(map[string]string),
-		lastUpdating: atomic.NewBool(false),
-		stopped:      atomic.NewBool(false),
-		metaKv:       mtKV,
+		lastMap:    make(map[string]string),
+		currentMap: make(map[string]string),
+		state:      atomic.NewInt64(MetaNormal),
+		stopped:    atomic.NewBool(false),
+		metaKv:     mtKV,
 	}
 }
 
 func NewCatalog(MetaKv kv.MetaKv, chunkManagerRootPath string, metaRootpath string) *Catalog {
-	return &Catalog{MetaKv: MetaKv, ChunkManagerRootPath: chunkManagerRootPath, metaRootpath: metaRootpath}
+	return &Catalog{MetaKv: MetaKv, ChunkManagerRootPath: chunkManagerRootPath,
+		metaRootpath: metaRootpath, asyncUpdater: newAsyncMetaUpdater(MetaKv)}
 }
 
 func (kc *Catalog) ListSegments(ctx context.Context) ([]*datapb.SegmentInfo, error) {
@@ -735,6 +750,15 @@ func (kc *Catalog) GcConfirm(ctx context.Context, collectionID, partitionID type
 		return false
 	}
 	return len(keys) == 0 && len(values) == 0
+}
+
+func (kc *Catalog) Start(ctx context.Context) error {
+	if kc.asyncUpdater != nil {
+		kc.asyncUpdater.startLoop(ctx)
+		return nil
+	} else {
+		return fmt.Errorf("catalog async Updater is not initialized")
+	}
 }
 
 func fillLogPathByLogID(chunkManagerRootPath string, binlogType storage.BinlogType, collectionID, partitionID,
