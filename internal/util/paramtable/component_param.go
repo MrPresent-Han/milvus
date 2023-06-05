@@ -1412,7 +1412,8 @@ type dataCoordConfig struct {
 	Address string
 
 	// --- ETCD ---
-	ChannelWatchSubPath string
+	ChannelWatchSubPath   string
+	AsyncSaveMetaInterval time.Duration
 
 	// --- CHANNEL ---
 	WatchTimeoutInterval         time.Duration
@@ -1460,6 +1461,7 @@ type dataCoordConfig struct {
 func (p *dataCoordConfig) init(base *BaseTable) {
 	p.Base = base
 	p.initChannelWatchPrefix()
+	p.initAsyncSaveMetaInterval()
 
 	p.initWatchTimeoutInterval()
 	p.initChannelBalanceSilentDuration()
@@ -1494,6 +1496,10 @@ func (p *dataCoordConfig) init(base *BaseTable) {
 	p.initGCMissingTolerance()
 	p.initGCDropTolerance()
 	p.initEnableActiveStandby()
+}
+
+func (p *dataCoordConfig) initAsyncSaveMetaInterval() {
+	p.AsyncSaveMetaInterval = time.Duration(p.Base.ParseInt64WithDefault("dataCoord.etcd.asyncSaveMetaInterval", 20)) * time.Second
 }
 
 func (p *dataCoordConfig) initWatchTimeoutInterval() {

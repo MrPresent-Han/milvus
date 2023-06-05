@@ -19,7 +19,6 @@ package datacoord
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/util/retry"
 	"path"
 	"strconv"
 	"strings"
@@ -38,10 +37,12 @@ import (
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
+	"github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util"
 	"github.com/milvus-io/milvus/internal/util/etcd"
 	"github.com/milvus-io/milvus/internal/util/metautil"
+	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/segmentutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -65,12 +66,8 @@ type asyncMetaUpdater struct {
 	metaKv       kv.MetaKv
 }
 
-const (
-	AsyncUpdateIntervalSeconds = 10
-)
-
 func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
-	ticker := time.NewTicker(AsyncUpdateIntervalSeconds * time.Second) //hc--paramize
+	ticker := time.NewTicker(20 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -135,7 +132,7 @@ func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta(ctx context.Context, kvs map
 			log.Warn("failed to sync meta", zap.Any("kvs", asyncUpdater.lastMap), zap.Error(err))
 		}
 		return err
-	}, retry.Attempts(20)) //hc---paramater
+	}, retry.Attempts(params.Params.CommonCfg.GrpcRetryTimes))
 	return err
 }
 
@@ -765,7 +762,8 @@ func (kc *Catalog) GcConfirm(ctx context.Context, collectionID, partitionID type
 
 func (kc *Catalog) Start(ctx context.Context) error {
 	if kc.asyncUpdater != nil {
-		kc.asyncUpdater.startLoop(ctx)
+		go kc.asyncUpdater.startLoop(ctx)
+		log.Info("Catalog has started successfully")
 		return nil
 	} else {
 		return fmt.Errorf("catalog async Updater is not initialized")
