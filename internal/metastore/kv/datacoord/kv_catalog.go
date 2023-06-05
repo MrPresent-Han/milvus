@@ -22,8 +22,11 @@ import (
 	"path"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/golang/protobuf/proto"
+	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
@@ -49,6 +52,80 @@ type Catalog struct {
 	MetaKv               kv.MetaKv
 	ChunkManagerRootPath string
 	metaRootpath         string
+}
+
+type asyncMetaUpdater struct {
+	lastMap      map[string]string
+	currentMap   map[string]string
+	mu           sync.RWMutex
+	lastUpdating atomic.Bool
+	lastUpdateTs time.Time
+	stopped      atomic.Bool
+}
+
+const (
+	ASYNC_UPDATE_INTERVAL_SECONDS = 10
+	ASYNC_LAG_WARN_THRED_SECONDS  = 30
+	ASYNC_LAG_FATAL_THRED_SECONDS = 60
+)
+
+func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
+	ticker := time.NewTicker(ASYNC_UPDATE_INTERVAL_SECONDS * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			log.Info("asyncMetaUpdater stop running")
+			return
+		case <-ticker.C:
+			if asyncUpdater.lastUpdating.Load() {
+				lagDuration := time.Since(asyncUpdater.lastUpdateTs)
+				if lagDuration > time.Second*ASYNC_LAG_WARN_THRED_SECONDS {
+					log.Warn("Async meta update has lagged too behind, there is a risk for losing some meta",
+						zap.Float64("logDurationInSeconds", lagDuration.Seconds()))
+					continue
+				} else if lagDuration > time.Second*ASYNC_LAG_FATAL_THRED_SECONDS {
+					log.Error("Async meta update has lagged too behind, it's highly risky for losing some meta, "+
+						"we have to stop caching following meta to avoid case continuously aggravate",
+						zap.Float64("logDurationInSeconds", lagDuration.Seconds()))
+					asyncUpdater.stopped.Store(true)
+					continue
+				}
+			} else {
+				asyncUpdater.stopped.Store(false)
+			}
+			asyncUpdater.mu.Lock()
+			asyncUpdater.lastMap = asyncUpdater.currentMap
+			asyncUpdater.currentMap = make(map[string]string)
+			if len(asyncUpdater.lastMap) > 0 {
+				asyncUpdater.lastUpdating.Store(true)
+				go asyncUpdater.syncLastMeta()
+			}
+			asyncUpdater.mu.Unlock()
+		}
+	}
+}
+
+func (asyncUpdater *asyncMetaUpdater) syncLastMeta() {
+
+	asyncUpdater.lastUpdating.Store(false)
+}
+
+func (asyncUpdater *asyncMetaUpdater) cache(key string, value string) error {
+	if asyncUpdater.stopped.Load() {
+		return fmt.Errorf("cannot cache meta kv to stopped asyncMetaUpdater")
+	}
+	asyncUpdater.mu.Lock()
+	asyncUpdater.currentMap[key] = value
+	asyncUpdater.mu.Unlock()
+}
+
+func newAsyncMetaUpdater() *asyncMetaUpdater {
+	return &asyncMetaUpdater{
+		lastMap:      make(map[string]string),
+		currentMap:   make(map[string]string),
+		lastUpdating: atomic.NewBool(false),
+	}
 }
 
 func NewCatalog(MetaKv kv.MetaKv, chunkManagerRootPath string, metaRootpath string) *Catalog {

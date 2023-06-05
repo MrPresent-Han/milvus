@@ -890,7 +890,7 @@ func (m *meta) AddAllocation(segmentID UniqueID, allocation *Allocation) error {
 		return nil
 	}
 	// Persist segment updates first.
-	/*clonedSegment := curSegInfo.Clone(AddAllocation(allocation))
+	clonedSegment := curSegInfo.Clone(AddAllocation(allocation))
 	if clonedSegment != nil && isSegmentHealthy(clonedSegment) {
 		if err := m.catalog.AlterSegment(m.ctx, clonedSegment.SegmentInfo, curSegInfo.SegmentInfo); err != nil {
 			log.Error("meta update: add allocation failed",
@@ -898,7 +898,7 @@ func (m *meta) AddAllocation(segmentID UniqueID, allocation *Allocation) error {
 				zap.Error(err))
 			return err
 		}
-	}*/
+	}
 	// Update in-memory meta.
 	m.segments.AddAllocation(segmentID, allocation)
 	log.Info("meta update: add allocation - complete",

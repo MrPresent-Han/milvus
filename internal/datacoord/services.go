@@ -19,13 +19,12 @@ package datacoord
 import (
 	"context"
 	"fmt"
-	"math/rand"
-	"strconv"
-	"sync"
-
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
+	"math/rand"
+	"strconv"
+	"sync"
 
 	"github.com/milvus-io/milvus-proto/go-api/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/milvuspb"
@@ -142,7 +141,7 @@ func (s *Server) AssignSegmentID(ctx context.Context, req *datapb.AssignSegmentI
 	}
 
 	assigns := make([]*datapb.SegmentIDAssignment, 0, len(req.SegmentIDRequests))
-
+	
 	for _, r := range req.SegmentIDRequests {
 		log.Info("handle assign segment request",
 			zap.Int64("collectionID", r.GetCollectionID()),
