@@ -126,7 +126,7 @@ type DataCoordCatalog interface {
 	DropChannelCheckpoint(ctx context.Context, vChannel string) error
 
 	GcConfirm(ctx context.Context, collectionID, partitionID typeutil.UniqueID) bool
-	Start(ctx context.Context)
+	Start(ctx context.Context) error
 }
 
 type IndexCoordCatalog interface {

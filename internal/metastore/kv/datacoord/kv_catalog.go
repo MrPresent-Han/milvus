@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/retry"
 	"path"
 	"strconv"
 	"strings"
@@ -59,72 +60,71 @@ type asyncMetaUpdater struct {
 	lastMap      map[string]string
 	currentMap   map[string]string
 	mu           sync.RWMutex
-	state        *atomic.Int64
 	lastUpdateTs time.Time
 	stopped      *atomic.Bool
 	metaKv       kv.MetaKv
 }
 
 const (
-	AsyncUpdateIntervalSeconds    = 10
-	AsyncLagWarnThresholdSeconds  = 30
-	AsyncLagFatalThresholdSeconds = 60
-
-	MetaNormal     = 0
-	MetaUpdating   = 1
-	MetaUpdateFail = 2
+	AsyncUpdateIntervalSeconds = 10
 )
 
 func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
-	ticker := time.NewTicker(AsyncUpdateIntervalSeconds * time.Second)
+	ticker := time.NewTicker(AsyncUpdateIntervalSeconds * time.Second) //hc--paramize
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			log.Info("asyncMetaUpdater stop running")
+			asyncUpdater.stopped.Store(true)
 			return
 		case <-ticker.C:
-			if asyncUpdater.state.Load() == MetaUpdateFail {
-				log.Warn("running across failure of syncing meta, rerun for sync updates")
-				go asyncUpdater.syncLastMeta()
-				continue
-			}
-			if asyncUpdater.state.Load() == MetaUpdating {
-				lagDuration := time.Since(asyncUpdater.lastUpdateTs)
-				if lagDuration > time.Second*AsyncLagWarnThresholdSeconds {
-					log.Warn("Async meta update has lagged too behind, there is a risk for losing some meta",
-						zap.Float64("logDurationInSeconds", lagDuration.Seconds()))
-					continue
-				} else if lagDuration > time.Second*AsyncLagFatalThresholdSeconds {
-					log.Error("Async meta update has lagged too behind, it's highly risky for losing some meta, "+
-						"we have to stop caching following meta to avoid case continuously aggravate",
-						zap.Float64("logDurationInSeconds", lagDuration.Seconds()))
-					asyncUpdater.stopped.Store(true)
-					continue
+			if !asyncUpdater.stopped.Load() {
+				if len(asyncUpdater.currentMap) > 0 {
+					asyncUpdater.mu.Lock()
+					asyncUpdater.lastMap = asyncUpdater.currentMap
+					asyncUpdater.currentMap = make(map[string]string)
+					asyncUpdater.mu.Unlock()
+					err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.lastMap)
+					if err != nil {
+						log.Error("sync meta to etcd failed, stop enabling async meta until sync meta process recover")
+						asyncUpdater.stopped.Store(true)
+					}
 				}
+			} else {
+				if len(asyncUpdater.lastMap) > 0 {
+					err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.lastMap)
+					if err != nil {
+						log.Error("retry sync last meta to etcd failed, keep asyncUpdater in stopped status")
+						continue
+					}
+					asyncUpdater.lastMap = make(map[string]string, 0)
+				}
+				if len(asyncUpdater.currentMap) > 0 {
+					err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.currentMap)
+					if err != nil {
+						log.Error("retry sync current meta to etcd failed, keep asyncUpdater in stopped status")
+						continue
+					}
+					asyncUpdater.lastMap = make(map[string]string, 0)
+				}
+				log.Info("async last and current meta success, recover metaUpdater to normal status")
+				asyncUpdater.stopped.Store(false)
 			}
-			asyncUpdater.mu.Lock()
-			if len(asyncUpdater.currentMap) > 0 {
-				asyncUpdater.lastMap = asyncUpdater.currentMap
-				asyncUpdater.currentMap = make(map[string]string)
-				asyncUpdater.state.Store(MetaUpdating)
-				go asyncUpdater.syncLastMeta()
-			}
-			asyncUpdater.mu.Unlock()
 		}
 	}
 }
 
-func (asyncUpdater *asyncMetaUpdater) syncLastMeta() {
-	err := asyncUpdater.metaKv.MultiSave(asyncUpdater.lastMap)
-	if err != nil {
-		log.Warn("failed to sync meta async, stop async instantly", zap.Any("kvs", asyncUpdater.lastMap))
-		asyncUpdater.stopped.Store(true)
-		asyncUpdater.state.Store(MetaUpdateFail)
-		return
-	}
-	asyncUpdater.state.Store(MetaNormal)
-	asyncUpdater.lastUpdateTs = time.Now()
+func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta(ctx context.Context, kvs map[string]string) error {
+	retryContext, _ := context.WithCancel(ctx)
+	err := retry.Do(retryContext, func() error {
+		err := asyncUpdater.metaKv.MultiSave(kvs)
+		if err != nil {
+			log.Warn("failed to sync meta, stop async instantly", zap.Any("kvs", asyncUpdater.lastMap))
+		}
+		return err
+	}, retry.Attempts(20)) //hc---paramater
+	return err
 }
 
 func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
@@ -143,7 +143,6 @@ func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
 	return &asyncMetaUpdater{
 		lastMap:    make(map[string]string),
 		currentMap: make(map[string]string),
-		state:      atomic.NewInt64(MetaNormal),
 		stopped:    atomic.NewBool(false),
 		metaKv:     mtKV,
 	}
