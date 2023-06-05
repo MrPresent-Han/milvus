@@ -52,15 +52,17 @@ type Catalog struct {
 	MetaKv               kv.MetaKv
 	ChunkManagerRootPath string
 	metaRootpath         string
+	asyncUpdater         asyncMetaUpdater
 }
 
 type asyncMetaUpdater struct {
 	lastMap      map[string]string
 	currentMap   map[string]string
 	mu           sync.RWMutex
-	lastUpdating atomic.Bool
+	lastUpdating *atomic.Bool
 	lastUpdateTs time.Time
-	stopped      atomic.Bool
+	stopped      *atomic.Bool
+	metaKv       kv.MetaKv
 }
 
 const (
@@ -95,9 +97,9 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 				asyncUpdater.stopped.Store(false)
 			}
 			asyncUpdater.mu.Lock()
-			asyncUpdater.lastMap = asyncUpdater.currentMap
-			asyncUpdater.currentMap = make(map[string]string)
-			if len(asyncUpdater.lastMap) > 0 {
+			if len(asyncUpdater.currentMap) > 0 {
+				asyncUpdater.lastMap = asyncUpdater.currentMap
+				asyncUpdater.currentMap = make(map[string]string)
 				asyncUpdater.lastUpdating.Store(true)
 				go asyncUpdater.syncLastMeta()
 			}
@@ -107,24 +109,29 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 }
 
 func (asyncUpdater *asyncMetaUpdater) syncLastMeta() {
-
+	asyncUpdater.metaKv.MultiSave(asyncUpdater.lastMap)
 	asyncUpdater.lastUpdating.Store(false)
 }
 
-func (asyncUpdater *asyncMetaUpdater) cache(key string, value string) error {
+func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
 	if asyncUpdater.stopped.Load() {
 		return fmt.Errorf("cannot cache meta kv to stopped asyncMetaUpdater")
 	}
 	asyncUpdater.mu.Lock()
-	asyncUpdater.currentMap[key] = value
+	for key, value := range kvs {
+		asyncUpdater.currentMap[key] = value
+	}
 	asyncUpdater.mu.Unlock()
+	return nil
 }
 
-func newAsyncMetaUpdater() *asyncMetaUpdater {
+func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
 	return &asyncMetaUpdater{
 		lastMap:      make(map[string]string),
 		currentMap:   make(map[string]string),
 		lastUpdating: atomic.NewBool(false),
+		stopped:      atomic.NewBool(false),
+		metaKv:       mtKV,
 	}
 }
 
@@ -392,6 +399,28 @@ func (kc *Catalog) AlterSegment(ctx context.Context, newSegment *datapb.SegmentI
 
 	kc.collectMetrics(newSegment)
 	return kc.MetaKv.MultiSave(kvs)
+}
+
+func (kc *Catalog) AsyncAlterSegmentExcludeLogs(ctx context.Context, newSegment *datapb.SegmentInfo, oldSegment *datapb.SegmentInfo) error {
+	kvs := make(map[string]string)
+	noBinlogSegment, _, _, _ := CloneSegmentWithExcludeBinlogs(newSegment)
+	// save segment info
+	segInfoKey, segInfoVal, err := buildSegmentKv(noBinlogSegment)
+	if err != nil {
+		return err
+	}
+	kvs[segInfoKey] = segInfoVal
+	if newSegment.State == commonpb.SegmentState_Flushed && oldSegment.State != commonpb.SegmentState_Flushed {
+		flushSegKey := buildFlushedSegmentPath(newSegment.GetCollectionID(), newSegment.GetPartitionID(), newSegment.GetID())
+		newSeg := &datapb.SegmentInfo{ID: newSegment.GetID()}
+		segBytes, err := marshalSegmentInfo(newSeg)
+		if err != nil {
+			return err
+		}
+		kvs[flushSegKey] = segBytes
+	}
+	kc.collectMetrics(newSegment)
+	return kc.asyncUpdater.cache(kvs)
 }
 
 func (kc *Catalog) collectMetrics(s *datapb.SegmentInfo) {
