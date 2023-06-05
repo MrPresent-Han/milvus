@@ -77,6 +77,18 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 		case <-ctx.Done():
 			log.Info("asyncMetaUpdater stop running")
 			asyncUpdater.stopped.Store(true)
+			if len(asyncUpdater.lastMap) > 0 {
+				err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.lastMap)
+				if err != nil {
+					log.Error("stop push last meta map failed, there could be some meta incorrectness", zap.Error(err))
+				}
+			}
+			if len(asyncUpdater.currentMap) > 0 {
+				err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.currentMap)
+				if err != nil {
+					log.Error("stop push current meta map failed, there could be some meta incorrectness", zap.Error(err))
+				}
+			}
 			return
 		case <-ticker.C:
 			if !asyncUpdater.stopped.Load() {
@@ -106,7 +118,7 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 						log.Error("retry sync current meta to etcd failed, keep asyncUpdater in stopped status")
 						continue
 					}
-					asyncUpdater.lastMap = make(map[string]string, 0)
+					asyncUpdater.currentMap = make(map[string]string, 0)
 				}
 				log.Info("async last and current meta success, recover metaUpdater to normal status")
 				asyncUpdater.stopped.Store(false)
@@ -120,7 +132,7 @@ func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta(ctx context.Context, kvs map
 	err := retry.Do(retryContext, func() error {
 		err := asyncUpdater.metaKv.MultiSave(kvs)
 		if err != nil {
-			log.Warn("failed to sync meta, stop async instantly", zap.Any("kvs", asyncUpdater.lastMap))
+			log.Warn("failed to sync meta", zap.Any("kvs", asyncUpdater.lastMap), zap.Error(err))
 		}
 		return err
 	}, retry.Attempts(20)) //hc---paramater
