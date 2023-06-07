@@ -19,6 +19,7 @@ package datacoord
 import (
 	"context"
 	"fmt"
+	"github.com/samber/lo"
 	"path"
 	"strconv"
 	"strings"
@@ -37,12 +38,10 @@ import (
 	"github.com/milvus-io/milvus/internal/metrics"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
-	"github.com/milvus-io/milvus/internal/querycoordv2/params"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util"
 	"github.com/milvus-io/milvus/internal/util/etcd"
 	"github.com/milvus-io/milvus/internal/util/metautil"
-	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/segmentutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -60,7 +59,8 @@ type Catalog struct {
 type asyncMetaUpdater struct {
 	lastMap      map[string]string
 	currentMap   map[string]string
-	mu           sync.RWMutex
+	mapLock      sync.RWMutex
+	syncLock     sync.Mutex
 	lastUpdateTs time.Time
 	stopped      *atomic.Bool
 	metaKv       kv.MetaKv
@@ -74,48 +74,30 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 		case <-ctx.Done():
 			log.Info("asyncMetaUpdater stop running")
 			asyncUpdater.stopped.Store(true)
-			if len(asyncUpdater.lastMap) > 0 {
-				err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.lastMap)
-				if err != nil {
-					log.Error("stop push last meta map failed, there could be some meta incorrectness", zap.Error(err))
-				}
-			}
-			if len(asyncUpdater.currentMap) > 0 {
-				err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.currentMap)
-				if err != nil {
-					log.Error("stop push current meta map failed, there could be some meta incorrectness", zap.Error(err))
-				}
-			}
+			asyncUpdater.tryToSyncMeta()
+			asyncUpdater.switchMap()
+			asyncUpdater.tryToSyncMeta()
 			return
 		case <-ticker.C:
 			if !asyncUpdater.stopped.Load() {
 				if len(asyncUpdater.currentMap) > 0 {
-					asyncUpdater.mu.Lock()
-					asyncUpdater.lastMap = asyncUpdater.currentMap
-					asyncUpdater.currentMap = make(map[string]string)
-					asyncUpdater.mu.Unlock()
-					err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.lastMap)
+					asyncUpdater.switchMap()
+					err := asyncUpdater.tryToSyncMeta()
 					if err != nil {
-						log.Error("sync meta to etcd failed, stop enabling async meta until sync meta process recover")
+						log.Error("sync meta to etcd failed, stop enabling "+
+							"async meta until sync meta process recover", zap.Error(err))
 						asyncUpdater.stopped.Store(true)
 					}
 				}
 			} else {
-				if len(asyncUpdater.lastMap) > 0 {
-					err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.lastMap)
-					if err != nil {
-						log.Error("retry sync last meta to etcd failed, keep asyncUpdater in stopped status")
-						continue
-					}
-					asyncUpdater.lastMap = make(map[string]string, 0)
+				if err := asyncUpdater.tryToSyncMeta(); err != nil {
+					log.Error("retry sync last meta to etcd failed, keep asyncUpdater in stopped status")
+					continue
 				}
-				if len(asyncUpdater.currentMap) > 0 {
-					err := asyncUpdater.tryToSyncMeta(ctx, asyncUpdater.currentMap)
-					if err != nil {
-						log.Error("retry sync current meta to etcd failed, keep asyncUpdater in stopped status")
-						continue
-					}
-					asyncUpdater.currentMap = make(map[string]string, 0)
+				asyncUpdater.switchMap()
+				if err := asyncUpdater.tryToSyncMeta(); err != nil {
+					log.Error("retry sync current meta to etcd failed, keep asyncUpdater in stopped status")
+					continue
 				}
 				log.Info("async last and current meta success, recover metaUpdater to normal status")
 				asyncUpdater.stopped.Store(false)
@@ -124,28 +106,53 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 	}
 }
 
-func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta(ctx context.Context, kvs map[string]string) error {
-	retryContext, _ := context.WithCancel(ctx)
-	err := retry.Do(retryContext, func() error {
-		err := asyncUpdater.metaKv.MultiSave(kvs)
-		if err != nil {
-			log.Warn("failed to sync meta", zap.Any("kvs", asyncUpdater.lastMap), zap.Error(err))
-		}
+func (asyncUpdater *asyncMetaUpdater) switchMap() {
+	asyncUpdater.mapLock.Lock()
+	asyncUpdater.lastMap = asyncUpdater.currentMap
+	asyncUpdater.currentMap = make(map[string]string)
+	asyncUpdater.mapLock.Unlock()
+}
+
+func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta() error {
+	if asyncUpdater.lastMap == nil || len(asyncUpdater.lastMap) == 0 {
+		return nil
+	}
+
+	saveFn := func(partialKvs map[string]string) error {
+		return asyncUpdater.metaKv.MultiSave(partialKvs)
+	}
+	asyncUpdater.syncLock.Lock()
+	defer asyncUpdater.syncLock.Unlock()
+	if err := etcd.SaveByBatch(asyncUpdater.lastMap, saveFn); err != nil {
+		log.Error("save meta by batch failed, there could be some meta incorrectness", zap.Error(err))
 		return err
-	}, retry.Attempts(params.Params.CommonCfg.GrpcRetryTimes))
-	return err
+	}
+	asyncUpdater.lastMap = nil
+	return nil
 }
 
 func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
 	if asyncUpdater.stopped.Load() {
 		return fmt.Errorf("cannot cache meta kv to stopped asyncMetaUpdater")
 	}
-	asyncUpdater.mu.Lock()
+	asyncUpdater.mapLock.Lock()
 	for key, value := range kvs {
 		asyncUpdater.currentMap[key] = value
 	}
-	asyncUpdater.mu.Unlock()
+	asyncUpdater.mapLock.Unlock()
+	log.Debug("AsyncMetaUpdater cache kvs", zap.Any("kvs", kvs))
 	return nil
+}
+
+func (asyncUpdater *asyncMetaUpdater) invalidateKVs(kvs map[string]string) {
+	asyncUpdater.syncLock.Lock()
+	asyncUpdater.mapLock.Lock()
+	defer asyncUpdater.mapLock.Unlock()
+	defer asyncUpdater.syncLock.Unlock()
+	for _, key := range lo.Keys(kvs) {
+		delete(asyncUpdater.lastMap, key)
+		delete(asyncUpdater.currentMap, key)
+	}
 }
 
 func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
@@ -421,6 +428,7 @@ func (kc *Catalog) AlterSegment(ctx context.Context, newSegment *datapb.SegmentI
 	}
 
 	kc.collectMetrics(newSegment)
+	kc.asyncUpdater.invalidateKVs(kvs)
 	return kc.MetaKv.MultiSave(kvs)
 }
 
