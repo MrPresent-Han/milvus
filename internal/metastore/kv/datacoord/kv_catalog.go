@@ -144,12 +144,12 @@ func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
 	return nil
 }
 
-func (asyncUpdater *asyncMetaUpdater) invalidateKVs(kvs map[string]string) {
+func (asyncUpdater *asyncMetaUpdater) invalidateKVs(keys ...string) {
 	asyncUpdater.syncLock.Lock()
 	asyncUpdater.mapLock.Lock()
 	defer asyncUpdater.mapLock.Unlock()
 	defer asyncUpdater.syncLock.Unlock()
-	for _, key := range lo.Keys(kvs) {
+	for _, key := range keys {
 		delete(asyncUpdater.lastMap, key)
 		delete(asyncUpdater.currentMap, key)
 	}
@@ -162,6 +162,11 @@ func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
 		stopped:    atomic.NewBool(false),
 		metaKv:     mtKV,
 	}
+}
+
+func (kc *Catalog) invalidateAsyncMetaAndSave(kvs map[string]string, saveFn func(kvs map[string]string) error) error {
+	kc.asyncUpdater.invalidateKVs(lo.Keys(kvs)...)
+	return saveFn(kvs)
 }
 
 func NewCatalog(MetaKv kv.MetaKv, chunkManagerRootPath string, metaRootpath string) *Catalog {
@@ -342,8 +347,7 @@ func (kc *Catalog) AddSegment(ctx context.Context, segment *datapb.SegmentInfo) 
 	if err != nil {
 		return err
 	}
-	kc.asyncUpdater.invalidateKVs(kvs)
-	return kc.MetaKv.MultiSave(kvs)
+	return kc.invalidateAsyncMetaAndSave(kvs, kc.MetaKv.MultiSave)
 }
 
 // LoadFromSegmentPath loads segment info from persistent storage by given segment path.
@@ -388,7 +392,7 @@ func (kc *Catalog) AlterSegments(ctx context.Context, newSegments []*datapb.Segm
 	}
 	for _, kvs := range kvsBySeg {
 		if currSize+len(kvs) >= maxEtcdTxnNum {
-			kc.asyncUpdater.invalidateKVs(kvsPiece)
+			kc.asyncUpdater.invalidateKVs(lo.Keys(kvsPiece)...)
 			if err := etcd.SaveByBatch(kvsPiece, saveFn); err != nil {
 				log.Error("failed to save by batch", zap.Error(err))
 				return err
@@ -404,6 +408,7 @@ func (kc *Catalog) AlterSegments(ctx context.Context, newSegments []*datapb.Segm
 		}
 	}
 	if currSize > 0 {
+		kc.asyncUpdater.invalidateKVs(lo.Keys(kvsPiece)...)
 		if err := etcd.SaveByBatch(kvsPiece, saveFn); err != nil {
 			log.Error("failed to save by batch", zap.Error(err))
 			return err
@@ -430,8 +435,7 @@ func (kc *Catalog) AlterSegment(ctx context.Context, newSegment *datapb.SegmentI
 	}
 
 	kc.collectMetrics(newSegment)
-	kc.asyncUpdater.invalidateKVs(kvs)
-	return kc.MetaKv.MultiSave(kvs)
+	return kc.invalidateAsyncMetaAndSave(kvs, kc.MetaKv.MultiSave)
 }
 
 func (kc *Catalog) AsyncAlterSegmentExcludeLogs(ctx context.Context, newSegment *datapb.SegmentInfo, oldSegment *datapb.SegmentInfo) error {
@@ -550,8 +554,7 @@ func (kc *Catalog) AlterSegmentsAndAddNewSegment(ctx context.Context, segments [
 		//}
 		//kvs[flushSegKey] = segBytes
 	}
-	kc.asyncUpdater.invalidateKVs(kvs)
-	return kc.MetaKv.MultiSave(kvs)
+	return kc.invalidateAsyncMetaAndSave(kvs, kc.MetaKv.MultiSave)
 }
 
 // RevertAlterSegmentsAndAddNewSegment reverts the metastore operation of AlterSegmentsAndAddNewSegment
@@ -576,7 +579,7 @@ func (kc *Catalog) RevertAlterSegmentsAndAddNewSegment(ctx context.Context, oldS
 		binlogKeys := buildBinlogKeys(removeSegment)
 		removals = append(removals, binlogKeys...)
 	}
-	kc.asyncUpdater.invalidateKVs(kvs)
+	kc.asyncUpdater.invalidateKVs(lo.Keys(kvs)...)
 	err := kc.MetaKv.MultiSaveAndRemove(kvs, removals)
 	if err != nil {
 		log.Warn("batch save and remove segments failed", zap.Error(err))
@@ -607,6 +610,7 @@ func (kc *Catalog) SaveDroppedSegmentsInBatch(ctx context.Context, segments []*d
 	saveFn := func(partialKvs map[string]string) error {
 		return kc.MetaKv.MultiSave(partialKvs)
 	}
+	kc.asyncUpdater.invalidateKVs(lo.Keys(kvs)...)
 	if err := etcd.SaveByBatch(kvs, saveFn); err != nil {
 		return err
 	}
@@ -703,11 +707,13 @@ func (kc *Catalog) SaveChannelCheckpoint(ctx context.Context, vChannel string, p
 	if err != nil {
 		return err
 	}
+	kc.asyncUpdater.invalidateKVs(k)
 	return kc.MetaKv.Save(k, string(v))
 }
 
 func (kc *Catalog) DropChannelCheckpoint(ctx context.Context, vChannel string) error {
 	k := buildChannelCPKey(vChannel)
+	kc.asyncUpdater.invalidateKVs(k)
 	return kc.MetaKv.Remove(k)
 }
 
