@@ -67,7 +67,7 @@ type asyncMetaUpdater struct {
 }
 
 func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
-	ticker := time.NewTicker(20 * time.Second)
+	ticker := time.NewTicker(120 * time.Second)
 	defer ticker.Stop()
 	for {
 		select {
@@ -342,6 +342,7 @@ func (kc *Catalog) AddSegment(ctx context.Context, segment *datapb.SegmentInfo) 
 	if err != nil {
 		return err
 	}
+	kc.asyncUpdater.invalidateKVs(kvs)
 	return kc.MetaKv.MultiSave(kvs)
 }
 
@@ -387,6 +388,7 @@ func (kc *Catalog) AlterSegments(ctx context.Context, newSegments []*datapb.Segm
 	}
 	for _, kvs := range kvsBySeg {
 		if currSize+len(kvs) >= maxEtcdTxnNum {
+			kc.asyncUpdater.invalidateKVs(kvsPiece)
 			if err := etcd.SaveByBatch(kvsPiece, saveFn); err != nil {
 				log.Error("failed to save by batch", zap.Error(err))
 				return err
@@ -548,7 +550,7 @@ func (kc *Catalog) AlterSegmentsAndAddNewSegment(ctx context.Context, segments [
 		//}
 		//kvs[flushSegKey] = segBytes
 	}
-
+	kc.asyncUpdater.invalidateKVs(kvs)
 	return kc.MetaKv.MultiSave(kvs)
 }
 
@@ -574,7 +576,7 @@ func (kc *Catalog) RevertAlterSegmentsAndAddNewSegment(ctx context.Context, oldS
 		binlogKeys := buildBinlogKeys(removeSegment)
 		removals = append(removals, binlogKeys...)
 	}
-
+	kc.asyncUpdater.invalidateKVs(kvs)
 	err := kc.MetaKv.MultiSaveAndRemove(kvs, removals)
 	if err != nil {
 		log.Warn("batch save and remove segments failed", zap.Error(err))
