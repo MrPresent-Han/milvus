@@ -19,7 +19,6 @@ package datacoord
 import (
 	"context"
 	"fmt"
-	"github.com/samber/lo"
 	"path"
 	"strconv"
 	"strings"
@@ -27,6 +26,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/samber/lo"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 	"golang.org/x/exp/maps"
@@ -49,6 +49,11 @@ import (
 var maxEtcdTxnNum = 128
 var paginationSize = 2000
 
+const (
+	SyncMetaInterval  = 60 * time.Second
+	SyncMetaBatchSize = 64
+)
+
 type Catalog struct {
 	MetaKv               kv.MetaKv
 	ChunkManagerRootPath string
@@ -67,8 +72,9 @@ type asyncMetaUpdater struct {
 }
 
 func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
-	ticker := time.NewTicker(120 * time.Second)
+	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
+	var lastSyncTime = time.Now()
 	for {
 		select {
 		case <-ctx.Done():
@@ -80,7 +86,7 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if !asyncUpdater.stopped.Load() {
-				if len(asyncUpdater.currentMap) > 0 {
+				if asyncUpdater.shouldTriggerSync(lastSyncTime) {
 					asyncUpdater.switchMap()
 					err := asyncUpdater.tryToSyncMeta()
 					if err != nil {
@@ -88,6 +94,7 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 							"async meta until sync meta process recover", zap.Error(err))
 						asyncUpdater.stopped.Store(true)
 					}
+					lastSyncTime = time.Now()
 				}
 			} else {
 				if err := asyncUpdater.tryToSyncMeta(); err != nil {
@@ -104,6 +111,12 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 			}
 		}
 	}
+}
+
+func (asyncUpdater *asyncMetaUpdater) shouldTriggerSync(lastSyncTime time.Time) bool {
+	syncForInterval := time.Since(lastSyncTime) >= SyncMetaInterval
+	syncForMetaSize := len(asyncUpdater.currentMap) >= SyncMetaBatchSize
+	return syncForInterval || syncForMetaSize
 }
 
 func (asyncUpdater *asyncMetaUpdater) switchMap() {
