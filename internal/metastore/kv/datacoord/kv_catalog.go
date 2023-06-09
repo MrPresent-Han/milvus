@@ -72,7 +72,7 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			log.Info("asyncMetaUpdater stop running")
+			log.Info("hc---asyncMetaUpdater stop running")
 			asyncUpdater.stopped.Store(true)
 			asyncUpdater.tryToSyncMeta()
 			asyncUpdater.switchMap()
@@ -84,22 +84,22 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 					asyncUpdater.switchMap()
 					err := asyncUpdater.tryToSyncMeta()
 					if err != nil {
-						log.Error("sync meta to etcd failed, stop enabling "+
+						log.Error("hc---sync meta to etcd failed, stop enabling "+
 							"async meta until sync meta process recover", zap.Error(err))
 						asyncUpdater.stopped.Store(true)
 					}
 				}
 			} else {
 				if err := asyncUpdater.tryToSyncMeta(); err != nil {
-					log.Error("retry sync last meta to etcd failed, keep asyncUpdater in stopped status")
+					log.Error("hc---retry sync last meta to etcd failed, keep asyncUpdater in stopped status")
 					continue
 				}
 				asyncUpdater.switchMap()
 				if err := asyncUpdater.tryToSyncMeta(); err != nil {
-					log.Error("retry sync current meta to etcd failed, keep asyncUpdater in stopped status")
+					log.Error("hc---retry sync current meta to etcd failed, keep asyncUpdater in stopped status")
 					continue
 				}
-				log.Info("async last and current meta success, recover metaUpdater to normal status")
+				log.Info("hc---async last and current meta success, recover metaUpdater to normal status")
 				asyncUpdater.stopped.Store(false)
 			}
 		}
@@ -123,11 +123,13 @@ func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta() error {
 	}
 	asyncUpdater.syncLock.Lock()
 	defer asyncUpdater.syncLock.Unlock()
-	if err := etcd.SaveByBatch(asyncUpdater.lastMap, saveFn); err != nil {
+	log.Info("hc---try to sync meta", zap.Int("lastMapLen", len(asyncUpdater.lastMap)))
+	if err := etcd.SaveByBatchWithLimit(asyncUpdater.lastMap, 64, saveFn); err != nil {
 		log.Error("save meta by batch failed, there could be some meta incorrectness", zap.Error(err))
 		return err
 	}
 	asyncUpdater.lastMap = nil
+	log.Info("hc---successfully sync meta", zap.Int("lastMapLen", len(asyncUpdater.lastMap)))
 	return nil
 }
 
@@ -140,7 +142,7 @@ func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
 		asyncUpdater.currentMap[key] = value
 	}
 	asyncUpdater.mapLock.Unlock()
-	log.Debug("AsyncMetaUpdater cache kvs", zap.Any("kvs", kvs))
+	log.Debug("hc--AsyncMetaUpdater cache kvs", zap.Any("kvs", kvs))
 	return nil
 }
 
@@ -153,6 +155,8 @@ func (asyncUpdater *asyncMetaUpdater) invalidateKVs(keys ...string) {
 		delete(asyncUpdater.lastMap, key)
 		delete(asyncUpdater.currentMap, key)
 	}
+	log.Info("hc---invalidate keys", zap.Strings("keys", keys),
+		zap.Int("lastMapLen", len(asyncUpdater.lastMap)), zap.Int("currentMapLen", len(asyncUpdater.currentMap)))
 }
 
 func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
