@@ -19,6 +19,7 @@ package datanode
 import (
 	"math"
 	"sort"
+	"time"
 
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
@@ -98,18 +99,27 @@ func syncCPLagTooBehind() segmentSyncPolicy {
 		}
 		return minTs
 	}
-
+	//as checkPoint will only be updated after sync meta finished on dataCoord, it will generate immense
+	//sync actions when there are many partitions inserting simultaneously, so we use triggerTimeMap to avoid
+	//too intensive sync actions to protect meta storage media
+	triggerTimeMap := make(map[UniqueID]time.Time)
 	return func(segments []*Segment, ts Timestamp, _ *atomic.Bool) []UniqueID {
 		segmentsToSync := make([]UniqueID, 0)
+		validSegmentTriggerMap := make(map[UniqueID]time.Time)
 		for _, segment := range segments {
 			segmentMinTs := segmentMinTs(segment)
 			segmentStartTime := tsoutil.PhysicalTime(segmentMinTs)
 			cpLagDuration := tsoutil.PhysicalTime(ts).Sub(segmentStartTime)
-			shouldSync := cpLagDuration > Params.DataNodeCfg.CpLagPeriod && !segment.isBufferEmpty()
+			isSyncedRecently := time.Since(triggerTimeMap[segment.segmentID]) < (Params.DataNodeCfg.CpLagPeriod / 2)
+			shouldSync := cpLagDuration > Params.DataNodeCfg.CpLagPeriod && !segment.isBufferEmpty() && !isSyncedRecently
 			if shouldSync {
 				segmentsToSync = append(segmentsToSync, segment.segmentID)
+				validSegmentTriggerMap[segment.segmentID] = time.Now()
+			} else {
+				validSegmentTriggerMap[segment.segmentID] = triggerTimeMap[segment.segmentID]
 			}
 		}
+		triggerTimeMap = validSegmentTriggerMap
 		if len(segmentsToSync) > 0 {
 			log.Info("sync segment for cp lag behind too much",
 				zap.Int64s("segmentID", segmentsToSync))
