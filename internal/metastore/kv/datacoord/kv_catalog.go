@@ -49,10 +49,9 @@ import (
 var maxEtcdTxnNum = 128
 var paginationSize = 2000
 
-const (
-	SyncMetaInterval  = 60 * time.Second
-	SyncMetaBatchSize = 64
-)
+var syncMetaInterval = 60 * time.Second
+var syncMetaBatchSize = 64
+var syncCheckInterval = 5 * time.Second
 
 type Catalog struct {
 	MetaKv               kv.MetaKv
@@ -72,7 +71,7 @@ type asyncMetaUpdater struct {
 }
 
 func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(syncCheckInterval)
 	defer ticker.Stop()
 	var lastSyncTime = time.Now()
 	for {
@@ -114,8 +113,8 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 }
 
 func (asyncUpdater *asyncMetaUpdater) shouldTriggerSync(lastSyncTime time.Time) bool {
-	syncForInterval := time.Since(lastSyncTime) >= SyncMetaInterval
-	syncForMetaSize := len(asyncUpdater.currentMap) >= SyncMetaBatchSize
+	syncForInterval := time.Since(lastSyncTime) >= syncMetaInterval
+	syncForMetaSize := len(asyncUpdater.currentMap) >= syncMetaBatchSize
 	return syncForInterval || syncForMetaSize
 }
 
@@ -456,6 +455,9 @@ func (kc *Catalog) AlterSegment(ctx context.Context, newSegment *datapb.SegmentI
 }
 
 func (kc *Catalog) AsyncAlterSegmentExcludeLogs(ctx context.Context, newSegment *datapb.SegmentInfo, oldSegment *datapb.SegmentInfo) error {
+	if newSegment == nil || oldSegment == nil {
+		return fmt.Errorf("altered segment should cannot be nil")
+	}
 	kvs := make(map[string]string)
 	noBinlogSegment, _, _, _ := CloneSegmentWithExcludeBinlogs(newSegment)
 	// save segment info
