@@ -1499,7 +1499,8 @@ func (p *dataCoordConfig) init(base *BaseTable) {
 }
 
 func (p *dataCoordConfig) initAsyncSaveMetaInterval() {
-	p.AsyncSaveMetaInterval = time.Duration(p.Base.ParseInt64WithDefault("dataCoord.etcd.asyncSaveMetaInterval", 20)) * time.Second
+	p.AsyncSaveMetaInterval = time.Duration(p.Base.ParseInt64WithDefault("dataCoord.etcd.asyncSaveMetaInterval", 30)) * time.Second
+	log.Info("init AsyncSaveMetaInterval", zap.Duration("interval", p.AsyncSaveMetaInterval))
 }
 
 func (p *dataCoordConfig) initWatchTimeoutInterval() {
@@ -1695,6 +1696,7 @@ type dataNodeConfig struct {
 	BinLogMaxSize          int64
 	SyncPeriod             time.Duration
 	CpLagPeriod            time.Duration
+	MaxSyncBatch           int
 
 	Alias string // Different datanode in one machine
 
@@ -1732,6 +1734,7 @@ func (p *dataNodeConfig) init(base *BaseTable) {
 	p.initBinlogMaxSize()
 	p.initSyncPeriod()
 	p.initCpLagPeriod()
+	p.initMaxSyncBatch()
 	p.initIOConcurrency()
 	p.initDataNodeTimeTickInterval()
 
@@ -1792,6 +1795,10 @@ func (p *dataNodeConfig) initSyncPeriod() {
 func (p *dataNodeConfig) initCpLagPeriod() {
 	cpLagPeriod := p.Base.ParseInt64WithDefault("datanode.segment.cpLagPeriod", 600)
 	p.CpLagPeriod = time.Duration(cpLagPeriod) * time.Second
+}
+
+func (p *dataNodeConfig) initMaxSyncBatch() {
+	p.MaxSyncBatch = p.Base.ParseIntWithDefault("datanode.segment.maxSyncBatch", 100)
 }
 
 func (p *dataNodeConfig) initChannelWatchPath() {
