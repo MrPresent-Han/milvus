@@ -449,12 +449,6 @@ func (s *Server) SaveBinlogPaths(ctx context.Context, req *datapb.SaveBinlogPath
 		zap.Int64("nodeID", req.GetBase().GetSourceID()),
 	)
 
-	log.Info("receive SaveBinlogPaths request",
-		zap.Bool("isFlush", req.GetFlushed()),
-		zap.Bool("isDropped", req.GetDropped()),
-		zap.Any("startPositions", req.GetStartPositions()),
-		zap.Any("checkpoints", req.GetCheckPoints()))
-
 	// validate
 	nodeID := req.GetBase().GetSourceID()
 	// virtual channel name
@@ -472,6 +466,14 @@ func (s *Server) SaveBinlogPaths(ctx context.Context, req *datapb.SaveBinlogPath
 	}
 	segmentID := req.GetSegmentID()
 	segment := s.meta.GetSegment(segmentID)
+
+	log.Info("receive SaveBinlogPaths request",
+		zap.String("channel", segment.GetInsertChannel()),
+		zap.Int64("segmentID", segmentID),
+		zap.Bool("isFlushed", req.GetFlushed()),
+		zap.Bool("isDropped", req.GetDropped()),
+		zap.Any("startPositions", PruneSegmentStartPositions(req.GetStartPositions())),
+		zap.Any("checkpoints", req.GetCheckPoints()))
 
 	if segment == nil {
 		log.Error("failed to get segment, segment not exists")
