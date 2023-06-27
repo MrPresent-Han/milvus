@@ -119,13 +119,17 @@ func (nodeCtx *nodeCtx) work() {
 			}
 			// the input message decides whether the operate method is executed
 			n := nodeCtx.node
+			tr := timerecord.NewTimeRecorder("hc--node recorder:" + n.Name())
 			nodeCtx.blockMutex.RLock()
+			tr.Record("hc---nodeCtx.obtained readLock")
 			if !n.IsValidInMsg(input) {
 				nodeCtx.blockMutex.RUnlock()
 				continue
 			}
 			output = n.Operate(input)
+			tr.Record("hc---node operator cost")
 			nodeCtx.blockMutex.RUnlock()
+
 			// the output decide whether the node should be closed.
 			if isCloseMsg(output) {
 				close(nodeCtx.closeCh)

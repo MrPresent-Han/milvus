@@ -152,6 +152,8 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 	}
 
 	var forwardMsgs []msgstream.TsMsg
+	log.Debug("hc---DDNode receive insert messages", zap.Int("msg count", len(msMsg.TsMessages())),
+		zap.String("vChannelName", ddn.vChannelName))
 	for _, msg := range msMsg.TsMessages() {
 		switch msg.Type() {
 		case commonpb.MsgType_DropCollection:
@@ -206,17 +208,10 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 			metrics.DataNodeConsumeMsgCount.
 				WithLabelValues(fmt.Sprint(Params.DataNodeCfg.GetNodeID()), metrics.InsertLabel, fmt.Sprint(ddn.collectionID)).
 				Inc()
-
-			log.Debug("DDNode receive insert messages",
-				zap.Int("numRows", len(imsg.GetRowIDs())),
-				zap.String("vChannelName", ddn.vChannelName))
 			fgMsg.insertMessages = append(fgMsg.insertMessages, imsg)
 
 		case commonpb.MsgType_Delete:
 			dmsg := msg.(*msgstream.DeleteMsg)
-			log.Debug("DDNode receive delete messages",
-				zap.Int64("numRows", dmsg.NumRows),
-				zap.String("vChannelName", ddn.vChannelName))
 			for i := int64(0); i < dmsg.NumRows; i++ {
 				dmsg.HashValues = append(dmsg.HashValues, uint32(0))
 			}
