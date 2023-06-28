@@ -253,6 +253,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 		}
 		segments = append(segments, segment)
 	}
+	tr.CtxRecord(ctx, "hc---filter segments for allocation")
 
 	// Apply allocation policy.
 	maxCountPerSegment, err := s.estimateMaxNumOfRows(collectionID)
@@ -261,13 +262,14 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 	}
 	newSegmentAllocations, existedSegmentAllocations := s.allocPolicy(segments,
 		requestRows, int64(maxCountPerSegment))
+	tr.CtxRecord(ctx, "hc---alloc segments based on policy")
 
 	// create new segments and add allocations
 	expireTs, err := s.genExpireTs(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	tr.CtxRecord(ctx, "hc---calculated allocations")
+	tr.CtxRecord(ctx, "hc----s.genExpireTs")
 	for _, allocation := range newSegmentAllocations {
 		segment, err := s.openNewSegment(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Growing)
 		tr.CtxRecord(ctx, "hc---opened new segment")
@@ -340,7 +342,10 @@ func isGrowing(segment *SegmentInfo) bool {
 }
 
 func (s *SegmentManager) genExpireTs(ctx context.Context, isImport bool) (Timestamp, error) {
+	log := logutil.Logger(ctx)
+	beforeAllocTs := time.Now()
 	ts, err := s.allocator.allocTimestamp(ctx)
+	log.Info("hc---allocTs from rootCoord", zap.Duration("time cost", time.Since(beforeAllocTs)))
 	if err != nil {
 		return 0, err
 	}

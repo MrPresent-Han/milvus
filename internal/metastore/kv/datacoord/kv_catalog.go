@@ -50,8 +50,8 @@ import (
 var maxEtcdTxnNum = 128
 var paginationSize = 2000
 
-var syncMetaInterval = 60 * time.Second
-var syncMetaBatchSize = 64
+var syncMetaInterval = 120 * time.Second
+var syncMetaBatchSize = 1024
 var syncCheckInterval = 5 * time.Second
 
 type Catalog struct {

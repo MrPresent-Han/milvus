@@ -1529,7 +1529,7 @@ func (c *Core) AllocTimestamp(ctx context.Context, in *rootcoordpb.AllocTimestam
 		setNotServingStatus(ret.GetStatus(), code)
 		return ret, nil
 	}
-
+	beforeAllocTimeStamp := time.Now()
 	ts, err := c.tsoAllocator.GenerateTSO(in.GetCount())
 	if err != nil {
 		log.Ctx(ctx).Error("failed to allocate timestamp", zap.String("role", typeutil.RootCoordRole),
@@ -1540,6 +1540,7 @@ func (c *Core) AllocTimestamp(ctx context.Context, in *rootcoordpb.AllocTimestam
 			Status: failStatus(commonpb.ErrorCode_UnexpectedError, "AllocTimestamp failed: "+err.Error()),
 		}, nil
 	}
+	metrics.RootCoordAllocTimeStampLatency.Observe(float64(time.Since(beforeAllocTimeStamp).Milliseconds()))
 
 	// return first available timestamp
 	ts = ts - uint64(in.GetCount()) + 1

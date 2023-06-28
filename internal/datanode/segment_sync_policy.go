@@ -19,7 +19,7 @@ package datanode
 import (
 	"math"
 	"sort"
-	
+
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
 
