@@ -215,7 +215,8 @@ func (s *Server) AssignSegmentID(ctx context.Context, req *datapb.AssignSegmentI
 	assignSegmentsDuration := tr.ElapseSpan()
 	if assignSegmentsDuration > 1000*time.Millisecond {
 		log.Warn("assign segments time cost too much",
-			zap.Int64("assignDurationMs", assignSegmentsDuration.Milliseconds()))
+			zap.Int64("assignDurationMs", assignSegmentsDuration.Milliseconds()),
+			zap.Int("request_length", len(req.SegmentIDRequests)))
 	}
 	metrics.DataCoordAssignSegmentsDuration.WithLabelValues().Observe(float64(assignSegmentsDuration.Milliseconds()))
 	return &datapb.AssignSegmentIDResponse{

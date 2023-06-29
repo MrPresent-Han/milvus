@@ -51,7 +51,7 @@ var maxEtcdTxnNum = 128
 var paginationSize = 2000
 
 var syncMetaInterval = 120 * time.Second
-var syncMetaBatchSize = 1024
+var syncMetaBatchSize = 4096
 var syncCheckInterval = 5 * time.Second
 
 type Catalog struct {
@@ -141,7 +141,7 @@ func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta() error {
 	tr.Record("hc---asyncMetaUpdater--obtainSyncLock")
 	defer asyncUpdater.syncLock.Unlock()
 	log.Info("try to sync meta", zap.Int("lastMapLen", len(asyncUpdater.lastMap)))
-	if err := etcd.SaveByBatchWithLimit(asyncUpdater.lastMap, 64, saveFn); err != nil {
+	if err := etcd.SaveByBatchWithLimit(asyncUpdater.lastMap, maxEtcdTxnNum, saveFn); err != nil {
 		log.Error("save meta by batch failed, there could be some meta incorrectness", zap.Error(err))
 		return err
 	}
@@ -168,16 +168,28 @@ func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
 }
 
 func (asyncUpdater *asyncMetaUpdater) invalidateKVs(keys ...string) {
+	beforeInvd := time.Now()
 	asyncUpdater.syncLock.Lock()
+	syncLockDuration := time.Since(beforeInvd)
 	asyncUpdater.mapLock.Lock()
+	mapLockDuration := time.Since(beforeInvd) - syncLockDuration
 	defer asyncUpdater.mapLock.Unlock()
 	defer asyncUpdater.syncLock.Unlock()
 	for _, key := range keys {
 		delete(asyncUpdater.lastMap, key)
 		delete(asyncUpdater.currentMap, key)
 	}
-	log.Info("invalidate keys", zap.Strings("keys", keys),
-		zap.Int("lastMapLen", len(asyncUpdater.lastMap)), zap.Int("currentMapLen", len(asyncUpdater.currentMap)))
+	timeCost := time.Since(beforeInvd)
+	mLogger := log.With(zap.Duration("time_cost", timeCost),
+		zap.Duration("sync_lock_duration", syncLockDuration),
+		zap.Duration("map_lock_duration", mapLockDuration))
+	if timeCost > 10*time.Millisecond {
+		mLogger = mLogger.With(zap.String("hc--warn", "invalidate keys too slow"))
+	}
+	mLogger.Info("invalidate keys", zap.Strings("keys", keys),
+		zap.Int("lastMapLen", len(asyncUpdater.lastMap)),
+		zap.Int("currentMapLen", len(asyncUpdater.currentMap)))
+
 }
 
 func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
