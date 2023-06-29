@@ -38,6 +38,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
+	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metautil"
 	"github.com/milvus-io/milvus/internal/util/segmentutil"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
@@ -880,13 +881,13 @@ func (m *meta) SelectSegments(selector SegmentInfoSelector) []*SegmentInfo {
 }
 
 // AddAllocation add allocation in segment
-func (m *meta) AddAllocation(segmentID UniqueID, allocation *Allocation) error {
-	log := log.With(zap.Int64("segmentID", segmentID), zap.Any("allocation", allocation))
+func (m *meta) AddAllocation(ctx context.Context, segmentID UniqueID, allocation *Allocation) error {
+	log := logutil.Logger(ctx).With(zap.Int64("segmentID", segmentID), zap.Any("allocation", allocation))
 	log.Info("meta update: start adding allocation")
 	method := "hc--meta-AddAllocation"
 	tr := timerecord.NewTimeRecorder(method)
 	m.Lock()
-	tr.Record("hc--addAllocation--obtain-meta-lock")
+	tr.CtxRecord(ctx, "hc--addAllocation--obtain-meta-lock")
 	defer m.Unlock()
 	curSegInfo := m.segments.GetSegment(segmentID)
 	if curSegInfo == nil {
@@ -904,7 +905,7 @@ func (m *meta) AddAllocation(segmentID UniqueID, allocation *Allocation) error {
 				zap.Error(err))
 			return err
 		}
-		tr.Record("hc--addAllocation--AsyncAlterSegmentExcludeLogs")
+		tr.CtxRecord(ctx, "hc--addAllocation--AsyncAlterSegmentExcludeLogs")
 	}
 	// Update in-memory meta.
 	m.segments.AddAllocation(segmentID, allocation)

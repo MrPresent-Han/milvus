@@ -278,7 +278,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 		}
 		allocation.ExpireTime = expireTs
 		allocation.SegmentID = segment.GetID()
-		if err := s.meta.AddAllocation(segment.GetID(), allocation); err != nil {
+		if err := s.meta.AddAllocation(ctx, segment.GetID(), allocation); err != nil {
 			return nil, err
 		}
 		tr.CtxRecord(ctx, "hc---AddNewAllocation")
@@ -286,7 +286,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 
 	for _, allocation := range existedSegmentAllocations {
 		allocation.ExpireTime = expireTs
-		if err := s.meta.AddAllocation(allocation.SegmentID, allocation); err != nil {
+		if err := s.meta.AddAllocation(ctx, allocation.SegmentID, allocation); err != nil {
 			return nil, err
 		}
 		tr.CtxRecord(ctx, "hc---AddExistedAllocation")
@@ -326,7 +326,7 @@ func (s *SegmentManager) allocSegmentForImport(ctx context.Context, collectionID
 
 	allocation.ExpireTime = expireTs
 	allocation.SegmentID = segment.GetID()
-	if err := s.meta.AddAllocation(segment.GetID(), allocation); err != nil {
+	if err := s.meta.AddAllocation(ctx, segment.GetID(), allocation); err != nil {
 		return nil, err
 	}
 	return allocation, nil

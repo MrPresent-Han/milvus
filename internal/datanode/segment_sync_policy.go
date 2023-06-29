@@ -46,7 +46,8 @@ func syncPeriodically() segmentSyncPolicy {
 			}
 		}
 		if len(segsToSync) > 0 {
-			log.Info("sync segment periodically", zap.Int64s("segmentIDs", segsToSync))
+			log.Info("sync segment periodically", zap.Int("syncCount", len(segsToSync)),
+				zap.Int64s("segmentIDs", segsToSync))
 		}
 		return segsToSync
 	}
