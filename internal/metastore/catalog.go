@@ -128,6 +128,7 @@ type DataCoordCatalog interface {
 
 	GcConfirm(ctx context.Context, collectionID, partitionID typeutil.UniqueID) bool
 	Start(ctx context.Context) error
+	GetGlobalMaxSegmentExpireTs(ctx context.Context) (uint64, error)
 }
 
 type IndexCoordCatalog interface {

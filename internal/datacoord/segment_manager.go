@@ -26,9 +26,9 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus/internal/log"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
+	"github.com/milvus-io/milvus/internal/proto/rootcoordpb"
 	"github.com/milvus-io/milvus/internal/types"
-	"github.com/milvus-io/milvus/internal/util/logutil"
-	"github.com/milvus-io/milvus/internal/util/timerecord"
+	"github.com/milvus-io/milvus/internal/util/commonpbutil"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"go.uber.org/zap"
@@ -103,17 +103,18 @@ var _ Manager = (*SegmentManager)(nil)
 
 // SegmentManager handles segment related logic
 type SegmentManager struct {
-	meta                *meta
-	mu                  sync.RWMutex
-	allocator           allocator
-	helper              allocHelper
-	segments            []UniqueID
-	estimatePolicy      calUpperLimitPolicy
-	allocPolicy         AllocatePolicy
-	segmentSealPolicies []segmentSealPolicy
-	channelSealPolicies []channelSealPolicy
-	flushPolicy         flushPolicy
-	rcc                 types.RootCoord
+	meta                       *meta
+	mu                         sync.RWMutex
+	allocator                  allocator
+	helper                     allocHelper
+	segments                   []UniqueID
+	estimatePolicy             calUpperLimitPolicy
+	allocPolicy                AllocatePolicy
+	segmentSealPolicies        []segmentSealPolicy
+	channelSealPolicies        []channelSealPolicy
+	flushPolicy                flushPolicy
+	rcc                        types.RootCoord
+	lastGlobalMaxSegmentExpire uint64
 }
 
 type allocHelper struct {
@@ -198,7 +199,7 @@ func defaultFlushPolicy() flushPolicy {
 }
 
 // newSegmentManager should be the only way to retrieve SegmentManager.
-func newSegmentManager(meta *meta, allocator allocator, rcc types.RootCoord, opts ...allocOption) *SegmentManager {
+func newSegmentManager(meta *meta, allocator allocator, rcc types.RootCoord, opts ...allocOption) (*SegmentManager, error) {
 	manager := &SegmentManager{
 		meta:                meta,
 		allocator:           allocator,
@@ -211,11 +212,31 @@ func newSegmentManager(meta *meta, allocator allocator, rcc types.RootCoord, opt
 		flushPolicy:         defaultFlushPolicy(),
 		rcc:                 rcc,
 	}
+	if lastGlobalSegmentExpire, err := meta.GetGlobalMaxSegmentExpire(context.Background()); err != nil {
+		log.Warn("cannot get last global segment expire time, use current ts instead")
+		tsResponse, err := rcc.AllocTimestamp(context.Background(), &rootcoordpb.AllocTimestampRequest{
+			Base: commonpbutil.NewMsgBase(
+				commonpbutil.WithMsgType(commonpb.MsgType_RequestTSO),
+				commonpbutil.WithMsgID(0),
+				commonpbutil.WithTimeStamp(0),
+				commonpbutil.WithSourceID(Params.DataNodeCfg.GetNodeID()),
+			),
+			Count: 1,
+		})
+		if err != nil {
+			log.Warn("cannot alloc latest ts from rootCoord")
+			return nil, errors.New("global max expire ts is unavailable for segment manager")
+		}
+		manager.lastGlobalMaxSegmentExpire = tsResponse.Timestamp
+	} else {
+		manager.lastGlobalMaxSegmentExpire = lastGlobalSegmentExpire
+	}
+
 	for _, opt := range opts {
 		opt.apply(manager)
 	}
 	manager.loadSegmentsFromMeta()
-	return manager
+	return manager, nil
 }
 
 // loadSegmentsFromMeta generate corresponding segment status for each segment from meta
@@ -233,11 +254,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 	partitionID UniqueID, channelName string, requestRows int64) ([]*Allocation, error) {
 	sp, _ := trace.StartSpanFromContext(ctx)
 	defer sp.Finish()
-	log := logutil.Logger(ctx)
-	method := "AllocSegment"
-	tr := timerecord.NewTimeRecorder(method)
 	s.mu.Lock()
-	tr.CtxRecord(ctx, "hc---ObtainSegmentManagerMuLock")
 	defer s.mu.Unlock()
 
 	// filter segments
@@ -253,7 +270,6 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 		}
 		segments = append(segments, segment)
 	}
-	tr.CtxRecord(ctx, "hc---filter segments for allocation")
 
 	// Apply allocation policy.
 	maxCountPerSegment, err := s.estimateMaxNumOfRows(collectionID)
@@ -262,17 +278,14 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 	}
 	newSegmentAllocations, existedSegmentAllocations := s.allocPolicy(segments,
 		requestRows, int64(maxCountPerSegment))
-	tr.CtxRecord(ctx, "hc---alloc segments based on policy")
 
 	// create new segments and add allocations
 	expireTs, err := s.genExpireTs(ctx, false)
 	if err != nil {
 		return nil, err
 	}
-	tr.CtxRecord(ctx, "hc----s.genExpireTs")
 	for _, allocation := range newSegmentAllocations {
 		segment, err := s.openNewSegment(ctx, collectionID, partitionID, channelName, commonpb.SegmentState_Growing)
-		tr.CtxRecord(ctx, "hc---opened new segment")
 		if err != nil {
 			return nil, err
 		}
@@ -281,7 +294,6 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 		if err := s.meta.AddAllocation(ctx, segment.GetID(), allocation); err != nil {
 			return nil, err
 		}
-		tr.CtxRecord(ctx, "hc---AddNewAllocation")
 	}
 
 	for _, allocation := range existedSegmentAllocations {
@@ -289,9 +301,7 @@ func (s *SegmentManager) AllocSegment(ctx context.Context, collectionID UniqueID
 		if err := s.meta.AddAllocation(ctx, allocation.SegmentID, allocation); err != nil {
 			return nil, err
 		}
-		tr.CtxRecord(ctx, "hc---AddExistedAllocation")
 	}
-	log.Info("Finish allocating", zap.Duration("time_cost", tr.ElapseSpan()))
 	allocations := append(newSegmentAllocations, existedSegmentAllocations...)
 	return allocations, nil
 }
@@ -342,10 +352,7 @@ func isGrowing(segment *SegmentInfo) bool {
 }
 
 func (s *SegmentManager) genExpireTs(ctx context.Context, isImport bool) (Timestamp, error) {
-	log := logutil.Logger(ctx)
-	beforeAllocTs := time.Now()
 	ts, err := s.allocator.allocTimestamp(ctx)
-	log.Info("hc---allocTs from rootCoord", zap.Duration("time cost", time.Since(beforeAllocTs)))
 	if err != nil {
 		return 0, err
 	}
@@ -393,7 +400,7 @@ func (s *SegmentManager) openNewSegment(ctx context.Context, collectionID Unique
 		return nil, err
 	}
 	s.segments = append(s.segments, id)
-	logutil.Logger(ctx).Info("datacoord: estimateTotalRows: ",
+	log.Info("dataCoord: open new segment estimateTotalRows: ",
 		zap.Int64("CollectionID", segmentInfo.CollectionID),
 		zap.Int64("SegmentID", segmentInfo.ID),
 		zap.Int("Rows", maxNumOfRows),
@@ -469,8 +476,15 @@ func (s *SegmentManager) SealAllSegments(ctx context.Context, collectionID Uniqu
 	return ret, nil
 }
 
+func (s *SegmentManager) hasReachedFlushServiceTimePoint(t Timestamp) bool {
+	return t >= s.lastGlobalMaxSegmentExpire
+}
+
 // GetFlushableSegments get segment ids with Sealed State and flushable (meets flushPolicy)
 func (s *SegmentManager) GetFlushableSegments(ctx context.Context, channel string, t Timestamp) ([]UniqueID, error) {
+	if !s.hasReachedFlushServiceTimePoint(t) {
+		return nil, nil
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sp, _ := trace.StartSpanFromContext(ctx)

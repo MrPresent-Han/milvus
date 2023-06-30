@@ -254,6 +254,7 @@ func getCompactedSegmentSize(s *datapb.CompactionResult) int64 {
 }
 
 func PruneSegmentStartPositions(startPositions []*datapb.SegmentStartPosition) map[int64]uint64 {
+
 	kvs := make(map[int64]uint64, 0)
 	for _, startPos := range startPositions {
 		if startPos.GetStartPosition() == nil {
@@ -262,4 +263,5 @@ func PruneSegmentStartPositions(startPositions []*datapb.SegmentStartPosition) m
 		kvs[startPos.GetSegmentID()] = startPos.GetStartPosition().Timestamp
 	}
 	return kvs
+
 }

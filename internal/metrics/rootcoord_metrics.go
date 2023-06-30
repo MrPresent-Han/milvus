@@ -175,19 +175,9 @@ var (
 		}, []string{
 			"quota_states",
 		})
-
-	// RootCoordAllocTimeStampLatency records the latency of allocating timestamp
-	RootCoordAllocTimeStampLatency = prometheus.NewHistogram(
-		prometheus.HistogramOpts{
-			Namespace: milvusNamespace,
-			Subsystem: typeutil.RootCoordRole,
-			Name:      "alloc_timestamp_latency",
-			Help:      "latency of allocating timestamp",
-			Buckets:   buckets,
-		})
 )
 
-//RegisterRootCoord registers RootCoord metrics
+// RegisterRootCoord registers RootCoord metrics
 func RegisterRootCoord(registry *prometheus.Registry) {
 	registry.Register(RootCoordProxyCounter)
 
@@ -218,5 +208,4 @@ func RegisterRootCoord(registry *prometheus.Registry) {
 	registry.MustRegister(RootCoordTtDelay)
 	registry.MustRegister(RootCoordQuotaStates)
 	registry.MustRegister(RootCoordDDLReqLatencyInQueue)
-	registry.MustRegister(RootCoordAllocTimeStampLatency)
 }

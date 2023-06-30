@@ -38,10 +38,8 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/storage"
-	"github.com/milvus-io/milvus/internal/util/logutil"
 	"github.com/milvus-io/milvus/internal/util/metautil"
 	"github.com/milvus-io/milvus/internal/util/segmentutil"
-	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/tsoutil"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 )
@@ -189,6 +187,10 @@ func (m *meta) GetClonedCollectionInfo(collectionID UniqueID) *collectionInfo {
 	return cloneColl
 }
 
+func (m *meta) GetGlobalMaxSegmentExpire(ctx context.Context) (uint64, error) {
+	return m.catalog.GetGlobalMaxSegmentExpireTs(ctx)
+}
+
 // chanPartSegments is an internal result struct, which is aggregates of SegmentInfos with same collectionID, partitionID and channelName
 type chanPartSegments struct {
 	collectionID UniqueID
@@ -262,12 +264,8 @@ func (m *meta) GetCollectionBinlogSize() (int64, map[UniqueID]int64) {
 
 // AddSegment records segment info, persisting info into kv store
 func (m *meta) AddSegment(segment *SegmentInfo) error {
-	method := "hc--meta-AddSegment"
-	tr := timerecord.NewTimeRecorder(method)
-	log := log.With(zap.Int64("segment ID", segment.GetID()))
-	log.Info("meta update: start adding segment")
+	log.Info("meta update: adding segment", zap.Int64("segment ID", segment.GetID()))
 	m.Lock()
-	tr.Record("hc--obtain meta lock")
 	defer m.Unlock()
 	if err := m.catalog.AddSegment(m.ctx, segment.SegmentInfo); err != nil {
 		log.Error("meta update: adding segment failed",
@@ -275,10 +273,9 @@ func (m *meta) AddSegment(segment *SegmentInfo) error {
 			zap.Error(err))
 		return err
 	}
-	tr.Record("hc--add segment to catalog")
 	m.segments.SetSegment(segment.GetID(), segment)
 	metrics.DataCoordNumSegments.WithLabelValues(segment.GetState().String()).Inc()
-	log.Info("meta update: adding segment - complete", zap.Duration("meta_add_time_cost", tr.ElapseSpan()))
+	log.Info("meta update: adding segment - complete", zap.Int64("segment ID", segment.GetID()))
 	return nil
 }
 
@@ -882,12 +879,7 @@ func (m *meta) SelectSegments(selector SegmentInfoSelector) []*SegmentInfo {
 
 // AddAllocation add allocation in segment
 func (m *meta) AddAllocation(ctx context.Context, segmentID UniqueID, allocation *Allocation) error {
-	log := logutil.Logger(ctx).With(zap.Int64("segmentID", segmentID), zap.Any("allocation", allocation))
-	log.Info("meta update: start adding allocation")
-	method := "hc--meta-AddAllocation"
-	tr := timerecord.NewTimeRecorder(method)
 	m.Lock()
-	tr.CtxRecord(ctx, "hc--addAllocation--obtain-meta-lock")
 	defer m.Unlock()
 	curSegInfo := m.segments.GetSegment(segmentID)
 	if curSegInfo == nil {
@@ -905,11 +897,10 @@ func (m *meta) AddAllocation(ctx context.Context, segmentID UniqueID, allocation
 				zap.Error(err))
 			return err
 		}
-		tr.CtxRecord(ctx, "hc--addAllocation--AsyncAlterSegmentExcludeLogs")
 	}
 	// Update in-memory meta.
 	m.segments.AddAllocation(segmentID, allocation)
-	log.Info("meta update: add allocation - complete", zap.Duration("time_cost", tr.ElapseSpan()))
+	log.Info("meta update: add allocation - complete", zap.Int64("segmentID", segmentID))
 	return nil
 }
 

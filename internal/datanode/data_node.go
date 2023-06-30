@@ -949,13 +949,7 @@ func (node *DataNode) SyncSegments(ctx context.Context, req *datapb.SyncSegments
 	}
 
 	// block all flow graph so it's safe to remove segment
-	if !ds.fg.TryBlockAll() {
-		log.Ctx(ctx).Error("hc--Cannot block flowGraph for sync segments, "+
-			"release generated segment meta and stats log", zap.Int64("planID", req.GetPlanID()),
-			zap.Int64("target segmentID", req.GetCompactedTo()))
-		targetSeg.historyStats = nil
-		return status, errors.New("failed to block flowgraph")
-	}
+	ds.fg.Blockall()
 	defer ds.fg.Unblock()
 	if err = channel.mergeFlushedSegments(ctx, targetSeg, req.GetPlanID(), req.GetCompactedFrom()); err != nil {
 		log.Ctx(ctx).Warn("fail to merge flushed segments", zap.Error(err))

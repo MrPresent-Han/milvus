@@ -42,6 +42,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util"
 	"github.com/milvus-io/milvus/internal/util/etcd"
 	"github.com/milvus-io/milvus/internal/util/metautil"
+	"github.com/milvus-io/milvus/internal/util/retry"
 	"github.com/milvus-io/milvus/internal/util/segmentutil"
 	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
@@ -50,7 +51,7 @@ import (
 var maxEtcdTxnNum = 128
 var paginationSize = 2000
 
-var syncMetaInterval = 120 * time.Second
+var syncMetaInterval = 60 * time.Second
 var syncMetaBatchSize = 4096
 var syncCheckInterval = 5 * time.Second
 
@@ -62,19 +63,21 @@ type Catalog struct {
 }
 
 type asyncMetaUpdater struct {
-	lastMap      map[string]string
-	currentMap   map[string]string
-	mapLock      sync.RWMutex
-	syncLock     sync.Mutex
-	lastUpdateTs time.Time
-	stopped      *atomic.Bool
-	metaKv       kv.MetaKv
+	lastMap                    map[string]string
+	currentMap                 map[string]string
+	mapLock                    sync.RWMutex
+	syncLock                   sync.Mutex
+	lastUpdateTs               time.Time
+	stopped                    *atomic.Bool
+	metaKv                     kv.MetaKv
+	globalMaxSegmentExpiration uint64
 }
 
 func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 	ticker := time.NewTicker(syncCheckInterval)
 	defer ticker.Stop()
-	var lastSyncTime = time.Now()
+	var lastSyncMetaTime = time.Now()
+	var lastSyncGlobalExpirationTime = time.Now().Add(-1 * syncMetaInterval)
 	for {
 		select {
 		case <-ctx.Done():
@@ -85,8 +88,9 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 			asyncUpdater.tryToSyncMeta()
 			return
 		case <-ticker.C:
+			asyncUpdater.maybeSyncGlobalMaxSegmentExpire(ctx, &lastSyncGlobalExpirationTime)
 			if !asyncUpdater.stopped.Load() {
-				if asyncUpdater.shouldTriggerSync(lastSyncTime) {
+				if asyncUpdater.shouldTriggerSync(lastSyncMetaTime) {
 					asyncUpdater.switchMap()
 					err := asyncUpdater.tryToSyncMeta()
 					if err != nil {
@@ -94,7 +98,7 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 							"async meta until sync meta process recover", zap.Error(err))
 						asyncUpdater.stopped.Store(true)
 					}
-					lastSyncTime = time.Now()
+					lastSyncMetaTime = time.Now()
 				}
 			} else {
 				if err := asyncUpdater.tryToSyncMeta(); err != nil {
@@ -110,6 +114,23 @@ func (asyncUpdater *asyncMetaUpdater) startLoop(ctx context.Context) {
 				asyncUpdater.stopped.Store(false)
 			}
 		}
+	}
+}
+
+func (asyncUpdater *asyncMetaUpdater) maybeSyncGlobalMaxSegmentExpire(ctx context.Context, lastSyncGlobalExpirationTime *time.Time) {
+	sinceLastSyncDuration := time.Since(*lastSyncGlobalExpirationTime)
+	if sinceLastSyncDuration > syncMetaInterval {
+		//write global expire kv to etcd
+		err := retry.Do(ctx, func() error {
+			return asyncUpdater.metaKv.Save(GlobalSegmentMaxExpireTimeKey, string(asyncUpdater.globalMaxSegmentExpiration))
+		}, retry.Sleep(1*time.Second), retry.Attempts(10))
+		if err != nil {
+			log.Error("dangerous! globalSegmentExpire cannot be synced to etcd, "+
+				"there is a danger of data loss, block following kvs cached",
+				zap.Uint64("current globalMaxSegmentExpiration", asyncUpdater.globalMaxSegmentExpiration))
+			asyncUpdater.stopped.Store(true)
+		}
+		*lastSyncGlobalExpirationTime = time.Now()
 	}
 }
 
@@ -136,11 +157,11 @@ func (asyncUpdater *asyncMetaUpdater) tryToSyncMeta() error {
 	saveFn := func(partialKvs map[string]string) error {
 		return asyncUpdater.metaKv.MultiSave(partialKvs)
 	}
-	tr := timerecord.NewTimeRecorder("hc---asyncMetaUpdater--tryToSyncMeta")
+	tr := timerecord.NewTimeRecorder("asyncMetaUpdater-tryToSyncMeta")
 	asyncUpdater.syncLock.Lock()
-	tr.Record("hc---asyncMetaUpdater--obtainSyncLock")
 	defer asyncUpdater.syncLock.Unlock()
-	log.Info("try to sync meta", zap.Int("lastMapLen", len(asyncUpdater.lastMap)))
+	log.Info("try to sync meta", zap.Int("lastMapLen", len(asyncUpdater.lastMap)),
+		zap.Duration("sync lock time cost", tr.RecordSpan()))
 	if err := etcd.SaveByBatchWithLimit(asyncUpdater.lastMap, maxEtcdTxnNum, saveFn); err != nil {
 		log.Error("save meta by batch failed, there could be some meta incorrectness", zap.Error(err))
 		return err
@@ -155,16 +176,19 @@ func (asyncUpdater *asyncMetaUpdater) cache(kvs map[string]string) error {
 	if asyncUpdater.stopped.Load() {
 		return fmt.Errorf("cannot cache meta kv to stopped asyncMetaUpdater")
 	}
-	tr := timerecord.NewTimeRecorder("hc---asyncMetaUpdater--cache")
 	asyncUpdater.mapLock.Lock()
-	tr.Record("hc--asyncMetaUpdater-obtainMapLock")
 	defer asyncUpdater.mapLock.Unlock()
 	for key, value := range kvs {
 		asyncUpdater.currentMap[key] = value
 	}
-	log.Debug("AsyncMetaUpdater cache kvs", zap.Strings("keys", lo.Keys(kvs)),
-		zap.Duration("time_cost", tr.ElapseSpan()))
+	log.Debug("AsyncMetaUpdater cache kvs", zap.Strings("keys", lo.Keys(kvs)))
 	return nil
+}
+
+func (asyncUpdater *asyncMetaUpdater) setGlobalMaxSegmentExpire(expire uint64) {
+	if expire > asyncUpdater.globalMaxSegmentExpiration {
+		asyncUpdater.globalMaxSegmentExpiration = expire
+	}
 }
 
 func (asyncUpdater *asyncMetaUpdater) invalidateKVs(keys ...string) {
@@ -194,10 +218,11 @@ func (asyncUpdater *asyncMetaUpdater) invalidateKVs(keys ...string) {
 
 func newAsyncMetaUpdater(mtKV kv.MetaKv) *asyncMetaUpdater {
 	return &asyncMetaUpdater{
-		lastMap:    make(map[string]string),
-		currentMap: make(map[string]string),
-		stopped:    atomic.NewBool(false),
-		metaKv:     mtKV,
+		lastMap:                    make(map[string]string),
+		currentMap:                 make(map[string]string),
+		stopped:                    atomic.NewBool(false),
+		metaKv:                     mtKV,
+		globalMaxSegmentExpiration: 0,
 	}
 }
 
@@ -497,7 +522,11 @@ func (kc *Catalog) AsyncAlterSegmentExcludeLogs(ctx context.Context, newSegment 
 		kvs[flushSegKey] = segBytes
 	}
 	kc.collectMetrics(newSegment)
-	return kc.asyncUpdater.cache(kvs)
+	if cacheErr := kc.asyncUpdater.cache(kvs); cacheErr != nil {
+		return cacheErr
+	}
+	kc.asyncUpdater.setGlobalMaxSegmentExpire(noBinlogSegment.LastExpireTime)
+	return nil
 }
 
 func (kc *Catalog) collectMetrics(s *datapb.SegmentInfo) {
@@ -823,6 +852,14 @@ func (kc *Catalog) Start(ctx context.Context) error {
 		return nil
 	}
 	return fmt.Errorf("catalog async Updater is not initialized")
+}
+
+func (kc *Catalog) GetGlobalMaxSegmentExpireTs(ctx context.Context) (uint64, error) {
+	globalTsStr, err := kc.MetaKv.Load(GlobalSegmentMaxExpireTimeKey)
+	if err != nil {
+		return 0, err
+	}
+	return strconv.ParseUint(globalTsStr, 10, 64)
 }
 
 func fillLogPathByLogID(chunkManagerRootPath string, binlogType storage.BinlogType, collectionID, partitionID,
