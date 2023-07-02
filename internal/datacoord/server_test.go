@@ -84,6 +84,8 @@ func TestAssignSegmentID(t *testing.T) {
 
 	t.Run("assign segment normally", func(t *testing.T) {
 		svr := newTestServer(t, nil)
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		defer closeTestServer(t, svr)
 		schema := newTestSchema()
 		svr.meta.AddCollection(&collectionInfo{
@@ -233,6 +235,8 @@ func TestFlush(t *testing.T) {
 		defer closeTestServer(t, svr)
 		schema := newTestSchema()
 		svr.meta.AddCollection(&collectionInfo{ID: 0, Schema: schema, Partitions: []int64{}})
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		allocations, err := svr.segmentManager.AllocSegment(context.TODO(), 0, 1, "channel-1", 1)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -1595,6 +1599,8 @@ func TestSaveBinlogPaths(t *testing.T) {
 
 	t.Run("SaveNotExistSegment", func(t *testing.T) {
 		svr := newTestServer(t, nil)
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		defer closeTestServer(t, svr)
 
 		// vecFieldID := int64(201)
@@ -1649,6 +1655,8 @@ func TestSaveBinlogPaths(t *testing.T) {
 
 	t.Run("with channel not matched", func(t *testing.T) {
 		svr := newTestServer(t, nil)
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		defer closeTestServer(t, svr)
 		err := svr.channelManager.AddNode(0)
 		require.Nil(t, err)
@@ -1671,6 +1679,8 @@ func TestSaveBinlogPaths(t *testing.T) {
 
 	t.Run("with closed server", func(t *testing.T) {
 		svr := newTestServer(t, nil)
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		closeTestServer(t, svr)
 		resp, err := svr.SaveBinlogPaths(context.Background(), &datapb.SaveBinlogPathsRequest{})
 		assert.Nil(t, err)
@@ -1897,6 +1907,8 @@ func TestDataNodeTtChannel(t *testing.T) {
 	t.Run("Test segment flush after tt", func(t *testing.T) {
 		ch := make(chan any, 1)
 		svr := newTestServer(t, ch)
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		defer closeTestServer(t, svr)
 
 		svr.meta.AddCollection(&collectionInfo{
@@ -1967,6 +1979,8 @@ func TestDataNodeTtChannel(t *testing.T) {
 	t.Run("flush segment with different channels", func(t *testing.T) {
 		ch := make(chan any, 1)
 		svr := newTestServer(t, ch)
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		defer closeTestServer(t, svr)
 		svr.meta.AddCollection(&collectionInfo{
 			ID:         0,
@@ -2047,6 +2061,8 @@ func TestDataNodeTtChannel(t *testing.T) {
 			eventAfterHandleDataNodeTt: func() { ch <- struct{}{} },
 		}
 		svr := newTestServer(t, nil, SetServerHelper(helper))
+		svr.segmentManager.(*SegmentManager).stopAllocateSegments.Store(false)
+		svr.segmentManager.(*SegmentManager).finishedRestartExpireCheck = true
 		defer closeTestServer(t, svr)
 
 		svr.meta.AddCollection(&collectionInfo{

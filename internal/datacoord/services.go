@@ -470,7 +470,6 @@ func (s *Server) SaveBinlogPaths(ctx context.Context, req *datapb.SaveBinlogPath
 	segment := s.meta.GetSegment(segmentID)
 
 	log.Info("receive SaveBinlogPaths request",
-		zap.String("channel", segment.GetInsertChannel()),
 		zap.Int64("segmentID", segmentID),
 		zap.Bool("isFlushed", req.GetFlushed()),
 		zap.Bool("isDropped", req.GetDropped()),

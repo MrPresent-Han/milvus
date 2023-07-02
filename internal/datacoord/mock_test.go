@@ -47,9 +47,11 @@ type metaMemoryKV struct {
 	memkv.MemoryKV
 }
 
+const DefaultGlobalSegmentMaxExpireTime = "10000"
+
 func NewMetaMemoryKV() *metaMemoryKV {
 	memoryKV := memkv.NewMemoryKV()
-	memoryKV.Save(datacoord.GlobalSegmentMaxExpireTimeKey, "10000")
+	memoryKV.Save(datacoord.GlobalSegmentMaxExpireTimeKey, DefaultGlobalSegmentMaxExpireTime)
 	return &metaMemoryKV{MemoryKV: *memoryKV}
 }
 
@@ -121,7 +123,7 @@ func (mm *metaMemoryKV) CompareVersionAndSwap(key string, version int64, target 
 
 func newMemoryMeta() (*meta, error) {
 	metaKV := NewMetaMemoryKV()
-	metaKV.Save(datacoord.GlobalSegmentMaxExpireTimeKey, "100000")
+	metaKV.Save(datacoord.GlobalSegmentMaxExpireTimeKey, DefaultGlobalSegmentMaxExpireTime)
 	catalog := datacoord.NewCatalog(metaKV, "", "")
 	return newMeta(context.TODO(), catalog, nil)
 }

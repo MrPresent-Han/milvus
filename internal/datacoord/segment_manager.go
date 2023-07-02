@@ -119,6 +119,7 @@ type SegmentManager struct {
 	rcc                 types.RootCoord
 	//for global segment last expire
 	globalMaxSegmentLastExpire uint64
+	finishedRestartExpireCheck bool
 	stopAllocateSegments       *atomic.Bool
 }
 
@@ -206,17 +207,18 @@ func defaultFlushPolicy() flushPolicy {
 // newSegmentManager should be the only way to retrieve SegmentManager.
 func newSegmentManager(meta *meta, allocator allocator, rcc types.RootCoord, opts ...allocOption) (*SegmentManager, error) {
 	manager := &SegmentManager{
-		meta:                 meta,
-		allocator:            allocator,
-		helper:               defaultAllocHelper(),
-		segments:             make([]UniqueID, 0),
-		estimatePolicy:       defaultCalUpperLimitPolicy(),
-		allocPolicy:          defaultAllocatePolicy(),
-		segmentSealPolicies:  defaultSegmentSealPolicy(), // default only segment size policy
-		channelSealPolicies:  []channelSealPolicy{},      // no default channel seal policy
-		flushPolicy:          defaultFlushPolicy(),
-		rcc:                  rcc,
-		stopAllocateSegments: atomic.NewBool(false),
+		meta:                       meta,
+		allocator:                  allocator,
+		helper:                     defaultAllocHelper(),
+		segments:                   make([]UniqueID, 0),
+		estimatePolicy:             defaultCalUpperLimitPolicy(),
+		allocPolicy:                defaultAllocatePolicy(),
+		segmentSealPolicies:        defaultSegmentSealPolicy(), // default only segment size policy
+		channelSealPolicies:        []channelSealPolicy{},      // no default channel seal policy
+		flushPolicy:                defaultFlushPolicy(),
+		rcc:                        rcc,
+		finishedRestartExpireCheck: false,
+		stopAllocateSegments:       atomic.NewBool(true),
 	}
 	for _, opt := range opts {
 		opt.apply(manager)
@@ -243,6 +245,9 @@ func (manager *SegmentManager) saveGlobalSegmentExpireLoop(ctx context.Context) 
 			manager.maybeSyncGlobalMaxSegmentExpire(&lastSyncGlobalExpirationTime)
 			return
 		case <-ticker.C:
+			if !manager.finishedRestartExpireCheck {
+				continue
+			}
 			if err := manager.maybeSyncGlobalMaxSegmentExpire(&lastSyncGlobalExpirationTime); err != nil {
 				log.Error("failed to sync meta, stop allocating segments", zap.Error(err))
 				manager.stopAllocateSegments.Store(true)
@@ -546,13 +551,25 @@ func (s *SegmentManager) SealAllSegments(ctx context.Context, collectionID Uniqu
 	return ret, nil
 }
 
-func (s *SegmentManager) hasReachedFlushServiceTimePoint(t Timestamp) bool {
-	return t >= (s.globalMaxSegmentLastExpire + uint64(2*Params.DataCoordCfg.GlobalSegmentLastExpireSyncInterval.Nanoseconds()))
+// this function is expected to be called sequentially
+func (s *SegmentManager) segmentServiceAvailable(t Timestamp) bool {
+	if s.finishedRestartExpireCheck {
+		return true
+	}
+	guardTs := tsoutil.AddPhysicalDurationOnTs(s.globalMaxSegmentLastExpire,
+		2*Params.DataCoordCfg.GlobalSegmentLastExpireSyncInterval)
+	if t > guardTs {
+		s.finishedRestartExpireCheck = true
+		s.stopAllocateSegments.Store(false)
+		return true
+	}
+
+	return false
 }
 
 // GetFlushableSegments get segment ids with Sealed State and flushable (meets flushPolicy)
 func (s *SegmentManager) GetFlushableSegments(ctx context.Context, channel string, t Timestamp) ([]UniqueID, error) {
-	if !s.hasReachedFlushServiceTimePoint(t) {
+	if !s.segmentServiceAvailable(t) {
 		return nil, nil
 	}
 	s.mu.Lock()

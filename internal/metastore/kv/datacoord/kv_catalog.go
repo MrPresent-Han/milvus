@@ -639,7 +639,7 @@ func (kc *Catalog) GetGlobalMaxSegmentExpireTs() (uint64, error) {
 }
 
 func (kc *Catalog) SaveGlobalMaxSegmentExpireTs(ctx context.Context, lastExpire uint64) error {
-	return kc.MetaKv.Save(GlobalSegmentMaxExpireTimeKey, string(lastExpire))
+	return kc.MetaKv.Save(GlobalSegmentMaxExpireTimeKey, strconv.FormatUint(lastExpire, 10))
 }
 
 func fillLogPathByLogID(chunkManagerRootPath string, binlogType storage.BinlogType, collectionID, partitionID,

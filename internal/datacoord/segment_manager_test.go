@@ -18,12 +18,17 @@ package datacoord
 
 import (
 	"context"
+	memkv "github.com/milvus-io/milvus/internal/kv/mem"
+	"github.com/milvus-io/milvus/internal/proto/rootcoordpb"
+	"github.com/milvus-io/milvus/internal/types"
+	"github.com/milvus-io/milvus/internal/util/commonpbutil"
+	"github.com/milvus-io/milvus/internal/util/tsoutil"
+	"github.com/stretchr/testify/assert"
 	"math"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -100,6 +105,7 @@ func TestAllocSegment(t *testing.T) {
 	meta, err := newMemoryMeta()
 	assert.Nil(t, err)
 	segmentManager, _ := newSegmentManager(meta, mockAllocator, nil)
+	segmentManager.stopAllocateSegments.Store(false)
 
 	schema := newTestSchema()
 	collID, err := mockAllocator.allocID(ctx)
@@ -244,6 +250,7 @@ func TestSaveSegmentsToMeta(t *testing.T) {
 	assert.Nil(t, err)
 	meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 	segmentManager, _ := newSegmentManager(meta, mockAllocator, nil)
+	segmentManager.stopAllocateSegments.Store(false)
 	allocations, err := segmentManager.AllocSegment(context.Background(), collID, 0, "c1", 1000)
 	assert.Nil(t, err)
 	assert.EqualValues(t, 1, len(allocations))
@@ -266,6 +273,7 @@ func TestSaveSegmentsToMetaWithSpecificSegments(t *testing.T) {
 	assert.Nil(t, err)
 	meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 	segmentManager, _ := newSegmentManager(meta, mockAllocator, nil)
+	segmentManager.stopAllocateSegments.Store(false)
 	allocations, err := segmentManager.AllocSegment(context.Background(), collID, 0, "c1", 1000)
 	assert.Nil(t, err)
 	assert.EqualValues(t, 1, len(allocations))
@@ -288,6 +296,7 @@ func TestDropSegment(t *testing.T) {
 	assert.Nil(t, err)
 	meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 	segmentManager, _ := newSegmentManager(meta, mockAllocator, nil)
+	segmentManager.stopAllocateSegments.Store(false)
 	allocations, err := segmentManager.AllocSegment(context.Background(), collID, 0, "c1", 1000)
 	assert.Nil(t, err)
 	assert.EqualValues(t, 1, len(allocations))
@@ -315,6 +324,7 @@ func TestAllocRowsLargerThanOneSegment(t *testing.T) {
 		return 1, nil
 	}
 	segmentManager, _ := newSegmentManager(meta, mockAllocator, nil, withCalUpperLimitPolicy(mockPolicy))
+	segmentManager.stopAllocateSegments.Store(false)
 	allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 	assert.Nil(t, err)
 	assert.EqualValues(t, 2, len(allocations))
@@ -337,6 +347,7 @@ func TestExpireAllocation(t *testing.T) {
 		return 10000000, nil
 	}
 	segmentManager, _ := newSegmentManager(meta, mockAllocator, nil, withCalUpperLimitPolicy(mockPolicy))
+	segmentManager.stopAllocateSegments.Store(false)
 	// alloc 100 times and expire
 	var maxts Timestamp
 	var id int64 = -1
@@ -407,6 +418,8 @@ func TestGetFlushableSegments(t *testing.T) {
 		assert.Nil(t, err)
 		meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 		segmentManager, _ := newSegmentManager(meta, mockAllocator, nil)
+		segmentManager.stopAllocateSegments.Store(false)
+		segmentManager.finishedRestartExpireCheck = true
 		allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -439,6 +452,53 @@ func TestGetFlushableSegments(t *testing.T) {
 		assert.Empty(t, ids)
 		assert.Nil(t, meta.GetHealthySegment(allocations[0].SegmentID))
 	})
+
+	getNewTsFromRcc := func(rcc types.RootCoord) uint64 {
+		tsResp, _ := rcc.AllocTimestamp(context.TODO(), &rootcoordpb.AllocTimestampRequest{
+			Base: commonpbutil.NewMsgBase(
+				commonpbutil.WithMsgType(commonpb.MsgType_RequestTSO),
+				commonpbutil.WithMsgID(0),
+				commonpbutil.WithTimeStamp(0),
+				commonpbutil.WithSourceID(Params.DataCoordCfg.GetNodeID()),
+			),
+			Count: 1,
+		})
+		return tsResp.Timestamp
+	}
+
+	t.Run("get flushable segments based on global segment last expire", func(t *testing.T) {
+		//init meta
+		Params.Init()
+		mockAllocator := newMockAllocator()
+		rcc := newMockRootCoordService()
+		memoryKV := memkv.NewMemoryKV()
+		//no pre-set global lastExpire, will call rcc to generate a latest one
+		metaKV := &metaMemoryKV{MemoryKV: *memoryKV}
+		catalog := datacoord.NewCatalog(metaKV, "", "")
+		meta, err := newMeta(context.TODO(), catalog, nil)
+		assert.Nil(t, err)
+		schema := newTestSchema()
+		collID, err := mockAllocator.allocID(context.Background())
+		assert.Nil(t, err)
+		meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
+		segmentManager, _ := newSegmentManager(meta, mockAllocator, rcc)
+		assert.True(t, segmentManager.stopAllocateSegments.Load())
+		assert.False(t, segmentManager.finishedRestartExpireCheck)
+
+		//ts is not large enough
+		lastExpire := getNewTsFromRcc(rcc)
+		assert.False(t, segmentManager.segmentServiceAvailable(lastExpire))
+
+		//ts add only one sync interval, still not large enough
+		lastExpire = tsoutil.AddPhysicalDurationOnTs(lastExpire, 1*Params.DataCoordCfg.GlobalSegmentLastExpireSyncInterval)
+		assert.False(t, segmentManager.segmentServiceAvailable(lastExpire))
+
+		//lastExpire has been large enough to start segment service
+		lastExpire = tsoutil.AddPhysicalDurationOnTs(lastExpire, 1*Params.DataCoordCfg.GlobalSegmentLastExpireSyncInterval) + 1
+		assert.True(t, segmentManager.segmentServiceAvailable(lastExpire))
+		assert.False(t, segmentManager.stopAllocateSegments.Load())
+		assert.True(t, segmentManager.finishedRestartExpireCheck)
+	})
 }
 
 func TestTryToSealSegment(t *testing.T) {
@@ -453,6 +513,7 @@ func TestTryToSealSegment(t *testing.T) {
 		assert.Nil(t, err)
 		meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 		segmentManager, _ := newSegmentManager(meta, mockAllocator, nil, withSegmentSealPolices(sealByLifetimePolicy(math.MinInt64))) //always seal
+		segmentManager.stopAllocateSegments.Store(false)
 		allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -478,6 +539,7 @@ func TestTryToSealSegment(t *testing.T) {
 		assert.Nil(t, err)
 		meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 		segmentManager, _ := newSegmentManager(meta, mockAllocator, nil, withChannelSealPolices(getChannelOpenSegCapacityPolicy(-1))) //always seal
+		segmentManager.stopAllocateSegments.Store(false)
 		allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -505,6 +567,7 @@ func TestTryToSealSegment(t *testing.T) {
 		segmentManager, _ := newSegmentManager(meta, mockAllocator, nil,
 			withSegmentSealPolices(sealByLifetimePolicy(math.MinInt64)),
 			withChannelSealPolices(getChannelOpenSegCapacityPolicy(-1))) //always seal
+		segmentManager.stopAllocateSegments.Store(false)
 		allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -530,6 +593,7 @@ func TestTryToSealSegment(t *testing.T) {
 		assert.Nil(t, err)
 		meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 		segmentManager, _ := newSegmentManager(meta, mockAllocator, nil)
+		segmentManager.stopAllocateSegments.Store(false)
 		allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -618,6 +682,7 @@ func TestTryToSealSegment(t *testing.T) {
 		assert.Nil(t, err)
 		meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 		segmentManager, _ := newSegmentManager(meta, mockAllocator, nil, withSegmentSealPolices(sealByLifetimePolicy(math.MinInt64))) //always seal
+		segmentManager.stopAllocateSegments.Store(false)
 		allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -643,6 +708,7 @@ func TestTryToSealSegment(t *testing.T) {
 		assert.Nil(t, err)
 		meta.AddCollection(&collectionInfo{ID: collID, Schema: schema})
 		segmentManager, _ := newSegmentManager(meta, mockAllocator, nil, withChannelSealPolices(getChannelOpenSegCapacityPolicy(-1))) //always seal
+		segmentManager.stopAllocateSegments.Store(false)
 		allocations, err := segmentManager.AllocSegment(context.TODO(), collID, 0, "c1", 2)
 		assert.Nil(t, err)
 		assert.EqualValues(t, 1, len(allocations))
@@ -787,3 +853,33 @@ func TestSegmentManager_DropSegmentsOfChannel(t *testing.T) {
 		})
 	}
 }
+
+func TestSegmentManager_SaveLoadGlobalSegmentExpire(t *testing.T) {
+	metaKV := NewMetaMemoryKV()
+	metaKV.Save(datacoord.GlobalSegmentMaxExpireTimeKey, DefaultGlobalSegmentMaxExpireTime)
+	catalog := datacoord.NewCatalog(metaKV, "", "")
+	meta, err := newMeta(context.TODO(), catalog, nil)
+	assert.Nil(t, err)
+	ms := newMockRootCoordService()
+	mockAllocator := newMockAllocator()
+
+	//load from meta by default
+	segmentManager1, _ := newSegmentManager(meta, mockAllocator, ms)
+	globalMaxSegmentLastExpireStr := strconv.FormatUint(segmentManager1.globalMaxSegmentLastExpire, 10)
+	assert.Equal(t, DefaultGlobalSegmentMaxExpireTime, globalMaxSegmentLastExpireStr)
+
+	//remove default value for global last expire and test rootCoord alloc latest ts
+	metaKV.Remove(datacoord.GlobalSegmentMaxExpireTimeKey)
+	segmentManager2, _ := newSegmentManager(meta, mockAllocator, ms)
+	globalMaxSegmentLastExpireStr = strconv.FormatUint(segmentManager2.globalMaxSegmentLastExpire, 10)
+	assert.NotEqual(t, DefaultGlobalSegmentMaxExpireTime, globalMaxSegmentLastExpireStr)
+	initGlobalExpire := segmentManager2.globalMaxSegmentLastExpire
+
+	//save new lastExpire
+	segmentManager2.saveGlobalSegmentExpire(20000)
+	assert.Equal(t, initGlobalExpire, segmentManager2.globalMaxSegmentLastExpire)
+	segmentManager2.saveGlobalSegmentExpire(2 + initGlobalExpire)
+	assert.Equal(t, 2+initGlobalExpire, segmentManager2.globalMaxSegmentLastExpire)
+}
+
+func TestSegmentManager_
