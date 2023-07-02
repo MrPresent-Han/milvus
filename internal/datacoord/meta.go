@@ -187,6 +187,10 @@ func (m *meta) GetClonedCollectionInfo(collectionID UniqueID) *collectionInfo {
 	return cloneColl
 }
 
+func (m *meta) SaveGlobalMaxSegmentExpireTs(lastExpire uint64) error {
+	return m.catalog.SaveGlobalMaxSegmentExpireTs(m.ctx, lastExpire)
+}
+
 func (m *meta) GetGlobalMaxSegmentExpire() (uint64, error) {
 	return m.catalog.GetGlobalMaxSegmentExpireTs()
 }
@@ -878,27 +882,19 @@ func (m *meta) SelectSegments(selector SegmentInfoSelector) []*SegmentInfo {
 }
 
 // AddAllocation add allocation in segment
-func (m *meta) AddAllocation(ctx context.Context, segmentID UniqueID, allocation *Allocation) error {
+func (m *meta) AddAllocation(segmentID UniqueID, allocation *Allocation) error {
+	log.Info("meta update: add allocation", zap.Int64("segmentID", segmentID),
+		zap.Any("allocation", allocation))
 	m.Lock()
 	defer m.Unlock()
 	curSegInfo := m.segments.GetSegment(segmentID)
 	if curSegInfo == nil {
 		// TODO: Error handling.
-		log.Warn("meta update: add allocation failed - segment not found",
-			zap.Int64("segmentID", segmentID))
+		log.Warn("meta update: add allocation failed - segment not found", zap.Int64("segmentID", segmentID))
 		return nil
 	}
-	// Persist segment updates first.
-	clonedSegment := curSegInfo.Clone(AddAllocation(allocation))
-	if clonedSegment != nil && isSegmentHealthy(clonedSegment) {
-		if err := m.catalog.AsyncAlterSegmentExcludeLogs(m.ctx, clonedSegment.SegmentInfo, curSegInfo.SegmentInfo); err != nil {
-			log.Error("meta update: add allocation failed",
-				zap.Int64("segment ID", segmentID),
-				zap.Error(err))
-			return err
-		}
-	}
-	// Update in-memory meta.
+	// As we use global segment lastExpire to guarantee data correctness after restart
+	// there is no need to persist allocation to meta store, only update allocation in-memory meta.
 	m.segments.AddAllocation(segmentID, allocation)
 	log.Info("meta update: add allocation - complete", zap.Int64("segmentID", segmentID))
 	return nil

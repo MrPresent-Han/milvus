@@ -341,7 +341,6 @@ func (s *Server) Start() error {
 
 	Params.DataCoordCfg.CreatedTime = time.Now()
 	Params.DataCoordCfg.UpdatedTime = time.Now()
-
 	return nil
 }
 
@@ -351,6 +350,7 @@ func (s *Server) startDataCoord() {
 		s.compactionTrigger.start()
 	}
 	s.startServerLoop()
+	s.segmentManager.Start(s.ctx)
 
 	// DataCoord (re)starts successfully and starts to collection segment stats
 	// data from all DataNode.
@@ -489,10 +489,6 @@ func (s *Server) initMeta(chunkManager storage.ChunkManager) error {
 	reloadEtcdFn := func() error {
 		var err error
 		catalog := datacoord.NewCatalog(etcdKV, chunkManager.RootPath(), Params.EtcdCfg.MetaRootPath)
-		err = catalog.Start(s.ctx)
-		if err != nil {
-			return err
-		}
 		s.meta, err = newMeta(s.ctx, catalog, chunkManager)
 		if err != nil {
 			return err

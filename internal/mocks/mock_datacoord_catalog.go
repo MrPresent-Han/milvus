@@ -198,50 +198,6 @@ func (_c *DataCoordCatalog_AlterSegmentsAndAddNewSegment_Call) RunAndReturn(run 
 	return _c
 }
 
-// AsyncAlterSegmentExcludeLogs provides a mock function with given fields: ctx, newSegment, oldSegment
-func (_m *DataCoordCatalog) AsyncAlterSegmentExcludeLogs(ctx context.Context, newSegment *datapb.SegmentInfo, oldSegment *datapb.SegmentInfo) error {
-	ret := _m.Called(ctx, newSegment, oldSegment)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *datapb.SegmentInfo, *datapb.SegmentInfo) error); ok {
-		r0 = rf(ctx, newSegment, oldSegment)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AsyncAlterSegmentExcludeLogs'
-type DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call struct {
-	*mock.Call
-}
-
-// AsyncAlterSegmentExcludeLogs is a helper method to define mock.On call
-//   - ctx context.Context
-//   - newSegment *datapb.SegmentInfo
-//   - oldSegment *datapb.SegmentInfo
-func (_e *DataCoordCatalog_Expecter) AsyncAlterSegmentExcludeLogs(ctx interface{}, newSegment interface{}, oldSegment interface{}) *DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call {
-	return &DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call{Call: _e.mock.On("AsyncAlterSegmentExcludeLogs", ctx, newSegment, oldSegment)}
-}
-
-func (_c *DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call) Run(run func(ctx context.Context, newSegment *datapb.SegmentInfo, oldSegment *datapb.SegmentInfo)) *DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*datapb.SegmentInfo), args[2].(*datapb.SegmentInfo))
-	})
-	return _c
-}
-
-func (_c *DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call) Return(_a0 error) *DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call) RunAndReturn(run func(context.Context, *datapb.SegmentInfo, *datapb.SegmentInfo) error) *DataCoordCatalog_AsyncAlterSegmentExcludeLogs_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // ChannelExists provides a mock function with given fields: ctx, channel
 func (_m *DataCoordCatalog) ChannelExists(ctx context.Context, channel string) bool {
 	ret := _m.Called(ctx, channel)
@@ -790,6 +746,49 @@ func (_c *DataCoordCatalog_SaveDroppedSegmentsInBatch_Call) RunAndReturn(run fun
 	return _c
 }
 
+// SaveGlobalMaxSegmentExpireTs provides a mock function with given fields: ctx, lastExpire
+func (_m *DataCoordCatalog) SaveGlobalMaxSegmentExpireTs(ctx context.Context, lastExpire uint64) error {
+	ret := _m.Called(ctx, lastExpire)
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
+		r0 = rf(ctx, lastExpire)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveGlobalMaxSegmentExpireTs'
+type DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call struct {
+	*mock.Call
+}
+
+// SaveGlobalMaxSegmentExpireTs is a helper method to define mock.On call
+//   - ctx context.Context
+//   - lastExpire uint64
+func (_e *DataCoordCatalog_Expecter) SaveGlobalMaxSegmentExpireTs(ctx interface{}, lastExpire interface{}) *DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call {
+	return &DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call{Call: _e.mock.On("SaveGlobalMaxSegmentExpireTs", ctx, lastExpire)}
+}
+
+func (_c *DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call) Run(run func(ctx context.Context, lastExpire uint64)) *DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call) Return(_a0 error) *DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call) RunAndReturn(run func(context.Context, uint64) error) *DataCoordCatalog_SaveGlobalMaxSegmentExpireTs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ShouldDropChannel provides a mock function with given fields: ctx, channel
 func (_m *DataCoordCatalog) ShouldDropChannel(ctx context.Context, channel string) bool {
 	ret := _m.Called(ctx, channel)
@@ -829,48 +828,6 @@ func (_c *DataCoordCatalog_ShouldDropChannel_Call) Return(_a0 bool) *DataCoordCa
 }
 
 func (_c *DataCoordCatalog_ShouldDropChannel_Call) RunAndReturn(run func(context.Context, string) bool) *DataCoordCatalog_ShouldDropChannel_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Start provides a mock function with given fields: ctx
-func (_m *DataCoordCatalog) Start(ctx context.Context) error {
-	ret := _m.Called(ctx)
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = rf(ctx)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// DataCoordCatalog_Start_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Start'
-type DataCoordCatalog_Start_Call struct {
-	*mock.Call
-}
-
-// Start is a helper method to define mock.On call
-//   - ctx context.Context
-func (_e *DataCoordCatalog_Expecter) Start(ctx interface{}) *DataCoordCatalog_Start_Call {
-	return &DataCoordCatalog_Start_Call{Call: _e.mock.On("Start", ctx)}
-}
-
-func (_c *DataCoordCatalog_Start_Call) Run(run func(ctx context.Context)) *DataCoordCatalog_Start_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
-	})
-	return _c
-}
-
-func (_c *DataCoordCatalog_Start_Call) Return(_a0 error) *DataCoordCatalog_Start_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *DataCoordCatalog_Start_Call) RunAndReturn(run func(context.Context) error) *DataCoordCatalog_Start_Call {
 	_c.Call.Return(run)
 	return _c
 }

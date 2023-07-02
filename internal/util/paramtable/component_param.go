@@ -1429,8 +1429,9 @@ type dataCoordConfig struct {
 	Address string
 
 	// --- ETCD ---
-	ChannelWatchSubPath   string
-	AsyncSaveMetaInterval time.Duration
+	ChannelWatchSubPath                  string
+	GlobalSegmentLastExpireSyncInterval  time.Duration
+	GlobalSegmentLastExpireCheckInterval time.Duration
 
 	// --- CHANNEL ---
 	WatchTimeoutInterval         time.Duration
@@ -1478,7 +1479,8 @@ type dataCoordConfig struct {
 func (p *dataCoordConfig) init(base *BaseTable) {
 	p.Base = base
 	p.initChannelWatchPrefix()
-	p.initAsyncSaveMetaInterval()
+	p.initGlobalSegmentLastExpireSyncInterval()
+	p.initGlobalSegmentLastExpireCheckInterval()
 
 	p.initWatchTimeoutInterval()
 	p.initChannelBalanceSilentDuration()
@@ -1515,9 +1517,14 @@ func (p *dataCoordConfig) init(base *BaseTable) {
 	p.initEnableActiveStandby()
 }
 
-func (p *dataCoordConfig) initAsyncSaveMetaInterval() {
-	p.AsyncSaveMetaInterval = time.Duration(p.Base.ParseInt64WithDefault("dataCoord.etcd.asyncSaveMetaInterval", 30)) * time.Second
-	log.Info("init AsyncSaveMetaInterval", zap.Duration("interval", p.AsyncSaveMetaInterval))
+func (p *dataCoordConfig) initGlobalSegmentLastExpireSyncInterval() {
+	p.GlobalSegmentLastExpireSyncInterval = time.Duration(p.Base.ParseInt64WithDefault("dataCoord.segment.globalExpireSyncInterval", 60)) * time.Second
+	log.Info("init GlobalSegmentLastExpireSyncInterval", zap.Duration("interval", p.GlobalSegmentLastExpireSyncInterval))
+}
+
+func (p *dataCoordConfig) initGlobalSegmentLastExpireCheckInterval() {
+	p.GlobalSegmentLastExpireCheckInterval = time.Duration(p.Base.ParseInt64WithDefault("dataCoord.segment.globalExpireCheckInterval", 5)) * time.Second
+	log.Info("init GlobalSegmentLastExpireCheckInterval", zap.Duration("interval", p.GlobalSegmentLastExpireCheckInterval))
 }
 
 func (p *dataCoordConfig) initWatchTimeoutInterval() {
@@ -1714,7 +1721,6 @@ type dataNodeConfig struct {
 	BinLogMaxSize          int64
 	SyncPeriod             time.Duration
 	CpLagPeriod            time.Duration
-	MaxSyncBatch           int
 
 	Alias string // Different datanode in one machine
 
@@ -1753,7 +1759,6 @@ func (p *dataNodeConfig) init(base *BaseTable) {
 	p.initBinlogMaxSize()
 	p.initSyncPeriod()
 	p.initCpLagPeriod()
-	p.initMaxSyncBatch()
 	p.initIOConcurrency()
 	p.initDataNodeTimeTickInterval()
 
@@ -1818,10 +1823,6 @@ func (p *dataNodeConfig) initSyncPeriod() {
 func (p *dataNodeConfig) initCpLagPeriod() {
 	cpLagPeriod := p.Base.ParseInt64WithDefault("datanode.segment.cpLagPeriod", 600)
 	p.CpLagPeriod = time.Duration(cpLagPeriod) * time.Second
-}
-
-func (p *dataNodeConfig) initMaxSyncBatch() {
-	p.MaxSyncBatch = p.Base.ParseIntWithDefault("datanode.segment.maxSyncBatch", 500)
 }
 
 func (p *dataNodeConfig) initChannelWatchPath() {

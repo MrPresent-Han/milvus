@@ -164,14 +164,12 @@ func (s *Server) AssignSegmentID(ctx context.Context, req *datapb.AssignSegmentI
 		// Load the collection info from Root Coordinator, if it is not found in server meta.
 		// Note: this request wouldn't be received if collection didn't exist.
 		_, err := s.handler.GetCollection(ctx, r.GetCollectionID())
-		tr.CtxRecord(ctx, "getCollection")
 		if err != nil {
 			log.Warn("cannot get collection schema", zap.Error(err))
 		}
 
 		// Add the channel to cluster for watching.
 		s.cluster.Watch(r.ChannelName, r.CollectionID)
-		tr.CtxRecord(ctx, "cluster watch channel")
 
 		segmentAllocations := make([]*Allocation, 0)
 		if r.GetIsImport() {

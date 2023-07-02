@@ -1352,6 +1352,9 @@ func (s *spySegmentManager) DropSegmentsOfChannel(ctx context.Context, channel s
 	s.spyCh <- struct{}{}
 }
 
+func (s *spySegmentManager) Start(ctx context.Context) {
+}
+
 func TestSaveBinlogPaths(t *testing.T) {
 	t.Run("Normal SaveRequest", func(t *testing.T) {
 		svr := newTestServer(t, nil)
