@@ -27,27 +27,33 @@
 //////////////////////////////    common interfaces    //////////////////////////////
 CSegmentInterface
 NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id) {
+    LOG_SEGCORE_INFO_ << "hc---1";
     auto col = static_cast<milvus::segcore::Collection*>(collection);
-
+    LOG_SEGCORE_INFO_ << "hc---2";
     std::unique_ptr<milvus::segcore::SegmentInterface> segment;
     switch (seg_type) {
+        LOG_SEGCORE_INFO_ << "hc---3";
         case Growing: {
             auto seg = milvus::segcore::CreateGrowingSegment(
                 col->get_schema(), col->GetIndexMeta(), segment_id);
+            LOG_SEGCORE_INFO_ << "hc---4";
             segment = std::move(seg);
+            LOG_SEGCORE_INFO_ << "hc---5";
             break;
         }
         case Sealed:
         case Indexing:
+            LOG_SEGCORE_INFO_ << "hc---6";
             segment = milvus::segcore::CreateSealedSegment(col->get_schema(),
                                                            segment_id);
+            LOG_SEGCORE_INFO_ << "hc---7";
             break;
         default:
             LOG_SEGCORE_ERROR_ << "invalid segment type "
                                << static_cast<int32_t>(seg_type);
             break;
     }
-
+    LOG_SEGCORE_INFO_ << "hc---51";
     return segment.release();
 }
 

@@ -34,6 +34,7 @@
 #include "query/deprecated/GeneralQuery.h"
 #include "utils/Status.h"
 #include "common/IndexMeta.h"
+#include "log/Log.h"
 
 namespace milvus::segcore {
 
@@ -287,6 +288,7 @@ CreateGrowingSegment(
     IndexMetaPtr indexMeta,
     int64_t segment_id = -1,
     const SegcoreConfig& conf = SegcoreConfig::default_config()) {
+    LOG_SEGCORE_INFO_ << "hc---CreateGrowingSegment-291";
     return std::make_unique<SegmentGrowingImpl>(
         schema, indexMeta, conf, segment_id);
 }
