@@ -149,6 +149,9 @@ func NewCollection(collectionID int64, schema *schemapb.CollectionSchema, indexM
 		indexMetaBlob := proto.MarshalTextString(indexMeta)
 		cIndexMetaBlob := C.CString(indexMetaBlob)
 		C.SetIndexMeta(collection, cIndexMetaBlob)
+		log.Info("Set IndexMeta for NewCollection", zap.Int64("collectionID", collectionID))
+	} else {
+		log.Warn("NewCollection Set IndexMeta is nil", zap.Int64("collectionID", collectionID))
 	}
 
 	return &Collection{
