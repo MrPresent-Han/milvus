@@ -44,7 +44,10 @@ class DataCodec {
 
     void
     SetTimestamps(Timestamp start_timestamp, Timestamp end_timestamp) {
-        assert(start_timestamp <= end_timestamp);
+        AssertInfo(start_timestamp <= end_timestamp,
+                   "hc---False Relation, start_timestamp:"
+                   + std::to_string(start_timestamp)
+                   + ", end_timestamp:" + std::to_string(end_timestamp));
         time_range_ = std::make_pair(start_timestamp, end_timestamp);
     }
 

@@ -21,6 +21,7 @@
 #include "utils/Json.h"
 #include "common/Consts.h"
 #include "common/FieldMeta.h"
+#include "log/Log.h"
 
 namespace milvus::storage {
 
@@ -109,6 +110,12 @@ DescriptorEventDataFixPart::DescriptorEventDataFixPart(BinlogReaderPtr reader) {
     assert(ast.ok());
     ast = reader->Read(sizeof(data_type), &data_type);
     assert(ast.ok());
+    if (start_timestamp > end_timestamp) {
+        LOG_SEGCORE_ERROR_ << "hc---wrong timestamp relations:" << "start_timestamp:" << start_timestamp
+                          << ", end_timestamp:" << end_timestamp << ", collectionID" << collection_id
+                          << ", partitionID" << partition_id << ", segmentID" << segment_id
+                          << ", fieldID" << field_id << ", dataType" << data_type;
+    }
 }
 
 std::vector<uint8_t>
@@ -197,7 +204,6 @@ BaseEventData::BaseEventData(BinlogReaderPtr reader,
     AssertInfo(ast.ok(), "read start timestamp failed");
     ast = reader->Read(sizeof(end_timestamp), &end_timestamp);
     AssertInfo(ast.ok(), "read end timestamp failed");
-
     int payload_length =
         event_length - sizeof(start_timestamp) - sizeof(end_timestamp);
     auto res = reader->Read(payload_length);

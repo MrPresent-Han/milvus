@@ -350,8 +350,10 @@ DownloadAndDecodeRemoteFile(ChunkManager* chunk_manager,
     auto fileSize = chunk_manager->Size(file);
     auto buf = std::shared_ptr<uint8_t[]>(new uint8_t[fileSize]);
     chunk_manager->Read(file, buf.get(), fileSize);
-
-    return DeserializeFileData(buf, fileSize);
+    LOG_SEGCORE_INFO_ << "hc---Start Deserialize File" << file;
+    std::unique_ptr<DataCodec> dataCodec = DeserializeFileData(buf, fileSize);
+    LOG_SEGCORE_INFO_ << "hc---End Deserialize File" << file;
+    return dataCodec;
 }
 
 std::pair<std::string, size_t>
