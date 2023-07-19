@@ -33,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus/internal/mq/msgstream/mqwrapper"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/util/retry"
+	"github.com/milvus-io/milvus/internal/util/timerecord"
 	"github.com/milvus-io/milvus/internal/util/trace"
 	"github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/opentracing/opentracing-go"
@@ -54,7 +55,7 @@ type mqMsgStream struct {
 	closeRWMutex *sync.RWMutex
 	streamCancel func()
 	bufSize      int64
-	producerLock *sync.Mutex
+	producerLock *sync.RWMutex
 	consumerLock *sync.Mutex
 	closed       int32
 	onceChan     sync.Once
@@ -86,7 +87,7 @@ func NewMqMsgStream(ctx context.Context,
 		bufSize:      bufSize,
 		receiveBuf:   receiveBuf,
 		streamCancel: streamCancel,
-		producerLock: &sync.Mutex{},
+		producerLock: &sync.RWMutex{},
 		consumerLock: &sync.Mutex{},
 		closeRWMutex: &sync.RWMutex{},
 		closed:       0,
@@ -230,6 +231,11 @@ func (ms *mqMsgStream) GetProduceChannels() []string {
 	return ms.producerChannels
 }
 
+func (ms *mqMsgStream) acquireProducerLock(tr *timerecord.TimeRecorder) time.Duration {
+	ms.producerLock.RLock()
+	return tr.RecordSpan()
+}
+
 func (ms *mqMsgStream) Produce(msgPack *MsgPack) error {
 	if msgPack == nil || len(msgPack.Msgs) <= 0 {
 		log.Debug("Warning: Receive empty msgPack")
@@ -238,6 +244,7 @@ func (ms *mqMsgStream) Produce(msgPack *MsgPack) error {
 	if len(ms.producers) <= 0 {
 		return errors.New("nil producer in msg stream")
 	}
+	tr := timerecord.NewTimeRecorder("mqMsgStream produce stats")
 	tsMsgs := msgPack.Msgs
 	reBucketValues := ms.ComputeProduceChannelIndexes(msgPack.Msgs)
 	var result map[int32]*MsgPack
@@ -255,9 +262,14 @@ func (ms *mqMsgStream) Produce(msgPack *MsgPack) error {
 			result, err = DefaultRepackFunc(tsMsgs, reBucketValues)
 		}
 	}
+	repackDuration := tr.RecordSpan()
 	if err != nil {
 		return err
 	}
+	compressDurationMap, acquireLockDurationMap, sendDurationMap :=
+		make(map[string][]time.Duration, len(result)), make(map[string][]time.Duration, len(result)),
+		make(map[string][]time.Duration, len(result))
+
 	for k, v := range result {
 		channel := ms.producerChannels[k]
 		for i := 0; i < len(v.Msgs); i++ {
@@ -276,20 +288,47 @@ func (ms *mqMsgStream) Produce(msgPack *MsgPack) error {
 			msg := &mqwrapper.ProducerMessage{Payload: m, Properties: map[string]string{}}
 
 			trace.InjectContextToPulsarMsgProperties(sp.Context(), msg.Properties)
-
-			ms.producerLock.Lock()
+			compressDuration := tr.RecordSpan()
+			acquireLockDuration := ms.acquireProducerLock(tr)
 			if _, err := ms.producers[channel].Send(
 				spanCtx,
 				msg,
 			); err != nil {
-				ms.producerLock.Unlock()
+				ms.producerLock.RUnlock()
 				trace.LogError(sp, err)
 				sp.Finish()
 				return err
 			}
 			sp.Finish()
-			ms.producerLock.Unlock()
+			ms.producerLock.RUnlock()
+			sendDuration := tr.RecordSpan()
+			if _, existed := compressDurationMap[channel]; !existed {
+				compressDurationMap[channel] = make([]time.Duration, 0)
+				acquireLockDurationMap[channel] = make([]time.Duration, 0)
+				sendDurationMap[channel] = make([]time.Duration, 0)
+			}
+			compressDurationMap[channel] = append(compressDurationMap[channel], compressDuration)
+			acquireLockDurationMap[channel] = append(acquireLockDurationMap[channel], acquireLockDuration)
+			sendDurationMap[channel] = append(sendDurationMap[channel], sendDuration)
 		}
+	}
+	produceDuration := tr.ElapseSpan()
+	if produceDuration >= 1*time.Second {
+		detailedDurationInfo := fmt.Sprintf("produce totoal time cost:%s detailed cost:", produceDuration.String())
+		for k, _ := range result {
+			channel := ms.producerChannels[k]
+			channelDurationInfo := fmt.Sprintf("channel %s durations:", channel)
+			for i := 0; i < len(compressDurationMap[channel]); i++ {
+				cDuration, lDuration, sDuration := compressDurationMap[channel][i],
+					acquireLockDurationMap[channel][i], sendDurationMap[channel][i]
+				channelDurationInfo += fmt.Sprintf("[c %s,l %s, s %s]", cDuration.String(),
+					lDuration.String(), sDuration.String())
+			}
+			detailedDurationInfo += fmt.Sprintf("%s\n", channelDurationInfo)
+		}
+
+		log.Info("send msg to mq consume too much time", zap.Duration("repackDuration", repackDuration),
+			zap.String("detailed time cost", detailedDurationInfo))
 	}
 	return nil
 }
@@ -343,20 +382,20 @@ func (ms *mqMsgStream) ProduceMark(msgPack *MsgPack) (map[string][]MessageID, er
 
 			trace.InjectContextToPulsarMsgProperties(sp.Context(), msg.Properties)
 
-			ms.producerLock.Lock()
+			ms.producerLock.RLock()
 			id, err := ms.producers[channel].Send(
 				spanCtx,
 				msg,
 			)
 			if err != nil {
-				ms.producerLock.Unlock()
+				ms.producerLock.RUnlock()
 				trace.LogError(sp, err)
 				sp.Finish()
 				return ids, err
 			}
 			ids[channel] = append(ids[channel], id)
 			sp.Finish()
-			ms.producerLock.Unlock()
+			ms.producerLock.RUnlock()
 		}
 	}
 	return ids, nil
@@ -370,6 +409,7 @@ func (ms *mqMsgStream) Broadcast(msgPack *MsgPack) error {
 		return nil
 	}
 	for _, v := range msgPack.Msgs {
+		tr := timerecord.NewTimeRecorder("Broadcast msgPack")
 		sp, spanCtx := MsgSpanFromCtx(v.TraceCtx(), v)
 
 		mb, err := v.Marshal(v)
@@ -385,20 +425,27 @@ func (ms *mqMsgStream) Broadcast(msgPack *MsgPack) error {
 		msg := &mqwrapper.ProducerMessage{Payload: m, Properties: map[string]string{}}
 
 		trace.InjectContextToPulsarMsgProperties(sp.Context(), msg.Properties)
-
-		ms.producerLock.Lock()
+		compressDuration := tr.RecordSpan()
+		acquireLockDuration := ms.acquireProducerLock(tr)
 		for _, producer := range ms.producers {
 			if _, err := producer.Send(
 				spanCtx,
 				msg,
 			); err != nil {
-				ms.producerLock.Unlock()
+				ms.producerLock.RUnlock()
 				trace.LogError(sp, err)
 				sp.Finish()
 				return err
 			}
 		}
-		ms.producerLock.Unlock()
+		ms.producerLock.RUnlock()
+		sendDuration := tr.RecordSpan()
+		if tr.ElapseSpan() > 1*time.Second {
+			log.Info("broad cast msg to mq too slowly",
+				zap.Duration("compressDuration", compressDuration),
+				zap.Duration("acquireLockDuration", acquireLockDuration),
+				zap.Duration("sendDuration", sendDuration))
+		}
 		sp.Finish()
 	}
 	return nil
@@ -428,18 +475,18 @@ func (ms *mqMsgStream) BroadcastMark(msgPack *MsgPack) (map[string][]MessageID, 
 
 		trace.InjectContextToPulsarMsgProperties(sp.Context(), msg.Properties)
 
-		ms.producerLock.Lock()
+		ms.producerLock.RLock()
 		for channel, producer := range ms.producers {
 			id, err := producer.Send(spanCtx, msg)
 			if err != nil {
-				ms.producerLock.Unlock()
+				ms.producerLock.RUnlock()
 				trace.LogError(sp, err)
 				sp.Finish()
 				return ids, err
 			}
 			ids[channel] = append(ids[channel], id)
 		}
-		ms.producerLock.Unlock()
+		ms.producerLock.RUnlock()
 		sp.Finish()
 	}
 	return ids, nil
