@@ -109,7 +109,8 @@ func (s *Server) init() error {
 	s.etcdCli = etcdCli
 	s.SetEtcdClient(etcdCli)
 	s.querynode.SetAddress(Params.GetAddress())
-	log.Debug("QueryNode connect to etcd successfully")
+	log.Debug("QueryNode connect to etcd successfully", zap.Strings("etcd endpoints:",
+		etcdConfig.Endpoints.GetAsStrings()))
 	s.wg.Add(1)
 	go s.startGrpcLoop(Params.Port.GetAsInt())
 	// wait for grpc server loop start

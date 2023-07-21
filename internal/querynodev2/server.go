@@ -232,7 +232,9 @@ func (node *QueryNode) Init() error {
 	var initError error
 	node.initOnce.Do(func() {
 		// ctx := context.Background()
-		log.Info("QueryNode session info", zap.String("metaPath", paramtable.Get().EtcdCfg.MetaRootPath.GetValue()))
+		log.Info("QueryNode session info", zap.String("metaPath",
+			paramtable.Get().EtcdCfg.MetaRootPath.GetValue()),
+			zap.Strings("endPoints", paramtable.Get().EtcdCfg.Endpoints.GetAsStrings()))
 		err := node.initSession()
 		if err != nil {
 			log.Error("QueryNode init session failed", zap.Error(err))
