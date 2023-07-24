@@ -315,7 +315,13 @@ UpdateSealedSegmentIndex(CSegmentInterface c_segment,
         AssertInfo(segment != nullptr, "segment conversion failed");
         auto load_index_info =
             static_cast<milvus::segcore::LoadIndexInfo*>(c_load_index_info);
+        LOG_SEGCORE_INFO_ << "hc---UpdateSealedSegmentIndex--beforeLoadIndex"
+                          << "segmentID:" << segment->get_segment_id()
+                          << "collectionID" << load_index_info->collection_id;
         segment->LoadIndex(*load_index_info);
+        LOG_SEGCORE_INFO_ << "hc---UpdateSealedSegmentIndex--afterLoadIndex"
+                          << "segmentID:" << segment->get_segment_id()
+                    << "collectionID" << load_index_info->collection_id;
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());

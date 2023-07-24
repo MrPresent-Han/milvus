@@ -61,7 +61,11 @@ SegmentSealedImpl::LoadIndex(const LoadIndexInfo& info) {
     auto& field_meta = schema_->operator[](field_id);
 
     if (field_meta.is_vector()) {
+        LOG_SEGCORE_INFO_ << "hc---SegmentSealedImpl::LoadIndex-111"
+                          << "segmentID:" << info.segment_id << ", collectionID:" << info.collection_id;
         LoadVecIndex(info);
+        LOG_SEGCORE_INFO_ << "hc---SegmentSealedImpl::LoadIndex-222"
+                          << "segmentID:" << info.segment_id << ", collectionID:" << info.collection_id;
     } else {
         LoadScalarIndex(info);
     }
@@ -79,7 +83,11 @@ SegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
     auto row_count = info.index->Count();
     AssertInfo(row_count > 0, "Index count is 0");
 
+    LOG_SEGCORE_INFO_ << "hc---SegmentSealedImpl::LoadVecIndex-before lock"
+                      << "segmentID:" << info.segment_id << ", collectionID:" << info.collection_id;
     std::unique_lock lck(mutex_);
+    LOG_SEGCORE_INFO_ << "hc---SegmentSealedImpl::LoadVecIndex-after lock"
+                      << "segmentID:" << info.segment_id << ", collectionID:" << info.collection_id;
     AssertInfo(
         !get_bit(index_ready_bitset_, field_id),
         "vector index has been exist at " + std::to_string(field_id.get()));
@@ -92,16 +100,21 @@ SegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
                        std::to_string(row_count_opt_.value()) + ")");
     }
     AssertInfo(!vector_indexings_.is_ready(field_id), "vec index is not ready");
+    LOG_SEGCORE_INFO_ << "hc---SegmentSealedImpl::LoadVecIndex-before append_field_indexing"
+                      << "segmentID:" << info.segment_id << ", collectionID:" << info.collection_id;
     vector_indexings_.append_field_indexing(
         field_id,
         metric_type,
         std::move(const_cast<LoadIndexInfo&>(info).index));
-
+    LOG_SEGCORE_INFO_ << "hc---SegmentSealedImpl::LoadVecIndex-after append_field_indexing"
+                      << "segmentID:" << info.segment_id << ", collectionID:" << info.collection_id;
     set_bit(index_ready_bitset_, field_id, true);
     update_row_count(row_count);
     // release field column
     fields_.erase(field_id);
     set_bit(field_data_ready_bitset_, field_id, false);
+    LOG_SEGCORE_INFO_ << "hc---SegmentSealedImpl::LoadVecIndex--finished"
+                      << "segmentID:" << info.segment_id << ", collectionID:" << info.collection_id;
 }
 
 void

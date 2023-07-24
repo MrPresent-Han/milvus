@@ -885,6 +885,7 @@ func (s *LocalSegment) LoadIndexInfo(indexInfo *querypb.FieldIndexInfo, info *Lo
 		zap.Int64("segmentID", s.ID()),
 		zap.Int64("fieldID", indexInfo.FieldID),
 	)
+	log.Info("hc---LoadIndexInfo--acquire before acquire lock")
 	s.mut.RLock()
 	defer s.mut.RUnlock()
 
@@ -893,11 +894,13 @@ func (s *LocalSegment) LoadIndexInfo(indexInfo *querypb.FieldIndexInfo, info *Lo
 	}
 
 	var status C.CStatus
+	log.Info("hc---LoadIndexInfo--submit update index task")
 	GetPool().Submit(func() (any, error) {
+		log.Info("hc---LoadIndexInfo--load index task inside")
 		status = C.UpdateSealedSegmentIndex(s.ptr, info.cLoadIndexInfo)
 		return nil, nil
 	}).Await()
-
+	log.Info("hc---LoadIndexInfo--after await updateIndex task")
 	if err := HandleCStatus(&status, "UpdateSealedSegmentIndex failed"); err != nil {
 		return err
 	}
