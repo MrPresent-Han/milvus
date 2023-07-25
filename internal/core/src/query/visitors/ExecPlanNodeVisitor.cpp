@@ -76,6 +76,7 @@ empty_search_result(int64_t num_queries, SearchInfo& search_info) {
 template <typename VectorType>
 void
 ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
+    LOG_SEGCORE_DEBUG_ <<"hc---ExecPlanNodeVisitor111111";
     // TODO: optimize here, remove the dynamic cast
     assert(!search_result_opt_.has_value());
     auto segment =
@@ -117,13 +118,14 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
         return;
     }
     BitsetView final_view = *bitset_holder;
+    LOG_SEGCORE_DEBUG_ <<"hc---ExecPlanNodeVisitor222222";
     segment->vector_search(node.search_info_,
                            src_data,
                            num_queries,
                            timestamp_,
                            final_view,
                            search_result);
-
+    LOG_SEGCORE_DEBUG_ <<"hc---ExecPlanNodeVisitor33333";
     search_result_opt_ = std::move(search_result);
 }
 

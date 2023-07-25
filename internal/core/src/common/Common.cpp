@@ -33,7 +33,7 @@ SetIndexSliceSize(const int64_t size) {
 void
 SetThreadCoreCoefficient(const int64_t coefficient) {
     THREAD_CORE_COEFFICIENT = coefficient;
-    LOG_SEGCORE_DEBUG_ << "set thread pool core coefficient: "
+    LOG_SEGCORE_DEBUG_ << "set thread pool core coefficient111111: "
                        << THREAD_CORE_COEFFICIENT;
 }
 

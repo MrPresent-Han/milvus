@@ -30,7 +30,7 @@
 CSegmentInterface
 NewSegment(CCollection collection, SegmentType seg_type, int64_t segment_id) {
     auto col = static_cast<milvus::segcore::Collection*>(collection);
-
+    LOG_SEGCORE_WARNING_ << "hc---NewSegment11111111";
     std::unique_ptr<milvus::segcore::SegmentInterface> segment;
     switch (seg_type) {
         case Growing: {
@@ -81,8 +81,9 @@ Search(CSegmentInterface c_segment,
             c_trace.traceID, c_trace.spanID, c_trace.flag};
 
         auto span = milvus::tracer::StartSpan("SegcoreSearch", &ctx);
-
+        LOG_SEGCORE_DEBUG_ << "hc---Search11111";
         auto search_result = segment->Search(plan, phg_ptr, timestamp);
+        LOG_SEGCORE_DEBUG_ << "hc---Search2222";
         if (!milvus::PositivelyRelated(
                 plan->plan_node_->search_info_.metric_type_)) {
             for (auto& dis : search_result->distances_) {

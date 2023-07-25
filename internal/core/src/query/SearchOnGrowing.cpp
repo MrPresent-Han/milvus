@@ -86,8 +86,9 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
     SubSearchResult final_qr(num_queries, topk, metric_type, round_decimal);
     dataset::SearchDataset search_dataset{
         metric_type, num_queries, topk, round_decimal, dim, query_data};
-
+    LOG_SEGCORE_DEBUG_ << "hc---SearchOnGrowing1111";
     if (segment.get_indexing_record().SyncDataWithIndex(field.get_id())) {
+        LOG_SEGCORE_DEBUG_ << "hc---SearchOnGrowing22222";
         FloatSegmentIndexSearch(segment,
                                 info,
                                 query_data,
@@ -100,6 +101,7 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
         results.unity_topK_ = topk;
         results.total_nq_ = num_queries;
     } else {
+        LOG_SEGCORE_DEBUG_ <<"hc---SearchOnGrowing33333";
         std::shared_lock<std::shared_mutex> read_chunk_mutex(
             segment.get_chunk_mutex());
         int32_t current_chunk_id = 0;
@@ -110,6 +112,7 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
 
         for (int chunk_id = current_chunk_id; chunk_id < max_chunk;
              ++chunk_id) {
+            LOG_SEGCORE_DEBUG_ <<"hc---chunk_id" << chunk_id;
             auto chunk_data = vec_ptr->get_chunk_data(chunk_id);
 
             auto element_begin = chunk_id * vec_size_per_chunk;
@@ -123,7 +126,6 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
                                            size_per_chunk,
                                            info.search_params_,
                                            sub_view);
-
             // convert chunk uid to segment uid
             for (auto& x : sub_qr.mutable_seg_offsets()) {
                 if (x != -1) {

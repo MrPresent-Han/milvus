@@ -17,6 +17,7 @@
 #include "common/SystemProperty.h"
 #include "common/Types.h"
 #include "query/generated/ExecPlanNodeVisitor.h"
+#include "log/Log.h"
 
 namespace milvus::segcore {
 
@@ -70,7 +71,9 @@ SegmentInternalInterface::Search(
     check_search(plan);
     query::ExecPlanNodeVisitor visitor(*this, timestamp, placeholder_group);
     auto results = std::make_unique<SearchResult>();
+    LOG_SEGCORE_DEBUG_ << "hc---Search33333";
     *results = visitor.get_moved_result(*plan->plan_node_);
+    LOG_SEGCORE_DEBUG_ << "hc---Search44444";
     results->segment_ = (void*)this;
     return results;
 }

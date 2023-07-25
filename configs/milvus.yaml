@@ -59,7 +59,7 @@ mysql:
   maxIdleConns: 5
 
 localStorage:
-  path: /var/lib/milvus/data/ # please adjust in embedded Milvus: /tmp/milvus/data/
+  path: /tmp/milvus/data/  # please adjust in embedded Milvus: /tmp/milvus/data/
 
 # Related configuration of MinIO/S3/GCS or any other service supports S3 API, which is responsible for data persistence for Milvus.
 # We refer to the storage service as MinIO/S3 in the following description for simplicity.
@@ -389,7 +389,7 @@ dataNode:
 
 # Configures the system log output.
 log:
-  level: info # Only supports debug, info, warn, error, panic, or fatal. Default 'info'.
+  level: debug # Only supports debug, info, warn, error, panic, or fatal. Default 'info'.
   file:
     rootPath: # root dir path to put logs, default "" means no log file will print. please adjust in embedded Milvus: /tmp/milvus/logs
     maxSize: 300 # MB

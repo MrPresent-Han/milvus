@@ -87,7 +87,7 @@ ROOT_DIR="$( cd -P "$( dirname "$SOURCE" )/.." && pwd )"
 CPP_SRC_DIR="${ROOT_DIR}/internal/core"
 
 BUILD_OUTPUT_DIR="${ROOT_DIR}/cmake_build"
-BUILD_TYPE="Release"
+BUILD_TYPE="Debug"
 BUILD_UNITTEST="OFF"
 INSTALL_PREFIX="${CPP_SRC_DIR}/output"
 MAKE_CLEAN="OFF"

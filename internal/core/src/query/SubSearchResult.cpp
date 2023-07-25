@@ -13,6 +13,7 @@
 
 #include "exceptions/EasyAssert.h"
 #include "query/SubSearchResult.h"
+#include "log/Log.h"
 
 namespace milvus::query {
 
@@ -41,7 +42,16 @@ SubSearchResult::merge_impl(const SubSearchResult& right) {
 
         auto lit = 0;  // left iter
         auto rit = 0;  // right iter
-
+        //--------------------------------------------------
+        for (auto iter = 0; iter < topk_; ++iter) {
+            auto right_id = right_ids[iter];
+            auto right_val = right_distances[iter];
+            auto left_id = left_ids[iter];
+            auto left_val = left_distances[iter];
+            LOG_SEGCORE_DEBUG_ << "hc--left_id:" << left_id << ", left_dis:" << left_val
+            << ", right_id:" << right_id << ", right_dis:" << right_val;
+        }
+        //---------------------------------------------------
         for (auto buf_iter = 0; buf_iter < topk_; ++buf_iter) {
             auto left_id = left_ids[lit];
             auto left_v = left_distances[lit];
