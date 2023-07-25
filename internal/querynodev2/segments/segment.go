@@ -855,13 +855,16 @@ func (s *LocalSegment) LoadIndex(bytesIndex [][]byte, indexInfo *querypb.FieldIn
 }
 
 func (s *LocalSegment) LoadIndexData(indexInfo *querypb.FieldIndexInfo, fieldType schemapb.DataType) error {
+	log.Info("hc---LoadIndexData--before newLoadIndexInfo")
 	loadIndexInfo, err := newLoadIndexInfo()
+	log.Info("hc---LoadIndexData--after newLoadIndexInfo")
 	defer deleteLoadIndexInfo(loadIndexInfo)
 	if err != nil {
 		return err
 	}
-
+	log.Info("hc---LoadIndexData--before appendLoadIndexInfo")
 	err = loadIndexInfo.appendLoadIndexInfo(nil, indexInfo, s.collectionID, s.partitionID, s.segmentID, fieldType)
+	log.Info("hc---LoadIndexData--after appendLoadIndexInfo")
 	if err != nil {
 		if loadIndexInfo.cleanLocalData() != nil {
 			log.Warn("failed to clean cached data on disk after append index failed",

@@ -25,6 +25,7 @@ package segments
 import "C"
 
 import (
+	"github.com/milvus-io/milvus/pkg/log"
 	"path/filepath"
 	"unsafe"
 
@@ -60,17 +61,20 @@ func deleteLoadIndexInfo(info *LoadIndexInfo) {
 func (li *LoadIndexInfo) appendLoadIndexInfo(bytesIndex [][]byte, indexInfo *querypb.FieldIndexInfo, collectionID int64, partitionID int64, segmentID int64, fieldType schemapb.DataType) error {
 	fieldID := indexInfo.FieldID
 	indexPaths := indexInfo.IndexFilePaths
-
+	log.Info("hc---appendLoadIndexInfo--before appendFieldInfo")
 	err := li.appendFieldInfo(collectionID, partitionID, segmentID, fieldID, fieldType)
+	log.Info("hc---appendLoadIndexInfo--after appendFieldInfo")
 	if err != nil {
 		return err
 	}
-
+	log.Info("hc---appendLoadIndexInfo--before appendIndexInfo")
 	err = li.appendIndexInfo(indexInfo.IndexID, indexInfo.BuildID, indexInfo.IndexVersion)
+	log.Info("hc---appendLoadIndexInfo--after appendIndexInfo")
 	if err != nil {
 		return err
 	}
 
+	log.Info("hc---appendLoadIndexInfo--before setParams")
 	// some build params also exist in indexParams, which are useless during loading process
 	indexParams := funcutil.KeyValuePair2Map(indexInfo.IndexParams)
 	if indexParams["index_type"] == indexparamcheck.IndexDISKANN {
@@ -79,6 +83,7 @@ func (li *LoadIndexInfo) appendLoadIndexInfo(bytesIndex [][]byte, indexInfo *que
 			return err
 		}
 	}
+	log.Info("hc---appendLoadIndexInfo--after setParams")
 
 	for key, value := range indexParams {
 		err = li.appendIndexParam(key, value)
@@ -86,8 +91,10 @@ func (li *LoadIndexInfo) appendLoadIndexInfo(bytesIndex [][]byte, indexInfo *que
 			return err
 		}
 	}
+	log.Info("hc---appendLoadIndexInfo--after appendIndexParam")
 
 	err = li.appendIndexData(bytesIndex, indexPaths)
+	log.Info("hc---appendLoadIndexInfo--after appendIndexData")
 	return err
 }
 
@@ -136,12 +143,14 @@ func (li *LoadIndexInfo) appendFieldInfo(collectionID int64, partitionID int64, 
 
 // appendIndexData appends index path to cLoadIndexInfo and create index
 func (li *LoadIndexInfo) appendIndexData(bytesIndex [][]byte, indexKeys []string) error {
+	log.Info("hc---appendIndexData--before appendIndexFile")
 	for _, indexPath := range indexKeys {
 		err := li.appendIndexFile(indexPath)
 		if err != nil {
 			return err
 		}
 	}
+	log.Info("hc---appendIndexData--after appendIndexFile")
 
 	if bytesIndex != nil {
 		var cBinarySet C.CBinarySet
@@ -150,7 +159,7 @@ func (li *LoadIndexInfo) appendIndexData(bytesIndex [][]byte, indexKeys []string
 		if err := HandleCStatus(&status, "NewBinarySet failed"); err != nil {
 			return err
 		}
-
+		log.Info("hc---appendIndexData--before AppendIndexBinary")
 		for i, byteIndex := range bytesIndex {
 			indexPtr := unsafe.Pointer(&byteIndex[0])
 			indexLen := C.int64_t(len(byteIndex))
@@ -162,11 +171,13 @@ func (li *LoadIndexInfo) appendIndexData(bytesIndex [][]byte, indexKeys []string
 				return err
 			}
 		}
-
+		log.Info("hc---appendIndexData--after AppendIndexBinary")
 		status = C.AppendIndex(li.cLoadIndexInfo, cBinarySet)
+		log.Info("hc---appendIndexData--after AppendIndex")
 		return HandleCStatus(&status, "AppendIndex failed")
 	}
 
 	status := C.AppendIndexV2(li.cLoadIndexInfo)
+	log.Info("hc---appendIndexData--after AppendIndexV2")
 	return HandleCStatus(&status, "AppendIndex failed")
 }
