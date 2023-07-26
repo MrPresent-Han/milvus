@@ -124,7 +124,7 @@ MemFileManagerImpl::LoadFileStream(
     const std::vector<std::string>& remote_files,
     std::map<std::string, storage::FieldDataChannelPtr>& channels) {
     auto parallel_degree =
-        static_cast<uint64_t>(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
+        static_cast<uint64_t>(3);
     for (auto& [_, channel] : channels) {
         channel->set_capacity(parallel_degree * 2);
     }
