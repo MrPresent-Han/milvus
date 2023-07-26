@@ -125,7 +125,7 @@ MemFileManagerImpl::LoadFileStream(
     std::map<std::string, storage::FieldDataChannelPtr>& channels) {
     LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream";
     auto parallel_degree =
-        static_cast<uint64_t>(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
+        static_cast<uint64_t>(2);
     for (auto& [_, channel] : channels) {
         channel->set_capacity(parallel_degree * 2);
     }
