@@ -203,6 +203,7 @@ AppendIndex(CLoadIndexInfo c_load_index_info, CBinarySet c_binary_set) {
 CStatus
 AppendIndexV2(CLoadIndexInfo c_load_index_info) {
     try {
+        LOG_SEGCORE_WARNING_ << "hc---AppendIndexV2-1111";
         auto load_index_info =
             (milvus::segcore::LoadIndexInfo*)c_load_index_info;
         auto& index_params = load_index_info->index_params;
@@ -246,11 +247,13 @@ AppendIndexV2(CLoadIndexInfo c_load_index_info) {
         auto config = milvus::index::ParseConfigFromIndexParams(
             load_index_info->index_params);
         config["index_files"] = load_index_info->index_files;
-
+        LOG_SEGCORE_WARNING_ << "hc---AppendIndexV2-before createIndex";
         load_index_info->index =
             milvus::index::IndexFactory::GetInstance().CreateIndex(
                 index_info, file_manager);
+        LOG_SEGCORE_WARNING_ << "hc---AppendIndexV2-before indexLoad";
         load_index_info->index->Load(config);
+        LOG_SEGCORE_WARNING_ << "hc---AppendIndexV2-after indexLoad";
         auto status = CStatus();
         status.error_code = Success;
         status.error_msg = "";

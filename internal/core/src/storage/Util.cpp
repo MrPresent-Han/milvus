@@ -423,13 +423,13 @@ GetObjectData(ChunkManager* remote_chunk_manager,
         futures.emplace_back(pool.Submit(
             DownloadAndDecodeRemoteFile, remote_chunk_manager, file));
     }
-
+    LOG_SEGCORE_WARNING_ << "hc---GetObjectData--before get data";
     std::vector<FieldDataPtr> datas;
     for (int i = 0; i < futures.size(); ++i) {
         auto res = futures[i].get();
         datas.emplace_back(res->GetFieldData());
     }
-
+    LOG_SEGCORE_WARNING_ << "hc---GetObjectData--after get data";
     ReleaseArrowUnused();
     return datas;
 }

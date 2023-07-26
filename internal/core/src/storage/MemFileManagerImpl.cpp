@@ -123,38 +123,45 @@ void
 MemFileManagerImpl::LoadFileStream(
     const std::vector<std::string>& remote_files,
     std::map<std::string, storage::FieldDataChannelPtr>& channels) {
+    LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream";
     auto parallel_degree =
         static_cast<uint64_t>(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
     for (auto& [_, channel] : channels) {
         channel->set_capacity(parallel_degree * 2);
     }
-
+    LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--after set capacity";
     std::vector<std::string> batch_files;
     auto LoadBatchIndexFiles = [&]() {
+        LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--before GetObjectData";
         auto index_datas = GetObjectData(rcm_.get(), batch_files);
+        LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--after GetObjectData";
         for (auto i = 0; i < index_datas.size(); i++) {
             auto file_name =
                 batch_files[i].substr(batch_files[i].find_last_of('/') + 1);
             auto& channel = channels[file_name];
+            LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--before push channel" << file_name;
             channel->push(index_datas[i]);
+            LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--after push channel" << file_name;
         }
     };
-
+    LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--before load remote files";
     for (auto& file : remote_files) {
+        LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl emplace file:" << file.c_str();
         if (batch_files.size() >= parallel_degree) {
             LoadBatchIndexFiles();
             batch_files.clear();
         }
         batch_files.emplace_back(file);
     }
-
+    LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--after load preBatch remote files";
     if (batch_files.size() > 0) {
         LoadBatchIndexFiles();
     }
-
+    LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--after load postBatch remote files";
     for (auto& [_, channel] : channels) {
         channel->close();
     }
+    LOG_SEGCORE_WARNING_ << "hc---MemFileManagerImpl::LoadFileStream--after close channels";
 }
 
 std::vector<FieldDataPtr>

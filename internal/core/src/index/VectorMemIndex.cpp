@@ -98,6 +98,7 @@ VectorMemIndex::Load(const BinarySet& binary_set, const Config& config) {
 
 void
 VectorMemIndex::Load(const Config& config) {
+    LOG_SEGCORE_WARNING_ << "hc---VectorMemIndex::Load";
     auto index_files =
         GetValueFromConfig<std::vector<std::string>>(config, "index_files");
     AssertInfo(index_files.has_value(),
@@ -113,9 +114,10 @@ VectorMemIndex::Load(const Config& config) {
     }
 
     auto& pool = ThreadPool::GetInstance();
+    LOG_SEGCORE_WARNING_ << "hc---VectorMemIndex::Load-before submit";
     auto future = pool.Submit(
         [&] { file_manager_->LoadFileStream(index_files.value(), channels); });
-
+    LOG_SEGCORE_WARNING_ << "hc---VectorMemIndex::Load-after submit";
     std::unordered_map<std::string, storage::FieldDataPtr> result;
     AssembleIndexDatas(channels, result);
     BinarySet binary_set;
@@ -126,7 +128,9 @@ VectorMemIndex::Load(const Config& config) {
             (uint8_t*)const_cast<void*>(data->Data()), deleter);
         binary_set.Append(key, buf, size);
     }
+    LOG_SEGCORE_WARNING_ << "hc---VectorMemIndex::Load-after assemble";
     LoadWithoutAssemble(binary_set, config);
+    LOG_SEGCORE_WARNING_ << "hc---VectorMemIndex::Load-after loadWithoutAssemble";
 }
 
 void
