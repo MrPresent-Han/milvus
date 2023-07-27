@@ -375,7 +375,7 @@ dataNode:
   segment:
     insertBufSize: 16777216 # Max buffer size to flush for a single segment.
     deleteBufBytes: 67108864 # Max buffer size to flush del for a single channel
-    syncPeriod: 600 # The period to sync segments if buffer is not empty.
+    syncPeriod: 3600 # The period to sync segments if buffer is not empty.
   port: 21124
   grpc:
     serverMaxSendSize: 536870912

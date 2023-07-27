@@ -185,6 +185,7 @@ SegmentGrowingImpl::LoadFieldData(const LoadFieldDataInfo& infos) {
             auto offset = reserved_offset;
             for (auto& data : field_data) {
                 auto row_count = data->get_num_rows();
+                LOG_SEGCORE_WARNING_<< "hc---field_data_row_count" << row_count;
                 indexing_record_.AppendingIndex(
                     offset, row_count, field_id, data, insert_record_);
                 offset += row_count;

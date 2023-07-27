@@ -142,8 +142,10 @@ VectorFieldIndexing::AppendSegmentIndex(int64_t reserved_offset,
     auto chunk_id_end = vector_id_end / per_chunk;
     int64_t vec_num = vector_id_end - vector_id_beg + 1;
 
+    LOG_SEGCORE_WARNING_ << "reserved_offset:" << reserved_offset << ", size:" << size;
     if (vec_num <= 0) {
         sync_with_index.store(true);
+        LOG_SEGCORE_WARNING_ << "hc---set_sync_with_index to true";
         return;
     }
 
@@ -151,6 +153,7 @@ VectorFieldIndexing::AppendSegmentIndex(int64_t reserved_offset,
         auto dataset = knowhere::GenDataSet(vec_num, dim, data_source);
         index_->AddWithDataset(dataset, conf);
         index_cur_.fetch_add(vec_num);
+        LOG_SEGCORE_WARNING_ << "index_addDataSet, rows:" << dataset->GetRows();
     } else {
         for (int chunk_id = chunk_id_beg; chunk_id <= chunk_id_end;
              chunk_id++) {
@@ -169,6 +172,7 @@ VectorFieldIndexing::AppendSegmentIndex(int64_t reserved_offset,
             index_cur_.fetch_add(chunk_sz);
         }
         sync_with_index.store(true);
+        LOG_SEGCORE_WARNING_ << "hc---set_sync_with_index to true";
     }
 }
 

@@ -86,7 +86,6 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
     SubSearchResult final_qr(num_queries, topk, metric_type, round_decimal);
     dataset::SearchDataset search_dataset{
         metric_type, num_queries, topk, round_decimal, dim, query_data};
-    LOG_SEGCORE_DEBUG_ << "hc---SearchOnGrowing1111";
     if (segment.get_indexing_record().SyncDataWithIndex(field.get_id())) {
         LOG_SEGCORE_DEBUG_ << "hc---SearchOnGrowing22222";
         FloatSegmentIndexSearch(segment,
