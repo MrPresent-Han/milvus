@@ -1,14 +1,15 @@
 package lock
 
 import (
+	"strconv"
 	"sync"
 	"time"
 
-	"github.com/cockroachdb/errors"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/metrics"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/timandy/routine"
 	"go.uber.org/zap"
 )
 
@@ -29,12 +30,17 @@ const (
 	acquire   = "ACQUIRE"
 )
 
+func encodeSourceKey(source string) string {
+	return source + "-" + strconv.FormatInt(routine.Goid(), 10)
+}
+
 func (mRWLock *MetricsRWMutex) RLock(source string) {
 	if enableLockMetrics {
 		before := time.Now()
 		mRWLock.mutex.RLock()
-		mRWLock.acquireTimeMap.Insert(source, time.Now())
-		logLock(time.Since(before), mRWLock.lockName, source, readLock, acquire)
+		key := encodeSourceKey(source)
+		mRWLock.acquireTimeMap.Insert(key, time.Now())
+		logLock(time.Since(before), mRWLock.lockName, key, readLock, acquire)
 	} else {
 		mRWLock.mutex.RLock()
 	}
@@ -44,40 +50,36 @@ func (mRWLock *MetricsRWMutex) Lock(source string) {
 	if enableLockMetrics {
 		before := time.Now()
 		mRWLock.mutex.Lock()
-		mRWLock.acquireTimeMap.Insert(source, time.Now())
-		logLock(time.Since(before), mRWLock.lockName, source, writeLock, acquire)
+		key := encodeSourceKey(source)
+		mRWLock.acquireTimeMap.Insert(key, time.Now())
+		logLock(time.Since(before), mRWLock.lockName, key, writeLock, acquire)
 	} else {
 		mRWLock.mutex.Lock()
 	}
 }
 
 func (mRWLock *MetricsRWMutex) UnLock(source string) {
-	if mRWLock.maybeLogUnlockDuration(source, writeLock) != nil {
-		return
-	}
+	mRWLock.maybeLogUnlockDuration(source, writeLock)
 	mRWLock.mutex.Unlock()
 }
 
 func (mRWLock *MetricsRWMutex) RUnLock(source string) {
-	if mRWLock.maybeLogUnlockDuration(source, readLock) != nil {
-		return
-	}
+	mRWLock.maybeLogUnlockDuration(source, readLock)
 	mRWLock.mutex.RUnlock()
 }
 
-func (mRWLock *MetricsRWMutex) maybeLogUnlockDuration(source string, lockType string) error {
+func (mRWLock *MetricsRWMutex) maybeLogUnlockDuration(source string, lockType string) {
 	if enableLockMetrics {
-		acquireTime, ok := mRWLock.acquireTimeMap.Get(source)
+		key := encodeSourceKey(source)
+		acquireTime, ok := mRWLock.acquireTimeMap.Get(key)
 		if ok {
-			logLock(time.Since(acquireTime), mRWLock.lockName, source, lockType, hold)
-			mRWLock.acquireTimeMap.GetAndRemove(source)
+			logLock(time.Since(acquireTime), mRWLock.lockName, key, lockType, hold)
+			mRWLock.acquireTimeMap.GetAndRemove(key)
 		} else {
 			log.Error("there's no lock history for the source, there may be some defects in codes",
 				zap.String("source", source))
-			return errors.New("unknown source")
 		}
 	}
-	return nil
 }
 
 func logLock(duration time.Duration, lockName string, source string, lockType string, opType string) {

@@ -53,6 +53,7 @@ require (
 	gorm.io/driver/mysql v1.3.5
 	gorm.io/gorm v1.23.8
 	stathat.com/c/consistent v1.0.0
+	github.com/timandy/routine v1.1.0
 )
 
 require (
