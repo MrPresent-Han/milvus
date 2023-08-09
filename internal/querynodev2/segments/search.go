@@ -48,17 +48,19 @@ func searchSegments(ctx context.Context, manager *Manager, segType SegmentType, 
 	if segType == commonpb.SegmentState_Growing {
 		searchLabel = metrics.GrowingSegmentLabel
 	}
-
+	log := log.Ctx(ctx).With(zap.Int64s("segmentIDs", segIDs))
 	// calling segment search in goroutines
 	for i, segID := range segIDs {
 		wg.Add(1)
 		go func(segID int64, i int) {
 			defer wg.Done()
-			seg, _ := manager.Segment.GetWithType(segID, segType).(*LocalSegment)
+			seg, _ := manager.Segment.GetWithType(segID, segType).(*LocalSegment) //hc--block here?
 			if seg == nil {
 				log.Warn("segment released while searching", zap.Int64("segmentID", segID))
 				return
 			}
+			log.Debug("Got segment:", zap.Int64("segID", segID),
+				zap.Bool("hasIndex", seg.ExistIndex(searchReq.searchFieldID)))
 
 			if !seg.ExistIndex(searchReq.searchFieldID) {
 				mu.Lock()
@@ -94,7 +96,7 @@ func searchSegments(ctx context.Context, manager *Manager, segType SegmentType, 
 	}
 
 	if len(segmentsWithoutIndex) > 0 {
-		log.Ctx(ctx).Info("search growing/sealed segments without indexes", zap.Int64s("segmentIDs", segmentsWithoutIndex))
+		log.Info("search growing/sealed segments without indexes", zap.Int64s("segmentIDs", segmentsWithoutIndex))
 	}
 
 	return searchResults, nil

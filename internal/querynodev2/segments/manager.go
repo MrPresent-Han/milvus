@@ -104,7 +104,7 @@ var _ SegmentManager = (*segmentManager)(nil)
 
 // Manager manages all collections and segments
 type segmentManager struct {
-	mu sync.RWMutex // guards all
+	mu sync.RWMutex // guards all hc---replace
 
 	growingSegments map[UniqueID]Segment
 	sealedSegments  map[UniqueID]Segment

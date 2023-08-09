@@ -201,7 +201,7 @@ func (sd *shardDelegator) modifyQueryRequest(req *querypb.QueryRequest, scope qu
 
 // Search preforms search operation on shard.
 func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest) ([]*internalpb.SearchResults, error) {
-	log := sd.getLogger(ctx)
+	log := sd.getLogger(ctx).With(zap.Int64s("segmentIDs", req.GetSegmentIDs()))
 	if !sd.Serviceable() {
 		return nil, errors.New("delegator is not serviceable")
 	}

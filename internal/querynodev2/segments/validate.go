@@ -33,10 +33,11 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 	var searchPartIDs []int64
 	var newSegmentIDs []int64
 
-	collection := manager.Collection.Get(collectionID)
+	collection := manager.Collection.Get(collectionID) //hc---may block here
 	if collection == nil {
 		return nil, nil, merr.WrapErrCollectionNotFound(collectionID)
 	}
+	log.Ctx(ctx).Debug("read target collection", zap.Int64("collectionID", collectionID))
 
 	//validate partition
 	// no partition id specified, get all partition ids in collection
@@ -47,8 +48,8 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 			searchPartIDs = partitionIDs
 		}
 	}
-
-	log.Ctx(ctx).Debug("read target partitions", zap.Int64("collectionID", collectionID), zap.Int64s("partitionIDs", searchPartIDs))
+	//hc--no here
+	log.Ctx(ctx).Debug("read target partitions", zap.Int64s("partitionIDs", searchPartIDs))
 
 	// all partitions have been released
 	if len(searchPartIDs) == 0 && collection.GetLoadType() == querypb.LoadType_LoadPartition {

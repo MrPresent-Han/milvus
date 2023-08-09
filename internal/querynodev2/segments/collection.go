@@ -50,7 +50,7 @@ type CollectionManager interface {
 }
 
 type collectionManager struct {
-	mut         sync.RWMutex
+	mut         sync.RWMutex //hc---replace
 	collections map[int64]*Collection
 }
 

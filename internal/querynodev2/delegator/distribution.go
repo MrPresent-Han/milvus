@@ -70,7 +70,7 @@ type distribution struct {
 	// generated for each change of distribution
 	current *atomic.Pointer[snapshot]
 	// protects current & segments
-	mut sync.RWMutex
+	mut sync.RWMutex //hc---replace here
 }
 
 // SegmentEntry stores the segment meta information.

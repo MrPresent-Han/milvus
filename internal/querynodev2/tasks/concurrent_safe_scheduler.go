@@ -197,7 +197,8 @@ func (s *scheduler) exec(ctx context.Context) {
 				collector.Counter.Dec(metricsinfo.ExecuteQueueType, -1)
 
 				// Notify task done.
-				t.Done(err)
+				t.Done(err) //hc--context cancel here
+				log.Ctx(t.Ctx()).Debug("executed task done", zap.Error(err))
 				return nil, err
 			})
 		}

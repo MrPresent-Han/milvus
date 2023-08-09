@@ -685,6 +685,7 @@ func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRe
 		zap.Int64("collectionID", req.Req.GetCollectionID()),
 		zap.String("channel", channel),
 		zap.String("scope", req.GetScope().String()),
+		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 	)
 
 	if !node.lifetime.Add(commonpbutil.IsHealthy) {
@@ -709,7 +710,7 @@ func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRe
 	tr := timerecord.NewTimeRecorder("searchSegments")
 	log.Debug("search segments...")
 
-	collection := node.manager.Collection.Get(req.Req.GetCollectionID())
+	collection := node.manager.Collection.Get(req.Req.GetCollectionID()) //hc---locked here?
 	if collection == nil {
 		err := merr.WrapErrCollectionNotLoaded(req.GetReq().GetCollectionID())
 		log.Warn("failed to search segments", zap.Error(err))
@@ -726,7 +727,7 @@ func (node *QueryNode) SearchSegments(ctx context.Context, req *querypb.SearchRe
 
 	err := task.Wait()
 	if err != nil {
-		log.Warn("failed to search segments", zap.Error(err))
+		log.Warn("failed to search segments", zap.Error(err)) //--hc failed here
 		failRet.Status.Reason = err.Error()
 		return failRet, err
 	}

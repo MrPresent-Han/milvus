@@ -175,7 +175,7 @@ var _ Segment = (*LocalSegment)(nil)
 // Segment is a wrapper of the underlying C-structure segment.
 type LocalSegment struct {
 	baseSegment
-	mut sync.RWMutex // protects segmentPtr
+	mut sync.RWMutex // protects segmentPtr //hc--need replace
 	ptr C.CSegmentInterface
 
 	size               int64
@@ -361,7 +361,8 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *SearchRequest) (*S
 		zap.String("segmentType", s.typ.String()),
 	)
 	s.mut.RLock()
-	defer s.mut.RUnlock()
+	defer s.mut.RUnlock() //hc--may block here
+	log.Debug("obtained segment rlock before searching segment")
 
 	if s.ptr == nil {
 		return nil, merr.WrapErrSegmentNotLoaded(s.segmentID, "segment released")
