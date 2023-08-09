@@ -36,6 +36,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/util/lock"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
@@ -50,26 +51,27 @@ type CollectionManager interface {
 }
 
 type collectionManager struct {
-	mut         sync.RWMutex //hc---replace
+	mut         *lock.MetricsRWMutex //hc---replace
 	collections map[int64]*Collection
 }
 
 func NewCollectionManager() *collectionManager {
 	return &collectionManager{
 		collections: make(map[int64]*Collection),
+		mut:         lock.NewMetricsLock("queryNode_collection_manager_mut"),
 	}
 }
 
 func (m *collectionManager) Get(collectionID int64) *Collection {
-	m.mut.RLock()
-	defer m.mut.RUnlock()
+	m.mut.RLock("Get")
+	defer m.mut.RUnlock("Get")
 
 	return m.collections[collectionID]
 }
 
 func (m *collectionManager) PutOrRef(collectionID int64, schema *schemapb.CollectionSchema, meta *segcorepb.CollectionIndexMeta, loadMeta *querypb.LoadMetaInfo) {
-	m.mut.Lock()
-	defer m.mut.Unlock()
+	m.mut.Lock("PutOrRef")
+	defer m.mut.Unlock("PutOrRef")
 
 	if collection, ok := m.collections[collectionID]; ok {
 		collection.Ref(1)
@@ -84,8 +86,8 @@ func (m *collectionManager) PutOrRef(collectionID int64, schema *schemapb.Collec
 }
 
 func (m *collectionManager) Ref(collectionID int64, count uint32) bool {
-	m.mut.Lock()
-	defer m.mut.Unlock()
+	m.mut.Lock("Ref")
+	defer m.mut.Unlock("Ref")
 
 	if collection, ok := m.collections[collectionID]; ok {
 		collection.Ref(count)
@@ -96,8 +98,8 @@ func (m *collectionManager) Ref(collectionID int64, count uint32) bool {
 }
 
 func (m *collectionManager) Unref(collectionID int64, count uint32) bool {
-	m.mut.Lock()
-	defer m.mut.Unlock()
+	m.mut.Lock("Unref")
+	defer m.mut.Unlock("Unref")
 
 	if collection, ok := m.collections[collectionID]; ok {
 		if collection.Unref(count) == 0 {

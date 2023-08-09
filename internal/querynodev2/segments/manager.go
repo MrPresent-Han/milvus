@@ -26,11 +26,11 @@ import "C"
 
 import (
 	"fmt"
-	"sync"
 
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/pkg/eventlog"
 	"github.com/milvus-io/milvus/pkg/metrics"
+	"github.com/milvus-io/milvus/pkg/util/lock"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	. "github.com/milvus-io/milvus/pkg/util/typeutil"
 )
@@ -104,7 +104,7 @@ var _ SegmentManager = (*segmentManager)(nil)
 
 // Manager manages all collections and segments
 type segmentManager struct {
-	mu sync.RWMutex // guards all hc---replace
+	mu *lock.MetricsRWMutex // guards all hc---replace
 
 	growingSegments map[UniqueID]Segment
 	sealedSegments  map[UniqueID]Segment
@@ -114,12 +114,13 @@ func NewSegmentManager() *segmentManager {
 	return &segmentManager{
 		growingSegments: make(map[int64]Segment),
 		sealedSegments:  make(map[int64]Segment),
+		mu:              lock.NewMetricsLock("queryNode_segment_manager_mu"),
 	}
 }
 
 func (mgr *segmentManager) Put(segmentType SegmentType, segments ...Segment) {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
+	mgr.mu.Lock("Put")
+	defer mgr.mu.Unlock("Put")
 
 	targetMap := mgr.growingSegments
 	switch segmentType {
@@ -158,8 +159,8 @@ func (mgr *segmentManager) Put(segmentType SegmentType, segments ...Segment) {
 }
 
 func (mgr *segmentManager) Get(segmentID UniqueID) Segment {
-	mgr.mu.RLock()
-	defer mgr.mu.RUnlock()
+	mgr.mu.RLock("Get")
+	defer mgr.mu.RUnlock("Get")
 
 	if segment, ok := mgr.growingSegments[segmentID]; ok {
 		return segment
@@ -171,8 +172,8 @@ func (mgr *segmentManager) Get(segmentID UniqueID) Segment {
 }
 
 func (mgr *segmentManager) GetWithType(segmentID UniqueID, typ SegmentType) Segment {
-	mgr.mu.RLock()
-	defer mgr.mu.RUnlock()
+	mgr.mu.RLock("GetWithType")
+	defer mgr.mu.RUnlock("GetWithType")
 
 	switch typ {
 	case SegmentTypeSealed:
@@ -185,8 +186,8 @@ func (mgr *segmentManager) GetWithType(segmentID UniqueID, typ SegmentType) Segm
 }
 
 func (mgr *segmentManager) GetBy(filters ...SegmentFilter) []Segment {
-	mgr.mu.RLock()
-	defer mgr.mu.RUnlock()
+	mgr.mu.RLock("GetBy")
+	defer mgr.mu.RUnlock("GetBy")
 
 	ret := make([]Segment, 0)
 	for _, segment := range mgr.growingSegments {
@@ -213,8 +214,8 @@ func filter(segment Segment, filters ...SegmentFilter) bool {
 }
 
 func (mgr *segmentManager) GetSealed(segmentID UniqueID) Segment {
-	mgr.mu.RLock()
-	defer mgr.mu.RUnlock()
+	mgr.mu.RLock("GetSealed")
+	defer mgr.mu.RUnlock("GetSealed")
 
 	if segment, ok := mgr.sealedSegments[segmentID]; ok {
 		return segment
@@ -224,8 +225,8 @@ func (mgr *segmentManager) GetSealed(segmentID UniqueID) Segment {
 }
 
 func (mgr *segmentManager) GetGrowing(segmentID UniqueID) Segment {
-	mgr.mu.RLock()
-	defer mgr.mu.RUnlock()
+	mgr.mu.RLock("GetGrowing")
+	defer mgr.mu.RUnlock("GetGrowing")
 
 	if segment, ok := mgr.growingSegments[segmentID]; ok {
 		return segment
@@ -235,8 +236,8 @@ func (mgr *segmentManager) GetGrowing(segmentID UniqueID) Segment {
 }
 
 func (mgr *segmentManager) Empty() bool {
-	mgr.mu.RLock()
-	defer mgr.mu.RUnlock()
+	mgr.mu.RLock("Empty")
+	defer mgr.mu.RUnlock("Empty")
 
 	return len(mgr.growingSegments)+len(mgr.sealedSegments) == 0
 }
@@ -244,8 +245,8 @@ func (mgr *segmentManager) Empty() bool {
 // returns true if the segment exists,
 // false otherwise
 func (mgr *segmentManager) Remove(segmentID UniqueID, scope querypb.DataScope) (int, int) {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
+	mgr.mu.Lock("Remove")
+	defer mgr.mu.Unlock("Remove")
 
 	var removeGrowing, removeSealed int
 	switch scope {
@@ -273,8 +274,8 @@ func (mgr *segmentManager) Remove(segmentID UniqueID, scope querypb.DataScope) (
 }
 
 func (mgr *segmentManager) RemoveBy(filters ...SegmentFilter) (int, int) {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
+	mgr.mu.Lock("RemoveBy")
+	defer mgr.mu.Unlock("RemoveBy")
 
 	var removeGrowing, removeSealed int
 	for id, segment := range mgr.growingSegments {
@@ -294,8 +295,8 @@ func (mgr *segmentManager) RemoveBy(filters ...SegmentFilter) (int, int) {
 }
 
 func (mgr *segmentManager) Clear() {
-	mgr.mu.Lock()
-	defer mgr.mu.Unlock()
+	mgr.mu.Lock("Clear")
+	defer mgr.mu.Unlock("Clear")
 
 	for id := range mgr.growingSegments {
 		remove(id, mgr.growingSegments)

@@ -23,6 +23,7 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/util/lock"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 	"github.com/samber/lo"
 )
@@ -70,7 +71,7 @@ type distribution struct {
 	// generated for each change of distribution
 	current *atomic.Pointer[snapshot]
 	// protects current & segments
-	mut sync.RWMutex //hc---replace here
+	mut *lock.MetricsRWMutex //hc---replace here
 }
 
 // SegmentEntry stores the segment meta information.
@@ -92,6 +93,7 @@ func NewDistribution() *distribution {
 		current:         atomic.NewPointer[snapshot](nil),
 		offlines:        typeutil.NewSet[int64](),
 		targetVersion:   atomic.NewInt64(initialTargetVersion),
+		mut:             lock.NewMetricsLock("queryNode_distribution_mut"),
 	}
 
 	dist.genSnapshot()
@@ -100,8 +102,8 @@ func NewDistribution() *distribution {
 
 // GetAllSegments returns segments in current snapshot, filter readable segment when readable is true
 func (d *distribution) GetSegments(readable bool, partitions ...int64) (sealed []SnapshotItem, growing []SegmentEntry, version int64) {
-	d.mut.RLock()
-	defer d.mut.RUnlock()
+	d.mut.RLock("GetSegments")
+	defer d.mut.RUnlock("GetSegments")
 
 	current := d.current.Load()
 	sealed, growing = current.Get(partitions...)
@@ -167,8 +169,8 @@ func (d *distribution) Serviceable() bool {
 
 // AddDistributions add multiple segment entries.
 func (d *distribution) AddDistributions(entries ...SegmentEntry) {
-	d.mut.Lock()
-	defer d.mut.Unlock()
+	d.mut.Lock("AddDistributions")
+	defer d.mut.Unlock("AddDistributions")
 
 	for _, entry := range entries {
 		d.sealedSegments[entry.SegmentID] = entry
@@ -180,8 +182,8 @@ func (d *distribution) AddDistributions(entries ...SegmentEntry) {
 
 // AddGrowing adds growing segment distribution.
 func (d *distribution) AddGrowing(entries ...SegmentEntry) {
-	d.mut.Lock()
-	defer d.mut.Unlock()
+	d.mut.Lock("AddGrowing")
+	defer d.mut.Unlock("AddGrowing")
 
 	for _, entry := range entries {
 		d.growingSegments[entry.SegmentID] = entry
@@ -192,8 +194,8 @@ func (d *distribution) AddGrowing(entries ...SegmentEntry) {
 
 // AddOffline set segmentIDs to offlines.
 func (d *distribution) AddOfflines(segmentIDs ...int64) {
-	d.mut.Lock()
-	defer d.mut.Unlock()
+	d.mut.Lock("AddOfflines")
+	defer d.mut.Unlock("AddOfflines")
 
 	updated := false
 	for _, segmentID := range segmentIDs {
@@ -212,8 +214,8 @@ func (d *distribution) AddOfflines(segmentIDs ...int64) {
 
 // UpdateTargetVersion update readable segment version
 func (d *distribution) SyncTargetVersion(newVersion int64, growingInTarget []int64, sealedInTarget []int64, redundantGrowings []int64) {
-	d.mut.Lock()
-	defer d.mut.Unlock()
+	d.mut.Lock("SyncTargetVersion")
+	defer d.mut.Unlock("SyncTargetVersion")
 
 	for _, segmentID := range growingInTarget {
 		entry, ok := d.growingSegments[segmentID]
@@ -263,8 +265,8 @@ func (d *distribution) SyncTargetVersion(newVersion int64, growingInTarget []int
 
 // RemoveDistributions remove segments distributions and returns the clear signal channel.
 func (d *distribution) RemoveDistributions(sealedSegments []SegmentEntry, growingSegments []SegmentEntry) chan struct{} {
-	d.mut.Lock()
-	defer d.mut.Unlock()
+	d.mut.Lock("RemoveDistributions")
+	defer d.mut.Unlock("RemoveDistributions")
 
 	for _, sealed := range sealedSegments {
 		if d.offlines.Contain(sealed.SegmentID) {

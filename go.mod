@@ -34,6 +34,7 @@ require (
 	github.com/sbinet/npyio v0.6.0
 	github.com/spf13/viper v1.8.1
 	github.com/stretchr/testify v1.8.3
+	github.com/timandy/routine v1.1.0
 	go.etcd.io/etcd/api/v3 v3.5.5
 	go.etcd.io/etcd/client/v3 v3.5.5
 	go.etcd.io/etcd/server/v3 v3.5.5
@@ -53,7 +54,6 @@ require (
 	gorm.io/driver/mysql v1.3.5
 	gorm.io/gorm v1.23.8
 	stathat.com/c/consistent v1.0.0
-	github.com/timandy/routine v1.1.0
 )
 
 require (
@@ -75,7 +75,6 @@ require (
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	golang.org/x/arch v0.3.0 // indirect
 	google.golang.org/genproto v0.0.0-20230331144136-dcfb400f0633 // indirect
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.3.0 // indirect
 )
 
 require (
@@ -119,7 +118,7 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/godbus/dbus/v5 v5.0.4 // indirect
-	github.com/gogo/protobuf v1.3.2 // indirect
+	github.com/gogo/protobuf v1.3.2
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/btree v1.0.1

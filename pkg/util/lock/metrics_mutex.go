@@ -58,12 +58,12 @@ func (mRWLock *MetricsRWMutex) Lock(source string) {
 	}
 }
 
-func (mRWLock *MetricsRWMutex) UnLock(source string) {
+func (mRWLock *MetricsRWMutex) Unlock(source string) {
 	mRWLock.maybeLogUnlockDuration(source, writeLock)
 	mRWLock.mutex.Unlock()
 }
 
-func (mRWLock *MetricsRWMutex) RUnLock(source string) {
+func (mRWLock *MetricsRWMutex) RUnlock(source string) {
 	mRWLock.maybeLogUnlockDuration(source, readLock)
 	mRWLock.mutex.RUnlock()
 }
