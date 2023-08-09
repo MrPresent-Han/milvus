@@ -152,3 +152,7 @@ func (t *QueryTask) Result() *internalpb.RetrieveResults {
 func (t *QueryTask) NQ() int64 {
 	return 1
 }
+
+func (t *QueryTask) Ctx() context.Context {
+	return t.ctx
+}

@@ -113,3 +113,7 @@ func (t *MockTask) MergeWith(t2 Task) bool {
 func (t *MockTask) NQ() int64 {
 	return t.nq
 }
+
+func (t *MockTask) Ctx() context.Context {
+	return t.ctx
+}

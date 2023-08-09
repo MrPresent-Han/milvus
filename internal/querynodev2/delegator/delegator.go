@@ -244,6 +244,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 	log.Info("search segments...",
 		zap.Int("sealedNum", sealedNum),
 		zap.Int("growingNum", len(growing)),
+		zap.Int64s("segmentIDs", req.GetSegmentIDs()),
 	)
 	tasks, err := organizeSubTask(req, sealed, growing, sd.workerManager, sd.modifySearchRequest)
 	if err != nil {

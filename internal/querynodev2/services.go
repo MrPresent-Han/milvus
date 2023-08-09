@@ -608,6 +608,7 @@ func (node *QueryNode) ReleaseSegments(ctx context.Context, req *querypb.Release
 		_, count := node.manager.Segment.Remove(id, req.GetScope())
 		sealedCount += count
 	}
+	log.Info("finish releasing segments")
 	node.manager.Collection.Unref(req.GetCollectionID(), uint32(sealedCount))
 
 	return util.SuccessStatus(), nil

@@ -78,6 +78,7 @@ func (w *LocalWorker) ReleaseSegments(ctx context.Context, req *querypb.ReleaseS
 	for _, id := range req.GetSegmentIDs() {
 		w.node.manager.Segment.Remove(id, req.GetScope())
 	}
+	log.Info("finish releasing segments")
 	return nil
 }
 

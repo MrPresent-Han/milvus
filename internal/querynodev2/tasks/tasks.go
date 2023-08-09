@@ -102,4 +102,6 @@ type Task interface {
 
 	// Return the NQ of task.
 	NQ() int64
+
+	Ctx() context.Context
 }

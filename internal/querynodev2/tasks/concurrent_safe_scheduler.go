@@ -175,12 +175,12 @@ func (s *scheduler) exec(ctx context.Context) {
 		case t := <-s.execChan:
 			// Skip this task if task is canceled.
 			if err := t.Canceled(); err != nil {
-				log.Warn("task canceled before executing", zap.Error(err))
+				log.Ctx(t.Ctx()).Warn("task canceled before executing", zap.Error(err))
 				t.Done(err)
 				continue
 			}
 			if err := t.PreExecute(); err != nil {
-				log.Warn("failed to pre-execute task", zap.Error(err))
+				log.Ctx(t.Ctx()).Warn("failed to pre-execute task", zap.Error(err))
 				t.Done(err)
 				continue
 			}

@@ -207,7 +207,7 @@ var (
 		prometheus.HistogramOpts{
 			Namespace: milvusNamespace,
 			Subsystem: typeutil.QueryNodeRole,
-			Name:      "sq_core_latency",
+			Name:      "c",
 			Help:      "latency of search or query latency in segcore",
 			Buckets:   buckets,
 		}, []string{

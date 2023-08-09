@@ -295,6 +295,10 @@ func (t *SearchTask) NQ() int64 {
 	return t.nq
 }
 
+func (t *SearchTask) Ctx() context.Context {
+	return t.ctx
+}
+
 func (t *SearchTask) MergeWith(other Task) bool {
 	switch other := other.(type) {
 	case *SearchTask:
