@@ -201,9 +201,9 @@ func (suite *SegmentSuite) TestValidateIndexedFieldsData() {
 func (suite *SegmentSuite) TestSegmentReleased() {
 	DeleteSegment(suite.sealed)
 
-	suite.sealed.mut.RLock()
+	suite.sealed.mut.RLock("TestSegmentReleased")
 	suite.False(suite.sealed.isValid())
-	suite.sealed.mut.RUnlock()
+	suite.sealed.mut.RUnlock("TestSegmentReleased")
 	suite.EqualValues(0, suite.sealed.InsertCount())
 	suite.EqualValues(0, suite.sealed.RowNum())
 	suite.EqualValues(0, suite.sealed.MemSize())

@@ -66,11 +66,15 @@ SegmentInternalInterface::Search(
     const query::Plan* plan,
     const query::PlaceholderGroup* placeholder_group,
     Timestamp timestamp) const {
+    LOG_SEGCORE_INFO_ << "before-mutex_" << ", ts:" << timestamp << ", segID:" << this->get_segment_id();
     std::shared_lock lck(mutex_);
+    LOG_SEGCORE_INFO_ << "after-mutex_" << ", ts:" << timestamp << ", segID:" << this->get_segment_id();
     check_search(plan);
     query::ExecPlanNodeVisitor visitor(*this, timestamp, placeholder_group);
     auto results = std::make_unique<SearchResult>();
+    LOG_SEGCORE_INFO_ << "before_moved_result" << ", ts:" << timestamp << ", segID:" << this->get_segment_id();
     *results = visitor.get_moved_result(*plan->plan_node_);
+    LOG_SEGCORE_INFO_ << "after_moved_result" << ", ts:" << timestamp << ", segID:" << this->get_segment_id();
     results->segment_ = (void*)this;
     return results;
 }

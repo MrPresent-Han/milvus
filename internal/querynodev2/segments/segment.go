@@ -381,7 +381,8 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *SearchRequest) (*S
 
 	hasIndex := s.ExistIndex(searchReq.searchFieldID)
 	log = log.With(zap.Bool("withIndex", hasIndex))
-	log.Debug("search segment...")
+	log.Debug("search segment...", zap.Int("SQPool_Cap", GetSQPool().Cap()),
+		zap.Int("SQPool_Working", GetSQPool().Running()))
 
 	var searchResult SearchResult
 	var status C.CStatus
@@ -394,6 +395,7 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *SearchRequest) (*S
 			C.uint64_t(searchReq.timestamp),
 			&searchResult.cSearchResult,
 		)
+		log.Debug("Segment_C_Search", zap.Duration("time_cost", tr.ElapseSpan()))
 		metrics.QueryNodeSQSegmentLatencyInCore.WithLabelValues(fmt.Sprint(paramtable.GetNodeID()), metrics.SearchLabel).Observe(float64(tr.ElapseSpan().Milliseconds()))
 		return nil, nil
 	}).Await()
