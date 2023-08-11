@@ -363,7 +363,6 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *SearchRequest) (*S
 	)
 	s.mut.RLock("Search")
 	defer s.mut.RUnlock("Search") //hc--may block here
-	log.Debug("obtained segment rlock before searching segment")
 
 	if s.ptr == nil {
 		return nil, merr.WrapErrSegmentNotLoaded(s.segmentID, "segment released")
@@ -381,8 +380,6 @@ func (s *LocalSegment) Search(ctx context.Context, searchReq *SearchRequest) (*S
 
 	hasIndex := s.ExistIndex(searchReq.searchFieldID)
 	log = log.With(zap.Bool("withIndex", hasIndex))
-	log.Debug("search segment...", zap.Int("SQPool_Cap", GetSQPool().Cap()),
-		zap.Int("SQPool_Working", GetSQPool().Running()))
 
 	var searchResult SearchResult
 	var status C.CStatus

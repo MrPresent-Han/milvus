@@ -79,12 +79,9 @@ Search(CSegmentInterface c_segment,
             c_placeholder_group);
         auto ctx = milvus::tracer::TraceContext{
             c_trace.traceID, c_trace.spanID, c_trace.flag};
-        auto span = milvus::tracer::StartSpan("SegcoreSearch", &ctx);
-        LOG_SEGCORE_INFO_ << "before-search, traceID:" << *ctx.traceID << ", ts:" << timestamp
-            << ", segmentID:" << segment->get_segment_id();
+        auto span = milvus::tracer::StartSpan("SegCoreSearch", &ctx);
+        milvus::tracer::logTraceContext("SegCore_SegmentSearch_SegmentID:" + std::to_string(segment->get_segment_id()), span->GetContext());
         auto search_result = segment->Search(plan, phg_ptr, timestamp);
-        LOG_SEGCORE_INFO_ << "after-search, traceID:" << *ctx.traceID << ", ts:" << timestamp
-            << ", segmentID:" << segment->get_segment_id();
         if (!milvus::PositivelyRelated(
                 plan->plan_node_->search_info_.metric_type_)) {
             for (auto& dis : search_result->distances_) {
