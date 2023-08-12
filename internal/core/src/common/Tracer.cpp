@@ -38,6 +38,7 @@ namespace otlp = opentelemetry::exporter::otlp;
 static const int trace_id_size = 2 * opentelemetry::trace::TraceId::kSize;
 static bool enable_trace = true;
 static std::unordered_map<std::thread::id, std::shared_ptr<trace::Span>> root_span_map;
+std::shared_mutex ctx_mutex;
 
 void
 initTelementry(TraceConfig* config) {
@@ -93,6 +94,7 @@ StartSpan(std::string name, TraceContext* parentCtx) {
 void
 SetRootSpan(std::shared_ptr<trace::Span> span) {
     if(enable_trace) {
+        std::unique_lock<std::shared_mutex> lock(ctx_mutex);
         root_span_map[std::this_thread::get_id()] = span;
     }
 }
@@ -107,6 +109,7 @@ CloseRootSpan() {
 std::shared_ptr<trace::Span>
 GetRootSpan() {
     if(enable_trace) {
+        std::shared_lock<std::shared_mutex> lock(ctx_mutex);
         return root_span_map[std::this_thread::get_id()];
     }
     return nullptr;
