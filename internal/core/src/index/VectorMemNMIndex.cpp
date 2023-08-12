@@ -84,6 +84,7 @@ std::unique_ptr<SearchResult>
 VectorMemNMIndex::Query(const DatasetPtr dataset,
                         const SearchInfo& search_info,
                         const BitsetView& bitset) {
+    LOG_SEGCORE_INFO_ << "Reach VectorMemNMIndex::Query";
     auto root_span = milvus::tracer::GetRootSpan();
     auto load_raw_data_closure = [&]() { LoadRawData(); };  // hide this pointer
     milvus::tracer::logTraceContext("after_load_raw_data", root_span);
