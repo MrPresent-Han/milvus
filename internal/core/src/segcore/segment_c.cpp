@@ -92,8 +92,8 @@ Search(CSegmentInterface c_segment,
             }
         }
         *result = search_result.release();
-
         span->End();
+        milvus::tracer::CloseRootSpan();
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(UnexpectedError, e.what());

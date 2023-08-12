@@ -94,15 +94,21 @@ StartSpan(std::string name, TraceContext* parentCtx) {
 void
 SetRootSpan(std::shared_ptr<trace::Span> span) {
     if(enable_trace) {
+        logTraceContext("before_set_root_span", span);
         std::unique_lock<std::shared_mutex> lock(ctx_mutex);
         root_span_map[std::this_thread::get_id()] = span;
+        logTraceContext("after_set_root_span", span);
     }
 }
 
 void
 CloseRootSpan() {
     if(enable_trace) {
+        auto span = GetRootSpan();
+        logTraceContext("before_close_root_span", span);
+        std::unique_lock<std::shared_mutex> lock(ctx_mutex);
         root_span_map.erase(std::this_thread::get_id());
+        logTraceContext("after_close_root_span", span);
     }
 }
 
@@ -110,7 +116,9 @@ std::shared_ptr<trace::Span>
 GetRootSpan() {
     if(enable_trace) {
         std::shared_lock<std::shared_mutex> lock(ctx_mutex);
-        return root_span_map[std::this_thread::get_id()];
+        auto span = root_span_map[std::this_thread::get_id()];
+        logTraceContext("after_get_root_span", span);
+        return span;
     }
     return nullptr;
 }
@@ -123,7 +131,8 @@ logTraceContext(const std::string& extended_info,
         span->GetContext().trace_id().ToLowerBase16(
                 nostd::span<char, 2 * opentelemetry::trace::TraceId::kSize>{
                         &traceID[0], trace_id_size});
-        LOG_SEGCORE_INFO_ << extended_info << ":" << traceID;
+        LOG_SEGCORE_INFO_ << extended_info << ", thread_id:" << std::this_thread::get_id()
+        << ", traceID:" << traceID;
     }
 }
 
