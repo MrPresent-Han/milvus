@@ -37,6 +37,7 @@
 #include "storage/Util.h"
 #include "storage/ThreadPools.h"
 #include "utils/File.h"
+#include "common/Tracer.h"
 
 namespace milvus::segcore {
 
@@ -556,6 +557,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
                                  Timestamp timestamp,
                                  const BitsetView& bitset,
                                  SearchResult& output) const {
+    auto root_span = milvus::tracer::GetRootSpan();
     AssertInfo(is_system_field_ready(), "System field is not ready");
     auto field_id = search_info.field_id_;
     auto& field_meta = schema_->operator[](field_id);
@@ -566,6 +568,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
         AssertInfo(vector_indexings_.is_ready(field_id),
                    "vector indexes isn't ready for field " +
                        std::to_string(field_id.get()));
+        milvus::tracer::logTraceContext("before_query::SearchOnSealedIndex", root_span);
         query::SearchOnSealedIndex(*schema_,
                                    vector_indexings_,
                                    search_info,
@@ -573,6 +576,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
                                    query_count,
                                    bitset,
                                    output);
+        milvus::tracer::logTraceContext("after_query::SearchOnSealedIndex", root_span);
     } else {
         AssertInfo(
             get_bit(field_data_ready_bitset_, field_id),
@@ -580,6 +584,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
         AssertInfo(num_rows_.has_value(), "Can't get row count value");
         auto row_count = num_rows_.value();
         auto vec_data = fields_.at(field_id);
+        milvus::tracer::logTraceContext("before_query::SearchOnSealed", root_span);
         query::SearchOnSealed(*schema_,
                               vec_data->Data(),
                               search_info,
@@ -588,6 +593,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
                               row_count,
                               bitset,
                               output);
+        milvus::tracer::logTraceContext("after_query::SearchOnSealed", root_span);
     }
 }
 

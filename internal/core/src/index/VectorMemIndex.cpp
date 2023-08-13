@@ -290,7 +290,6 @@ VectorMemIndex::Query(const DatasetPtr dataset,
                       const BitsetView& bitset) {
     //    AssertInfo(GetMetricType() == search_info.metric_type_,
     //               "Metric type of field index isn't the same with search info");
-    LOG_SEGCORE_INFO_ << "Reach VectorMemIndex::Query";
     auto root_span = milvus::tracer::GetRootSpan();
     auto num_queries = dataset->GetRows();
     knowhere::Json search_conf = search_info.search_params_;

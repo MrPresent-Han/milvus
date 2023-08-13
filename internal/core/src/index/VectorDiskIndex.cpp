@@ -24,6 +24,7 @@
 #include "storage/Util.h"
 #include "common/Consts.h"
 #include "common/RangeSearchHelper.h"
+#include "common/Tracer.h"
 
 namespace milvus::index {
 
@@ -191,9 +192,11 @@ std::unique_ptr<SearchResult>
 VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
                              const SearchInfo& search_info,
                              const BitsetView& bitset) {
+    auto root_span = milvus::tracer::GetRootSpan();
     AssertInfo(GetMetricType() == search_info.metric_type_,
                "Metric type of field index isn't the same with search info");
     auto num_queries = dataset->GetRows();
+    milvus::tracer::logTraceContext("after_dataset_GetRows", root_span);
     auto topk = search_info.topk_;
 
     knowhere::Json search_config = search_info.search_params_;
@@ -210,9 +213,10 @@ VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
 
     // set beamwidth
     search_config[DISK_ANN_QUERY_BEAMWIDTH] = int(search_beamwidth_);
-
+    milvus::tracer::logTraceContext("after_set_diskANN_search_config", root_span);
     // set index prefix, will be removed later
     auto local_index_path_prefix = file_manager_->GetLocalIndexObjectPrefix();
+    milvus::tracer::logTraceContext("after_GetLocalIndexObjectPrefix", root_span);
     search_config[DISK_ANN_PREFIX_PATH] = local_index_path_prefix;
 
     // set json reset field, will be removed later
@@ -242,7 +246,9 @@ VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
             return ReGenRangeSearchResult(
                 res.value(), topk, num_queries, GetMetricType());
         } else {
+            milvus::tracer::logTraceContext("before_diskANN_index_.Search", root_span);
             auto res = index_.Search(*dataset, search_config, bitset);
+            milvus::tracer::logTraceContext("after_diskANN_index_.Search", root_span);
             if (!res.has_value()) {
                 PanicCodeInfo(ErrorCodeEnum::UnexpectedError,
                               fmt::format("failed to search: {}: {}",
