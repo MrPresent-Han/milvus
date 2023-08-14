@@ -37,7 +37,8 @@ namespace otlp = opentelemetry::exporter::otlp;
 
 static const int trace_id_size = 2 * opentelemetry::trace::TraceId::kSize;
 static bool enable_trace = true;
-static std::unordered_map<std::thread::id, std::shared_ptr<trace::Span>> root_span_map;
+static std::unordered_map<std::thread::id, std::shared_ptr<trace::Span>>
+    root_span_map;
 std::shared_mutex ctx_mutex;
 
 void
@@ -93,7 +94,7 @@ StartSpan(std::string name, TraceContext* parentCtx) {
 
 void
 SetRootSpan(std::shared_ptr<trace::Span> span) {
-    if(enable_trace) {
+    if (enable_trace) {
         logTraceContext("before_set_root_span", span);
         std::unique_lock<std::shared_mutex> lock(ctx_mutex);
         root_span_map[std::this_thread::get_id()] = span;
@@ -103,7 +104,7 @@ SetRootSpan(std::shared_ptr<trace::Span> span) {
 
 void
 CloseRootSpan() {
-    if(enable_trace) {
+    if (enable_trace) {
         auto span = GetRootSpan();
         logTraceContext("before_close_root_span", span);
         std::unique_lock<std::shared_mutex> lock(ctx_mutex);
@@ -114,7 +115,7 @@ CloseRootSpan() {
 
 std::shared_ptr<trace::Span>
 GetRootSpan() {
-    if(enable_trace) {
+    if (enable_trace) {
         std::shared_lock<std::shared_mutex> lock(ctx_mutex);
         auto span = root_span_map[std::this_thread::get_id()];
         logTraceContext("after_get_root_span", span);
@@ -129,10 +130,11 @@ logTraceContext(const std::string& extended_info,
     if (enable_trace && span != nullptr) {
         char traceID[trace_id_size];
         span->GetContext().trace_id().ToLowerBase16(
-                nostd::span<char, 2 * opentelemetry::trace::TraceId::kSize>{
-                        &traceID[0], trace_id_size});
-        LOG_SEGCORE_INFO_ << extended_info << ", thread_id:" << std::this_thread::get_id()
-        << ", traceID:" << traceID;
+            nostd::span<char, 2 * opentelemetry::trace::TraceId::kSize>{
+                &traceID[0], trace_id_size});
+        LOG_SEGCORE_INFO_ << extended_info
+                          << ", thread_id:" << std::this_thread::get_id()
+                          << ", traceID:" << traceID;
     }
 }
 
