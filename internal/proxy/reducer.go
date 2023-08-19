@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/pkg/util/typeutil"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -16,11 +17,9 @@ type milvusReducer interface {
 func createMilvusReducer(ctx context.Context, params *queryParams, req *internalpb.RetrieveRequest, schema *schemapb.CollectionSchema, plan *planpb.PlanNode, collectionName string) milvusReducer {
 	if plan.GetQuery().GetIsCount() {
 		return &cntReducer{}
-	} else if req.GetIterationExtensionReduceRate() > 0 {
-		params.limit = params.limit * req.GetIterationExtensionReduceRate()
-		if params.limit > Params.QuotaConfig.TopKLimit.GetAsInt64() {
-			params.limit = Params.QuotaConfig.TopKLimit.GetAsInt64()
-		}
+	} else if params.tryBestReduce {
+		tryBestReduceParams := NewQueryParams(typeutil.Unlimited, params.offset, params.tryBestReduce)
+		return newDefaultLimitReducer(ctx, tryBestReduceParams, req, schema, collectionName)
 	}
 	return newDefaultLimitReducer(ctx, params, req, schema, collectionName)
 }

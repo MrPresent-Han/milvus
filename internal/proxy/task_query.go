@@ -64,8 +64,13 @@ type queryTask struct {
 }
 
 type queryParams struct {
-	limit  int64
-	offset int64
+	limit         int64
+	offset        int64
+	tryBestReduce bool
+}
+
+func NewQueryParams(limit int64, offset int64, tryBestReduce bool) *queryParams {
+	return &queryParams{limit, offset, tryBestReduce}
 }
 
 // translateToOutputFieldIDs translates output fields name to output fields id.
@@ -128,15 +133,16 @@ func filterSystemFields(outputFieldIDs []UniqueID) []UniqueID {
 // parseQueryParams get limit and offset from queryParamsPair, both are optional.
 func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, error) {
 	var (
-		limit  int64
-		offset int64
-		err    error
+		limit         int64
+		offset        int64
+		tryBestReduce bool
+		err           error
 	)
 
 	limitStr, err := funcutil.GetAttrByKeyFromRepeatedKV(LimitKey, queryParamsPair)
 	// if limit is not provided
 	if err != nil {
-		return &queryParams{limit: typeutil.Unlimited}, nil
+		return NewQueryParams(typeutil.Unlimited, 0, false), nil
 	}
 	limit, err = strconv.ParseInt(limitStr, 0, 64)
 	if err != nil {
@@ -157,10 +163,15 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 		return nil, fmt.Errorf("invalid max query result window, %w", err)
 	}
 
-	return &queryParams{
-		limit:  limit,
-		offset: offset,
-	}, nil
+	tryBestReduceStr, err := funcutil.GetAttrByKeyFromRepeatedKV(IterationTryBestReduceKey, queryParamsPair)
+	if err == nil {
+		tryBestReduce, err = strconv.ParseBool(tryBestReduceStr)
+		if err != nil {
+			return nil, fmt.Errorf("%s [%s] is invalid", IterationTryBestReduceKey, tryBestReduceStr)
+		}
+	}
+
+	return NewQueryParams(limit, offset, tryBestReduce), nil
 }
 
 func matchCountRule(outputs []string) bool {
@@ -280,20 +291,6 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	}
 	t.RetrieveRequest.IgnoreGrowing = ignoreGrowing
 
-	// fetch iteration_extension_reduce_rate from query param
-	var iterationExtensionReduceRate int64
-	for i, kv := range t.request.GetQueryParams() {
-		if kv.GetKey() == IterationExtensionReduceRateKey {
-			iterationExtensionReduceRate, err = strconv.ParseInt(kv.Value, 10, 64)
-			if err != nil {
-				return errors.New("parse query iteration_extension_reduce_rate failed")
-			}
-			t.request.QueryParams = append(t.request.GetQueryParams()[:i], t.request.GetQueryParams()[i+1:]...)
-			break
-		}
-	}
-	t.RetrieveRequest.IterationExtensionReduceRate = iterationExtensionReduceRate
-
 	queryParams, err := parseQueryParams(t.request.GetQueryParams())
 	if err != nil {
 		return err
@@ -317,16 +314,13 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	if err := t.createPlan(ctx); err != nil {
 		return err
 	}
+	t.plan.Node.(*planpb.PlanNode_Query).Query.Limit = t.RetrieveRequest.Limit
 
-	// since the limit is pushed down to segCore, so we have to push the extensionReduceRate accordingly
-	// to ensure the correctness, as the IterationExtensionReduceRate is only used for iterator and under this case
-	// offset is definitely 0, so we can simply multiply the IterationExtensionReduceRate with Limit
-	if t.RetrieveRequest.IterationExtensionReduceRate > 0 {
-		t.plan.Node.(*planpb.PlanNode_Query).Query.Limit = t.RetrieveRequest.Limit * t.RetrieveRequest.IterationExtensionReduceRate
-	} else {
-		t.plan.Node.(*planpb.PlanNode_Query).Query.Limit = t.RetrieveRequest.Limit
+	if queryParams.tryBestReduce {
+		//on the querynode sides, t.RetrieveRequest.Limit is only used as the reduce size
+		//so setting this value to unlimited will make reducer try best to reduce the result
+		t.RetrieveRequest.Limit = typeutil.Unlimited
 	}
-
 	if planparserv2.IsAlwaysTruePlan(t.plan) && t.RetrieveRequest.Limit == typeutil.Unlimited {
 		return fmt.Errorf("empty expression should be used with limit")
 	}
