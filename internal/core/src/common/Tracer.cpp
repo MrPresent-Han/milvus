@@ -119,7 +119,7 @@ logTraceContext(const std::string& extended_info,
         span->GetContext().trace_id().ToLowerBase16(
             nostd::span<char, 2 * opentelemetry::trace::TraceId::kSize>{
                 &traceID[0], trace_id_size});
-        LOG_SEGCORE_INFO_ << extended_info << ", traceID:" << traceID;
+        LOG_SEGCORE_DEBUG_ << extended_info << ", traceID:" << traceID;
     }
 }
 
