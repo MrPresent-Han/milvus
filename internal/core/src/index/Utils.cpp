@@ -26,14 +26,14 @@
 #include <iostream>
 
 #include "index/Utils.h"
-#include "index/Exception.h"
 #include "index/Meta.h"
 #include <google/protobuf/text_format.h>
 #include <unistd.h>
 #include "exceptions/EasyAssert.h"
+#include "exceptions/Exception.h"
 #include "knowhere/comp/index_param.h"
 #include "common/Slice.h"
-#include "storage/FieldData.h"
+#include "common/FieldData.h"
 #include "storage/Util.h"
 #include "utils/File.h"
 
@@ -197,7 +197,7 @@ ParseConfigFromIndexParams(
 }
 
 void
-AssembleIndexDatas(std::map<std::string, storage::FieldDataPtr>& index_datas) {
+AssembleIndexDatas(std::map<std::string, FieldDataPtr>& index_datas) {
     if (index_datas.find(INDEX_FILE_SLICE_META) != index_datas.end()) {
         auto slice_meta = index_datas.at(INDEX_FILE_SLICE_META);
         Config meta_data = Config::parse(std::string(
@@ -229,9 +229,8 @@ AssembleIndexDatas(std::map<std::string, storage::FieldDataPtr>& index_datas) {
 }
 
 void
-AssembleIndexDatas(
-    std::map<std::string, storage::FieldDataChannelPtr>& index_datas,
-    std::unordered_map<std::string, storage::FieldDataPtr>& result) {
+AssembleIndexDatas(std::map<std::string, FieldDataChannelPtr>& index_datas,
+                   std::unordered_map<std::string, FieldDataPtr>& result) {
     if (auto meta_iter = index_datas.find(INDEX_FILE_SLICE_META);
         meta_iter != index_datas.end()) {
         auto raw_metadata_array =

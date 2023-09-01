@@ -20,8 +20,8 @@
 #include "arrow/type_fwd.h"
 #include "exceptions/EasyAssert.h"
 #include "common/Consts.h"
-#include "storage/FieldData.h"
-#include "storage/FieldDataInterface.h"
+#include "common/FieldData.h"
+#include "common/FieldDataInterface.h"
 #include "storage/ThreadPools.h"
 #include "storage/LocalChunkManager.h"
 #include "storage/MinioChunkManager.h"
@@ -576,18 +576,18 @@ GetByteSizeOfFieldDatas(const std::vector<FieldDataPtr>& field_datas) {
     return result;
 }
 
-std::vector<storage::FieldDataPtr>
-CollectFieldDataChannel(storage::FieldDataChannelPtr& channel) {
-    std::vector<storage::FieldDataPtr> result;
-    storage::FieldDataPtr field_data;
+std::vector<FieldDataPtr>
+CollectFieldDataChannel(FieldDataChannelPtr& channel) {
+    std::vector<FieldDataPtr> result;
+    FieldDataPtr field_data;
     while (channel->pop(field_data)) {
         result.push_back(field_data);
     }
     return result;
 }
 
-storage::FieldDataPtr
-MergeFieldData(std::vector<storage::FieldDataPtr>& data_array) {
+FieldDataPtr
+MergeFieldData(std::vector<FieldDataPtr>& data_array) {
     if (data_array.size() == 0) {
         return nullptr;
     }

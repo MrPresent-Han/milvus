@@ -16,6 +16,11 @@
 
 #pragma once
 
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <aws/core/Aws.h>
 #include <aws/core/http/HttpClientFactory.h>
 #include <aws/core/http/HttpRequest.h>
@@ -32,13 +37,9 @@
 #include <google/cloud/storage/oauth2/google_credentials.h>
 #include <google/cloud/status_or.h>
 
-#include <map>
-#include <memory>
-#include <string>
-#include <vector>
-
-#include "storage/ChunkManager.h"
+#include "exceptions/Exception.h"
 #include "storage/Exception.h"
+#include "storage/ChunkManager.h"
 #include "storage/Types.h"
 
 namespace milvus::storage {

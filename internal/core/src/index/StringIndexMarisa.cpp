@@ -24,7 +24,7 @@
 #include "index/StringIndexMarisa.h"
 #include "index/Utils.h"
 #include "index/Index.h"
-#include "index/Exception.h"
+#include "exceptions/Exception.h"
 #include "common/Utils.h"
 #include "common/Slice.h"
 

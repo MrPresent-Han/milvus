@@ -26,5 +26,6 @@ if [[ "$OSTYPE" == "linux-gnu"* ]]; then
 	fi
 fi
 
+export LD_LIBRARY_PATH=$PWD/internal/core/output/lib:$LD_LIBRARY_PATH
 echo "Starting standalone..."
 nohup ./bin/milvus run standalone > /tmp/standalone.log 2>&1 &

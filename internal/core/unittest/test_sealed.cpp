@@ -666,22 +666,19 @@ TEST(Sealed, LoadScalarIndex) {
     FieldMeta row_id_field_meta(
         FieldName("RowID"), RowFieldID, DataType::INT64);
     auto field_data =
-        std::make_shared<milvus::storage::FieldData<int64_t>>(DataType::INT64);
+        std::make_shared<milvus::FieldData<int64_t>>(DataType::INT64);
     field_data->FillFieldData(dataset.row_ids_.data(), N);
     auto field_data_info = FieldDataInfo{
-        RowFieldID.get(), N, std::vector<storage::FieldDataPtr>{field_data}};
+        RowFieldID.get(), N, std::vector<FieldDataPtr>{field_data}};
     segment->LoadFieldData(RowFieldID, field_data_info);
 
     LoadFieldDataInfo ts_info;
     FieldMeta ts_field_meta(
         FieldName("Timestamp"), TimestampFieldID, DataType::INT64);
-    field_data =
-        std::make_shared<milvus::storage::FieldData<int64_t>>(DataType::INT64);
+    field_data = std::make_shared<milvus::FieldData<int64_t>>(DataType::INT64);
     field_data->FillFieldData(dataset.timestamps_.data(), N);
-    field_data_info =
-        FieldDataInfo{TimestampFieldID.get(),
-                      N,
-                      std::vector<storage::FieldDataPtr>{field_data}};
+    field_data_info = FieldDataInfo{
+        TimestampFieldID.get(), N, std::vector<FieldDataPtr>{field_data}};
     segment->LoadFieldData(TimestampFieldID, field_data_info);
 
     LoadIndexInfo vec_info;
@@ -948,8 +945,8 @@ TEST(Sealed, BF) {
     auto vec_data = GenRandomFloatVecs(N, dim);
     auto field_data = storage::CreateFieldData(DataType::VECTOR_FLOAT, dim);
     field_data->FillFieldData(vec_data.data(), N);
-    auto field_data_info = FieldDataInfo{
-        fake_id.get(), N, std::vector<storage::FieldDataPtr>{field_data}};
+    auto field_data_info =
+        FieldDataInfo{fake_id.get(), N, std::vector<FieldDataPtr>{field_data}};
     segment->LoadFieldData(fake_id, field_data_info);
 
     auto topK = 1;
@@ -1002,8 +999,8 @@ TEST(Sealed, BF_Overflow) {
     auto vec_data = GenMaxFloatVecs(N, dim);
     auto field_data = storage::CreateFieldData(DataType::VECTOR_FLOAT, dim);
     field_data->FillFieldData(vec_data.data(), N);
-    auto field_data_info = FieldDataInfo{
-        fake_id.get(), N, std::vector<storage::FieldDataPtr>{field_data}};
+    auto field_data_info =
+        FieldDataInfo{fake_id.get(), N, std::vector<FieldDataPtr>{field_data}};
     segment->LoadFieldData(fake_id, field_data_info);
 
     auto topK = 1;

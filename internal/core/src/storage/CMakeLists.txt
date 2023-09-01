@@ -27,7 +27,6 @@ set(STORAGE_FILES
     PayloadStream.cpp
     DataCodec.cpp
     Util.cpp
-    FieldData.cpp
     PayloadReader.cpp
     PayloadWriter.cpp
     BinlogReader.cpp

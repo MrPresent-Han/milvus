@@ -39,6 +39,8 @@ const char INDEX_BUILD_ID_KEY[] = "indexBuildID";
 const char INDEX_ROOT_PATH[] = "index_files";
 const char RAWDATA_ROOT_PATH[] = "raw_datas";
 
+const char DEFAULT_PLANNODE_ID[] = "0";
+
 const int64_t DEFAULT_FIELD_MAX_MEMORY_LIMIT = 64 << 20;  // bytes
 const int64_t DEFAULT_HIGH_PRIORITY_THREAD_CORE_COEFFICIENT = 10;
 const int64_t DEFAULT_MIDDLE_PRIORITY_THREAD_CORE_COEFFICIENT = 5;

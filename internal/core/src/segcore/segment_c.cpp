@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "common/CGoHelper.h"
+#include "common/FieldData.h"
 #include "common/LoadInfo.h"
 #include "common/Types.h"
 #include "common/Tracer.h"
@@ -22,7 +23,6 @@
 #include "segcore/Collection.h"
 #include "segcore/SegmentGrowingImpl.h"
 #include "segcore/SegmentSealedImpl.h"
-#include "storage/FieldData.h"
 #include "storage/Util.h"
 #include "mmap/Types.h"
 
@@ -269,8 +269,8 @@ LoadFieldRawData(CSegmentInterface c_segment,
         }
         auto field_data = milvus::storage::CreateFieldData(data_type, dim);
         field_data->FillFieldData(data, row_count);
-        milvus::storage::FieldDataChannelPtr channel =
-            std::make_shared<milvus::storage::FieldDataChannel>();
+        milvus::FieldDataChannelPtr channel =
+            std::make_shared<milvus::FieldDataChannel>();
         channel->push(field_data);
         channel->close();
         auto field_data_info = milvus::FieldDataInfo(

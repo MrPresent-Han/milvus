@@ -414,7 +414,8 @@ DataGenForJsonArray(SchemaPtr schema,
                             std::to_string(static_cast<double>(er())));
                         stringVec.push_back("\"" + std::to_string(er()) + "\"");
                         boolVec.push_back(i % 2 == 0 ? "true" : "false");
-                        arrayVec.push_back(fmt::format("[{}, {}, {}]", i, i+1, i+2));
+                        arrayVec.push_back(
+                            fmt::format("[{}, {}, {}]", i, i + 1, i + 2));
                     }
                     auto str = R"({"int":[)" + join(intVec, ",") +
                                R"(],"double":[)" + join(doubleVec, ",") +
@@ -581,12 +582,12 @@ SearchResultToJson(const SearchResult& sr) {
     return json{results};
 };
 
-inline storage::FieldDataPtr
+inline FieldDataPtr
 CreateFieldDataFromDataArray(ssize_t raw_count,
                              const DataArray* data,
                              const FieldMeta& field_meta) {
     int64_t dim = 1;
-    storage::FieldDataPtr field_data = nullptr;
+    FieldDataPtr field_data = nullptr;
 
     auto createFieldData = [&field_data, &raw_count](const void* raw_data,
                                                      DataType data_type,
@@ -688,23 +689,23 @@ SealedLoadFieldData(const GeneratedData& dataset,
                     bool with_mmap = false) {
     auto row_count = dataset.row_ids_.size();
     {
-        auto field_data = std::make_shared<milvus::storage::FieldData<int64_t>>(
-            DataType::INT64);
+        auto field_data =
+            std::make_shared<milvus::FieldData<int64_t>>(DataType::INT64);
         field_data->FillFieldData(dataset.row_ids_.data(), row_count);
-        auto field_data_info = FieldDataInfo(
-            RowFieldID.get(),
-            row_count,
-            std::vector<milvus::storage::FieldDataPtr>{field_data});
+        auto field_data_info =
+            FieldDataInfo(RowFieldID.get(),
+                          row_count,
+                          std::vector<milvus::FieldDataPtr>{field_data});
         seg.LoadFieldData(RowFieldID, field_data_info);
     }
     {
-        auto field_data = std::make_shared<milvus::storage::FieldData<int64_t>>(
-            DataType::INT64);
+        auto field_data =
+            std::make_shared<milvus::FieldData<int64_t>>(DataType::INT64);
         field_data->FillFieldData(dataset.timestamps_.data(), row_count);
-        auto field_data_info = FieldDataInfo(
-            TimestampFieldID.get(),
-            row_count,
-            std::vector<milvus::storage::FieldDataPtr>{field_data});
+        auto field_data_info =
+            FieldDataInfo(TimestampFieldID.get(),
+                          row_count,
+                          std::vector<milvus::FieldDataPtr>{field_data});
         seg.LoadFieldData(TimestampFieldID, field_data_info);
     }
     for (auto& iter : dataset.schema_->get_fields()) {

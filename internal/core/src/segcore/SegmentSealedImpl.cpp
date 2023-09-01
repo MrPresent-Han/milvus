@@ -28,12 +28,12 @@
 #include "mmap/Column.h"
 #include "common/Consts.h"
 #include "common/FieldMeta.h"
+#include "common/FieldData.h"
 #include "common/Types.h"
 #include "log/Log.h"
 #include "query/ScalarIndex.h"
 #include "query/SearchBruteForce.h"
 #include "query/SearchOnSealed.h"
-#include "storage/FieldData.h"
 #include "storage/Util.h"
 #include "storage/ThreadPools.h"
 #include "utils/File.h"
@@ -212,7 +212,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
         if (system_field_type == SystemFieldType::Timestamp) {
             std::vector<Timestamp> timestamps(num_rows);
             int64_t offset = 0;
-            auto field_data = CollectFieldDataChannel(data.channel);
+            auto field_data = storage::CollectFieldDataChannel(data.channel);
             for (auto& data : field_data) {
                 int64_t row_count = data->get_num_rows();
                 std::copy_n(static_cast<const Timestamp*>(data->Data()),
@@ -240,7 +240,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
             AssertInfo(system_field_type == SystemFieldType::RowId,
                        "System field type of id column is not RowId");
 
-            auto field_data = CollectFieldDataChannel(data.channel);
+            auto field_data = storage::CollectFieldDataChannel(data.channel);
 
             // write data under lock
             std::unique_lock lck(mutex_);
@@ -268,7 +268,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                     auto var_column =
                         std::make_shared<VariableColumn<std::string>>(
                             num_rows, field_meta);
-                    storage::FieldDataPtr field_data;
+                    FieldDataPtr field_data;
                     while (data.channel->pop(field_data)) {
                         for (auto i = 0; i < field_data->get_num_rows(); i++) {
                             auto str = static_cast<const std::string*>(
@@ -286,7 +286,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                     auto var_column =
                         std::make_shared<VariableColumn<milvus::Json>>(
                             num_rows, field_meta);
-                    storage::FieldDataPtr field_data;
+                    FieldDataPtr field_data;
                     while (data.channel->pop(field_data)) {
                         for (auto i = 0; i < field_data->get_num_rows(); i++) {
                             auto padded_string =
@@ -312,7 +312,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                 field_id, num_rows, field_data_size);
         } else {
             column = std::make_shared<Column>(num_rows, field_meta);
-            storage::FieldDataPtr field_data;
+            FieldDataPtr field_data;
             while (data.channel->pop(field_data)) {
                 column->AppendBatch(field_data);
             }
@@ -362,7 +362,7 @@ SegmentSealedImpl::MapFieldData(const FieldId field_id, FieldDataInfo& data) {
     size_t total_written{0};
     auto data_size = 0;
     std::vector<uint64_t> indices{};
-    storage::FieldDataPtr field_data;
+    FieldDataPtr field_data;
     while (data.channel->pop(field_data)) {
         data_size += field_data->Size();
         auto written = WriteFieldData(file, data_type, field_data);

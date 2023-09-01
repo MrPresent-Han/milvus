@@ -19,6 +19,8 @@
 #include "segcore/SegmentGrowing.h"
 #include "utils/Json.h"
 #include "log/Log.h"
+#include "plan/PlanNode.h"
+#include "exec/Task.h"
 
 namespace milvus::query {
 
@@ -73,6 +75,94 @@ empty_search_result(int64_t num_queries, SearchInfo& search_info) {
     return final_result;
 }
 
+void
+AppendOneChunk(BitsetType* result, const bool* chunk_ptr, size_t chunk_len) {
+    // Append a value once instead of BITSET_BLOCK_BIT_SIZE times.
+    auto AppendBlock = [&result](const bool* ptr, int n) {
+        for (int i = 0; i < n; ++i) {
+#if defined(USE_DYNAMIC_SIMD)
+            auto val = milvus::simd::get_bitset_block(ptr);
+#else
+            BitsetBlockType val = 0;
+            // This can use CPU SIMD optimzation
+            uint8_t vals[BITSET_BLOCK_SIZE] = {0};
+            for (size_t j = 0; j < 8; ++j) {
+                for (size_t k = 0; k < BITSET_BLOCK_SIZE; ++k) {
+                    vals[k] |= uint8_t(*(ptr + k * 8 + j)) << j;
+                }
+            }
+            for (size_t j = 0; j < BITSET_BLOCK_SIZE; ++j) {
+                val |= BitsetBlockType(vals[j]) << (8 * j);
+            }
+#endif
+            result->append(val);
+            ptr += BITSET_BLOCK_SIZE * 8;
+        }
+    };
+    // Append bit for these bits that can not be union as a block
+    // Usually n less than BITSET_BLOCK_BIT_SIZE.
+    auto AppendBit = [&result](const bool* ptr, int n) {
+        for (int i = 0; i < n; ++i) {
+            bool bit = *ptr++;
+            result->push_back(bit);
+        }
+    };
+
+    size_t res_len = result->size();
+
+    int n_prefix =
+        res_len % BITSET_BLOCK_BIT_SIZE == 0
+            ? 0
+            : std::min(BITSET_BLOCK_BIT_SIZE - res_len % BITSET_BLOCK_BIT_SIZE,
+                       chunk_len);
+
+    AppendBit(chunk_ptr, n_prefix);
+
+    if (n_prefix == chunk_len)
+        return;
+
+    size_t n_block = (chunk_len - n_prefix) / BITSET_BLOCK_BIT_SIZE;
+    size_t n_suffix = (chunk_len - n_prefix) % BITSET_BLOCK_BIT_SIZE;
+
+    AppendBlock(chunk_ptr + n_prefix, n_block);
+
+    AppendBit(chunk_ptr + n_prefix + n_block * BITSET_BLOCK_BIT_SIZE, n_suffix);
+
+    return;
+}
+
+void
+ExecPlanNodeVisitor::ExecuteExprNode(
+    const std::shared_ptr<milvus::plan::PlanNode>& plannode,
+    const milvus::segcore::SegmentInternalInterface* segment,
+    BitsetType* bitset_holder) {
+    auto plan = plan::PlanFragment(plannode);
+    auto query_context = std::make_shared<milvus::exec::QueryContext>(
+        "query id", segment, timestamp_);
+
+    auto task = milvus::exec::Task::Create("task_expr", plan, 0, query_context);
+    for (;;) {
+        auto result = task->Next();
+        if (!result) {
+            break;
+        }
+        auto childrens = result->childrens();
+        std::cout << "output result length:" << childrens[0]->size()
+                  << std::endl;
+        assert(childrens.size() == 1);
+        if (auto child = std::dynamic_pointer_cast<FlatVector>(childrens[0])) {
+            AppendOneChunk(bitset_holder,
+                           static_cast<bool*>(child->GetRawData()),
+                           child->size());
+        } else {
+            PanicInfo("expr return type not matched");
+        }
+    }
+    // std::string s;
+    // boost::to_string(*bitset_holder, s);
+    // std::cout << s << std::endl;
+}
+
 template <typename VectorType>
 void
 ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
@@ -98,13 +188,20 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     }
 
     std::unique_ptr<BitsetType> bitset_holder;
-    if (node.predicate_.has_value()) {
-        bitset_holder = std::make_unique<BitsetType>(
-            ExecExprVisitor(*segment, this, active_count, timestamp_)
-                .call_child(*node.predicate_.value()));
+    if (node.filter_plannode_.has_value()) {
+        BitsetType expr_res;
+        ExecuteExprNode(node.filter_plannode_.value(), segment, &expr_res);
+        bitset_holder = std::make_unique<BitsetType>(expr_res);
         bitset_holder->flip();
     } else {
-        bitset_holder = std::make_unique<BitsetType>(active_count, false);
+        if (node.predicate_.has_value()) {
+            bitset_holder = std::make_unique<BitsetType>(
+                ExecExprVisitor(*segment, this, active_count, timestamp_)
+                    .call_child(*node.predicate_.value()));
+            bitset_holder->flip();
+        } else {
+            bitset_holder = std::make_unique<BitsetType>(active_count, false);
+        }
     }
     segment->mask_with_timestamps(*bitset_holder, timestamp_);
 
@@ -165,13 +262,19 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
         bitset_holder.resize(active_count);
     }
 
-    if (node.predicate_.has_value() && node.predicate_.value() != nullptr) {
-        bitset_holder =
-            ExecExprVisitor(*segment, this, active_count, timestamp_)
-                .call_child(*(node.predicate_.value()));
+    if (node.filter_plannode_.has_value()) {
+        ExecuteExprNode(node.filter_plannode_.value(), segment, &bitset_holder);
         bitset_holder.flip();
+    } else {
+        if (node.predicate_.has_value() && node.predicate_.value() != nullptr) {
+            bitset_holder =
+                ExecExprVisitor(*segment, this, active_count, timestamp_)
+                    .call_child(*(node.predicate_.value()));
+            bitset_holder.flip();
+        }
     }
 
+    std::cout << bitset_holder.size() << std::endl;
     segment->mask_with_timestamps(bitset_holder, timestamp_);
 
     segment->mask_with_delete(bitset_holder, active_count, timestamp_);

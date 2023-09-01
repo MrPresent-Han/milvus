@@ -15,9 +15,9 @@
 #include <string>
 
 #include "index/ScalarIndex.h"
-#include "storage/FieldData.h"
 #include "storage/RemoteChunkManagerSingleton.h"
 #include "common/Common.h"
+#include "common/FieldData.h"
 #include "storage/ThreadPool.h"
 #include "storage/Util.h"
 #include "mmap/Utils.h"
@@ -47,7 +47,7 @@ ParsePksFromFieldData(std::vector<PkType>& pks, const DataArray& data) {
 void
 ParsePksFromFieldData(DataType data_type,
                       std::vector<PkType>& pks,
-                      const std::vector<storage::FieldDataPtr>& datas) {
+                      const std::vector<FieldDataPtr>& datas) {
     int64_t offset = 0;
 
     for (auto& field_data : datas) {
@@ -586,7 +586,7 @@ ReverseDataFromIndex(const index::IndexBase* index,
 // segcore use default remote chunk manager to load data from minio/s3
 void
 LoadFieldDatasFromRemote(std::vector<std::string>& remote_files,
-                         storage::FieldDataChannelPtr channel) {
+                         FieldDataChannelPtr channel) {
     auto parallel_degree =
         static_cast<uint64_t>(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
 

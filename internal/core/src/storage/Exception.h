@@ -21,39 +21,6 @@
 #include <string>
 
 namespace milvus::storage {
-
-class NotImplementedException : public std::exception {
- public:
-    explicit NotImplementedException(const std::string& msg)
-        : std::exception(), exception_message_(msg) {
-    }
-    const char*
-    what() const noexcept {
-        return exception_message_.c_str();
-    }
-    virtual ~NotImplementedException() {
-    }
-
- private:
-    std::string exception_message_;
-};
-
-class NotSupportedDataTypeException : public std::exception {
- public:
-    explicit NotSupportedDataTypeException(const std::string& msg)
-        : std::exception(), exception_message_(msg) {
-    }
-    const char*
-    what() const noexcept {
-        return exception_message_.c_str();
-    }
-    virtual ~NotSupportedDataTypeException() {
-    }
-
- private:
-    std::string exception_message_;
-};
-
 class LocalChunkManagerException : public std::runtime_error {
  public:
     explicit LocalChunkManagerException(const std::string& msg)

@@ -248,7 +248,7 @@ class SegmentSealedImpl : public SegmentSealed {
     std::unordered_map<FieldId, std::shared_ptr<ColumnBase>> fields_;
 };
 
-inline SegmentSealedPtr
+inline SegmentSealedUPtr
 CreateSealedSegment(SchemaPtr schema, int64_t segment_id = -1) {
     return std::make_unique<SegmentSealedImpl>(schema, segment_id);
 }

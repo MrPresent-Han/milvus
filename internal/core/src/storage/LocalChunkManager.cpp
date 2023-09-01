@@ -21,7 +21,8 @@
 #include <fstream>
 #include <sstream>
 
-#include "Exception.h"
+#include "exceptions/Exception.h"
+#include "storage/Exception.h"
 
 #define THROWLOCALERROR(FUNCTION)                                 \
     do {                                                          \

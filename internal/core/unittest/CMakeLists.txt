@@ -54,6 +54,7 @@ set(MILVUS_TEST_FILES
         test_offset_ordered_map.cpp
         test_offset_ordered_array.cpp
         test_always_true_expr.cpp
+        test_exec.cpp
         test_plan_proto.cpp)
 
 if ( BUILD_DISK_ANN STREQUAL "ON" )
@@ -111,6 +112,7 @@ target_link_libraries(all_tests
         milvus_storage
         milvus_indexbuilder
         pthread
+        milvus_exec
         )
 
 install(TARGETS all_tests DESTINATION unittest)

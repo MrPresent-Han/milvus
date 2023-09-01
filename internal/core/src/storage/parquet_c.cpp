@@ -19,8 +19,8 @@
 #include "storage/parquet_c.h"
 #include "storage/PayloadReader.h"
 #include "storage/PayloadWriter.h"
-#include "storage/FieldData.h"
 #include "common/CGoHelper.h"
+#include "common/FieldData.h"
 #include "storage/Util.h"
 
 using Payload = milvus::storage::Payload;

@@ -19,6 +19,10 @@
 #include "PlanNodeVisitor.h"
 
 namespace milvus::query {
+
+void
+AppendOneChunk(BitsetType* result, const bool* chunk_ptr, size_t chunk_len);
+
 class ExecPlanNodeVisitor : public PlanNodeVisitor {
  public:
     void
@@ -92,6 +96,11 @@ class ExecPlanNodeVisitor : public PlanNodeVisitor {
     GetExprUsePkIndex() {
         return expr_use_pk_index_;
     }
+
+    void
+    ExecuteExprNode(const std::shared_ptr<milvus::plan::PlanNode>& plannode,
+                    const milvus::segcore::SegmentInternalInterface* segment,
+                    BitsetType* result);
 
  private:
     template <typename VectorType>

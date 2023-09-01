@@ -19,13 +19,13 @@
 #include <type_traits>
 
 #include "common/Consts.h"
+#include "common/FieldData.h"
 #include "common/Types.h"
 #include "nlohmann/json.hpp"
 #include "query/PlanNode.h"
 #include "query/SearchOnSealed.h"
 #include "segcore/SegmentGrowingImpl.h"
 #include "segcore/Utils.h"
-#include "storage/FieldData.h"
 #include "storage/RemoteChunkManagerSingleton.h"
 #include "storage/Util.h"
 #include "storage/ThreadPools.h"
@@ -167,12 +167,12 @@ SegmentGrowingImpl::LoadFieldData(const LoadFieldDataInfo& infos) {
     for (auto& [id, info] : infos.field_infos) {
         auto field_id = FieldId(id);
         auto insert_files = info.insert_files;
-        auto channel = std::make_shared<storage::FieldDataChannel>();
+        auto channel = std::make_shared<FieldDataChannel>();
         auto& pool =
             ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
         auto load_future =
             pool.Submit(LoadFieldDatasFromRemote, insert_files, channel);
-        auto field_data = CollectFieldDataChannel(channel);
+        auto field_data = storage::CollectFieldDataChannel(channel);
         if (field_id == TimestampFieldID) {
             // step 2: sort timestamp
             // query node already guarantees that the timestamp is ordered, avoid field data copy in c++

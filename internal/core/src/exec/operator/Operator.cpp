@@ -14,21 +14,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#include "Operator.h"
 
-#include <iostream>
-#include <stdexcept>
-#include <string>
-
-namespace milvus::index {
-
-class UnistdException : public std::runtime_error {
- public:
-    explicit UnistdException(const std::string& msg) : std::runtime_error(msg) {
-    }
-
-    virtual ~UnistdException() {
-    }
-};
-
-}  // namespace milvus::index
+namespace milvus {
+namespace exex {}
+}  // namespace milvus

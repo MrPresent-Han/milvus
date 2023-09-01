@@ -34,12 +34,12 @@
 #include "knowhere/factory.h"
 #include "knowhere/comp/time_recorder.h"
 #include "common/BitsetView.h"
+#include "common/FieldData.h"
 #include "common/Slice.h"
 #include "common/Consts.h"
 #include "common/RangeSearchHelper.h"
 #include "common/Utils.h"
 #include "log/Log.h"
-#include "storage/FieldData.h"
 #include "storage/MemFileManagerImpl.h"
 #include "storage/ThreadPools.h"
 #include "storage/Util.h"
@@ -123,7 +123,7 @@ VectorMemIndex::Load(const Config& config) {
 
     auto parallel_degree =
         static_cast<uint64_t>(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
-    std::map<std::string, storage::FieldDataPtr> index_datas{};
+    std::map<std::string, FieldDataPtr> index_datas{};
 
     // try to read slice meta first
     std::string slice_meta_filepath;

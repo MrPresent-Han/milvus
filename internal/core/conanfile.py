@@ -55,6 +55,9 @@ class MilvusConan(ConanFile):
     )
     generators = ("cmake", "cmake_find_package")
     default_options = {
+        "libevent:shared": True,
+        "double-conversion:shared": True,
+        "folly:shared": True,
         "librdkafka:shared": True,
         "librdkafka:zstd": True,
         "librdkafka:ssl": True,
