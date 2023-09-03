@@ -140,7 +140,6 @@ func (d *distribution) filterReadableSegments(sealed []SnapshotItem, growing []S
 func (d *distribution) PeekSegments(readable bool, partitions ...int64) (sealed []SnapshotItem, growing []SegmentEntry) {
 	current := d.current.Load()
 	sealed, growing = current.Peek(partitions...)
-
 	if readable {
 		TargetVersion := current.GetTargetVersion()
 		sealed, growing = d.filterReadableSegments(sealed, growing, TargetVersion)
