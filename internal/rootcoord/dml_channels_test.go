@@ -42,7 +42,7 @@ func TestDmlMsgStream(t *testing.T) {
 		assert.Equal(t, int64(0), dms.RefCnt())
 		assert.Equal(t, int64(0), dms.Used())
 
-		dms.IncRefcnt()
+		dms.IncRefCnt()
 		assert.Equal(t, int64(1), dms.RefCnt())
 		dms.BookUsage()
 		assert.Equal(t, int64(1), dms.Used())
@@ -100,7 +100,7 @@ func TestChannelsHeap(t *testing.T) {
 	// add usage for all
 	for i := 0; i < chanNum; i++ {
 		h[0].BookUsage()
-		h[0].IncRefcnt()
+		h[0].IncRefCnt()
 		heap.Fix(&h, 0)
 	}
 

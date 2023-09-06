@@ -54,15 +54,15 @@ func (dms *dmlMsgStream) RefCnt() int64 {
 	return dms.refcnt
 }
 
-// RefCnt returns refcnt with mutex protection.
+// Used returns used with mutex protection.
 func (dms *dmlMsgStream) Used() int64 {
 	dms.mutex.RLock()
 	defer dms.mutex.RUnlock()
 	return dms.used
 }
 
-// IncRefcnt increases refcnt.
-func (dms *dmlMsgStream) IncRefcnt() {
+// IncRefCnt increases refCnt.
+func (dms *dmlMsgStream) IncRefCnt() {
 	dms.mutex.Lock()
 	defer dms.mutex.Unlock()
 	dms.refcnt++
@@ -75,7 +75,7 @@ func (dms *dmlMsgStream) BookUsage() {
 	dms.used++
 }
 
-// DecRefCnt decreases refcnt only.
+// DecRefCnt decreases refCnt only.
 func (dms *dmlMsgStream) DecRefCnt() {
 	dms.mutex.Lock()
 	defer dms.mutex.Unlock()
@@ -326,7 +326,7 @@ func (d *dmlChannels) addChannels(names ...string) {
 		}
 
 		d.mut.Lock()
-		dms.IncRefcnt()
+		dms.IncRefCnt()
 		heap.Fix(&d.channelsHeap, dms.pos)
 		d.mut.Unlock()
 	}

@@ -33,6 +33,8 @@ enum CollectionState {
   CollectionCreating = 1;
   CollectionDropping = 2;
   CollectionDropped = 3;
+  //CollectionFreezing
+  //CollectionFrozen
 }
 
 enum PartitionState {
