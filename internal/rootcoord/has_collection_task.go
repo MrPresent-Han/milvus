@@ -40,6 +40,7 @@ func (t *hasCollectionTask) Prepare(ctx context.Context) error {
 // Execute task execution
 func (t *hasCollectionTask) Execute(ctx context.Context) error {
 	t.Rsp.Status = succStatus()
+	//hc--- is it ok now to remove travelTs?
 	ts := getTravelTs(t.Req)
 	// TODO: what if err != nil && common.IsCollectionNotExistError == false, should we consider this RPC as failure?
 	_, err := t.core.meta.GetCollectionByName(ctx, t.Req.GetDbName(), t.Req.GetCollectionName(), ts)

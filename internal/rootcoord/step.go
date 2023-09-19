@@ -254,21 +254,40 @@ func (s *deletePartitionDataStep) Weight() stepPriority {
 	return stepPriorityImportant
 }
 
-type releaseCollectionStep struct {
+type loadCollectionOnQueryNodes struct {
+	baseStep
+	collectionID UniqueID
+	partitions   []UniqueID
+}
+
+func (s *loadCollectionOnQueryNodes) Execute(ctx context.Context) ([]nestedStep, error) {
+	err := s.core.broker.LoadCollection(ctx, s.collectionID, s.partitions)
+	return nil, err
+}
+
+func (s *loadCollectionOnQueryNodes) Desc() string {
+	return fmt.Sprintf("load collection: %d", s.collectionID)
+}
+
+func (s *loadCollectionOnQueryNodes) Weight() stepPriority {
+	return stepPriorityUrgent
+}
+
+type releaseCollectionOnQueryNodesStep struct {
 	baseStep
 	collectionID UniqueID
 }
 
-func (s *releaseCollectionStep) Execute(ctx context.Context) ([]nestedStep, error) {
+func (s *releaseCollectionOnQueryNodesStep) Execute(ctx context.Context) ([]nestedStep, error) {
 	err := s.core.broker.ReleaseCollection(ctx, s.collectionID)
 	return nil, err
 }
 
-func (s *releaseCollectionStep) Desc() string {
+func (s *releaseCollectionOnQueryNodesStep) Desc() string {
 	return fmt.Sprintf("release collection: %d", s.collectionID)
 }
 
-func (s *releaseCollectionStep) Weight() stepPriority {
+func (s *releaseCollectionOnQueryNodesStep) Weight() stepPriority {
 	return stepPriorityUrgent
 }
 

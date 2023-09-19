@@ -19,7 +19,6 @@ package rootcoord
 import (
 	"context"
 	"fmt"
-
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
 
@@ -47,6 +46,7 @@ type watchInfo struct {
 // Broker communicates with other components.
 type Broker interface {
 	ReleaseCollection(ctx context.Context, collectionID UniqueID) error
+	LoadCollection(ctx context.Context, collectionID UniqueID, partitions []UniqueID) error
 	ReleasePartitions(ctx context.Context, collectionID UniqueID, partitionIDs ...UniqueID) error
 	SyncNewCreatedPartition(ctx context.Context, collectionID UniqueID, partitionID UniqueID) error
 	GetQuerySegmentInfo(ctx context.Context, collectionID int64, segIDs []int64) (retResp *querypb.GetSegmentInfoResponse, retErr error)
@@ -72,6 +72,26 @@ type ServerBroker struct {
 
 func newServerBroker(s *Core) *ServerBroker {
 	return &ServerBroker{s: s}
+}
+
+func (b *ServerBroker) LoadCollection(ctx context.Context, collectionID UniqueID, partitions []UniqueID) error {
+	log.Ctx(ctx).Info("start loading collection",
+		zap.Int64("collectionID", collectionID),
+		zap.Int64s("partitions", partitions))
+	resp, err := b.s.queryCoord.LoadCollection(ctx, &querypb.LoadCollectionRequest{
+		Base:         commonpbutil.NewMsgBase(commonpbutil.WithMsgType(commonpb.MsgType_LoadCollection)),
+		CollectionID: collectionID,
+		Partitions:   partitions,
+	})
+	if err != nil {
+		return err
+	}
+	if resp.GetErrorCode() != commonpb.ErrorCode_Success {
+		//hc--- changed to merr
+		return fmt.Errorf("failed to load collection, code: %s, reason: %s", resp.GetErrorCode(), resp.GetReason())
+	}
+	log.Ctx(ctx).Info("finish loading collection", zap.Int64("collectionID", collectionID))
+	return nil
 }
 
 func (b *ServerBroker) ReleaseCollection(ctx context.Context, collectionID UniqueID) error {

@@ -204,11 +204,11 @@ func Test_selectByPriorityPolicy(t *testing.T) {
 
 	t.Run("select by priority", func(t *testing.T) {
 		steps := []nestedStep{
-			&releaseCollectionStep{},
-			&releaseCollectionStep{},
-			&releaseCollectionStep{},
-			&releaseCollectionStep{},
-			&releaseCollectionStep{},
+			&releaseCollectionOnQueryNodesStep{},
+			&releaseCollectionOnQueryNodesStep{},
+			&releaseCollectionOnQueryNodesStep{},
+			&releaseCollectionOnQueryNodesStep{},
+			&releaseCollectionOnQueryNodesStep{},
 		}
 		s1 := &stepStack{steps: steps[0:1]}
 		s2 := &stepStack{steps: steps[0:2]}

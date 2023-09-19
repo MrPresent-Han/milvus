@@ -88,7 +88,7 @@ func (t *dropCollectionTask) Execute(ctx context.Context) error {
 		ts:           ts,
 	})
 
-	redoTask.AddAsyncStep(&releaseCollectionStep{
+	redoTask.AddAsyncStep(&releaseCollectionOnQueryNodesStep{
 		baseStep:     baseStep{core: t.core},
 		collectionID: collMeta.CollectionID,
 	})

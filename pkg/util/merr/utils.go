@@ -262,6 +262,14 @@ func WrapErrCollectionNotLoaded(collection any, msg ...string) error {
 	return err
 }
 
+func WrapErrCollectionLoadFailed(collection any, msg ...string) error {
+	err := wrapWithField(ErrCollectionLoadFailed, "collection", collection)
+	if len(msg) > 0 {
+		err = errors.Wrap(err, strings.Join(msg, "; "))
+	}
+	return err
+}
+
 func WrapErrCollectionResourceLimitExceeded(msg ...string) error {
 	var err error = ErrCollectionNumLimitExceeded
 	if len(msg) > 0 {

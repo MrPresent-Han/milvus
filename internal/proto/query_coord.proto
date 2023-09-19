@@ -121,6 +121,7 @@ message LoadCollectionRequest {
   bool refresh = 7;
   // resource group names
   repeated string resource_groups = 8;
+  repeated int64 partitions = 9;
 }
 
 message ReleaseCollectionRequest {

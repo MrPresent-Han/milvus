@@ -113,12 +113,7 @@ func (job *LoadCollectionJob) Execute() error {
 	meta.GlobalFailedLoadCache.Remove(req.GetCollectionID())
 
 	// 1. Fetch target partitions
-	partitionIDs, err := job.broker.GetPartitions(job.ctx, req.GetCollectionID())
-	if err != nil {
-		msg := "failed to get partitions from RootCoord"
-		log.Warn(msg, zap.Error(err))
-		return errors.Wrap(err, msg)
-	}
+	partitionIDs := job.req.GetPartitions()
 	loadedPartitionIDs := lo.Map(job.meta.CollectionManager.GetPartitionsByCollection(req.GetCollectionID()),
 		func(partition *meta.Partition, _ int) int64 {
 			return partition.GetPartitionID()
@@ -136,7 +131,7 @@ func (job *LoadCollectionJob) Execute() error {
 	colExisted := job.meta.CollectionManager.Exist(req.GetCollectionID())
 	if !colExisted {
 		// Clear stale replicas, https://github.com/milvus-io/milvus/issues/20444
-		err = job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
+		err := job.meta.ReplicaManager.RemoveCollection(req.GetCollectionID())
 		if err != nil {
 			msg := "failed to clear stale replicas"
 			log.Warn(msg, zap.Error(err))
@@ -147,7 +142,7 @@ func (job *LoadCollectionJob) Execute() error {
 	// 2. create replica if not exist
 	replicas := job.meta.ReplicaManager.GetByCollection(req.GetCollectionID())
 	if len(replicas) == 0 {
-		replicas, err = utils.SpawnReplicasWithRG(job.meta, req.GetCollectionID(), req.GetResourceGroups(), req.GetReplicaNumber())
+		replicas, err := utils.SpawnReplicasWithRG(job.meta, req.GetCollectionID(), req.GetResourceGroups(), req.GetReplicaNumber())
 		if err != nil {
 			msg := "failed to spawn replica for collection"
 			log.Warn(msg, zap.Error(err))
@@ -161,7 +156,7 @@ func (job *LoadCollectionJob) Execute() error {
 	}
 
 	// 3. loadPartitions on QueryNodes
-	err = loadPartitions(job.ctx, job.meta, job.cluster, job.broker, true, req.GetCollectionID(), lackPartitionIDs...)
+	err := loadPartitions(job.ctx, job.meta, job.cluster, job.broker, true, req.GetCollectionID(), lackPartitionIDs...)
 	if err != nil {
 		return err
 	}

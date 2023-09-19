@@ -470,7 +470,7 @@ func (t *createCollectionTask) Execute(ctx context.Context) error {
 		// When we undo createCollectionTask, this ts may be less than the ts when unwatch channels.
 		ts: ts,
 	})
-	// serve for this case: watching channels succeed in datacoord but failed due to network failure.
+	// serve for this case: watching channels succeed in dataCoord but failed due to network failure.
 	undoTask.AddStep(&nullStep{}, &unwatchChannelsStep{
 		baseStep:     baseStep{core: t.core},
 		collectionID: collID,
@@ -490,6 +490,17 @@ func (t *createCollectionTask) Execute(ctx context.Context) error {
 				Fields:      model.MarshalFieldModels(collInfo.Fields),
 			},
 		},
+	}, &nullStep{})
+
+	//hc---add step for load and release collection
+	undoTask.AddStep(&nullStep{}, &releaseCollectionOnQueryNodesStep{
+		baseStep:     baseStep{core: t.core},
+		collectionID: collID,
+	})
+	undoTask.AddStep(&loadCollectionOnQueryNodes{
+		baseStep:     baseStep{core: t.core},
+		collectionID: collID,
+		partitions:   partIDs,
 	}, &nullStep{})
 	undoTask.AddStep(&changeCollectionStateStep{
 		baseStep:     baseStep{core: t.core},

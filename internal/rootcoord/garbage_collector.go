@@ -49,7 +49,7 @@ func (c *bgGarbageCollector) ReDropCollection(collMeta *model.Collection, ts Tim
 	c.s.chanTimeTick.addDmlChannels(collMeta.PhysicalChannelNames...)
 
 	redo := newBaseRedoTask(c.s.stepExecutor)
-	redo.AddAsyncStep(&releaseCollectionStep{
+	redo.AddAsyncStep(&releaseCollectionOnQueryNodesStep{
 		baseStep:     baseStep{core: c.s},
 		collectionID: collMeta.CollectionID,
 	})
