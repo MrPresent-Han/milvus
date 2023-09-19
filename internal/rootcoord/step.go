@@ -19,6 +19,7 @@ package rootcoord
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"time"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
@@ -258,10 +259,11 @@ type loadCollectionOnQueryNodes struct {
 	baseStep
 	collectionID UniqueID
 	partitions   []UniqueID
+	schema       *schemapb.CollectionSchema
 }
 
 func (s *loadCollectionOnQueryNodes) Execute(ctx context.Context) ([]nestedStep, error) {
-	err := s.core.broker.LoadCollection(ctx, s.collectionID, s.partitions)
+	err := s.core.broker.LoadCollection(ctx, NewLoadInfo(s.collectionID, s.partitions, s.schema))
 	return nil, err
 }
 

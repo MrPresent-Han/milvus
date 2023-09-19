@@ -540,9 +540,9 @@ func (s *Server) DescribeIndex(ctx context.Context, req *indexpb.DescribeIndexRe
 		return &indexpb.DescribeIndexResponse{
 			Status: &commonpb.Status{
 				ErrorCode: commonpb.ErrorCode_IndexNotExist,
-				Reason:    fmt.Sprint("index doesn't exist, collectionID ", req.GetCollectionID()),
+				Reason:    errMsg,
 			},
-		}, nil
+		}, merr.WrapErrIndexNotFound(errMsg)
 	}
 
 	// The total rows of all indexes should be based on the current perspective

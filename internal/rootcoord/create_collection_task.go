@@ -501,6 +501,7 @@ func (t *createCollectionTask) Execute(ctx context.Context) error {
 		baseStep:     baseStep{core: t.core},
 		collectionID: collID,
 		partitions:   partIDs,
+		schema:       t.schema,
 	}, &nullStep{})
 	undoTask.AddStep(&changeCollectionStateStep{
 		baseStep:     baseStep{core: t.core},
