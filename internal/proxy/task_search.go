@@ -850,7 +850,7 @@ func reduceSearchResultData(ctx context.Context, subSearchResultData []*schemapb
 
 			cursors[subSearchIdx]++
 		}
-
+		var lastScore float32 = 0.0
 		// keep limit results
 		for j = 0; j < limit; {
 			// From all the sub-query result sets of the i-th query vector,
@@ -863,7 +863,10 @@ func reduceSearchResultData(ctx context.Context, subSearchResultData []*schemapb
 
 			id := typeutil.GetPK(subSearchResultData[subSearchIdx].GetIds(), resultDataIdx)
 			score := subSearchResultData[subSearchIdx].Scores[resultDataIdx]
-
+			if lastScore != 0.0 && score > lastScore {
+				log.Error("hc---error", zap.Float32("score", score), zap.Float32("lastScore", lastScore))
+			}
+			lastScore = score
 			// remove duplicates
 			if _, ok := idSet[id]; !ok {
 				retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subSearchResultData[subSearchIdx].FieldsData, resultDataIdx)
