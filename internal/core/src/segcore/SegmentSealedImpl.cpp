@@ -65,7 +65,7 @@ SegmentSealedImpl::LoadIndex(const LoadIndexInfo& info) {
     // NOTE: lock only when data is ready to avoid starvation
     auto field_id = FieldId(info.field_id);
     auto& field_meta = schema_->operator[](field_id);
-
+    //hc---change branch here
     if (field_meta.is_vector()) {
         LoadVecIndex(info);
     } else {
@@ -102,7 +102,7 @@ SegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
         field_id,
         metric_type,
         std::move(const_cast<LoadIndexInfo&>(info).index));
-
+    //hc---note append field indexing
     set_bit(index_ready_bitset_, field_id, true);
     update_row_count(row_count);
     // release field column
@@ -134,7 +134,7 @@ SegmentSealedImpl::LoadScalarIndex(const LoadIndexInfo& info) {
 
     scalar_indexings_[field_id] =
         std::move(const_cast<LoadIndexInfo&>(info).index);
-    // reverse pk from scalar index and set pks to offset
+    // reverse pk from scalar index and set pks to offset//hc---note here
     if (schema_->get_primary_field_id() == field_id) {
         AssertInfo(field_id.get() != -1, "Primary key is -1");
         AssertInfo(insert_record_.empty_pks(), "already exists");
@@ -340,7 +340,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                 field_id, num_rows, field_data_size);
         } else {
             column = std::make_shared<Column>(num_rows, field_meta);
-            storage::FieldDataPtr field_data;
+            storage::FieldDataPtr field_data;//hc---note data.channel
             while (data.channel->pop(field_data)) {
                 column->AppendBatch(field_data);
             }
@@ -355,14 +355,14 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
 
         {
             std::unique_lock lck(mutex_);
-            fields_.emplace(field_id, column);
+            fields_.emplace(field_id, column);//hc----fields hold all columns data.....
         }
 
         // set pks to offset
         if (schema_->get_primary_field_id() == field_id) {
             AssertInfo(field_id.get() != -1, "Primary key is -1");
             AssertInfo(insert_record_.empty_pks(), "already exists");
-            insert_record_.insert_pks(data_type, column);
+            insert_record_.insert_pks(data_type, column);//hc--stress
             insert_record_.seal_pks();
         }
 
@@ -613,6 +613,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
         AssertInfo(vector_indexings_.is_ready(field_id),
                    "vector indexes isn't ready for field " +
                        std::to_string(field_id.get()));
+        //hc---vector index
         query::SearchOnSealedIndex(*schema_,
                                    vector_indexings_,
                                    search_info,
@@ -932,7 +933,7 @@ SegmentSealedImpl::fill_with_empty(FieldId field_id, int64_t count) const {
     }
     return CreateScalarDataArray(count, field_meta);
 }
-
+//hc---assemble data to column
 std::unique_ptr<DataArray>
 SegmentSealedImpl::bulk_subscript(FieldId field_id,
                                   const int64_t* seg_offsets,
@@ -945,6 +946,7 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
 
     if (HasIndex(field_id)) {
         // if field has load scalar index, reverse raw data from index
+        //hc---reverse raw data from scalar index
         if (!datatype_is_vector(field_meta.get_data_type())) {
             AssertInfo(num_chunk() == 1,
                        "num chunk not equal to 1 for sealed segment");

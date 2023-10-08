@@ -401,7 +401,7 @@ struct InsertRecord {
                 auto pks = reinterpret_cast<const int64_t*>(column->Data());
                 for (int i = 0; i < column->NumRows(); ++i) {
                     pk2offset_->insert(pks[i], offset++);
-                }
+                }//hc---insert int64 pk
                 break;
             }
             case DataType::VARCHAR: {
@@ -412,7 +412,7 @@ struct InsertRecord {
 
                 for (int i = 0; i < column->NumRows(); ++i) {
                     pk2offset_->insert(std::string(pks[i]), offset++);
-                }
+                }//hc---insert varchar pk
                 break;
             }
             default: {

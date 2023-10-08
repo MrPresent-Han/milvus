@@ -68,4 +68,5 @@ struct SealedIndexingRecord {
     mutable std::shared_mutex mutex_;
 };
 
+
 }  // namespace milvus::segcore

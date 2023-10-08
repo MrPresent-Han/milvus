@@ -102,7 +102,7 @@ AppendFieldInfo(CLoadIndexInfo c_load_index_info,
     }
 }
 
-CStatus
+CStatus//hc---pay attention to appendVecIndex
 appendVecIndex(CLoadIndexInfo c_load_index_info, CBinarySet c_binary_set) {
     try {
         auto load_index_info =
@@ -264,7 +264,7 @@ AppendIndexV2(CLoadIndexInfo c_load_index_info) {
             config[kMmapFilepath] = filepath.string();
         }
 
-        load_index_info->index->Load(config);
+        load_index_info->index->Load(config);//hc---stress load
         auto status = CStatus();
         status.error_code = milvus::Success;
         status.error_msg = "";

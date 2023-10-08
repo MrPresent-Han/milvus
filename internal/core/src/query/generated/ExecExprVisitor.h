@@ -78,7 +78,7 @@ class ExecExprVisitor : public ExprVisitor {
           row_count_(row_count),
           timestamp_(timestamp) {
     }
-
+    //hc---stress3
     BitsetType
     call_child(Expr& expr) {
         Assert(!bitset_opt_.has_value());

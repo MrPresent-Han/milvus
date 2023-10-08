@@ -253,8 +253,8 @@ class SegmentSealedImpl : public SegmentSealed {
     // scalar field index
     std::unordered_map<FieldId, index::IndexBasePtr> scalar_indexings_;
     // vector field index
-    SealedIndexingRecord vector_indexings_;
-
+    SealedIndexingRecord vector_indexings_; //hc---indexing is used here
+    //hc--note
     // inserted fields data and row_ids, timestamps
     InsertRecord<true> insert_record_;
 

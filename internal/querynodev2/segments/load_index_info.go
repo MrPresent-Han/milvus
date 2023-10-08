@@ -109,7 +109,7 @@ func (li *LoadIndexInfo) appendIndexInfo(indexID int64, buildID int64, indexVers
 	cIndexID := C.int64_t(indexID)
 	cBuildID := C.int64_t(buildID)
 	cIndexVersion := C.int64_t(indexVersion)
-
+	//hc--- append index info
 	status := C.AppendIndexInfo(li.cLoadIndexInfo, cIndexID, cBuildID, cIndexVersion)
 	return HandleCStatus(&status, "AppendIndexInfo failed")
 }

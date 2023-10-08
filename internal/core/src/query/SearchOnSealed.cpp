@@ -42,8 +42,8 @@ SearchOnSealedIndex(const Schema& schema,
                "Metric type of field index isn't the same with search info");
 
     auto final = [&] {
-        auto ds = knowhere::GenDataSet(num_queries, dim, query_data);
-
+        auto ds = knowhere::GenDataSet(num_queries, dim, query_data);//hc---querydata is input data
+        //hc---vec_index, stress
         auto vec_index =
             dynamic_cast<index::VectorIndex*>(field_indexing->indexing_.get());
         auto index_type = vec_index->GetIndexType();

@@ -320,6 +320,12 @@ VectorMemIndex::Query(const DatasetPtr dataset,
                 res.value(), topk, num_queries, GetMetricType());
             milvus::tracer::AddEvent("finish_ReGenRangeSearchResult");
             return result;
+        } else if(/*do group by in config*/true){
+            knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+                    iterators_val = index_.AnnIterator(*dataset, search_conf, bitset);
+            if(iterators_val.has_value()){
+                GroupIteratorResults(iterators_val.value());
+            }
         } else {
             milvus::tracer::AddEvent("start_knowhere_index_search");
             auto res = index_.Search(*dataset, search_conf, bitset);
@@ -356,6 +362,22 @@ VectorMemIndex::Query(const DatasetPtr dataset,
     std::copy_n(distances, total_num, result->distances_.data());
 
     return result;
+}
+
+void
+VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
+                                     const knowhere::Json& searchConf){
+    auto topk = searchConf[knowhere::meta::TOPK];
+    auto group_by_field = searchConf[GROUP_BY_FIELD];
+    for(auto iterator: iterators){
+        int64_t count = 0;
+        while(iterator->HasNext()) {
+            auto nextPair = iterator->Next();
+            int64_t offset = nextPair.first;
+            float dis = nextPair.second;
+
+        }
+    }
 }
 
 const bool

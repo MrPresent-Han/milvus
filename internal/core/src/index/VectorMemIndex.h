@@ -81,6 +81,9 @@ class VectorMemIndex : public VectorIndex {
  private:
     void
     LoadFromFile(const Config& config);
+    void
+    GroupIteratorResults(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
+                         const knowhere::Json& searchConf);
 
  protected:
     Config config_;

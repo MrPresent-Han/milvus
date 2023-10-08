@@ -82,7 +82,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
         dynamic_cast<const segcore::SegmentInternalInterface*>(&segment_);
     AssertInfo(segment, "support SegmentSmallIndex Only");
     SearchResult search_result;
-    auto& ph = placeholder_group_->at(0);
+    auto& ph = placeholder_group_->at(0);//hc---placeholder_group?
     auto src_data = ph.get_blob<EmbeddedType<VectorType>>();
     auto num_queries = ph.num_of_queries_;
 
@@ -137,7 +137,7 @@ wrap_num_entities(int64_t cnt) {
     retrieve_result->field_data_ = {arr};
     return retrieve_result;
 }
-
+//hc---here stress2
 void
 ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
     assert(!retrieve_result_opt_.has_value());
@@ -164,7 +164,7 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
     if (node.is_count_) {
         bitset_holder.resize(active_count);
     }
-
+    //hc---here execute expr
     if (node.predicate_.has_value() && node.predicate_.value() != nullptr) {
         bitset_holder =
             ExecExprVisitor(*segment, this, active_count, timestamp_)

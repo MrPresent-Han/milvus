@@ -19,6 +19,7 @@
 #include "PlanNodeVisitor.h"
 
 namespace milvus::query {
+    //hc----ExecPlanNodeVisitor
 class ExecPlanNodeVisitor : public PlanNodeVisitor {
  public:
     void
@@ -58,12 +59,12 @@ class ExecPlanNodeVisitor : public PlanNodeVisitor {
         search_result_opt_ = std::nullopt;
         return ret;
     }
-
+    //hc---get_retrieve_result
     RetrieveResult
     get_retrieve_result(PlanNode& node) {
         assert(!retrieve_result_opt_.has_value());
         std::cout.flush();
-        node.accept(*this);
+        node.accept(*this);//hc---stress
         assert(retrieve_result_opt_.has_value());
         auto ret = std::move(retrieve_result_opt_).value();
         retrieve_result_opt_.reset();
