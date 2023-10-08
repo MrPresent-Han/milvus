@@ -152,6 +152,9 @@ class SegmentInternalInterface : public SegmentInterface {
     virtual bool
     HasFieldData(FieldId field_id) const = 0;
 
+    virtual DataType
+    FieldDataType(FieldId field_id) const = 0;
+
     virtual std::string
     debug() const = 0;
 
@@ -247,6 +250,13 @@ class SegmentInternalInterface : public SegmentInterface {
     find_first(int64_t limit,
                const BitsetType& bitset,
                bool false_filtered_out) const = 0;
+
+
+    virtual void
+    fetch_field_raw_data(FieldId fieldId,
+                     const int64_t* seg_offset,
+                     int64_t count,
+                     void* output) const = 0;
 
  protected:
     // internal API: return chunk_data in span

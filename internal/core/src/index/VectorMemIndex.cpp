@@ -45,6 +45,7 @@
 #include "storage/Util.h"
 #include "common/File.h"
 #include "common/Tracer.h"
+#include "segcore/Utils.h"
 
 namespace milvus::index {
 
@@ -287,18 +288,18 @@ VectorMemIndex::AddWithDataset(const DatasetPtr& dataset,
 }
 
 std::unique_ptr<SearchResult>
-VectorMemIndex::Query(const DatasetPtr dataset,
-                      const SearchInfo& search_info,
-                      const BitsetView& bitset) {
+VectorMemIndex::Query(const QueryContext& queryContext) {
     //    AssertInfo(GetMetricType() == search_info.metric_type_,
     //               "Metric type of field index isn't the same with search info");
 
-    auto num_queries = dataset->GetRows();
-    knowhere::Json search_conf = search_info.search_params_;
-    auto topk = search_info.topk_;
+    auto num_queries = queryContext.dataset_->GetRows();
+    knowhere::Json search_conf = queryContext.search_info_.search_params_;
+    auto topK = queryContext.search_info_.topk_;
+    auto group_by_values = std::optional<std::vector<GroupByValueType>>();
+
     // TODO :: check dim of search data
     auto final = [&] {
-        search_conf[knowhere::meta::TOPK] = topk;
+        search_conf[knowhere::meta::TOPK] = topK;
         search_conf[knowhere::meta::METRIC_TYPE] = GetMetricType();
         auto index_type = GetIndexType();
         if (CheckKeyInConfig(search_conf, RADIUS)) {
@@ -308,7 +309,7 @@ VectorMemIndex::Query(const DatasetPtr dataset,
                                       GetMetricType());
             }
             milvus::tracer::AddEvent("start_knowhere_index_range_search");
-            auto res = index_.RangeSearch(*dataset, search_conf, bitset);
+            auto res = index_.RangeSearch(*(queryContext.dataset_), search_conf, queryContext.bitset_);
             milvus::tracer::AddEvent("finish_knowhere_index_range_search");
             if (!res.has_value()) {
                 PanicInfo(ErrorCode::UnexpectedError,
@@ -317,12 +318,19 @@ VectorMemIndex::Query(const DatasetPtr dataset,
                                       res.what()));
             }
             auto result = ReGenRangeSearchResult(
-                res.value(), topk, num_queries, GetMetricType());
+                    res.value(), topK, num_queries, GetMetricType());
             milvus::tracer::AddEvent("finish_ReGenRangeSearchResult");
             return result;
+        } else if(CheckKeyInConfig(search_conf, GROUP_BY_FIELD)){
+            knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+                    iterators_val = index_.AnnIterator(*(queryContext.dataset_), search_conf,queryContext.bitset_);
+            group_by_values = std::make_optional<std::vector<GroupByValueType>>();
+            auto res = GroupIteratorResults(iterators_val.value(), search_conf,
+                                            queryContext.segment_, group_by_values.value());
+            return res;
         } else {
             milvus::tracer::AddEvent("start_knowhere_index_search");
-            auto res = index_.Search(*dataset, search_conf, bitset);
+            auto res = index_.Search(*(queryContext.dataset_), search_conf, queryContext.bitset_);
             milvus::tracer::AddEvent("finish_knowhere_index_search");
             if (!res.has_value()) {
                 PanicInfo(ErrorCode::UnexpectedError,
@@ -337,8 +345,8 @@ VectorMemIndex::Query(const DatasetPtr dataset,
     auto ids = final->GetIds();
     float* distances = const_cast<float*>(final->GetDistance());
     final->SetIsOwner(true);
-    auto round_decimal = search_info.round_decimal_;
-    auto total_num = num_queries * topk;
+    auto round_decimal = queryContext.search_info_.round_decimal_;
+    auto total_num = num_queries * topK;
 
     if (round_decimal != -1) {
         const float multiplier = pow(10.0, round_decimal);
@@ -350,13 +358,139 @@ VectorMemIndex::Query(const DatasetPtr dataset,
     result->seg_offsets_.resize(total_num);
     result->distances_.resize(total_num);
     result->total_nq_ = num_queries;
-    result->unity_topK_ = topk;
+    result->unity_topK_ = topK;
+    if(group_by_values.has_value()) {
+        std::copy_n(group_by_values->begin(), total_num, result->group_by_values.data());
+    }
 
     std::copy_n(ids, total_num, result->seg_offsets_.data());
     std::copy_n(distances, total_num, result->distances_.data());
 
     return result;
 }
+
+knowhere::DataSetPtr
+VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
+                                     const knowhere::Json& searchConf,
+                                     const segcore::SegmentInterface& segment,
+                                     std::vector<GroupByValueType>& group_by_values){
+    //1. get meta
+    auto topk = searchConf[knowhere::meta::TOPK];
+    auto group_by_field = searchConf[GROUP_BY_FIELD];
+    auto fieldId = FieldId(group_by_field);
+    auto& segment_internal = dynamic_cast<const segcore::SegmentInternalInterface&>(segment);
+    auto dataType = segment_internal.FieldDataType(fieldId);
+
+    //2. data
+    auto res = std::make_shared<knowhere::DataSet>();
+
+    switch(dataType) {
+        case DataType::BOOL: {
+            GroupIteratorsByType<bool>(iterators, fieldId, topk, segment, group_by_values, res);
+            break;
+        }
+        case DataType::INT8: {
+            GroupIteratorsByType<int8_t>(iterators, fieldId, topk, segment, group_by_values, res);
+            break;
+        }
+        case DataType::INT16: {
+            GroupIteratorsByType<int16_t>(iterators, fieldId, topk, segment, group_by_values, res);
+            break;
+        }
+        default: {
+            PanicInfo(DataTypeInvalid,
+                      fmt::format("unsupported data type {}", dataType));
+        }
+    }
+    return res;
+}
+
+template <typename T>
+void
+VectorMemIndex::GroupIteratorsByType(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
+                     const FieldId& fieldId,
+                     int64_t topk,
+                     const segcore::SegmentInterface& segment,
+                     std::vector<GroupByValueType>& group_by_values,
+                     const knowhere::DataSetPtr dataSet) {
+    auto offsets = std::make_shared<std::vector<int64_t>>();
+    auto distances = std::make_shared<std::vector<float>>();
+    for(auto iterator: iterators){
+        GroupIteratorResult<T>(iterator, fieldId, topk, segment, group_by_values, *offsets, *distances);
+    }
+    dataSet->SetIds(offsets->data());
+    dataSet->SetDistance(distances->data());
+}
+
+template <typename T>
+void
+VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
+                                    const FieldId& field_id,
+                                    int64_t topK,
+                                    const segcore::SegmentInterface& segment,
+                                    std::vector<GroupByValueType>& group_by_values,
+                                    std::vector<int64_t>& offsets,
+                                    std::vector<float>& distances) {
+    //1.
+    auto& segment_internal = dynamic_cast<const milvus::segcore::SegmentInternalInterface&>(segment);
+    std::unordered_map<T, std::pair<int64_t, float>> groupMap;
+    std::vector<int64_t> tmpOffsets;
+    std::vector<float> tmpDistances;
+    //2.
+    int round = 0;
+    while(round < 10) {
+        int64_t count = 0;
+        while(iterator->HasNext()){
+            auto nextPair = iterator->Next();
+            int64_t offset = nextPair.first;
+            float dis = nextPair.second;
+            tmpOffsets.emplace_back(offset);
+            tmpDistances.emplace_back(dis);
+            count++;
+            if(count >= topK){
+                break;
+            }
+        }
+        count=0;
+        round++;
+        GroupOneRound<T>(field_id, tmpOffsets, tmpDistances, segment, count, groupMap);
+        tmpOffsets.clear();
+        tmpDistances.clear();
+        if(!iterator->HasNext() || groupMap.size()==topK) break;
+    }
+    for(auto iter = groupMap.cbegin(); iter != groupMap.cend(); iter++) {
+        group_by_values.push_back(iter->first);
+        offsets.push_back(iter->second.first);
+        distances.push_back(iter->second.second);
+    }
+}
+
+
+template <typename T>
+void
+VectorMemIndex::GroupOneRound(FieldId field_id,
+                              const std::vector<int64_t> &seg_offsets,
+                              const std::vector<float> &distances,
+                              const segcore::SegmentInterface& segment,
+                              int64_t count,
+                              const std::unordered_map<T, std::pair<int64_t, float>>& groupMap) {
+    //1.
+    auto& segment_internal = dynamic_cast<const segcore::SegmentInternalInterface&>(segment);
+    FixedVector<T> data(count);
+
+    //2.
+    segment_internal.fetch_field_raw_data(field_id, seg_offsets.data(), count, data.data());
+    int idx = 0;
+    for(auto& d: data){
+        auto it = groupMap.find(d);
+        if(it == groupMap.end()) {
+            groupMap[data] = std::pair<int64_t, float>(seg_offsets[idx], distances[idx]);
+        }
+        idx++;
+    }
+}
+
+
 
 const bool
 VectorMemIndex::HasRawData() const {

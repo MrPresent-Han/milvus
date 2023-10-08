@@ -174,4 +174,11 @@ upper_bound(const ConcurrentVector<Timestamp>& timestamps,
             int64_t first,
             int64_t last,
             Timestamp value);
+
+
+void
+bulk_segment_data(const void* src_raw,
+                  const int64_t* seg_offets,
+                  int64_t count,
+                  void* dst_raw);
 }  // namespace milvus::segcore

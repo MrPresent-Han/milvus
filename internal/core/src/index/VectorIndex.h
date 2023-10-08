@@ -30,6 +30,7 @@
 #include "common/QueryResult.h"
 #include "common/QueryInfo.h"
 #include "knowhere/version.h"
+#include "query/QueryContext.h"
 
 namespace milvus::index {
 
@@ -55,9 +56,7 @@ class VectorIndex : public IndexBase {
     }
 
     virtual std::unique_ptr<SearchResult>
-    Query(const DatasetPtr dataset,
-          const SearchInfo& search_info,
-          const BitsetView& bitset) = 0;
+    Query(const milvus::query::QueryContext& queryContext) = 0;
 
     virtual const bool
     HasRawData() const = 0;

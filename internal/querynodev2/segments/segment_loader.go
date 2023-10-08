@@ -566,7 +566,6 @@ func (loader *segmentLoader) loadSegment(ctx context.Context,
 				fieldID2IndexInfo[fieldID] = indexInfo
 			}
 		}
-
 		indexedFieldInfos := make(map[int64]*IndexedFieldInfo)
 		fieldBinlogs := make([]*datapb.FieldBinlog, 0, len(loadInfo.BinlogPaths))
 
@@ -668,11 +667,11 @@ func (loader *segmentLoader) loadFieldsIndex(ctx context.Context,
 	schema *schemapb.CollectionSchema,
 	segment *LocalSegment,
 	numRows int64,
-	vecFieldInfos map[int64]*IndexedFieldInfo,
+	indexedFieldInfos map[int64]*IndexedFieldInfo,
 ) error {
 	schemaHelper, _ := typeutil.CreateSchemaHelper(schema)
 
-	for fieldID, fieldInfo := range vecFieldInfos {
+	for fieldID, fieldInfo := range indexedFieldInfos {
 		indexInfo := fieldInfo.IndexInfo
 		err := loader.loadFieldIndex(ctx, segment, indexInfo)
 		if err != nil {

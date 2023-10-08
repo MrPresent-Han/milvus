@@ -24,6 +24,7 @@
 #include "storage/Util.h"
 #include "common/Consts.h"
 #include "common/RangeSearchHelper.h"
+#include "query/QueryContext.h"
 
 namespace milvus::index {
 
@@ -195,22 +196,20 @@ VectorDiskAnnIndex<T>::BuildWithDataset(const DatasetPtr& dataset,
 
 template <typename T>
 std::unique_ptr<SearchResult>
-VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
-                             const SearchInfo& search_info,
-                             const BitsetView& bitset) {
-    AssertInfo(GetMetricType() == search_info.metric_type_,
+VectorDiskAnnIndex<T>::Query(const milvus::query::QueryContext& queryContext) {
+    AssertInfo(GetMetricType() == queryContext.search_info_.metric_type_,
                "Metric type of field index isn't the same with search info");
-    auto num_queries = dataset->GetRows();
-    auto topk = search_info.topk_;
+    auto num_queries = queryContext.dataset_->GetRows();
+    auto topk = queryContext.search_info_.topk_;
 
-    knowhere::Json search_config = search_info.search_params_;
+    knowhere::Json search_config = queryContext.search_info_.search_params_;
 
     search_config[knowhere::meta::TOPK] = topk;
     search_config[knowhere::meta::METRIC_TYPE] = GetMetricType();
 
     // set search list size
     auto search_list_size = GetValueFromConfig<uint32_t>(
-        search_info.search_params_, DISK_ANN_QUERY_LIST);
+            queryContext.search_info_.search_params_, DISK_ANN_QUERY_LIST);
 
     if (GetIndexType() == knowhere::IndexEnum::INDEX_DISKANN) {
         if (search_list_size.has_value()) {
@@ -228,18 +227,18 @@ VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
 
     auto final = [&] {
         auto radius =
-            GetValueFromConfig<float>(search_info.search_params_, RADIUS);
+            GetValueFromConfig<float>(queryContext.search_info_.search_params_, RADIUS);
         if (radius.has_value()) {
             search_config[RADIUS] = radius.value();
             auto range_filter = GetValueFromConfig<float>(
-                search_info.search_params_, RANGE_FILTER);
+                    queryContext.search_info_.search_params_, RANGE_FILTER);
             if (range_filter.has_value()) {
                 search_config[RANGE_FILTER] = range_filter.value();
                 CheckRangeSearchParam(search_config[RADIUS],
                                       search_config[RANGE_FILTER],
                                       GetMetricType());
             }
-            auto res = index_.RangeSearch(*dataset, search_config, bitset);
+            auto res = index_.RangeSearch(*(queryContext.dataset_), search_config, queryContext.bitset_);
 
             if (!res.has_value()) {
                 PanicInfo(ErrorCode::UnexpectedError,
@@ -250,7 +249,7 @@ VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
             return ReGenRangeSearchResult(
                 res.value(), topk, num_queries, GetMetricType());
         } else {
-            auto res = index_.Search(*dataset, search_config, bitset);
+            auto res = index_.Search(*(queryContext.dataset_), search_config, queryContext.bitset_);
             if (!res.has_value()) {
                 PanicInfo(ErrorCode::UnexpectedError,
                           fmt::format("failed to search: {}: {}",
@@ -265,7 +264,7 @@ VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
     float* distances = const_cast<float*>(final->GetDistance());
     final->SetIsOwner(true);
 
-    auto round_decimal = search_info.round_decimal_;
+    auto round_decimal = queryContext.search_info_.round_decimal_;
     auto total_num = num_queries * topk;
 
     if (round_decimal != -1) {

@@ -27,7 +27,8 @@ SearchOnSealedIndex(const Schema& schema,
                     const void* query_data,
                     int64_t num_queries,
                     const BitsetView& bitset,
-                    SearchResult& result) {
+                    SearchResult& result,
+                    const segcore::SegmentInterface& segment) {
     auto topk = search_info.topk_;
     auto round_decimal = search_info.round_decimal_;
 
@@ -43,11 +44,11 @@ SearchOnSealedIndex(const Schema& schema,
 
     auto final = [&] {
         auto ds = knowhere::GenDataSet(num_queries, dim, query_data);
-
         auto vec_index =
             dynamic_cast<index::VectorIndex*>(field_indexing->indexing_.get());
         auto index_type = vec_index->GetIndexType();
-        return vec_index->Query(ds, search_info, bitset);
+        index::QueryContext queryContext(ds, search_info, bitset, segment);
+        return vec_index->Query(queryContext);
     }();
 
     float* distances = final->distances_.data();
@@ -61,6 +62,7 @@ SearchOnSealedIndex(const Schema& schema,
     }
     result.seg_offsets_ = std::move(final->seg_offsets_);
     result.distances_ = std::move(final->distances_);
+    result.group_by_values = std::move(final->group_by_values);
     result.total_nq_ = num_queries;
     result.unity_topK_ = topk;
 }

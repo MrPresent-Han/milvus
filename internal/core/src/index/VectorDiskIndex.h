@@ -67,9 +67,7 @@ class VectorDiskAnnIndex : public VectorIndex {
     Build(const Config& config = {}) override;
 
     std::unique_ptr<SearchResult>
-    Query(const DatasetPtr dataset,
-          const SearchInfo& search_info,
-          const BitsetView& bitset) override;
+    Query(const milvus::query::QueryContext& queryContext) override;
 
     const bool
     HasRawData() const override;
