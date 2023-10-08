@@ -43,7 +43,7 @@ ParsePlaceholderGroup(const Plan* plan,
         Placeholder element;
         element.tag_ = info.tag();
         Assert(plan->tag2field_.count(element.tag_));
-        auto field_id = plan->tag2field_.at(element.tag_);
+        auto field_id = plan->tag2field_.at(element.tag_); //hc---tag2field_
         auto& field_meta = plan->schema_[field_id];
         element.num_of_queries_ = info.values_size();
         AssertInfo(element.num_of_queries_, "must have queries");
@@ -68,7 +68,7 @@ CreateSearchPlanByExpr(const Schema& schema,
                        const int64_t size) {
     // Note: serialized_expr_plan is of binary format
     proto::plan::PlanNode plan_node;
-    plan_node.ParseFromArray(serialized_expr_plan, size);
+    plan_node.ParseFromArray(serialized_expr_plan, size);//hc----parse what?
     return ProtoParser(schema).CreatePlan(plan_node);
 }
 

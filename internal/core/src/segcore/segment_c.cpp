@@ -68,7 +68,7 @@ DeleteSearchResult(CSearchResult search_result) {
 CStatus
 Search(CSegmentInterface c_segment,
        CSearchPlan c_plan,
-       CPlaceholderGroup c_placeholder_group,
+       CPlaceholderGroup c_placeholder_group,//hc---the source of placeholder_group
        CTraceContext c_trace,
        CSearchResult* result) {
     try {
@@ -314,6 +314,7 @@ UpdateSealedSegmentIndex(CSegmentInterface c_segment,
         AssertInfo(segment != nullptr, "segment conversion failed");
         auto load_index_info =
             static_cast<milvus::segcore::LoadIndexInfo*>(c_load_index_info);
+        //hc---note here
         segment->LoadIndex(*load_index_info);
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {

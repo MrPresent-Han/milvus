@@ -574,7 +574,7 @@ func (loader *segmentLoader) loadSegment(ctx context.Context,
 				fieldID2IndexInfo[fieldID] = indexInfo
 			}
 		}
-
+		//hc--split all fields into two groups: indexed group load index, un-indexed group load binlog
 		indexedFieldInfos := make(map[int64]*IndexedFieldInfo)
 		fieldBinlogs := make([]*datapb.FieldBinlog, 0, len(loadInfo.BinlogPaths))
 

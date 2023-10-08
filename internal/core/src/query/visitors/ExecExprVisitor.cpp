@@ -317,7 +317,7 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
         }
         auto chunk = segment_.chunk_data<T>(field_id, chunk_id);
         const T* data = chunk.data();
-        // Can use CPU SIMD optimazation to speed up
+        // Can use CPU SIMD optimization to speed up
         for (int index = 0; index < this_size; ++index) {
             chunk_res[index] = element_func(data[index]);
         }

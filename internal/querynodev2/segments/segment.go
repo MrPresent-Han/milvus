@@ -887,6 +887,7 @@ func (s *LocalSegment) LoadIndexInfo(indexInfo *querypb.FieldIndexInfo, info *Lo
 
 	var status C.CStatus
 	GetDynamicPool().Submit(func() (any, error) {
+		//hc---the entry for loading segment
 		status = C.UpdateSealedSegmentIndex(s.ptr, info.cLoadIndexInfo)
 		return nil, nil
 	}).Await()

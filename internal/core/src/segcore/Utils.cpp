@@ -762,4 +762,20 @@ upper_bound(const ConcurrentVector<Timestamp>& timestamps,
     }
     return first;
 }
+
+
+template <typename T>
+void
+bulk_segment_data(const void* src_raw,
+                  const int64_t* seg_offsets,
+                  int64_t count,
+                  void* dst_raw) {
+    static_assert(IsScalar<T>);
+    auto src = reinterpret_cast<const T*>(src_raw);
+    auto dst = reinterpret_cast<T*>(dst_raw);
+    for(int64_t i = 0; i < count; i++) {
+        auto offset = seg_offsets[i];
+        dst[i] = src[offset];
+    }
+}
 }  // namespace milvus::segcore

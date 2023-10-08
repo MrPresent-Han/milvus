@@ -63,6 +63,9 @@ class SegmentSealedImpl : public SegmentSealed {
     bool
     HasFieldData(FieldId field_id) const override;
 
+    DataType
+    FieldDataType(FieldId fieldId) const override;
+
     bool
     Contain(const PkType& pk) const override {
         return insert_record_.contain(pk);
@@ -99,6 +102,13 @@ class SegmentSealedImpl : public SegmentSealed {
 
     std::unique_ptr<DataArray>
     get_vector(FieldId field_id, const int64_t* ids, int64_t count) const;
+
+    template <typename T>
+    void
+    fetch_field_raw_data(FieldId fieldId,
+                         const int64_t* seg_offset,
+                         int64_t count,
+                         void* output) const;
 
  public:
     int64_t
@@ -169,14 +179,15 @@ class SegmentSealedImpl : public SegmentSealed {
  private:
     template <typename S, typename T = S>
     static void
-    bulk_subscript_impl(const void* src_raw,
+    bulk_subscript_impl(const ColumnBase* column,
                         const int64_t* seg_offsets,
                         int64_t count,
                         T* dst_raw);
 
-    template <typename S, typename T = S>
+ private:
+    template <typename T>
     static void
-    bulk_subscript_impl(const ColumnBase* field,
+    bulk_subscript_impl(const void* src_raw,
                         const int64_t* seg_offsets,
                         int64_t count,
                         void* dst_raw);
@@ -270,8 +281,8 @@ class SegmentSealedImpl : public SegmentSealed {
     // scalar field index
     std::unordered_map<FieldId, index::IndexBasePtr> scalar_indexings_;
     // vector field index
-    SealedIndexingRecord vector_indexings_;
-
+    SealedIndexingRecord vector_indexings_; //hc---indexing is used here
+    //hc--note
     // inserted fields data and row_ids, timestamps
     InsertRecord<true> insert_record_;
 

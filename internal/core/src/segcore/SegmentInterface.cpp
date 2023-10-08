@@ -85,6 +85,7 @@ SegmentInternalInterface::Retrieve(const query::RetrievePlan* plan,
     std::shared_lock lck(mutex_);
     auto results = std::make_unique<proto::segcore::RetrieveResults>();
     query::ExecPlanNodeVisitor visitor(*this, timestamp);
+    //hc---here, retrieve result
     auto retrieve_results = visitor.get_retrieve_result(*plan->plan_node_);
     retrieve_results.segment_ = (void*)this;
 

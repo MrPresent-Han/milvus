@@ -27,6 +27,7 @@ SearchOnIndex(const dataset::SearchDataset& search_dataset,
 
     // NOTE: VecIndex Query API forget to add const qualifier
     // NOTE: use const_cast as a workaround
+    // hc---stress indexing
     auto& indexing_nonconst = const_cast<index::VectorIndex&>(indexing);
     auto ans = indexing_nonconst.Query(dataset, search_conf, bitset);
 

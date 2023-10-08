@@ -246,13 +246,14 @@ ProtoParser::RetrievePlanNodeFromProto(
     return plan_node;
 }
 
+//hc----stress
 std::unique_ptr<Plan>
 ProtoParser::CreatePlan(const proto::plan::PlanNode& plan_node_proto) {
     auto plan = std::make_unique<Plan>(schema);
 
     auto plan_node = PlanNodeFromProto(plan_node_proto);
     ExtractedPlanInfo plan_info(schema.size());
-    ExtractInfoPlanNodeVisitor extractor(plan_info);
+    ExtractInfoPlanNodeVisitor extractor(plan_info);//hc---what is ExtractedPlanInfo
     plan_node->accept(extractor);
 
     plan->tag2field_["$0"] = plan_node->search_info_.field_id_;

@@ -38,6 +38,7 @@ const (
 	DDL = "ddl"
 	// IndexParamsKey is blob key "indexParams"
 	IndexParamsKey = "indexParams"
+	//hc--the special meaning for index param
 )
 
 // when the blob of index file is too large, we can split blob into several rows,
