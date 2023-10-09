@@ -371,11 +371,13 @@ VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere:
     auto group_by_field = searchConf[GROUP_BY_FIELD];
     for(auto iterator: iterators){
         int64_t count = 0;
+        std::vector<int64_t> offsets;
+        
         while(iterator->HasNext()) {
             auto nextPair = iterator->Next();
             int64_t offset = nextPair.first;
             float dis = nextPair.second;
-
+            count++;
         }
     }
 }
