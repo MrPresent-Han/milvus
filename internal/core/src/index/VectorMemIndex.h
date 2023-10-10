@@ -61,9 +61,7 @@ class VectorMemIndex : public VectorIndex {
     }
 
     std::unique_ptr<SearchResult>
-    Query(const DatasetPtr dataset,
-          const SearchInfo& search_info,
-          const BitsetView& bitset) override;
+    Query(const QueryContext& queryContext) override;
 
     const bool
     HasRawData() const override;
@@ -83,12 +81,26 @@ class VectorMemIndex : public VectorIndex {
     LoadFromFile(const Config& config);
     void
     GroupIteratorResults(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
-                         const knowhere::Json& searchConf);
+                         const knowhere::Json& searchConf,
+                         const segcore::SegmentInterface& segment);
+
+    void GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator> &iterator,
+                             const FieldId &field_id,
+                             int64_t topK,
+                             const segcore::SegmentInterface& segment);
+
+    void GroupOneRound(DataType dataType,
+                       const std::vector<int64_t>& seg_offsets,
+                       const std::vector<float>& distances,
+                       const segcore::SegmentInterface& segment,
+                       int64_t topK);
 
  protected:
     Config config_;
     knowhere::Index<knowhere::IndexNode> index_;
     std::shared_ptr<storage::MemFileManagerImpl> file_manager_;
+
+
 };
 
 using VectorMemIndexPtr = std::unique_ptr<VectorMemIndex>;

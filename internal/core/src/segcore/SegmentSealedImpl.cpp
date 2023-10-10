@@ -620,7 +620,8 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
                                    query_data,
                                    query_count,
                                    bitset,
-                                   output);
+                                   output,
+                                   *this);
         milvus::tracer::AddEvent("finish_searching_vector_index");
     } else {
         AssertInfo(
@@ -933,7 +934,7 @@ SegmentSealedImpl::fill_with_empty(FieldId field_id, int64_t count) const {
     }
     return CreateScalarDataArray(count, field_meta);
 }
-//hc---assemble data to column
+
 std::unique_ptr<DataArray>
 SegmentSealedImpl::bulk_subscript(FieldId field_id,
                                   const int64_t* seg_offsets,
@@ -1064,6 +1065,23 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
     }
 }
 
+void
+SegmentSealedImpl::fetch_field_raw_data(const milvus::FieldId &field_id,
+                                        const int64_t *seg_offsets,
+                                        int64_t count,
+                                        void* output) const {
+    auto field = fields_.at(field_id);
+    auto& field_meta = (*schema_)[field_id];
+    auto src_data = field->Data();
+    switch(field_meta.get_data_type()) {
+        case DataType::BOOL: {
+            FixedVector<bool> output(count);
+            bulk_subscript_impl<bool>(src_data, seg_offsets, count, output.data());
+
+        }
+    }
+}
+
 bool
 SegmentSealedImpl::HasIndex(FieldId field_id) const {
     std::shared_lock lck(mutex_);
@@ -1078,6 +1096,12 @@ SegmentSealedImpl::HasFieldData(FieldId field_id) const {
     } else {
         return get_bit(field_data_ready_bitset_, field_id);
     }
+}
+
+DataType
+SegmentSealedImpl::FieldDataType(milvus::FieldId field_id) const {
+    auto& field_meta = schema_->operator[](field_id);
+    return field_meta.get_data_type();
 }
 
 bool

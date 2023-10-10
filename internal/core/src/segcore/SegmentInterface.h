@@ -152,6 +152,9 @@ class SegmentInternalInterface : public SegmentInterface {
     virtual bool
     HasFieldData(FieldId field_id) const = 0;
 
+    virtual DataType
+    FieldDataType(FieldId field_id) const = 0;
+
     virtual std::string
     debug() const = 0;
 
@@ -250,7 +253,7 @@ class SegmentInternalInterface : public SegmentInterface {
 
  protected:
     // internal API: return chunk_data in span
-    virtual SpanBase
+    virtual SpanBasexx
     chunk_data_impl(FieldId field_id, int64_t chunk_id) const = 0;
 
     // internal API: return chunk_index in span, support scalar index only

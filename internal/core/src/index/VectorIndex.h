@@ -30,8 +30,25 @@
 #include "common/QueryResult.h"
 #include "common/QueryInfo.h"
 #include "knowhere/version.h"
+#include "segcore/SegmentInterface.h"
 
 namespace milvus::index {
+
+struct QueryContext {
+    const DatasetPtr dataset_;
+    const SearchInfo& search_info_;
+    const BitsetView& bitset_;
+    const milvus::segcore::SegmentInterface& segment_;
+
+    QueryContext(const DatasetPtr dataset,
+                 const SearchInfo& search_info,
+                 const BitsetView& bitset,
+                 const milvus::segcore::SegmentInterface& segment):
+                 dataset_(dataset),
+                 search_info_(search_info),
+                 bitset_(bitset),
+                 segment_(segment){}
+};
 
 class VectorIndex : public IndexBase {
  public:
@@ -54,10 +71,13 @@ class VectorIndex : public IndexBase {
         PanicInfo(Unsupported, "vector index don't support add with dataset");
     }
 
-    virtual std::unique_ptr<SearchResult>
+    /*virtual std::unique_ptr<SearchResult>
     Query(const DatasetPtr dataset,
           const SearchInfo& search_info,
-          const BitsetView& bitset) = 0;
+          const BitsetView& bitset) = 0;*/
+
+    virtual std::unique_ptr<SearchResult>
+    Query(const QueryContext& queryContext);
 
     virtual const bool
     HasRawData() const = 0;

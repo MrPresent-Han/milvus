@@ -25,7 +25,8 @@ SearchOnSealedIndex(const Schema& schema,
                     const void* query_data,
                     int64_t num_queries,
                     const BitsetView& view,
-                    SearchResult& result);
+                    SearchResult& result,
+                    const segcore::SegmentInterface& segment);
 
 void
 SearchOnSealed(const Schema& schema,

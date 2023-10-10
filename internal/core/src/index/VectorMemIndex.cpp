@@ -287,15 +287,13 @@ VectorMemIndex::AddWithDataset(const DatasetPtr& dataset,
 }
 
 std::unique_ptr<SearchResult>
-VectorMemIndex::Query(const DatasetPtr dataset,
-                      const SearchInfo& search_info,
-                      const BitsetView& bitset) {
+VectorMemIndex::Query(const QueryContext& queryContext) {
     //    AssertInfo(GetMetricType() == search_info.metric_type_,
     //               "Metric type of field index isn't the same with search info");
 
-    auto num_queries = dataset->GetRows();
-    knowhere::Json search_conf = search_info.search_params_;
-    auto topk = search_info.topk_;
+    auto num_queries = queryContext.dataset_->GetRows();
+    knowhere::Json search_conf = queryContext.search_info_.search_params_;
+    auto topk = queryContext.search_info_.topk_;
     // TODO :: check dim of search data
     auto final = [&] {
         search_conf[knowhere::meta::TOPK] = topk;
@@ -308,7 +306,7 @@ VectorMemIndex::Query(const DatasetPtr dataset,
                                       GetMetricType());
             }
             milvus::tracer::AddEvent("start_knowhere_index_range_search");
-            auto res = index_.RangeSearch(*dataset, search_conf, bitset);
+            auto res = index_.RangeSearch(*(queryContext.dataset_), search_conf, queryContext.bitset_);
             milvus::tracer::AddEvent("finish_knowhere_index_range_search");
             if (!res.has_value()) {
                 PanicInfo(ErrorCode::UnexpectedError,
@@ -322,13 +320,13 @@ VectorMemIndex::Query(const DatasetPtr dataset,
             return result;
         } else if(/*do group by in config*/true){
             knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
-                    iterators_val = index_.AnnIterator(*dataset, search_conf, bitset);
+                    iterators_val = index_.AnnIterator(*(queryContext.dataset_), search_conf,queryContext.bitset_);
             if(iterators_val.has_value()){
-                GroupIteratorResults(iterators_val.value());
+                GroupIteratorResults(iterators_val.value(), search_conf, queryContext.segment_);
             }
         } else {
             milvus::tracer::AddEvent("start_knowhere_index_search");
-            auto res = index_.Search(*dataset, search_conf, bitset);
+            auto res = index_.Search(*(queryContext.dataset_), search_conf, queryContext.bitset_);
             milvus::tracer::AddEvent("finish_knowhere_index_search");
             if (!res.has_value()) {
                 PanicInfo(ErrorCode::UnexpectedError,
@@ -343,7 +341,7 @@ VectorMemIndex::Query(const DatasetPtr dataset,
     auto ids = final->GetIds();
     float* distances = const_cast<float*>(final->GetDistance());
     final->SetIsOwner(true);
-    auto round_decimal = search_info.round_decimal_;
+    auto round_decimal = queryContext.search_info_.round_decimal_;
     auto total_num = num_queries * topk;
 
     if (round_decimal != -1) {
@@ -366,21 +364,66 @@ VectorMemIndex::Query(const DatasetPtr dataset,
 
 void
 VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
-                                     const knowhere::Json& searchConf){
+                                     const knowhere::Json& searchConf,
+                                     const segcore::SegmentInterface& segment){
     auto topk = searchConf[knowhere::meta::TOPK];
     auto group_by_field = searchConf[GROUP_BY_FIELD];
+    auto fieldId = FieldId(group_by_field);
+    auto& segment_internal = dynamic_cast<const segcore::SegmentInternalInterface&>(segment);
     for(auto iterator: iterators){
-        int64_t count = 0;
-        std::vector<int64_t> offsets;
-        
-        while(iterator->HasNext()) {
+        GroupIteratorResult(iterator, fieldId, topk, segment);
+    }
+    return;
+}
+
+template <typename T>
+void
+VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
+                                    const FieldId& field_id,
+                                    int64_t topK,
+                                    const segcore::SegmentInterface& segment) {
+    int64_t count = 0;
+    std::vector<int64_t> offsets;
+    std::vector<float> distances;
+    int round = 0;
+    auto& segment_internal = dynamic_cast<const milvus::segcore::SegmentInternalInterface&>(segment);
+
+    DataType dataType = segment_internal.FieldDataType(field_id);
+    while(round < 10) {
+        while(iterator->HasNext()){
             auto nextPair = iterator->Next();
             int64_t offset = nextPair.first;
             float dis = nextPair.second;
+            offsets.emplace_back(offset);
+            distances.emplace_back(dis);
             count++;
+            if(count > topK){
+                break;
+            }
         }
+        round++;
+        GroupOneRound(dataType, offsets, distances, segment);
+        if(!iterator->HasNext()) break;
     }
 }
+
+void
+VectorMemIndex::GroupOneRound(milvus::DataType dataType,
+                              const std::vector<int64_t> &seg_offsets,
+                              const std::vector<float> &distances,
+                              const segcore::SegmentInterface& segment,
+                              int64_t topK) {
+    switch(dataType) {
+        case DataType::BOOL: {
+            FixedVector<bool> output(topK);
+            //bulkscript(output)
+            //group<bool>
+
+        }
+    }
+
+}
+
 
 const bool
 VectorMemIndex::HasRawData() const {
