@@ -45,6 +45,7 @@
 #include "storage/Util.h"
 #include "common/File.h"
 #include "common/Tracer.h"
+#include "segcore/Utils.h"
 
 namespace milvus::index {
 
@@ -402,27 +403,35 @@ VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::i
             }
         }
         round++;
-        GroupOneRound(dataType, offsets, distances, segment);
+        GroupOneRound(dataType, field_id, offsets, distances, segment, count);
         if(!iterator->HasNext()) break;
     }
 }
 
 void
 VectorMemIndex::GroupOneRound(milvus::DataType dataType,
+                              FieldId field_id,
                               const std::vector<int64_t> &seg_offsets,
                               const std::vector<float> &distances,
                               const segcore::SegmentInterface& segment,
-                              int64_t topK) {
+                              int64_t count) {
+
+    auto& segment_internal = dynamic_cast<const segcore::SegmentInternalInterface&>(segment);
     switch(dataType) {
         case DataType::BOOL: {
-            FixedVector<bool> output(topK);
-            //bulkscript(output)
-            //group<bool>
+            FixedVector<bool> output(count);
+            segment_internal.fetch_field_raw_data(field_id, seg_offsets.data(), count, output.data());
+            Group<Bool>();
 
         }
     }
+}
+
+template <typename T>
+void VectorMemIndex::Group() {
 
 }
+
 
 
 const bool

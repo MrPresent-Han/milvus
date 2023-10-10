@@ -98,11 +98,12 @@ class SegmentSealedImpl : public SegmentSealed {
     std::unique_ptr<DataArray>
     get_vector(FieldId field_id, const int64_t* ids, int64_t count) const;
 
-    virtual void
-    fetch_field_raw_data(const milvus::FieldId& field_id,
-                         const int64_t* seg_offsets,
+    template <typename T>
+    void
+    fetch_field_raw_data(FieldId fieldId,
+                         const int64_t* seg_offset,
                          int64_t count,
-                         void* output);
+                         void* output) const;
 
  public:
     int64_t

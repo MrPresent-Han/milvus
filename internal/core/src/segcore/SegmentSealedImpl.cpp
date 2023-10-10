@@ -41,6 +41,7 @@
 #include "storage/ChunkCacheSingleton.h"
 #include "common/File.h"
 #include "common/Tracer.h"
+#include "common/"
 
 namespace milvus::segcore {
 
@@ -863,6 +864,34 @@ SegmentSealedImpl::bulk_subscript(SystemFieldType system_type,
                       fmt::format("unknown subscript fields", system_type));
     }
 }
+
+template <typename T>
+void
+SegmentSealedImpl::fetch_field_raw_data(milvus::FieldId field_id,
+                                        const int64_t *seg_offsets,
+                                        int64_t count,
+                                        void *output) const {
+    auto& field_meta = schema_->operator[](field_id);
+    auto column = fields_.at(field_id);
+    auto src_data = column->Data();
+    DataType dataType = field_meta.get_data_type();
+    switch(dataType) {
+        case DataType::BOOL: {
+            bulk_subscript_impl<bool>(src_data, seg_offsets, count, output);
+            break;
+        }
+        case DataType::INT8: {
+            bulk_subscript_impl<int8_t>(src_data, seg_offsets, count, output);
+            break;
+        }
+        default: {
+            PanicInfo(DataTypeInvalid,
+                      fmt::format("unsupported data type {}",
+                                  field_meta.get_data_type()));
+        }
+    }
+}
+
 
 template <typename T>
 void

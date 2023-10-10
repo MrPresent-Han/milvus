@@ -251,9 +251,16 @@ class SegmentInternalInterface : public SegmentInterface {
                const BitsetType& bitset,
                bool false_filtered_out) const = 0;
 
+
+    virtual void
+    fetch_field_raw_data(FieldId fieldId,
+                     const int64_t* seg_offset,
+                     int64_t count,
+                     void* output) const = 0;
+
  protected:
     // internal API: return chunk_data in span
-    virtual SpanBasexx
+    virtual SpanBase
     chunk_data_impl(FieldId field_id, int64_t chunk_id) const = 0;
 
     // internal API: return chunk_index in span, support scalar index only

@@ -90,10 +90,14 @@ class VectorMemIndex : public VectorIndex {
                              const segcore::SegmentInterface& segment);
 
     void GroupOneRound(DataType dataType,
+                       FieldId field_id,
                        const std::vector<int64_t>& seg_offsets,
                        const std::vector<float>& distances,
                        const segcore::SegmentInterface& segment,
-                       int64_t topK);
+                       int64_t count);
+
+    template <typename T>
+    void Group();
 
  protected:
     Config config_;
