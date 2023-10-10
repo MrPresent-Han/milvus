@@ -371,8 +371,27 @@ VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere:
     auto group_by_field = searchConf[GROUP_BY_FIELD];
     auto fieldId = FieldId(group_by_field);
     auto& segment_internal = dynamic_cast<const segcore::SegmentInternalInterface&>(segment);
+
+    auto dataType = segment_internal.FieldDataType(fieldId);
     for(auto iterator: iterators){
-        GroupIteratorResult(iterator, fieldId, topk, segment);
+        switch(dataType) {
+            case DataType::BOOL: {
+                GroupIteratorResult<bool>(iterator, fieldId, topk, segment);
+                break;
+            }
+            case DataType::INT8: {
+                GroupIteratorResult<int8_t>(iterator, fieldId, topk, segment);
+                break;
+            }
+            case DataType::INT16: {
+                GroupIteratorResult<int16_t>(iterator, fieldId, topk, segment);
+                break;
+            }
+            default: {
+                PanicInfo(DataTypeInvalid,
+                          fmt::format("unsupported data type {}", dataType));
+            }
+        }
     }
     return;
 }
@@ -388,8 +407,8 @@ VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::i
     std::vector<float> distances;
     int round = 0;
     auto& segment_internal = dynamic_cast<const milvus::segcore::SegmentInternalInterface&>(segment);
-
     DataType dataType = segment_internal.FieldDataType(field_id);
+    std::unordered_map<T, std::pair<int64_t, float>> groupMap;
     while(round < 10) {
         while(iterator->HasNext()){
             auto nextPair = iterator->Next();
@@ -403,33 +422,34 @@ VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::i
             }
         }
         round++;
-        GroupOneRound(dataType, field_id, offsets, distances, segment, count);
-        if(!iterator->HasNext()) break;
+        GroupOneRound<T>(field_id, offsets, distances, segment, count, groupMap);
+        offsets.clear();
+        distances.clear();
+        if(!iterator->HasNext() || groupMap.size()==topK) break;
     }
+
 }
 
+
+template <typename T>
 void
-VectorMemIndex::GroupOneRound(milvus::DataType dataType,
-                              FieldId field_id,
+VectorMemIndex::GroupOneRound(FieldId field_id,
                               const std::vector<int64_t> &seg_offsets,
                               const std::vector<float> &distances,
                               const segcore::SegmentInterface& segment,
-                              int64_t count) {
-
+                              int64_t count,
+                              const std::unordered_map<T, std::pair<int64_t, float>>& groupMap) {
     auto& segment_internal = dynamic_cast<const segcore::SegmentInternalInterface&>(segment);
-    switch(dataType) {
-        case DataType::BOOL: {
-            FixedVector<bool> output(count);
-            segment_internal.fetch_field_raw_data(field_id, seg_offsets.data(), count, output.data());
-            Group<Bool>();
-
+    FixedVector<T> datas(count);
+    segment_internal.fetch_field_raw_data(field_id, seg_offsets.data(), count, datas.data());
+    int idx = 0;
+    for(auto& data: datas){
+        auto it = groupMap.find(data);
+        if(it == groupMap.end()) {
+            groupMap[data] = std::pair<int64_t, float>(seg_offsets[idx], distances[idx]);
         }
+        idx++;
     }
-}
-
-template <typename T>
-void VectorMemIndex::Group() {
-
 }
 
 

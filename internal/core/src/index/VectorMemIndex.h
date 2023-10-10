@@ -84,20 +84,20 @@ class VectorMemIndex : public VectorIndex {
                          const knowhere::Json& searchConf,
                          const segcore::SegmentInterface& segment);
 
+    template <typename T>
     void GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator> &iterator,
                              const FieldId &field_id,
                              int64_t topK,
                              const segcore::SegmentInterface& segment);
 
-    void GroupOneRound(DataType dataType,
-                       FieldId field_id,
+    template <typename T>
+    void
+    GroupOneRound(FieldId field_id,
                        const std::vector<int64_t>& seg_offsets,
                        const std::vector<float>& distances,
                        const segcore::SegmentInterface& segment,
-                       int64_t count);
-
-    template <typename T>
-    void Group();
+                       int64_t count,
+                       const std::unordered_map<T, std::pair<int64_t, float>>& groupMap);
 
  protected:
     Config config_;
