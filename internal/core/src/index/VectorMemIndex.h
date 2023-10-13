@@ -82,13 +82,15 @@ class VectorMemIndex : public VectorIndex {
     void
     GroupIteratorResults(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
                          const knowhere::Json& searchConf,
-                         const segcore::SegmentInterface& segment);
+                         const segcore::SegmentInterface& segment,
+                         const knowhere::DataSetPtr dataSet);
 
     template <typename T>
     void GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator> &iterator,
                              const FieldId &field_id,
                              int64_t topK,
-                             const segcore::SegmentInterface& segment);
+                             const segcore::SegmentInterface& segment,
+                             const knowhere::DataSet dataSet);
 
     template <typename T>
     void

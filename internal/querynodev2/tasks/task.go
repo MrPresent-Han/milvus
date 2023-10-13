@@ -40,7 +40,7 @@ type SearchTask struct {
 	groupSize        int64
 	topk             int64
 	nq               int64
-	placeholderGroup []byte
+	placeholderGroup []byte //hc--note placeholderGroup
 	originTopks      []int64
 	originNqs        []int64
 	others           []*SearchTask

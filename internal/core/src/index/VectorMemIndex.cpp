@@ -366,7 +366,8 @@ VectorMemIndex::Query(const QueryContext& queryContext) {
 void
 VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
                                      const knowhere::Json& searchConf,
-                                     const segcore::SegmentInterface& segment){
+                                     const segcore::SegmentInterface& segment,
+                                     const knowhere::DataSetPtr dataSet){
     auto topk = searchConf[knowhere::meta::TOPK];
     auto group_by_field = searchConf[GROUP_BY_FIELD];
     auto fieldId = FieldId(group_by_field);
@@ -401,7 +402,8 @@ void
 VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
                                     const FieldId& field_id,
                                     int64_t topK,
-                                    const segcore::SegmentInterface& segment) {
+                                    const segcore::SegmentInterface& segment,
+                                    const knowhere::DataSet dataSet) {
     int64_t count = 0;
     std::vector<int64_t> offsets;
     std::vector<float> distances;
@@ -426,6 +428,9 @@ VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::i
         offsets.clear();
         distances.clear();
         if(!iterator->HasNext() || groupMap.size()==topK) break;
+    }
+    for(auto iter = groupMap.begin(); iter != groupMap.end(); iter++) {
+
     }
 
 }

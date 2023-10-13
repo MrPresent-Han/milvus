@@ -63,6 +63,7 @@ SearchOnSealedIndex(const Schema& schema,
     }
     result.seg_offsets_ = std::move(final->seg_offsets_);
     result.distances_ = std::move(final->distances_);
+    //hc---result.group_by_values = std::move();
     result.total_nq_ = num_queries;
     result.unity_topK_ = topk;
 }

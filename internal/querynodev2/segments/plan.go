@@ -47,7 +47,7 @@ func createSearchPlanByExpr(col *Collection, expr []byte, metricType string) (*S
 	}
 	var cPlan C.CSearchPlan
 	status := C.CreateSearchPlanByExpr(col.collectionPtr, unsafe.Pointer(&expr[0]), (C.int64_t)(len(expr)), &cPlan)
-
+	//hc----note
 	err1 := HandleCStatus(&status, "Create Plan by expr failed")
 	if err1 != nil {
 		return nil, err1
