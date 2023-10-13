@@ -639,6 +639,9 @@ func (c *Core) restore(ctx context.Context) error {
 					go c.garbageCollector.RemoveCreatingCollection(coll.Clone())
 				default:
 				}
+				log.Info("hc===collection is unavailable, re drop it", zap.Int64("colID", coll.CollectionID),
+					zap.Int64("dbID", coll.DBID), zap.String("colName", coll.Name),
+					zap.Int32("state", int32(coll.State)))
 			}
 		}
 	}

@@ -18,6 +18,8 @@ package rootcoord
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/pkg/log"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
@@ -45,6 +47,10 @@ func newBgGarbageCollector(s *Core) *bgGarbageCollector {
 }
 
 func (c *bgGarbageCollector) ReDropCollection(collMeta *model.Collection, ts Timestamp) {
+	log.Info("hc===start redropping dropping collection", zap.Int64("colID", collMeta.CollectionID),
+		zap.Int64("dbID", collMeta.DBID), zap.String("colName", collMeta.Name),
+		zap.Int32("state", int32(collMeta.State)))
+
 	// TODO: remove this after data gc can be notified by rpc.
 	c.s.chanTimeTick.addDmlChannels(collMeta.PhysicalChannelNames...)
 
@@ -82,6 +88,11 @@ func (c *bgGarbageCollector) ReDropCollection(collMeta *model.Collection, ts Tim
 
 func (c *bgGarbageCollector) RemoveCreatingCollection(collMeta *model.Collection) {
 	// TODO: remove this after data gc can be notified by rpc.
+
+	log.Info("hc===start removing creating collection", zap.Int64("colID", collMeta.CollectionID),
+		zap.Int64("dbID", collMeta.DBID), zap.String("colName", collMeta.Name),
+		zap.Int32("state", int32(collMeta.State)))
+
 	c.s.chanTimeTick.addDmlChannels(collMeta.PhysicalChannelNames...)
 
 	redo := newBaseRedoTask(c.s.stepExecutor)

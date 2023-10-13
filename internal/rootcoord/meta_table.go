@@ -182,6 +182,9 @@ func (mt *MetaTable) reload() error {
 				collectionNum++
 				partitionNum += int64(collection.GetPartitionNum(true))
 			}
+			log.Info("hc===reload collection meta", zap.Int64("colID", collection.CollectionID),
+				zap.Int64("dbID", collection.DBID), zap.String("colName", collection.Name),
+				zap.Int32("state", int32(collection.State)))
 		}
 	}
 
@@ -525,6 +528,9 @@ func (mt *MetaTable) getCollectionByIDInternal(ctx context.Context, dbName strin
 			return nil, err
 		}
 	}
+	log.Info("hc===getCollectionByIDInternal", zap.Int64("colID", coll.CollectionID),
+		zap.Int64("dbID", coll.DBID), zap.String("colName", coll.Name),
+		zap.Int32("state", int32(coll.State)), zap.Bool("allowUnavailable", allowUnavailable))
 
 	if coll == nil {
 		// use coll.Name to match error message of regression. TODO: remove this after error code is ready.
