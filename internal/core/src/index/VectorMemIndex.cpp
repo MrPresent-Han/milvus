@@ -374,27 +374,47 @@ VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere:
     auto& segment_internal = dynamic_cast<const segcore::SegmentInternalInterface&>(segment);
 
     auto dataType = segment_internal.FieldDataType(fieldId);
-    for(auto iterator: iterators){
-        switch(dataType) {
-            case DataType::BOOL: {
-                GroupIteratorResult<bool>(iterator, fieldId, topk, segment);
-                break;
-            }
-            case DataType::INT8: {
-                GroupIteratorResult<int8_t>(iterator, fieldId, topk, segment);
-                break;
-            }
-            case DataType::INT16: {
-                GroupIteratorResult<int16_t>(iterator, fieldId, topk, segment);
-                break;
-            }
-            default: {
-                PanicInfo(DataTypeInvalid,
-                          fmt::format("unsupported data type {}", dataType));
-            }
+    auto seg_offsets = std::make_unique<std::vector<int64_t>>();
+    auto distances = std::make_unique<std::vector<float>>();
+    dataSet->SetIds(seg_offsets->data());
+    dataSet->SetDistance(distances->data());
+    switch(dataType) {
+        case DataType::BOOL: {
+            auto group_by_values = std::make_unique<std::vector<bool>>();
+            dataSet->Set(GROUP_BY_FIELD_VALUE, group_by_values);//hc---how to correctly set group by values here?
+            GroupIteratorsByType<bool>(iterators, fieldId, topk, segment, dataSet);
+            break;
+        }
+        case DataType::INT8: {
+            auto group_by_values = std::make_unique<std::vector<int8_t>>();
+            dataSet->Set(GROUP_BY_FIELD_VALUE, group_by_values);
+            GroupIteratorsByType<int8_t>(iterators, fieldId, topk, segment, dataSet);
+            break;
+        }
+        case DataType::INT16: {
+            auto group_by_values = std::make_unique<std::vector<int16_t>>();
+            dataSet->Set(GROUP_BY_FIELD_VALUE, group_by_values);
+            GroupIteratorsByType<int16_t>(iterators, fieldId, topk, segment, dataSet);
+            break;
+        }
+        default: {
+            PanicInfo(DataTypeInvalid,
+                      fmt::format("unsupported data type {}", dataType));
         }
     }
     return;
+}
+
+template <typename T>
+void
+VectorMemIndex::GroupIteratorsByType(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
+                     const FieldId& fieldId,
+                     int64_t topk,
+                     const segcore::SegmentInterface& segment,
+                     const knowhere::DataSetPtr dataSet) {
+    for(auto iterator: iterators){
+        GroupIteratorResult<T>(iterator, fieldId, topk, segment, dataSet);
+    }
 }
 
 template <typename T>
@@ -403,35 +423,32 @@ VectorMemIndex::GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::i
                                     const FieldId& field_id,
                                     int64_t topK,
                                     const segcore::SegmentInterface& segment,
-                                    const knowhere::DataSet dataSet) {
+                                    const knowhere::DataSetPtr dataset) {
     int64_t count = 0;
-    std::vector<int64_t> offsets;
-    std::vector<float> distances;
     int round = 0;
     auto& segment_internal = dynamic_cast<const milvus::segcore::SegmentInternalInterface&>(segment);
-    DataType dataType = segment_internal.FieldDataType(field_id);
     std::unordered_map<T, std::pair<int64_t, float>> groupMap;
+    std::vector<int64_t> tmpOffsets;
+    std::vector<float> tmpDistances;
     while(round < 10) {
         while(iterator->HasNext()){
             auto nextPair = iterator->Next();
             int64_t offset = nextPair.first;
             float dis = nextPair.second;
-            offsets.emplace_back(offset);
-            distances.emplace_back(dis);
+            tmpOffsets.emplace_back(offset);
+            tmpDistances.emplace_back(dis);
             count++;
             if(count > topK){
                 break;
             }
         }
         round++;
-        GroupOneRound<T>(field_id, offsets, distances, segment, count, groupMap);
-        offsets.clear();
-        distances.clear();
+        GroupOneRound<T>(field_id, tmpOffsets, tmpDistances, segment, count, groupMap);
+        tmpOffsets.clear();
+        tmpDistances.clear();
         if(!iterator->HasNext() || groupMap.size()==topK) break;
     }
-    for(auto iter = groupMap.begin(); iter != groupMap.end(); iter++) {
 
-    }
 
 }
 
