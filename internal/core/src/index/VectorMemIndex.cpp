@@ -295,6 +295,7 @@ VectorMemIndex::Query(const QueryContext& queryContext) {
     auto num_queries = queryContext.dataset_->GetRows();
     knowhere::Json search_conf = queryContext.search_info_.search_params_;
     auto topk = queryContext.search_info_.topk_;
+    auto group_by_values = std::option 
     // TODO :: check dim of search data
     auto final = [&] {
         search_conf[knowhere::meta::TOPK] = topk;
@@ -378,22 +379,21 @@ VectorMemIndex::GroupIteratorResults(const std::vector<std::shared_ptr<knowhere:
     auto distances = std::make_unique<std::vector<float>>();
     dataSet->SetIds(seg_offsets->data());
     dataSet->SetDistance(distances->data());
+
+
     switch(dataType) {
         case DataType::BOOL: {
             auto group_by_values = std::make_unique<std::vector<bool>>();
-            dataSet->Set(GROUP_BY_FIELD_VALUE, group_by_values);//hc---how to correctly set group by values here?
             GroupIteratorsByType<bool>(iterators, fieldId, topk, segment, dataSet);
             break;
         }
         case DataType::INT8: {
             auto group_by_values = std::make_unique<std::vector<int8_t>>();
-            dataSet->Set(GROUP_BY_FIELD_VALUE, group_by_values);
             GroupIteratorsByType<int8_t>(iterators, fieldId, topk, segment, dataSet);
             break;
         }
         case DataType::INT16: {
             auto group_by_values = std::make_unique<std::vector<int16_t>>();
-            dataSet->Set(GROUP_BY_FIELD_VALUE, group_by_values);
             GroupIteratorsByType<int16_t>(iterators, fieldId, topk, segment, dataSet);
             break;
         }
