@@ -19,6 +19,7 @@ INSTALL_PATH := $(PWD)/bin
 LIBRARY_PATH := $(PWD)/lib
 OS := $(shell uname -s)
 mode = Release
+ENABLE_AZURE = false
 
 use_disk_index = OFF
 ifdef disk_index

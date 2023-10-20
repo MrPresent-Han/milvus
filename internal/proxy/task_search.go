@@ -749,6 +749,7 @@ func selectHighestScoreIndex(subSearchResultData []*schemapb.SearchResultData, s
 			}
 		}
 	}
+	log.Info("hc===proxy, search result", zap.Float32("maxScore", maxScore))
 	return subSearchIdx, resultDataIdx
 }
 

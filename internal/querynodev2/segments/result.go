@@ -201,6 +201,7 @@ func SelectSearchResultData(dataArray []*schemapb.SearchResultData, resultOffset
 			}
 		}
 	}
+	log.Info("hc= querynode reduce==selected search result", zap.Int("sel", sel), zap.Float32("distance", maxDistance))
 	return sel
 }
 
