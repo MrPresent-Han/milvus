@@ -245,6 +245,10 @@ func MergeInternalRetrieveResult(ctx context.Context, retrieveResults []*interna
 		zap.Int64("limit", param.limit),
 		zap.Int("resultNum", len(retrieveResults)),
 	)
+	if len(retrieveResults) == 1 {
+		log.Debug("MergeInternalRetrieveResult is single result, shortcut return")
+		return retrieveResults[0], nil
+	}
 	var (
 		ret = &internalpb.RetrieveResults{
 			Status: merr.Success(),
