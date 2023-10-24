@@ -213,6 +213,8 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
 
     int64_t dup_cnt = 0;
     auto start = offset;
+
+    float lastDistance = 0.0;
     while (offset - start < topk && !heap_.empty()) {
         auto pilot = heap_.top();
         heap_.pop();
@@ -223,6 +225,14 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
         if (pk == INVALID_PK) {
             break;
         }
+        if(lastDistance!=0.0 && pilot->distance_ > lastDistance){
+            LOG_SEGCORE_WARNING_ << "Wrong distance, lastDistance:" << lastDistance << ", distance:"
+                << pilot->distance_;
+        } else {
+            LOG_SEGCORE_INFO_ << "correct distance, lastDistance:" << lastDistance << ", distance:"
+                              << pilot->distance_;
+        }
+        lastDistance = pilot->distance_;
         // remove duplicates
         if (pk_set_.count(pk) == 0) {
             pilot->search_result_->result_offsets_.push_back(offset++);

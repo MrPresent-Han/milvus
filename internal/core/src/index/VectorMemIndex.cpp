@@ -355,6 +355,17 @@ VectorMemIndex::Query(const DatasetPtr dataset,
     std::copy_n(ids, total_num, result->seg_offsets_.data());
     std::copy_n(distances, total_num, result->distances_.data());
 
+    //hc====print distances
+    float lastDis = 0.0;
+    for(size_t i = 0; i < result->distances_.size(); i++){
+        auto dis = result->distances_[i];
+        if(lastDis != 0.0 && dis>lastDis){
+            LOG_SEGCORE_INFO_ << "hc===wrong distance inside segment scope, lastDis:"
+                << lastDis << ", dis:" << dis;
+        }
+        lastDis = dis;
+    }
+
     return result;
 }
 

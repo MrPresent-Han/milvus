@@ -144,6 +144,16 @@ func ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.Se
 			if _, ok := idSet[id]; !ok {
 				retSize += typeutil.AppendFieldData(ret.FieldsData, searchResultData[sel].FieldsData, idx)
 				typeutil.AppendPKs(ret.Ids, id)
+				var lastScore float32 = 0.0
+				if len(ret.Scores) > 0 {
+					lastScore = ret.Scores[len(ret.Scores)-1]
+				}
+				if lastScore != 0.0 && lastScore < score {
+					log.Warn("hc---warn, wrong score", zap.Float32("lastScore", lastScore),
+						zap.Float32("score", score), zap.Any("id", id))
+				} else {
+					log.Info("hc---info correct score")
+				}
 				ret.Scores = append(ret.Scores, score)
 				idSet[id] = struct{}{}
 				j++
@@ -159,7 +169,8 @@ func ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.Se
 		// 	// return nil, errors.New("the length (topk) between all result of query is different")
 		// }
 		ret.Topks = append(ret.Topks, j)
-
+		log.Info("finish reduce one query hc===append topk",
+			zap.Int64("topK", topk), zap.Int64("real-topK", j))
 		// limit search result to avoid oom
 		if retSize > maxOutputSize {
 			return nil, fmt.Errorf("search results exceed the maxOutputSize Limit %d", maxOutputSize)
@@ -177,6 +188,8 @@ func SelectSearchResultData(dataArray []*schemapb.SearchResultData, resultOffset
 	)
 	for i, offset := range offsets { // query num, the number of ways to merge
 		if offset >= dataArray[i].Topks[qi] {
+			log.Info("hc====offset has reached the dataArray topK",
+				zap.Int64("topK", dataArray[i].Topks[qi]), zap.Int64("offset", offset))
 			continue
 		}
 

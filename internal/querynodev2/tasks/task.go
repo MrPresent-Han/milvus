@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"strconv"
 
 	"github.com/golang/protobuf/proto"
@@ -215,6 +216,25 @@ func (t *SearchTask) Execute() error {
 		bs := make([]byte, len(blob))
 		copy(bs, blob)
 
+		//hc----- decode blob and testify the sequence
+		var resultData schemapb.SearchResultData
+		_ = proto.Unmarshal(bs, &resultData)
+		var ids = resultData.GetIds().GetIntId().Data
+		var distances = resultData.GetScores()
+		var lastScore float32 = 0.0
+		var lastId int64 = 0
+		for idx, id := range ids {
+			if lastScore != 0.0 && distances[idx] > lastScore {
+				log.Warn("hc---note, wrong score from segcore reduce",
+					zap.Int64("id", id),
+					zap.Float32("score", distances[idx]),
+					zap.Int64("lastId", lastId),
+					zap.Float32("lastScore", lastScore))
+			}
+			lastId = id
+			lastScore = distances[idx]
+		}
+		//hc----- decode blob and testify the sequence
 		task.result = &internalpb.SearchResults{
 			Base: &commonpb.MsgBase{
 				SourceID: paramtable.GetNodeID(),
