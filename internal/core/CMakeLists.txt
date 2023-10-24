@@ -23,6 +23,7 @@ endif ()
 
 add_definitions(-DELPP_THREAD_SAFE)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(CMAKE_BINARY_DIR /Users/zilliz/Documents/project/milvus-master/milvus-test/milvus/cmake_build)
 message( STATUS "Building using CMake version: ${CMAKE_VERSION}" )
 
 if ( MILVUS_GPU_VERSION )
