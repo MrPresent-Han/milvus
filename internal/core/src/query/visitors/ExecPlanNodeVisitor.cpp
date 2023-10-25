@@ -19,6 +19,7 @@
 #include "segcore/SegmentGrowing.h"
 #include "common/Json.h"
 #include "log/Log.h"
+#include "knowhere/comp/time_recorder.h"
 
 namespace milvus::query {
 
@@ -164,17 +165,18 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
     if (node.is_count_) {
         bitset_holder.resize(active_count);
     }
-
+    knowhere::TimeRecorder tr("ExecPlanNodeVisitor::visit", 2);
     if (node.predicate_.has_value() && node.predicate_.value() != nullptr) {
         bitset_holder =
             ExecExprVisitor(*segment, this, active_count, timestamp_)
                 .call_child(*(node.predicate_.value()));
         bitset_holder.flip();
     }
-
+    tr.RecordSection("ExecExprVisitor");
     segment->mask_with_timestamps(bitset_holder, timestamp_);
 
     segment->mask_with_delete(bitset_holder, active_count, timestamp_);
+    tr.RecordSection("segment->mask");
     // if bitset_holder is all 1's, we got empty result
     if (bitset_holder.all() && !node.is_count_) {
         retrieve_result_opt_ = std::move(retrieve_result);
@@ -188,17 +190,21 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
         return;
     }
 
+    //hc---add log here
     bool false_filtered_out = false;
     if (GetExprUsePkIndex() && IsTermExpr(node.predicate_.value().get())) {
         segment->timestamp_filter(
-            bitset_holder, expr_cached_pk_id_offsets_, timestamp_);
+            bitset_holder, expr_cached_pk_id_offsets_, timestamp_);//hc---what is the function of expr_cached_pk_id_offsets_
     } else {
         bitset_holder.flip();
         false_filtered_out = true;
         segment->timestamp_filter(bitset_holder, timestamp_);
     }
+    tr.RecordSection("segment->timestamp_filter");
+    //add log here
     retrieve_result.result_offsets_ =
         segment->find_first(node.limit_, bitset_holder, false_filtered_out);
+    tr.RecordSection("segment->find_first");
     retrieve_result_opt_ = std::move(retrieve_result);
 }
 

@@ -37,6 +37,7 @@
 #include "simdjson/error.h"
 #include "query/PlanProto.h"
 #include "simd/hook.h"
+#include "knowhere/comp/time_recorder.h"
 
 namespace milvus::query {
 // THIS CONTAINS EXTRA BODY FOR VISITOR
@@ -283,6 +284,7 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
         conditional_t<std::is_same_v<T, std::string_view>, std::string, T>
             IndexInnerType;
     using Index = index::ScalarIndex<IndexInnerType>;
+    knowhere::TimeRecorder rc("ExecRangeVisitorImpl", 2);
     for (auto chunk_id = 0; chunk_id < indexing_barrier; ++chunk_id) {
         const Index& indexing =
             segment_.chunk_scalar_index<IndexInnerType>(field_id, chunk_id);
@@ -293,6 +295,8 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
                    "[ExecExprVisitor]Data size not equal to size_per_chunk");
         results.emplace_back(std::move(data));
     }
+    rc.RecordSection("index_func_time_cost");
+
     for (auto chunk_id = indexing_barrier; chunk_id < num_chunk; ++chunk_id) {
         auto this_size = chunk_id == num_chunk - 1
                              ? row_count_ - chunk_id * size_per_chunk
@@ -302,11 +306,15 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
         const T* data = chunk.data();
         // Can use CPU SIMD optimazation to speed up
         for (int index = 0; index < this_size; ++index) {
-            chunk_res[index] = element_func(data[index]);
+            chunk_res[index] = element_func(data[index]); //hc---here match result
         }
         results.emplace_back(std::move(chunk_res));
     }
+    rc.RecordSection("element_func_time_cost");
+
     auto final_result = AssembleChunk(results);
+    rc.RecordSection("AssembleChunk_time_cost");
+    rc.ElapseFromBegin("ExecRangeVisitorImpl finish");
     AssertInfo(final_result.size() == row_count_,
                "[ExecExprVisitor]Final result size not equal to row count");
     return final_result;
