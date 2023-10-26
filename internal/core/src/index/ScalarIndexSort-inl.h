@@ -170,7 +170,7 @@ ScalarIndexSort<T>::Load(const Config& config) {
     auto index_files =
         GetValueFromConfig<std::vector<std::string>>(config, "index_files");
     AssertInfo(index_files.has_value(),
-               "index file paths is empty when load disk ann index");
+               "index file paths is empty when load disk ann index");//hc===download data from cloud
     auto index_datas = file_manager_->LoadIndexToMemory(index_files.value());
     AssembleIndexDatas(index_datas);
     BinarySet binary_set;
@@ -236,6 +236,10 @@ ScalarIndexSort<T>::Range(const T value, const OpType op) {
     TargetBitmap bitset(data_.size());
     auto lb = data_.begin();
     auto ub = data_.end();
+    if(outOfRange(value)) {
+        LOG_SEGCORE_INFO_ << "not overlap for unary range, return instantly";
+        return bitset;
+    }
     switch (op) {
         case OpType::LessThan:
             ub = std::lower_bound(
@@ -276,6 +280,10 @@ ScalarIndexSort<T>::Range(T lower_bound_value,
          !(lb_inclusive && ub_inclusive))) {
         return bitset;
     }
+    if(!overlap(lower_bound_value, upper_bound_value)){
+        LOG_SEGCORE_INFO_ << "not overlap for binary range, return instantly";
+        return bitset;
+    }
     auto lb = data_.begin();
     auto ub = data_.end();
     if (lb_inclusive) {
@@ -306,5 +314,21 @@ ScalarIndexSort<T>::Reverse_Lookup(size_t idx) const {
 
     auto offset = idx_to_offsets_[idx];
     return data_[offset].a_;
+}
+
+template <typename T>
+inline bool
+ScalarIndexSort<T>::outOfRange(const T value) {
+    auto lower = data_.begin();
+    auto upper = data_.end();
+    return value < lower->a_ || value > upper->a_;
+}
+
+template <typename T>
+inline bool
+ScalarIndexSort<T>::overlap(const T lower_bound_value, const T upper_bound_value) {
+    auto lower = data_.begin();
+    auto upper = data_.end();
+    return !(upper->a_ < lower_bound_value || lower->a_ > upper_bound_value);
 }
 }  // namespace milvus::index
