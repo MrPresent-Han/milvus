@@ -647,6 +647,7 @@ func (loader *segmentLoader) loadSealedSegmentFields(ctx context.Context, segmen
 		fieldBinLog := field
 		fieldID := field.FieldID
 		runningGroup.Go(func() error {
+			//load field raw data
 			return segment.LoadFieldData(fieldID, rowCount, fieldBinLog)
 		})
 	}

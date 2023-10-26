@@ -525,7 +525,7 @@ int64_t
 SegmentSealedImpl::size_per_chunk() const {
     return get_row_count();
 }
-
+//hc---get chunk data from segment
 SpanBase
 SegmentSealedImpl::chunk_data_impl(FieldId field_id, int64_t chunk_id) const {
     std::shared_lock lck(mutex_);

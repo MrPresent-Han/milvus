@@ -305,10 +305,11 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
                              : size_per_chunk;
         FixedVector<bool> chunk_res(this_size);
         auto chunk = segment_.chunk_data<T>(field_id, chunk_id);
+        //hc---get chunk data from the segment
         const T* data = chunk.data();
         // Can use CPU SIMD optimazation to speed up
         for (int index = 0; index < this_size; ++index) {
-            chunk_res[index] = element_func(data[index]); //hc---here match result
+            chunk_res[index] = element_func(data[index]);
         }
         results.emplace_back(std::move(chunk_res));
     }

@@ -157,7 +157,7 @@ class ColumnBase {
     virtual SpanBase
     Span() const = 0;
 
-    void
+    void//hc---append raw data to segment_column
     AppendBatch(const storage::FieldDataPtr& data) {
         size_t required_size = size_ + data->Size();
         if (required_size > cap_size_) {
