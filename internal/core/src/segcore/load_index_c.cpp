@@ -264,7 +264,7 @@ AppendIndexV2(CLoadIndexInfo c_load_index_info) {
             config[kMmapFilepath] = filepath.string();
         }
 
-        load_index_info->index->Load(config);
+        load_index_info->index->Load(config);//hc---here
         auto status = CStatus();
         status.error_code = milvus::Success;
         status.error_msg = "";

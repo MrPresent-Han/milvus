@@ -31,7 +31,7 @@ IndexFactory::CreateIndex(
     if (datatype_is_vector(create_index_info.field_type)) {
         return CreateVectorIndex(create_index_info, file_manager_context);
     }
-
+    //create index here
     return CreateScalarIndex(create_index_info, file_manager_context);
 }
 

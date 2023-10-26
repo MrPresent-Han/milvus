@@ -285,12 +285,14 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
             IndexInnerType;
     using Index = index::ScalarIndex<IndexInnerType>;
     knowhere::TimeRecorder rc("ExecRangeVisitorImpl", 2);
+    LOG_SEGCORE_INFO_ << "ExecRangeVisitorImpl index_barrier:" << indexing_barrier;
     for (auto chunk_id = 0; chunk_id < indexing_barrier; ++chunk_id) {
         const Index& indexing =
             segment_.chunk_scalar_index<IndexInnerType>(field_id, chunk_id);
         // NOTE: knowhere is not const-ready
         // This is a dirty workaround
         auto data = index_func(const_cast<Index*>(&indexing));
+        LOG_SEGCORE_INFO_ << "after index_func, chunk_id:" << chunk_id;
         AssertInfo(data.size() == size_per_chunk,
                    "[ExecExprVisitor]Data size not equal to size_per_chunk");
         results.emplace_back(std::move(data));

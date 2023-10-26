@@ -59,7 +59,7 @@ tikv:
   kvSubPath: kv # kvRootPath = rootPath + '/' + kvSubPath
 
 localStorage:
-  path: /var/lib/milvus/data/ # please adjust in embedded Milvus: /tmp/milvus/data/
+  path: /tmp/milvus/data/ # please adjust in embedded Milvus: /tmp/milvus/data/
 
 # Related configuration of MinIO/S3/GCS or any other service supports S3 API, which is responsible for data persistence for Milvus.
 # We refer to the storage service as MinIO/S3 in the following description for simplicity.
@@ -347,9 +347,9 @@ dataCoord:
     balanceSilentDuration: 300 # The duration before the channelBalancer on datacoord to run
     balanceInterval: 360 #The interval for the channelBalancer on datacoord to check balance status
   segment:
-    maxSize: 512 # Maximum size of a segment in MB
+    maxSize: 5 # Maximum size of a segment in MB
     diskSegmentMaxSize: 2048 # Maximum size of a segment in MB for collection which has Disk index
-    sealProportion: 0.23
+    sealProportion: 0.2
     # The time of the assignment expiration in ms
     # Warning! this parameter is an expert variable and closely related to data integrity. Without specific
     # target and solid understanding of the scenarios, it should not be changed. If it's necessary to alter
@@ -373,9 +373,9 @@ dataCoord:
     # MUST BE GREATER THAN OR EQUAL TO <smallProportion>!!!
     # During compaction, the size of segment # of rows is able to exceed segment max # of rows by (expansionRate-1) * 100%.
     expansionRate: 1.25
-  enableCompaction: true # Enable data segment compaction
+  enableCompaction: false # Enable data segment compaction
   compaction:
-    enableAutoCompaction: true
+    enableAutoCompaction: false
     rpcTimeout: 10 # compaction rpc request timeout in seconds
     maxParallelTaskNum: 10 # max parallel compaction task number
     indexBasedCompaction: true
@@ -403,7 +403,7 @@ dataNode:
       maxParallelism: 1024 # Maximum number of tasks executed in parallel in the flowgraph
     maxParallelSyncTaskNum: 6 # Maximum number of sync tasks executed in parallel in each flush manager
   segment:
-    insertBufSize: 16777216 # Max buffer size to flush for a single segment.
+    insertBufSize: 1048576 # Max buffer size to flush for a single segment.
     deleteBufBytes: 67108864 # Max buffer size to flush del for a single channel
     syncPeriod: 600 # The period to sync segments if buffer is not empty.
   # can specify ip for example
