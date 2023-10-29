@@ -293,4 +293,62 @@ SegmentInternalInterface::timestamp_filter(BitsetType& bitset,
     }
 }
 
+
+void
+SegmentInternalInterface::MaybeLoadFieldChunkMetrics(const milvus::FieldId fieldId,
+                                                     int64_t chunkId,
+                                                     const milvus::DataType dataType,
+                                                     const milvus::SpanBase &span) {
+    const void* span_data = span.data();
+    int64_t count = span.row_count();
+    switch(dataType){
+        case DataType::INT8:{
+            const int8_t* typedData = static_cast<const int8_t*>(span_data);
+            ProcessFieldMetrics<int8_t>(fieldId, chunkId, typedData, count);
+            break;
+        }
+        case DataType::INT16: {
+            const int16_t* typedData = static_cast<const int16_t*>(span_data);
+            ProcessFieldMetrics<int16_t>(fieldId, chunkId, typedData, count);
+            break;
+        }
+        case DataType::INT32: {
+            const int32_t* typedData = static_cast<const int32_t*>(span_data);
+            ProcessFieldMetrics<int32_t>(fieldId, chunkId, typedData, count);
+            break;
+        }
+        case DataType::FLOAT: {
+            const float* typedData = static_cast<const float*>(span_data);
+            ProcessFieldMetrics<float>(fieldId, chunkId, typedData, count);
+            break;
+        }
+        case DataType::DOUBLE: {
+            const double* typedData = static_cast<const double*>(span_data);
+            ProcessFieldMetrics<double>(fieldId, chunkId, typedData, count);
+            break;
+        }
+    }
+}
+
+template<typename T>
+void
+SegmentInternalInterface::ProcessFieldMetrics(milvus::FieldId fieldId, int64_t chunkId, const T *data, int64_t count) {
+    T minValue = data[0];
+    T maxValue = data[0];
+    for(size_t i = 0; i < count; i++) {
+        T value = data[i];
+        if(value < minValue){
+            minValue = value;
+        }
+        if(value > maxValue){
+            maxValue = value;
+        }
+    }
+    FieldChunkMetrics<T> fieldChunkMetrics;
+    fieldChunkMetrics.max = maxValue;
+    fieldChunkMetrics.min = minValue;
+    auto field_chunk_metrics = field_chunk_metrics_.find(fieldId);
+    field_chunk_metrics->second[chunkId] = fieldChunkMetrics;
+}
+
 }  // namespace milvus::segcore

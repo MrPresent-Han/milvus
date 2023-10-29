@@ -108,6 +108,18 @@ class SegmentInterface {
     HasRawData(int64_t field_id) const = 0;
 };
 
+template <typename T>
+struct FieldChunkMetrics{
+    T min;
+    T max;
+
+    FieldChunkMetrics(T min, T max) : min(min), max(max) {}
+    FieldChunkMetrics():min(T()),max(T()){}
+};
+using FieldChunkMetricsVariant = std::variant<FieldChunkMetrics<int8_t>,
+        FieldChunkMetrics<int16_t>, FieldChunkMetrics<int32_t>, FieldChunkMetrics<int64_t>,
+        FieldChunkMetrics<float>, FieldChunkMetrics<double>>;
+
 // internal API for DSL calculation
 // only for implementation
 class SegmentInternalInterface : public SegmentInterface {
@@ -117,6 +129,21 @@ class SegmentInternalInterface : public SegmentInterface {
     chunk_data(FieldId field_id, int64_t chunk_id) const {
         return static_cast<Span<T>>(chunk_data_impl(field_id, chunk_id));
     }
+    //
+    template <typename T>
+    FieldChunkMetrics<T>
+    get_chunk_metrics(FieldId field_id, int64_t chunk_id) const {
+        auto field_chunk_metrics = field_chunk_metrics_.find(field_id);
+        auto chunk_metrics = field_chunk_metrics->second.find(chunk_id);
+        return chunk_metrics;
+    }
+
+    void
+    MaybeLoadFieldChunkMetrics(const FieldId fieldId, int64_t chunkId, const milvus::DataType dataType, const SpanBase& span);
+
+    template<typename T>
+    void
+    ProcessFieldMetrics(FieldId fieldId, int64_t chunkId, const T* data, int64_t count);
 
     template <typename T>
     const index::ScalarIndex<T>&
@@ -281,6 +308,7 @@ class SegmentInternalInterface : public SegmentInterface {
     // fieldID -> std::pair<num_rows, avg_size>
     std::unordered_map<FieldId, std::pair<int64_t, int64_t>>
         variable_fields_avg_size_;  // bytes
+    std::unordered_map<FieldId, std::unordered_map<int64_t, FieldChunkMetricsVariant>> field_chunk_metrics_;
 };
 
 }  // namespace milvus::segcore

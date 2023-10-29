@@ -36,21 +36,6 @@
 
 namespace milvus::segcore {
 
-template<typename T>
-struct FieldMetrics{
-    T min;
-    T max;
-
-    FieldMetrics(T minValue, T maxValue): min(minValue), max(maxValue){}
-
-    static bool IsTypeAccepted(DataType dataType){
-        return dataType==DataType::BOOL || dataType==DataType::INT8 ||
-        dataType==DataType::INT16 || dataType==DataType::INT32 ||
-        dataType==DataType::INT64 || dataType==DataType::FLOAT ||
-        dataType==DataType::DOUBLE;
-    }
-};
-
 class SegmentSealedImpl : public SegmentSealed {
  public:
     explicit SegmentSealedImpl(SchemaPtr schema, int64_t segment_id);
@@ -281,12 +266,6 @@ class SegmentSealedImpl : public SegmentSealed {
     SchemaPtr schema_;
     int64_t id_;
     std::unordered_map<FieldId, std::shared_ptr<ColumnBase>> fields_;
-
-    using FieldMetricsVariant = std::variant<FieldMetrics<bool>,
-        FieldMetrics<int8_t>, FieldMetrics<int16_t>, FieldMetrics<int32_t>,
-        FieldMetrics<int64_t>, FieldMetrics<float>, FieldMetrics<double>>;
-
-    std::unordered_map<FieldId, FieldMetricsVariant> fieldMetricsMap;
 };
 
 inline SegmentSealedPtr
