@@ -293,8 +293,59 @@ SegmentInternalInterface::timestamp_filter(BitsetType& bitset,
     }
 }
 
+FieldChunkMetrics
+SegmentInternalInterface::get_field_chunk_fields(FieldId fieldId, int64_t chunkId) const{
+    auto fieldMetrics = fieldChunkMetrics.find(fieldId);
+    if(fieldMetrics!=fieldChunkMetrics.end()) {
+        auto chunkMetrics = fieldMetrics->second.find(chunkId);
+        if (chunkMetrics != fieldMetrics->second.end()) {
+            return chunkMetrics->second;
+        }
+    }
+    return {};
+}
 
-void
+/*template<typename InRangeFunc>
+bool
+SegmentInternalInterface::scalarFieldInChunkRange(FieldId fieldId,
+                                                  int64_t chunkId,
+                                                  InRangeFunc inRangeFunc) const{
+    auto fieldMetrics = fieldChunkMetrics.find(fieldId);
+
+    auto schema = get_schema();
+    auto& field_meta = schema[fieldId];
+    auto data_type = field_meta.get_data_type();
+
+    if(fieldMetrics!=fieldChunkMetrics.end()){
+        auto chunkMetrics = fieldMetrics->second.find(chunkId);
+        if(chunkMetrics!=fieldMetrics->second.end()){
+            auto fieldChunkMetrics = chunkMetrics->second;
+            switch (data_type) {
+                case DataType::INT8:{
+                    return inRangeFunc(fieldChunkMetrics.min.int8Value, fieldChunkMetrics.max.int8Value);
+                }
+                case DataType::INT16:{
+                    return inRangeFunc(fieldChunkMetrics.min.int16Value, fieldChunkMetrics.max.int16Value);
+                }
+                case DataType::INT32:{
+                    return inRangeFunc(fieldChunkMetrics.min.int32Value, fieldChunkMetrics.max.int32Value);
+                }
+                case DataType::INT64:{
+                    return inRangeFunc(fieldChunkMetrics.min.int64Value, fieldChunkMetrics.max.int64Value);
+                }
+                case DataType::FLOAT:{
+                    return inRangeFunc(fieldChunkMetrics.min.floatValue, fieldChunkMetrics.max.floatValue);
+                }
+                case DataType::DOUBLE:{
+                    return inRangeFunc(fieldChunkMetrics.min.doubleValue, fieldChunkMetrics.max.doubleValue);
+                }
+            }
+        }
+    }
+    return true;
+}*/
+
+/*void
 SegmentInternalInterface::MaybeLoadFieldChunkMetrics(const milvus::FieldId fieldId,
                                                      int64_t chunkId,
                                                      const milvus::DataType dataType,
@@ -349,6 +400,6 @@ SegmentInternalInterface::ProcessFieldMetrics(milvus::FieldId fieldId, int64_t c
     fieldChunkMetrics.min = minValue;
     auto field_chunk_metrics = field_chunk_metrics_.find(fieldId);
     field_chunk_metrics->second[chunkId] = fieldChunkMetrics;
-}
+}*/
 
 }  // namespace milvus::segcore

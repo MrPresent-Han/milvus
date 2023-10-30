@@ -103,6 +103,12 @@ class ExecExprVisitor : public ExprVisitor {
                              IndexFunc index_func,
                              ElementFunc element_func) -> BitsetType;
 
+    template <typename T, typename InRangeFunc>
+    bool
+    InChunkRange(InRangeFunc inRange,
+                 segcore::FieldChunkMetrics& fieldChunkMetrics,
+                 DataType dataType) const;
+
     template <typename T>
     auto
     ExecUnaryRangeVisitorDispatcherImpl(UnaryRangeExpr& expr_raw) -> BitsetType;

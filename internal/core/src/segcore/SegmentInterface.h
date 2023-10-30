@@ -108,7 +108,36 @@ class SegmentInterface {
     HasRawData(int64_t field_id) const = 0;
 };
 
-template <typename T>
+
+union MinValue{
+    int8_t int8Value;
+    int16_t int16Value;
+    int32_t int32Value;
+    int64_t int64Value;
+    float floatValue;
+    double doubleValue;
+};
+
+union MaxValue{
+    int8_t int8Value;
+    int16_t int16Value;
+    int32_t int32Value;
+    int64_t int64Value;
+    float floatValue;
+    double doubleValue;
+};
+
+struct FieldChunkMetrics{
+    MinValue min;
+    MaxValue max;
+    bool hasValue;
+
+    FieldChunkMetrics():hasValue(false){}
+};
+
+
+
+/*template <typename T>
 struct FieldChunkMetrics{
     T min;
     T max;
@@ -121,7 +150,37 @@ struct FieldChunkMetrics{
 };
 using FieldChunkMetricsVariant = std::variant<FieldChunkMetrics<int8_t>,
         FieldChunkMetrics<int16_t>, FieldChunkMetrics<int32_t>, FieldChunkMetrics<int64_t>,
-        FieldChunkMetrics<float>, FieldChunkMetrics<double>>;
+        FieldChunkMetrics<float>, FieldChunkMetrics<double>>;*/
+
+
+/**
+ * union MinValue{
+ *    int intValue;
+      float floatValue;
+      char charValue;
+ * }
+ * union MaxValue{
+ *    int intValue;
+      float floatValue;
+      char charValue;
+ * }
+ *
+ * struct FieldChunkMetrics{
+ *    MinValue min;
+ *    MaxValue max;
+ * }
+ *
+ * map<FieldId, map<ChunkId, FieldChunkMetrics>> fieldChunkMetrics;
+ * fieldChunkMetrics[fieldId][chunkId]
+ *
+ * #auto fieldChunkMetrics = segment.getFieldChunkMetrics(fieldId, chunkId);
+ * #inRange(fieldChunkMetrics.min, fieldChunkMetrics.max);
+ * segment.inRangeFieldChunk(inRange, fieldId, chunkId);
+ * fieldChunkMetrics.min.intValue, fieldChunkMetrics.max.intValue,
+ *
+ *
+ */
+
 
 // internal API for DSL calculation
 // only for implementation
@@ -132,8 +191,9 @@ class SegmentInternalInterface : public SegmentInterface {
     chunk_data(FieldId field_id, int64_t chunk_id) const {
         return static_cast<Span<T>>(chunk_data_impl(field_id, chunk_id));
     }
+
     //
-    template <typename T>
+    /*template <typename T>
     struct IsAllowedType {
         static constexpr bool value = std::is_arithmetic<T>::value && !std::is_same<T, bool>::value
             && !std::is_same<T, std::string>::value
@@ -163,14 +223,25 @@ class SegmentInternalInterface : public SegmentInterface {
     typename std::enable_if<!IsAllowedType<T>::value, FieldChunkMetrics<T>*>::type
     get_field_chunk_metrics(FieldId field_id, int64_t chunk_id) const{
         return nullptr;
-    }
+    }*/
 
-    void
+
+
+    /*void
     MaybeLoadFieldChunkMetrics(const FieldId fieldId, int64_t chunkId, const milvus::DataType dataType, const SpanBase& span);
 
     template<typename T>
     void
     ProcessFieldMetrics(FieldId fieldId, int64_t chunkId, const T* data, int64_t count);
+    */
+
+   /* template<typename InRangeFunc>
+    bool
+    scalarFieldInChunkRange(FieldId fieldId, int64_t chunkId, InRangeFunc inRangeFunc) const;
+*/
+
+    FieldChunkMetrics
+    get_field_chunk_fields(FieldId fieldId, int64_t chunkId) const;
 
     template <typename T>
     const index::ScalarIndex<T>&
@@ -335,7 +406,8 @@ class SegmentInternalInterface : public SegmentInterface {
     // fieldID -> std::pair<num_rows, avg_size>
     std::unordered_map<FieldId, std::pair<int64_t, int64_t>>
         variable_fields_avg_size_;  // bytes
-    std::unordered_map<FieldId, std::unordered_map<int64_t, FieldChunkMetricsVariant>> field_chunk_metrics_;
+    //std::unordered_map<FieldId, std::unordered_map<int64_t, FieldChunkMetricsVariant>> field_chunk_metrics_;
+    std::unordered_map<FieldId, std::unordered_map<int64_t, FieldChunkMetrics>> fieldChunkMetrics;
 };
 
 }  // namespace milvus::segcore

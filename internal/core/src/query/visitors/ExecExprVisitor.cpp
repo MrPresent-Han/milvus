@@ -306,13 +306,13 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
                              ? row_count_ - chunk_id * size_per_chunk
                              : size_per_chunk;
         FixedVector<bool> chunk_res(this_size);
-        auto chunk_metrics = segment_.template get_field_chunk_metrics<T>(field_id, chunk_id);
-        /*if(chunk_metrics!= nullptr && !in_range_func(chunk_metrics->min, chunk_metrics->max)) {
+        auto fieldChunkMetrics = segment_.get_field_chunk_fields(field_id, chunk_id);
+        if(!InChunkRange<T>(in_range_func, fieldChunkMetrics, field_meta.get_data_type())) {
             results.emplace_back(std::move(chunk_res));
             continue;
-        }*/
-        //variant or union, use T externally
+        }
 
+        //in_range_func(metrics.min, metrics.max)
         auto chunk = segment_.chunk_data<T>(field_id, chunk_id);
         const T* data = chunk.data();
         // Can use CPU SIMD optimazation to speed up
@@ -329,6 +329,22 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
     AssertInfo(final_result.size() == row_count_,
                "[ExecExprVisitor]Final result size not equal to row count");
     return final_result;
+}
+
+template <typename T, typename InRangeFunc>
+bool
+ExecExprVisitor::InChunkRange(InRangeFunc inRange,
+                              segcore::FieldChunkMetrics& fieldChunkMetrics,
+                              DataType dataType) const{
+    T minValue;
+    T maxValue;
+    switch(dataType){
+        case DataType::INT8:
+            minValue = static_cast<T>(fieldChunkMetrics.min.int8Value);
+            maxValue = static_cast<T>(fieldChunkMetrics.max.int8Value);
+            break;
+    }
+    return inRange(minValue, maxValue);
 }
 
 template <typename T, typename IndexFunc, typename ElementFunc>
