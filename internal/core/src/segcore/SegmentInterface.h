@@ -113,7 +113,10 @@ struct FieldChunkMetrics{
     T min;
     T max;
 
-    FieldChunkMetrics(T min, T max) : min(min), max(max) {}
+    FieldChunkMetrics(T min, T max) : min(min), max(max) {
+        static_assert(std::is_arithmetic<T>::value && !std::is_same<T, bool>::value,
+                "Wrong types for FieldChunkMetrics");
+    }
     FieldChunkMetrics():min(T()),max(T()){}
 };
 using FieldChunkMetricsVariant = std::variant<FieldChunkMetrics<int8_t>,
@@ -131,11 +134,35 @@ class SegmentInternalInterface : public SegmentInterface {
     }
     //
     template <typename T>
-    FieldChunkMetrics<T>
-    get_chunk_metrics(FieldId field_id, int64_t chunk_id) const {
+    struct IsAllowedType {
+        static constexpr bool value = std::is_arithmetic<T>::value && !std::is_same<T, bool>::value
+            && !std::is_same<T, std::string>::value
+            && !std::is_same<T, signed char>::value
+            && !std::is_same<T, short>::value
+            && !std::is_same<T, int>::value
+            && !std::is_same<T, long long>::value;
+    };
+
+    template <typename T>
+    typename std::enable_if<IsAllowedType<T>::value, FieldChunkMetrics<T>*>::type
+    get_field_chunk_metrics(FieldId field_id, int64_t chunk_id) const {
         auto field_chunk_metrics = field_chunk_metrics_.find(field_id);
-        auto chunk_metrics = field_chunk_metrics->second.find(chunk_id);
-        return chunk_metrics;
+        if(field_chunk_metrics != field_chunk_metrics_.end()) {
+            auto chunk_metrics = field_chunk_metrics->second.find(chunk_id);
+            if(chunk_metrics != field_chunk_metrics->second.end()){
+                if(auto metrics = std::get_if<FieldChunkMetrics<T>>(chunk_metrics->second)){
+                    return &metrics;
+                }
+            }
+        }
+        return nullptr;
+    }
+
+    // Return nullptr for disallowed types
+    template <typename T>
+    typename std::enable_if<!IsAllowedType<T>::value, FieldChunkMetrics<T>*>::type
+    get_field_chunk_metrics(FieldId field_id, int64_t chunk_id) const{
+        return nullptr;
     }
 
     void

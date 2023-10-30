@@ -306,8 +306,13 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
                              ? row_count_ - chunk_id * size_per_chunk
                              : size_per_chunk;
         FixedVector<bool> chunk_res(this_size);
-        //auto chunk_metrics = segment_.chunk_metrics(field_id, chunk_id);
-        if(!in_range_func(chunk_metrics.min, chunk_metrics.max)) continue;
+        auto chunk_metrics = segment_.template get_field_chunk_metrics<T>(field_id, chunk_id);
+        /*if(chunk_metrics!= nullptr && !in_range_func(chunk_metrics->min, chunk_metrics->max)) {
+            results.emplace_back(std::move(chunk_res));
+            continue;
+        }*/
+        //variant or union, use T externally
+
         auto chunk = segment_.chunk_data<T>(field_id, chunk_id);
         const T* data = chunk.data();
         // Can use CPU SIMD optimazation to speed up
