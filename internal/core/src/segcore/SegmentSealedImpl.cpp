@@ -343,6 +343,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
             storage::FieldDataPtr field_data;
             while (data.channel->pop(field_data)) {
                 column->AppendBatch(field_data);
+                MaybeLoadFieldChunkMetrics(field_id, 0, data_type, field_data->Data(), num_rows);
             }
         }
 

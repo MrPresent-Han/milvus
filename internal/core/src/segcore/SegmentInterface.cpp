@@ -305,85 +305,57 @@ SegmentInternalInterface::get_field_chunk_fields(FieldId fieldId, int64_t chunkI
     return {};
 }
 
-/*template<typename InRangeFunc>
-bool
-SegmentInternalInterface::scalarFieldInChunkRange(FieldId fieldId,
-                                                  int64_t chunkId,
-                                                  InRangeFunc inRangeFunc) const{
-    auto fieldMetrics = fieldChunkMetrics.find(fieldId);
-
-    auto schema = get_schema();
-    auto& field_meta = schema[fieldId];
-    auto data_type = field_meta.get_data_type();
-
-    if(fieldMetrics!=fieldChunkMetrics.end()){
-        auto chunkMetrics = fieldMetrics->second.find(chunkId);
-        if(chunkMetrics!=fieldMetrics->second.end()){
-            auto fieldChunkMetrics = chunkMetrics->second;
-            switch (data_type) {
-                case DataType::INT8:{
-                    return inRangeFunc(fieldChunkMetrics.min.int8Value, fieldChunkMetrics.max.int8Value);
-                }
-                case DataType::INT16:{
-                    return inRangeFunc(fieldChunkMetrics.min.int16Value, fieldChunkMetrics.max.int16Value);
-                }
-                case DataType::INT32:{
-                    return inRangeFunc(fieldChunkMetrics.min.int32Value, fieldChunkMetrics.max.int32Value);
-                }
-                case DataType::INT64:{
-                    return inRangeFunc(fieldChunkMetrics.min.int64Value, fieldChunkMetrics.max.int64Value);
-                }
-                case DataType::FLOAT:{
-                    return inRangeFunc(fieldChunkMetrics.min.floatValue, fieldChunkMetrics.max.floatValue);
-                }
-                case DataType::DOUBLE:{
-                    return inRangeFunc(fieldChunkMetrics.min.doubleValue, fieldChunkMetrics.max.doubleValue);
-                }
-            }
-        }
-    }
-    return true;
-}*/
-
-/*void
+void
 SegmentInternalInterface::MaybeLoadFieldChunkMetrics(const milvus::FieldId fieldId,
                                                      int64_t chunkId,
                                                      const milvus::DataType dataType,
-                                                     const milvus::SpanBase &span) {
-    const void* span_data = span.data();
-    int64_t count = span.row_count();
+                                                     const void* chunk_data,
+                                                     int64_t count) {
+    FieldChunkMetrics chunkMetrics;
     switch(dataType){
         case DataType::INT8:{
-            const int8_t* typedData = static_cast<const int8_t*>(span_data);
-            ProcessFieldMetrics<int8_t>(fieldId, chunkId, typedData, count);
+            const int8_t* typedData = static_cast<const int8_t*>(chunk_data);
+            std::pair<int8_t, int8_t> minMax = ProcessFieldMetrics<int8_t>(fieldId, chunkId, typedData, count);
+            chunkMetrics.min.int8Value = minMax.first;
+            chunkMetrics.max.int8Value = minMax.second;
             break;
         }
         case DataType::INT16: {
-            const int16_t* typedData = static_cast<const int16_t*>(span_data);
-            ProcessFieldMetrics<int16_t>(fieldId, chunkId, typedData, count);
+            const int16_t* typedData = static_cast<const int16_t*>(chunk_data);
+            std::pair<int16_t, int16_t> minMax = ProcessFieldMetrics<int16_t>(fieldId, chunkId, typedData, count);
+            chunkMetrics.min.int16Value = minMax.first;
+            chunkMetrics.max.int16Value = minMax.second;
             break;
         }
         case DataType::INT32: {
-            const int32_t* typedData = static_cast<const int32_t*>(span_data);
-            ProcessFieldMetrics<int32_t>(fieldId, chunkId, typedData, count);
+            const int32_t* typedData = static_cast<const int32_t*>(chunk_data);
+            std::pair<int32_t, int32_t> minMax = ProcessFieldMetrics<int32_t>(fieldId, chunkId, typedData, count);
+            chunkMetrics.min.int32Value = minMax.first;
+            chunkMetrics.max.int32Value = minMax.second;
             break;
         }
         case DataType::FLOAT: {
-            const float* typedData = static_cast<const float*>(span_data);
-            ProcessFieldMetrics<float>(fieldId, chunkId, typedData, count);
+            const float* typedData = static_cast<const float*>(chunk_data);
+            std::pair<float, float> minMax = ProcessFieldMetrics<float>(fieldId, chunkId, typedData, count);
+            chunkMetrics.min.floatValue = minMax.first;
+            chunkMetrics.max.floatValue = minMax.second;
             break;
         }
         case DataType::DOUBLE: {
-            const double* typedData = static_cast<const double*>(span_data);
-            ProcessFieldMetrics<double>(fieldId, chunkId, typedData, count);
+            const double* typedData = static_cast<const double*>(chunk_data);
+            std::pair<double, double> minMax = ProcessFieldMetrics<double>(fieldId, chunkId, typedData, count);
+            chunkMetrics.min.doubleValue = minMax.first;
+            chunkMetrics.max.doubleValue = minMax.second;
             break;
         }
     }
+    fieldChunkMetrics[fieldId][chunkId] = chunkMetrics;
 }
 
 template<typename T>
-void
-SegmentInternalInterface::ProcessFieldMetrics(milvus::FieldId fieldId, int64_t chunkId, const T *data, int64_t count) {
+std::pair<T,T>
+SegmentInternalInterface::
+ProcessFieldMetrics(milvus::FieldId fieldId, int64_t chunkId, const T *data, int64_t count) {
     T minValue = data[0];
     T maxValue = data[0];
     for(size_t i = 0; i < count; i++) {
@@ -395,11 +367,6 @@ SegmentInternalInterface::ProcessFieldMetrics(milvus::FieldId fieldId, int64_t c
             maxValue = value;
         }
     }
-    FieldChunkMetrics<T> fieldChunkMetrics;
-    fieldChunkMetrics.max = maxValue;
-    fieldChunkMetrics.min = minValue;
-    auto field_chunk_metrics = field_chunk_metrics_.find(fieldId);
-    field_chunk_metrics->second[chunkId] = fieldChunkMetrics;
-}*/
+}
 
 }  // namespace milvus::segcore

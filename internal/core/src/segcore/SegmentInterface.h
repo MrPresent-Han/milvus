@@ -108,7 +108,6 @@ class SegmentInterface {
     HasRawData(int64_t field_id) const = 0;
 };
 
-
 union MinValue{
     int8_t int8Value;
     int16_t int16Value;
@@ -135,53 +134,6 @@ struct FieldChunkMetrics{
     FieldChunkMetrics():hasValue(false){}
 };
 
-
-
-/*template <typename T>
-struct FieldChunkMetrics{
-    T min;
-    T max;
-
-    FieldChunkMetrics(T min, T max) : min(min), max(max) {
-        static_assert(std::is_arithmetic<T>::value && !std::is_same<T, bool>::value,
-                "Wrong types for FieldChunkMetrics");
-    }
-    FieldChunkMetrics():min(T()),max(T()){}
-};
-using FieldChunkMetricsVariant = std::variant<FieldChunkMetrics<int8_t>,
-        FieldChunkMetrics<int16_t>, FieldChunkMetrics<int32_t>, FieldChunkMetrics<int64_t>,
-        FieldChunkMetrics<float>, FieldChunkMetrics<double>>;*/
-
-
-/**
- * union MinValue{
- *    int intValue;
-      float floatValue;
-      char charValue;
- * }
- * union MaxValue{
- *    int intValue;
-      float floatValue;
-      char charValue;
- * }
- *
- * struct FieldChunkMetrics{
- *    MinValue min;
- *    MaxValue max;
- * }
- *
- * map<FieldId, map<ChunkId, FieldChunkMetrics>> fieldChunkMetrics;
- * fieldChunkMetrics[fieldId][chunkId]
- *
- * #auto fieldChunkMetrics = segment.getFieldChunkMetrics(fieldId, chunkId);
- * #inRange(fieldChunkMetrics.min, fieldChunkMetrics.max);
- * segment.inRangeFieldChunk(inRange, fieldId, chunkId);
- * fieldChunkMetrics.min.intValue, fieldChunkMetrics.max.intValue,
- *
- *
- */
-
-
 // internal API for DSL calculation
 // only for implementation
 class SegmentInternalInterface : public SegmentInterface {
@@ -192,53 +144,16 @@ class SegmentInternalInterface : public SegmentInterface {
         return static_cast<Span<T>>(chunk_data_impl(field_id, chunk_id));
     }
 
-    //
-    /*template <typename T>
-    struct IsAllowedType {
-        static constexpr bool value = std::is_arithmetic<T>::value && !std::is_same<T, bool>::value
-            && !std::is_same<T, std::string>::value
-            && !std::is_same<T, signed char>::value
-            && !std::is_same<T, short>::value
-            && !std::is_same<T, int>::value
-            && !std::is_same<T, long long>::value;
-    };
-
-    template <typename T>
-    typename std::enable_if<IsAllowedType<T>::value, FieldChunkMetrics<T>*>::type
-    get_field_chunk_metrics(FieldId field_id, int64_t chunk_id) const {
-        auto field_chunk_metrics = field_chunk_metrics_.find(field_id);
-        if(field_chunk_metrics != field_chunk_metrics_.end()) {
-            auto chunk_metrics = field_chunk_metrics->second.find(chunk_id);
-            if(chunk_metrics != field_chunk_metrics->second.end()){
-                if(auto metrics = std::get_if<FieldChunkMetrics<T>>(chunk_metrics->second)){
-                    return &metrics;
-                }
-            }
-        }
-        return nullptr;
-    }
-
-    // Return nullptr for disallowed types
-    template <typename T>
-    typename std::enable_if<!IsAllowedType<T>::value, FieldChunkMetrics<T>*>::type
-    get_field_chunk_metrics(FieldId field_id, int64_t chunk_id) const{
-        return nullptr;
-    }*/
-
-
-
-    /*void
-    MaybeLoadFieldChunkMetrics(const FieldId fieldId, int64_t chunkId, const milvus::DataType dataType, const SpanBase& span);
+    void
+    MaybeLoadFieldChunkMetrics(const FieldId fieldId,
+                               int64_t chunkId,
+                               const milvus::DataType dataType,
+                               const void* chunk_data,
+                               int64_t count);
 
     template<typename T>
-    void
+    std::pair<T,T>
     ProcessFieldMetrics(FieldId fieldId, int64_t chunkId, const T* data, int64_t count);
-    */
-
-   /* template<typename InRangeFunc>
-    bool
-    scalarFieldInChunkRange(FieldId fieldId, int64_t chunkId, InRangeFunc inRangeFunc) const;
-*/
 
     FieldChunkMetrics
     get_field_chunk_fields(FieldId fieldId, int64_t chunkId) const;

@@ -306,13 +306,12 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
                              ? row_count_ - chunk_id * size_per_chunk
                              : size_per_chunk;
         FixedVector<bool> chunk_res(this_size);
+        //check possible chunk metrics for the field
         auto fieldChunkMetrics = segment_.get_field_chunk_fields(field_id, chunk_id);
         if(!InChunkRange<T>(in_range_func, fieldChunkMetrics, field_meta.get_data_type())) {
             results.emplace_back(std::move(chunk_res));
             continue;
         }
-
-        //in_range_func(metrics.min, metrics.max)
         auto chunk = segment_.chunk_data<T>(field_id, chunk_id);
         const T* data = chunk.data();
         // Can use CPU SIMD optimazation to speed up
@@ -332,7 +331,7 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
 }
 
 template <typename T, typename InRangeFunc>
-bool
+std::enable_if_t<ExecExprVisitor::IsAllowedType<T>::value, bool>
 ExecExprVisitor::InChunkRange(InRangeFunc inRange,
                               segcore::FieldChunkMetrics& fieldChunkMetrics,
                               DataType dataType) const{
@@ -343,8 +342,38 @@ ExecExprVisitor::InChunkRange(InRangeFunc inRange,
             minValue = static_cast<T>(fieldChunkMetrics.min.int8Value);
             maxValue = static_cast<T>(fieldChunkMetrics.max.int8Value);
             break;
-    }
+        case DataType::INT16:
+            minValue = static_cast<T>(fieldChunkMetrics.min.int16Value);
+            maxValue = static_cast<T>(fieldChunkMetrics.max.int16Value);
+            break;
+        case DataType::INT32:
+            minValue = static_cast<T>(fieldChunkMetrics.min.int32Value);
+            maxValue = static_cast<T>(fieldChunkMetrics.max.int32Value);
+            break;
+        case DataType::INT64:
+            minValue = static_cast<T>(fieldChunkMetrics.min.int64Value);
+            maxValue = static_cast<T>(fieldChunkMetrics.max.int64Value);
+            break;
+        case DataType::FLOAT:
+            minValue = static_cast<T>(fieldChunkMetrics.min.floatValue);
+            maxValue = static_cast<T>(fieldChunkMetrics.max.floatValue);
+            break;
+        case DataType::DOUBLE:
+            minValue = static_cast<T>(fieldChunkMetrics.min.doubleValue);
+            maxValue = static_cast<T>(fieldChunkMetrics.max.doubleValue);
+            break;
+        default:
+            return true;
     return inRange(minValue, maxValue);
+    }
+}
+
+template <typename T, typename InRangeFunc>
+std::enable_if_t<!ExecExprVisitor::IsAllowedType<T>::value, bool>
+ExecExprVisitor::InChunkRange(InRangeFunc inRange,
+                                   segcore::FieldChunkMetrics &fieldChunkMetrics,
+                                       milvus::DataType dataType) const {
+    return true;
 }
 
 template <typename T, typename IndexFunc, typename ElementFunc>

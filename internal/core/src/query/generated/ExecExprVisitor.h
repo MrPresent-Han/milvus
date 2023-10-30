@@ -103,11 +103,35 @@ class ExecExprVisitor : public ExprVisitor {
                              IndexFunc index_func,
                              ElementFunc element_func) -> BitsetType;
 
+    template <typename T>
+    struct IsAllowedType {
+        // Define a trait to check if T is one of the allowed numeric types
+        static constexpr bool isNumericType = std::is_same<T, int8_t>::value ||
+                                              std::is_same<T, int16_t>::value ||
+                                              std::is_same<T, int32_t>::value ||
+                                              std::is_same<T, int64_t>::value ||
+                                              std::is_same<T, float>::value ||
+                                              std::is_same<T, double>::value;
+
+        // Define a trait to check if T is one of the disallowed types
+        static constexpr bool isDisallowedType = std::is_same<T, std::string>::value ||
+                                                 std::is_same<T, milvus::Json>::value;
+
+        // Combine the two traits to determine if T is allowed
+        static constexpr bool value = isNumericType && !isDisallowedType;
+    };
+
     template <typename T, typename InRangeFunc>
-    bool
+    std::enable_if_t<ExecExprVisitor::IsAllowedType<T>::value, bool>
     InChunkRange(InRangeFunc inRange,
                  segcore::FieldChunkMetrics& fieldChunkMetrics,
                  DataType dataType) const;
+
+    template <typename T, typename InRangeFunc>
+    std::enable_if_t<!ExecExprVisitor::IsAllowedType<T>::value, bool>
+    InChunkRange(InRangeFunc inRange,
+                      segcore::FieldChunkMetrics& fieldChunkMetrics,
+                      DataType dataType) const;
 
     template <typename T>
     auto
