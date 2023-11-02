@@ -396,4 +396,19 @@ SegmentInternalInterface::ProcessFieldMetrics(const T* data, int64_t count) {
     return {minValue, maxValue};
 }
 
+void
+SegmentInternalInterface::SetStringFieldChunkMetrics(const FieldId fieldId,
+                                                     int64_t chunkId,
+                                                     int64_t count,
+                                                     int minIdx,
+                                                     int maxIdx) {
+    FieldChunkMetrics fChunkMetrics;
+    if (count > 0) {
+        fChunkMetrics.hasValue_ = true;
+        fChunkMetrics.min.stringIdx = minIdx;
+        fChunkMetrics.max.stringIdx = maxIdx;
+    }
+    fieldChunkMetrics[fieldId][chunkId] = fChunkMetrics;
+}
+
 }  // namespace milvus::segcore

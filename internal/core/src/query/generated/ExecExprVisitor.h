@@ -133,6 +133,24 @@ class ExecExprVisitor : public ExprVisitor {
                  segcore::FieldChunkMetrics& fieldChunkMetrics,
                  DataType dataType) const;
 
+    template <typename T, typename InRangeFunc>
+    std::enable_if_t<std::is_same<T, std::string>::value ||
+                         std::is_same<T, std::string_view>::value,
+                     bool>
+    InStringChunkRange(InRangeFunc inRangeFunc,
+                       segcore::FieldChunkMetrics& fieldChunkMetrics,
+                       DataType dataType,
+                       const T* data) const;
+
+    template <typename T, typename InRangeFunc>
+    std::enable_if_t<!std::is_same<T, std::string>::value &&
+                         !std::is_same<T, std::string_view>::value,
+                     bool>
+    InStringChunkRange(InRangeFunc inRangeFunc,
+                       segcore::FieldChunkMetrics& fieldChunkMetrics,
+                       DataType dataType,
+                       const T* data) const;
+
     template <typename T>
     auto
     ExecUnaryRangeVisitorDispatcherImpl(UnaryRangeExpr& expr_raw) -> BitsetType;

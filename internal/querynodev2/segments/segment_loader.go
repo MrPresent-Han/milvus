@@ -186,7 +186,7 @@ func (loader *segmentLoader) Load(ctx context.Context,
 	infos := loader.prepare(segmentType, version, segments...)
 	defer loader.unregister(infos...)
 
-	log.With(
+	log = log.With(
 		zap.Int64s("requestSegments", lo.Map(segments, func(s *querypb.SegmentLoadInfo, _ int) int64 { return s.GetSegmentID() })),
 		zap.Int64s("preparedSegments", lo.Map(infos, func(s *querypb.SegmentLoadInfo, _ int) int64 { return s.GetSegmentID() })),
 	)

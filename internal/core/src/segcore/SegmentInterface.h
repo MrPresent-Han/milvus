@@ -115,6 +115,7 @@ union MinValue {
     int64_t int64Value;
     float floatValue;
     double doubleValue;
+    int stringIdx;
 };
 
 union MaxValue {
@@ -124,6 +125,7 @@ union MaxValue {
     int64_t int64Value;
     float floatValue;
     double doubleValue;
+    int stringIdx;
 };
 
 struct FieldChunkMetrics {
@@ -150,6 +152,13 @@ class SegmentInternalInterface : public SegmentInterface {
                                const milvus::DataType dataType,
                                const void* chunk_data,
                                int64_t count);
+
+    void
+    SetStringFieldChunkMetrics(const FieldId fieldId,
+                               int64_t chunkId,
+                               int64_t count,
+                               int minIdx,
+                               int maxIdx);
 
     template <typename T>
     std::pair<T, T>

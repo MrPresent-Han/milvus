@@ -1476,3 +1476,30 @@ TEST(Sealed, LoadAndGetFieldChunkMetrics) {
     fieldChunkMetrics = segment->get_field_chunk_metrics(double_fid, 0);
     ASSERT_FALSE(fieldChunkMetrics.hasValue_);
 }
+
+TEST(Sealed, LoadAndGetStringFieldChunkMetrics) {
+    auto schema = std::make_shared<Schema>();
+    auto dim = 128;
+    auto metrics_type = "L2";
+    auto pk_fid = schema->AddDebugField("pk", DataType::INT64);
+    auto string_fid = schema->AddDebugField("string_field", DataType::VARCHAR);
+    auto fake_vec_fid = schema->AddDebugField(
+        "fakeVec", DataType::VECTOR_FLOAT, dim, metrics_type);
+    size_t N = 5;
+    auto dataset = DataGen(schema, N);
+    auto segment = CreateSealedSegment(schema);
+
+    //test for string
+    std::vector<std::string> strings = {"b", "b", "a", "e", "d"};
+    auto string_field_data = storage::CreateFieldData(DataType::VARCHAR, 1, N);
+    string_field_data->FillFieldData(strings.data(), N);
+    auto string_field_data_info =
+        FieldDataInfo{string_fid.get(),
+                      N,
+                      std::vector<storage::FieldDataPtr>{string_field_data}};
+    segment->LoadFieldData(string_fid, string_field_data_info);
+    auto fieldChunkMetrics = segment->get_field_chunk_metrics(string_fid, 0);
+    ASSERT_EQ(fieldChunkMetrics.min.stringIdx, 2);
+    ASSERT_EQ(fieldChunkMetrics.max.stringIdx, 3);
+    ASSERT_TRUE(fieldChunkMetrics.hasValue_);
+}

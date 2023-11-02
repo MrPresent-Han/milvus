@@ -307,16 +307,16 @@ ExecExprVisitor::ExecRangeVisitorImpl(FieldId field_id,
                              ? row_count_ - chunk_id * size_per_chunk
                              : size_per_chunk;
         FixedVector<bool> chunk_res(this_size);
+        auto chunk = segment_.chunk_data<T>(field_id, chunk_id);
+        const T* data = chunk.data();
         //check possible chunk metrics
         auto fieldChunkMetrics =
-            segment_.get_field_chunk_metrics(field_id, chunk_id);
-        if (!InChunkRange<T>(
-                in_range_func, fieldChunkMetrics, field_meta.get_data_type())) {
+                segment_.get_field_chunk_metrics(field_id, chunk_id);
+        if (!InChunkRange<T>(in_range_func, fieldChunkMetrics, field_meta.get_data_type()) ||
+                !(InStringChunkRange<T>(in_range_func, fieldChunkMetrics, field_meta.get_data_type(), data))) {
             results.emplace_back(std::move(chunk_res));
             continue;
         }
-        auto chunk = segment_.chunk_data<T>(field_id, chunk_id);
-        const T* data = chunk.data();
         // Can use CPU SIMD optimazation to speed up
         for (int index = 0; index < this_size; ++index) {
             chunk_res[index] = element_func(data[index]);
@@ -382,6 +382,30 @@ std::enable_if_t<!ExecExprVisitor::IsAllowedType<T>::value, bool>
 ExecExprVisitor::InChunkRange(InRangeFunc inRange,
                               segcore::FieldChunkMetrics& fieldChunkMetrics,
                               milvus::DataType dataType) const {
+    return true;
+}
+
+template <typename T, typename InRangeFunc>
+std::enable_if_t<std::is_same<T, std::string>::value||std::is_same<T, std::string_view>::value, bool>
+ExecExprVisitor::InStringChunkRange(InRangeFunc inRangeFunc,
+                                    segcore::FieldChunkMetrics &fieldChunkMetrics,
+                                    milvus::DataType dataType,
+                                    const T *data) const {
+    if(!fieldChunkMetrics.hasValue_) return true;
+    int minStringIdx = fieldChunkMetrics.min.stringIdx;
+    int maxStringIdx = fieldChunkMetrics.max.stringIdx;
+    T minStringValue = data[minStringIdx];
+    T maxStringValue = data[maxStringIdx];
+    LOG_SEGCORE_INFO_ << "hc===minStringValue:" << minStringValue << ", maxStringValue:" << maxStringValue;
+    return inRangeFunc(minStringValue, maxStringValue);
+}
+
+template<typename T, typename InRangeFunc>
+std::enable_if_t<!std::is_same<T, std::string>::value && !std::is_same<T, std::string_view>::value, bool>
+ExecExprVisitor::InStringChunkRange(InRangeFunc inRangeFunc,
+                                    segcore::FieldChunkMetrics &fieldChunkMetrics,
+                                    milvus::DataType dataType,
+                                    const T *data) const{
     return true;
 }
 

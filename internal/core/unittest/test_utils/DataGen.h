@@ -354,6 +354,7 @@ DataGen(SchemaPtr schema,
                 insert_cols(data, N, field_meta);
                 break;
             }
+            case DataType::STRING:
             case DataType::VARCHAR: {
                 vector<std::string> data(N);
                 for (int i = 0; i < N / repeat_count; i++) {

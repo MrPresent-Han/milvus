@@ -279,6 +279,10 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                         std::make_shared<VariableColumn<std::string>>(
                             num_rows, field_meta);
                     storage::FieldDataPtr field_data;
+                    const std::string* min_string = nullptr;
+                    const std::string* max_string = nullptr;
+                    int min_string_idx = 0, max_string_idx = 0,
+                        string_chunk_idx = 0;
                     while (data.channel->pop(field_data)) {
                         for (auto i = 0; i < field_data->get_num_rows(); i++) {
                             auto str = static_cast<const std::string*>(
@@ -286,8 +290,22 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                             auto str_size = str->size();
                             var_column->Append(str->data(), str_size);
                             field_data_size += str_size;
+                            //prepare min, max metrics for chunk
+                            if (min_string == nullptr ||
+                                ((*str) < (*min_string))) {
+                                min_string = str;
+                                min_string_idx = string_chunk_idx;
+                            }
+                            if (max_string == nullptr ||
+                                ((*str) > (*max_string))) {
+                                max_string = str;
+                                max_string_idx = string_chunk_idx;
+                            }
+                            string_chunk_idx++;
                         }
                     }
+                    SetStringFieldChunkMetrics(
+                        field_id, 0, num_rows, min_string_idx, max_string_idx);
                     var_column->Seal();
                     column = std::move(var_column);
                     break;
