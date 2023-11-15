@@ -107,6 +107,18 @@ class ExecPlanNodeVisitor : public PlanNodeVisitor {
     void
     VectorVisitorImpl(VectorPlanNode& node);
 
+    void
+    ExecuteSearchWithBitSet(SearchResult& search_result,
+                            const VectorPlanNode& node,
+                            const segcore::SegmentInternalInterface& segment,
+                            int64_t active_count,
+                            int64_t num_queries,
+                            const void* query_data,
+                            BitsetType* bitset_holder);
+    void
+    ExecuteSearchWithValue(const SearchResult& searchResult,
+                           const VectorPlanNode& node);
+
  private:
     const segcore::SegmentInterface& segment_;
     Timestamp timestamp_;

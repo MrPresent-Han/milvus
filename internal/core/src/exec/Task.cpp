@@ -102,7 +102,7 @@ Task::CreateDriversLocked(std::shared_ptr<Task>& self,
 
     for (auto pipeline = 0; pipeline < num_pipelines; ++pipeline) {
         auto& factory = driver_factories_[pipeline];
-
+        //hc----isGroupExecution
         if (factory->is_group_execution_ != is_group_execution_drivers) {
             continue;
         }
@@ -143,7 +143,7 @@ Task::Next(ContinueFuture* future) {
             consumer_supplier_ == nullptr,
             "Single-threaded execution doesn't support delivering results to a "
             "callback");
-
+        //hc---stress
         LocalPlanner::Plan(plan_fragment_,
                            nullptr,
                            &driver_factories_,

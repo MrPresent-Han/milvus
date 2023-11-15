@@ -54,7 +54,7 @@ bool
 FilterBits::IsFinished() {
     return no_more_input_ && AllInputProcessed();
 }
-
+//hc----FilterBits really executing
 RowVectorPtr
 FilterBits::GetOutput() {
     if (AllInputProcessed()) {

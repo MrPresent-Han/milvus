@@ -175,7 +175,7 @@ class QueryContext : public Context {
                  milvus::Timestamp timestamp,
                  std::shared_ptr<QueryConfig> query_config =
                      std::make_shared<QueryConfig>(),
-                 folly::Executor* executor = nullptr,
+                 folly::Executor* executor = nullptr, //hc---executor null?
                  std::unordered_map<std::string, std::shared_ptr<Config>>
                      connector_configs = {})
         : Context(ContextScope::QUERY),

@@ -180,7 +180,7 @@ ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
     }();
 
     auto& query_info_proto = anns_proto.query_info();
-
+    //hc---here parse search_info
     SearchInfo search_info;
     auto field_id = FieldId(anns_proto.field_id());
     search_info.field_id_ = field_id;
@@ -219,6 +219,7 @@ ProtoParser::RetrievePlanNodeFromProto(
             auto expr_opt = [&]() -> ExprPtr {
                 return ParseExpr(predicate_proto);
             }();
+            //hc---generate filter expr
             auto expr_parser = [&]() -> plan::PlanNodePtr {
                 auto expr = ParseExprs(predicate_proto);
                 return std::make_shared<plan::FilterBitsNode>(
@@ -278,7 +279,7 @@ ProtoParser::CreateRetrievePlan(const proto::plan::PlanNode& plan_node_proto) {
     auto plan_node = RetrievePlanNodeFromProto(plan_node_proto);
     ExtractedPlanInfo plan_info(schema.size());
     ExtractInfoPlanNodeVisitor extractor(plan_info);
-    plan_node->accept(extractor);
+    plan_node->accept(extractor);//hc---why extractInfo
 
     retrieve_plan->plan_node_ = std::move(plan_node);
     for (auto field_id_raw : plan_node_proto.output_field_ids()) {

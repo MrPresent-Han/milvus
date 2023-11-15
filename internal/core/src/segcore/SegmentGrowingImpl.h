@@ -197,7 +197,7 @@ class SegmentGrowingImpl : public SegmentGrowing {
                          Timestamp timestamp) const override;
 
     void
-    vector_search(SearchInfo& search_info,
+    vector_search(const SearchInfo& search_info,
                   const void* query_data,
                   int64_t query_count,
                   Timestamp timestamp,

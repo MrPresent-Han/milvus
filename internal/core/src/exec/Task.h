@@ -183,10 +183,10 @@ class Task : public std::enable_shared_from_this<Task> {
     std::function<void(std::exception_ptr)> on_error_;
 
     std::vector<std::unique_ptr<DriverFactory>> driver_factories_;
+    //hc---why multiple driver_factories>
+    std::vector<std::shared_ptr<Driver>> drivers_;//hc---multiple drivers?
 
-    std::vector<std::shared_ptr<Driver>> drivers_;
-
-    ConsumerSupplier consumer_supplier_;
+    ConsumerSupplier consumer_supplier_;//hc---consumer???
 
     mutable std::mutex mutex_;
 

@@ -62,7 +62,7 @@ class ExecPlanNodeVisitor : PlanNodeVisitor {
 }  // namespace impl
 
 static SearchResult
-empty_search_result(int64_t num_queries, SearchInfo& search_info) {
+empty_search_result(int64_t num_queries, const SearchInfo& search_info) {
     SearchResult final_result;
     SubSearchResult result(num_queries,
                            search_info.topk_,
@@ -136,11 +136,12 @@ ExecPlanNodeVisitor::ExecuteExprNode(
     const std::shared_ptr<milvus::plan::PlanNode>& plannode,
     const milvus::segcore::SegmentInternalInterface* segment,
     BitsetType* bitset_holder) {
-    auto plan = plan::PlanFragment(plannode);
+    auto plan = plan::PlanFragment(plannode);//hc--- planNode--->planFragment
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
         "query id", segment, timestamp_);
 
     auto task = milvus::exec::Task::Create("task_expr", plan, 0, query_context);
+    //hc---stress for executing task
     for (;;) {
         auto result = task->Next();
         if (!result) {
@@ -169,59 +170,78 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     // TODO: optimize here, remove the dynamic cast
     assert(!search_result_opt_.has_value());
     auto segment =
-        dynamic_cast<const segcore::SegmentInternalInterface*>(&segment_);
+            dynamic_cast<const segcore::SegmentInternalInterface *>(&segment_);
     AssertInfo(segment, "support SegmentSmallIndex Only");
     SearchResult search_result;
-    auto& ph = placeholder_group_->at(0);
+    auto &ph = placeholder_group_->at(0);
     auto src_data = ph.get_blob<EmbeddedType<VectorType>>();
     auto num_queries = ph.num_of_queries_;
 
-    // TODO: add API to unify row_count
-    // auto row_count = segment->get_row_count();
+    //calculate active count
     auto active_count = segment->get_active_count(timestamp_);
-
-    // skip all calculation
-    if (active_count == 0) {
+    if (active_count == 0) {// skip all calculation
         search_result_opt_ =
-            empty_search_result(num_queries, node.search_info_);
+                empty_search_result(num_queries, node.search_info_);
         return;
     }
+    //prepare bitset
+    BitsetType bitset_holder;
+    segment->mask_with_timestamps(bitset_holder, timestamp_);
+    segment->mask_with_delete(bitset_holder, active_count, timestamp_);
 
-    std::unique_ptr<BitsetType> bitset_holder;
+    if(node.search_info_.isGroupBy){
+        ExecuteSearchWithValue(search_result, node);
+    } else {
+        ExecuteSearchWithBitSet(search_result, node, *segment, active_count, num_queries, src_data, &bitset_holder);
+    }
+    search_result_opt_ = std::move(search_result);
+}
+
+void
+ExecPlanNodeVisitor::ExecuteSearchWithValue(const milvus::SearchResult &searchResult,
+                                                     const milvus::query::VectorPlanNode &node) {
+    
+}
+
+void
+ExecPlanNodeVisitor::ExecuteSearchWithBitSet(milvus::SearchResult &search_result,
+                                             const VectorPlanNode& node,
+                                             const segcore::SegmentInternalInterface& segment,
+                                             int64_t active_count,
+                                             int64_t num_queries,
+                                             const void* query_data,
+                                             BitsetType* bitset_holder) {
+    //this bitset may incur unnecessary memory copy
     if (node.filter_plannode_.has_value()) {
-        BitsetType expr_res;
-        ExecuteExprNode(node.filter_plannode_.value(), segment, &expr_res);
-        bitset_holder = std::make_unique<BitsetType>(expr_res);
-        bitset_holder->flip();
+        BitsetType expr_bits;
+        ExecuteExprNode(node.filter_plannode_.value(), &segment, &expr_bits);
+        expr_bits.flip();
+        *bitset_holder = expr_bits | (*bitset_holder);
     } else {
         if (node.predicate_.has_value()) {
-            bitset_holder = std::make_unique<BitsetType>(
-                ExecExprVisitor(*segment, this, active_count, timestamp_)
-                    .call_child(*node.predicate_.value()));
-            bitset_holder->flip();
+            auto expr_bits = std::make_unique<BitsetType>(
+                    ExecExprVisitor(segment, this, active_count, timestamp_)
+                            .call_child(*node.predicate_.value()));
+            expr_bits->flip();
+            *bitset_holder = (*expr_bits) | (*bitset_holder);
         } else {
-            bitset_holder = std::make_unique<BitsetType>(active_count, false);
+            //no need to execute
         }
     }
-    segment->mask_with_timestamps(*bitset_holder, timestamp_);
-
-    segment->mask_with_delete(*bitset_holder, active_count, timestamp_);
 
     // if bitset_holder is all 1's, we got empty result
     if (bitset_holder->all()) {
         search_result_opt_ =
-            empty_search_result(num_queries, node.search_info_);
+                empty_search_result(num_queries, node.search_info_);
         return;
     }
     BitsetView final_view = *bitset_holder;
-    segment->vector_search(node.search_info_,
-                           src_data,
+    segment.vector_search(node.search_info_,
+                           query_data,
                            num_queries,
                            timestamp_,
                            final_view,
                            search_result);
-
-    search_result_opt_ = std::move(search_result);
 }
 
 std::unique_ptr<RetrieveResult>
@@ -260,8 +280,7 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
     // For case that retrieve by expression, bitset will be allocated when expression is being executed.
     if (node.is_count_) {
         bitset_holder.resize(active_count);
-    }
-
+    }//hc----executeExpr
     if (node.filter_plannode_.has_value()) {
         ExecuteExprNode(node.filter_plannode_.value(), segment, &bitset_holder);
         bitset_holder.flip();

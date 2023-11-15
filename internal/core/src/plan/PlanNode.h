@@ -183,7 +183,7 @@ class FilterNode : public PlanNode {
     const std::vector<PlanNodePtr> sources_;
     const expr::TypedExprPtr filter_;
 };
-
+//hc----note
 class FilterBitsNode : public PlanNode {
  public:
     FilterBitsNode(

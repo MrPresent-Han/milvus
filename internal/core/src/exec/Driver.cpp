@@ -36,7 +36,7 @@ DriverContext::GetQueryConfig() {
     return task_->query_context()->query_config();
 }
 
-std::shared_ptr<Driver>
+std::shared_ptr<Driver>//hc---stress
 DriverFactory::CreateDriver(std::unique_ptr<DriverContext> ctx,
                             std::function<int(int pipelineid)> num_drivers) {
     auto driver = std::shared_ptr<Driver>(new Driver());
@@ -200,7 +200,7 @@ Driver::RunInternal(std::shared_ptr<Driver>& self,
                     if (needs_input) {
                         RowVectorPtr result;
                         {
-                            CALL_OPERATOR(
+                            CALL_OPERATOR(//entry for executing
                                 result = op->GetOutput(), op, "GetOutput");
                             if (result) {
                                 AssertInfo(
@@ -302,7 +302,8 @@ SplitPlan(const std::shared_ptr<const plan::PlanNode>& plannode,
         driver_factories->back()->consumer_node_ = consumer_node;
     }
 
-    auto sources = plannode->sources();
+    auto sources = plannode->sources();//hc---sources?
+    // currently, sources all empty
     if (sources.empty()) {
         driver_factories->back()->is_input_driver_ = true;
     } else {
@@ -325,6 +326,7 @@ LocalPlanner::Plan(
     std::vector<std::unique_ptr<DriverFactory>>* driver_factories,
     const QueryConfig& config,
     uint32_t max_drivers) {
+    //hc----stress
     SplitPlan(fragment.plan_node_,
               nullptr,
               nullptr,

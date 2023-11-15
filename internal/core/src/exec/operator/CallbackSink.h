@@ -20,7 +20,7 @@
 
 namespace milvus {
 namespace exec {
-class CallbackSink : public Operator {
+class CallbackSink : public Operator {//hc---What's callBack sink?
  public:
     CallbackSink(
         int32_t operator_id,

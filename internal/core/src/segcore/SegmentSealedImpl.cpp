@@ -550,7 +550,7 @@ SegmentSealedImpl::mask_with_delete(BitsetType& bitset,
 }
 
 void
-SegmentSealedImpl::vector_search(SearchInfo& search_info,
+SegmentSealedImpl::vector_search(const SearchInfo& search_info,
                                  const void* query_data,
                                  int64_t query_count,
                                  Timestamp timestamp,
