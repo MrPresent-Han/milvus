@@ -1779,7 +1779,7 @@ func TestTaskSearch_parseQueryInfo(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				info, offset, err := parseSearchInfo(test.validParams)
+				info, offset, err := parseSearchInfo(test.validParams, nil)
 				assert.NoError(t, err)
 				assert.NotNil(t, info)
 				if test.description == "offsetParam" {
@@ -1868,7 +1868,7 @@ func TestTaskSearch_parseQueryInfo(t *testing.T) {
 
 		for _, test := range tests {
 			t.Run(test.description, func(t *testing.T) {
-				info, offset, err := parseSearchInfo(test.invalidParams)
+				info, offset, err := parseSearchInfo(test.invalidParams, nil)
 				assert.Error(t, err)
 				assert.Nil(t, info)
 				assert.Zero(t, offset)

@@ -84,6 +84,19 @@ class SegmentSealedImpl : public SegmentSealed {
     bool
     HasRawData(int64_t field_id) const override;
 
+    DataType
+    GetFieldDataType(FieldId fieldId) const override;
+
+    /*template <typename T>
+    void
+    fetchFieldRawData(FieldId field_id,
+                      const int64_t* seg_offsets,
+                      int64_t count,
+                      T* dst) const{
+        auto column = this->fields_.at(field_id);
+        bulk_subscript_impl<T>(column->Data(), seg_offsets, count, dst);
+    }*/
+
  public:
     int64_t
     GetMemoryUsageInBytes() const override;

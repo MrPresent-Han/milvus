@@ -28,6 +28,7 @@
 
 #include "common/FieldMeta.h"
 #include "pb/schema.pb.h"
+#include "knowhere/index_node.h"
 
 namespace milvus {
 struct SearchResult {
@@ -51,6 +52,7 @@ struct SearchResult {
     // first fill data during search, and then update data after reducing search results
     std::vector<float> distances_;
     std::vector<int64_t> seg_offsets_;
+    std::vector<GroupByValueType> group_by_values_;
 
     // first fill data during fillPrimaryKey, and then update data after reducing search results
     std::vector<PkType> primary_keys_;
@@ -66,6 +68,9 @@ struct SearchResult {
 
     // used for reduce, filter invalid pk, get real topks count
     std::vector<size_t> topk_per_nq_prefix_sum_;
+
+    //knowhere iterators, used for group by or other operators in the future
+    std::optional<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>> iterators;
 };
 
 using SearchResultPtr = std::shared_ptr<SearchResult>;

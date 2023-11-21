@@ -455,7 +455,6 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		channel,
 		req.GetSegmentIDs(),
 	))
-
 	resp, err := segments.ReduceSearchResults(ctx, results, req.Req.GetNq(), req.Req.GetTopk(), req.Req.GetMetricType())
 	if err != nil {
 		return nil, err

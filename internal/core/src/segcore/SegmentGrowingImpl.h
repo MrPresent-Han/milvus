@@ -76,6 +76,15 @@ class SegmentGrowingImpl : public SegmentGrowing {
         return id_;
     }
 
+    template <typename T>
+    void
+    fetchFieldRawData(FieldId fieldId,
+                      const int64_t* seg_offsets,
+                      int64_t count,
+                      T* dst) const{
+
+    }
+
  public:
     const InsertRecord<>&
     get_insert_record() const {
@@ -221,6 +230,9 @@ class SegmentGrowingImpl : public SegmentGrowing {
                   Timestamp timestamp,
                   const BitsetView& bitset,
                   SearchResult& output) const override;
+
+    DataType
+    GetFieldDataType(FieldId fieldId) const override;
 
  public:
     void
