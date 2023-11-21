@@ -13,31 +13,27 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include "GroupByOperator.h"
+#include "common/Consts.h"
 
-#pragma once
+namespace milvus{
+namespace query{
 
-#include <memory>
+knowhere::DataSetPtr
+GroupByOperator::GroupBy(
+        const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
+        const knowhere::Json& search_conf,
+        milvus::FetchFieldRawDataFuncPtr fetch_data_ptr,
+        std::vector<GroupByValueType>& group_by_values) {
+    //1. get meta
+    auto topK = search_conf[knowhere::meta::TOPK];
+    auto group_by_field = search_conf[GROUP_BY_FIELD];
+    auto field_id = FieldId(group_by_field);
 
-#include "common/Types.h"
-#include "knowhere/config.h"
-namespace milvus {
+    //2. prepare data
 
-using FetchFieldRawDataFuncPtr = void(*)(FieldId,int64_t);
+    return nullptr;
+}
 
-struct SearchInfo {
-    int64_t topk_;
-    int64_t round_decimal_;
-    FieldId field_id_;
-    MetricType metric_type_;
-    knowhere::Json search_params_;
-    FetchFieldRawDataFuncPtr fetch_field_raw_data_func_;
-};
-
-using SearchInfoPtr = std::shared_ptr<SearchInfo>;
-
-/**
- * std::vector<int>
- * fetch_field_raw_data_func_<int>(seg_offsets,auto,auto);
- */
-
-}  // namespace milvus
+}
+}

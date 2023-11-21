@@ -16,28 +16,19 @@
 
 #pragma once
 
-#include <memory>
+#include "common/QueryInfo.h"
+#include "knowhere/index_node.h"
 
-#include "common/Types.h"
-#include "knowhere/config.h"
-namespace milvus {
+namespace milvus{
+namespace query{
+class GroupByOperator{
+public:
+    static knowhere::DataSetPtr GroupBy(
+            const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
+            const knowhere::Json& search_conf,
+            milvus::FetchFieldRawDataFuncPtr fetch_data_ptr,
+            std::vector<GroupByValueType>& group_by_values);
 
-using FetchFieldRawDataFuncPtr = void(*)(FieldId,int64_t);
-
-struct SearchInfo {
-    int64_t topk_;
-    int64_t round_decimal_;
-    FieldId field_id_;
-    MetricType metric_type_;
-    knowhere::Json search_params_;
-    FetchFieldRawDataFuncPtr fetch_field_raw_data_func_;
 };
-
-using SearchInfoPtr = std::shared_ptr<SearchInfo>;
-
-/**
- * std::vector<int>
- * fetch_field_raw_data_func_<int>(seg_offsets,auto,auto);
- */
-
-}  // namespace milvus
+}
+}

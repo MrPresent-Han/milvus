@@ -23,22 +23,21 @@ namespace milvus::query {
 void
 SearchOnSealedIndex(const Schema& schema,
                     const segcore::SealedIndexingRecord& record,
-                    const SearchInfo& search_info,
                     const void* query_data,
                     int64_t num_queries,
-                    const BitsetView& bitset,
-                    SearchResult& result) {
-    auto topk = search_info.topk_;
-    auto round_decimal = search_info.round_decimal_;
+                    SearchResult& result,
+                    const SearchContext& searchContext) {
+    auto topk = searchContext.search_info_.topk_;
+    auto round_decimal = searchContext.search_info_.round_decimal_;
 
-    auto field_id = search_info.field_id_;
+    auto field_id = searchContext.search_info_.field_id_;
     auto& field = schema[field_id];
     // Assert(field.get_data_type() == DataType::VECTOR_FLOAT);
     auto dim = field.get_dim();
 
     AssertInfo(record.is_ready(field_id), "[SearchOnSealed]Record isn't ready");
     auto field_indexing = record.get_field_indexing(field_id);
-    AssertInfo(field_indexing->metric_type_ == search_info.metric_type_,
+    AssertInfo(field_indexing->metric_type_ == searchContext.search_info_.metric_type_,
                "Metric type of field index isn't the same with search info");
 
     auto final = [&] {
@@ -47,7 +46,7 @@ SearchOnSealedIndex(const Schema& schema,
         auto vec_index =
             dynamic_cast<index::VectorIndex*>(field_indexing->indexing_.get());
         auto index_type = vec_index->GetIndexType();
-        return vec_index->Query(ds, search_info, bitset);
+        return vec_index->Query(ds, searchContext.search_info_, searchContext.bitset_);
     }();
 
     float* distances = final->distances_.data();

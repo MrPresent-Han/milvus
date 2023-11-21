@@ -45,6 +45,7 @@
 #include "storage/Util.h"
 #include "common/File.h"
 #include "common/Tracer.h"
+#include "query/GroupByOperator.h"
 
 namespace milvus::index {
 
@@ -301,11 +302,12 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
                          const SearchInfo& search_info,
                          const BitsetView& bitset) {
     //    AssertInfo(GetMetricType() == search_info.metric_type_,
-    //               "Metric type of field index isn't the same with search info");
+    //    //               "Metric type of field index isn't the same with search info");
 
     auto num_queries = dataset->GetRows();
     knowhere::Json search_conf = search_info.search_params_;
     auto topk = search_info.topk_;
+    auto group_by_values = std::optional<std::vector<GroupByValueType>>();
     // TODO :: check dim of search data
     auto final = [&] {
         search_conf[knowhere::meta::TOPK] = topk;
@@ -330,7 +332,17 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
                 res.value(), topk, num_queries, GetMetricType());
             milvus::tracer::AddEvent("finish_ReGenRangeSearchResult");
             return result;
-        } else {
+        }  else if(CheckKeyInConfig(search_conf, GROUP_BY_FIELD)) {
+           knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+                   iterators = index_.AnnIterator(*dataset, search_conf, bitset);
+           group_by_values = std::make_optional<std::vector<GroupByValueType>>();
+           auto result = milvus::query::GroupByOperator
+                   ::GroupBy(iterators.value(),
+                             search_conf,
+                             search_info.fetch_field_raw_data_func_,
+                             group_by_values.value());
+           return result;
+        }  else {
             milvus::tracer::AddEvent("start_knowhere_index_search");
             auto res = index_.Search(*dataset, search_conf, bitset);
             milvus::tracer::AddEvent("finish_knowhere_index_search");
