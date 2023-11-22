@@ -18,16 +18,33 @@
 
 #include "common/QueryInfo.h"
 #include "knowhere/index_node.h"
+#include "segcore/SegmentInterface.h"
 
 namespace milvus{
 namespace query{
-class GroupByOperator{
-public:
-    static knowhere::DataSetPtr GroupBy(
+    knowhere::DataSetPtr GroupBy(
             const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
-            const knowhere::Json& search_conf,
-            std::vector<GroupByValueType>& group_by_values);
+            const SearchInfo& searchInfo,
+            std::vector<GroupByValueType>& group_by_values,
+            const segcore::SegmentInternalInterface& segment);
 
-};
+    template <typename T>
+    void
+    GroupIteratorsByType(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> &iterators,
+                         const FieldId &field_id,
+                         int64_t topK,
+                         const segcore::SegmentInternalInterface& segment,
+                         std::vector<GroupByValueType> &group_by_values);
+
+    template <typename T>
+    void
+    GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
+                        const FieldId& field_id,
+                        int64_t topK,
+                        const segcore::SegmentInternalInterface& segment,
+                        std::vector<GroupByValueType>& group_by_values,
+                        std::vector<int64_t>& offsets,
+                        std::vector<float>& distances);
+
 }
 }

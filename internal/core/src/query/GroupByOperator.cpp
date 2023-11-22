@@ -20,19 +20,64 @@ namespace milvus{
 namespace query{
 
 knowhere::DataSetPtr
-GroupByOperator::GroupBy(
+GroupBy(
         const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
-        const knowhere::Json& search_conf,
-        std::vector<GroupByValueType>& group_by_values) {
+        const SearchInfo& search_info,
+        std::vector<GroupByValueType>& group_by_values,
+        const segcore::SegmentInternalInterface& segment) {
     //1. get meta
-    auto topK = search_conf[knowhere::meta::TOPK];
-    auto group_by_field = search_conf[GROUP_BY_FIELD];
-    auto field_id = FieldId(group_by_field);
+    FieldId group_by_field_id = search_info.group_by_field_id_.value();
+    auto data_type = segment.GetFieldDataType(group_by_field_id);
 
-    //2. prepare data
-    //fetch_data_ptr()
+
+    switch(data_type){
+        case DataType::BOOL:{
+            GroupIteratorsByType<bool>(iterators, group_by_field_id, search_info.topk_, segment, group_by_values);
+            break;
+        }
+        case DataType::INT8:{
+            GroupIteratorsByType<int8_t>(iterators, group_by_field_id, search_info.topk_, segment, group_by_values);
+            break;
+        }
+        case DataType::INT16:{
+            GroupIteratorsByType<int16_t>(iterators, group_by_field_id, search_info.topk_, segment, group_by_values);
+            break;
+        }
+        default:{
+            PanicInfo(DataTypeInvalid,
+                      fmt::format("unsupported data type {} for group by operator", data_type));
+        }
+    }
     return nullptr;
 }
+
+template <typename T>
+void
+GroupIteratorsByType(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> &iterators,
+                     const FieldId &field_id,
+                     int64_t topK,
+                     const segcore::SegmentInternalInterface& segment,
+                     std::vector<GroupByValueType> &group_by_values){
+    std::vector<int64_t> offsets;
+    std::vector<float> distances;
+    for(auto& iterator: iterators){
+        GroupIteratorResult<T>(iterator, field_id, topK, segment, group_by_values, offsets, distances);
+    }
+}
+
+template<typename T>
+void
+GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
+                    const FieldId& field_id,
+                    int64_t topK,
+                    const segcore::SegmentInternalInterface& segment,
+                    std::vector<GroupByValueType>& group_by_values,
+                    std::vector<int64_t>& offsets,
+                    std::vector<float>& distances){
+    
+
+}
+
 
 }
 }

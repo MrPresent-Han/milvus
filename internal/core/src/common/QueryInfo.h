@@ -22,7 +22,6 @@
 #include "knowhere/config.h"
 namespace milvus {
 
-//using FetchFieldRawDataFuncPtr = std::function<void(FieldId, int64_t)>;
 
 struct SearchInfo {
     int64_t topk_;
@@ -30,7 +29,7 @@ struct SearchInfo {
     FieldId field_id_;
     MetricType metric_type_;
     knowhere::Json search_params_;
-    //FetchFieldRawDataFuncPtr fetch_field_raw_data_func_;
+    std::optional<FieldId> group_by_field_id_;
 };
 
 using SearchInfoPtr = std::shared_ptr<SearchInfo>;

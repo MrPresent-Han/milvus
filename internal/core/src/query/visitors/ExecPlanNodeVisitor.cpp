@@ -16,9 +16,10 @@
 #include "query/PlanImpl.h"
 #include "query/SubSearchResult.h"
 #include "query/generated/ExecExprVisitor.h"
-#include "segcore/SegmentGrowing.h"
+#include "segcore/SegmentInterface.h"
 #include "common/Json.h"
 #include "log/Log.h"
+#include "query/GroupByOperator.h"
 
 namespace milvus::query {
 
@@ -123,7 +124,15 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
                            timestamp_,
                            final_view,
                            search_result);
-
+    if(search_result.iterators.has_value()){
+        std::vector<GroupByValueType> group_by_values;
+        GroupBy(
+                search_result.iterators.value(),
+                node.search_info_,
+                group_by_values,
+                *segment);
+        search_result.group_by_values_ = std::move(group_by_values);
+    }
     search_result_opt_ = std::move(search_result);
 }
 

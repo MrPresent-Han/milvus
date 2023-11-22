@@ -61,6 +61,7 @@ class MilvusConan(ConanFile):
         "aws-sdk-cpp:transfer": False,
         "gtest:build_gmock": False,
         "boost:without_locale": False,
+        "boost:without_stacktrace": True,
         "glog:with_gflags": True,
         "glog:shared": True,
         "prometheus-cpp:with_pull": False,

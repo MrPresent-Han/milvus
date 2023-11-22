@@ -305,6 +305,16 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
 
     auto num_queries = dataset->GetRows();
     knowhere::Json search_conf = search_info.search_params_;
+    if(CheckKeyInConfig(search_conf, GROUP_BY_FIELD)){
+        knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+                iterators_val = index_.AnnIterator(*dataset, search_conf, bitset);
+        auto result = std::make_unique<SearchResult>();
+        if(iterators_val.has_value()){
+            result->iterators = std::make_optional<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>(
+                    std::move(iterators_val.value()));
+        }
+        return result;
+    }
     auto topk = search_info.topk_;
     // TODO :: check dim of search data
     auto final = [&] {

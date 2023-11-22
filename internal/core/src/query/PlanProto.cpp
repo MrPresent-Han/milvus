@@ -196,6 +196,7 @@ ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
     search_info.round_decimal_ = query_info_proto.round_decimal();
     search_info.search_params_ =
         nlohmann::json::parse(query_info_proto.search_params());
+    //search_info.group_by_field_id_ = std::make_optional<>
 
     auto plan_node = [&]() -> std::unique_ptr<VectorPlanNode> {
         if (anns_proto.vector_type() ==
