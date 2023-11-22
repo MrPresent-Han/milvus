@@ -227,9 +227,6 @@ class SegmentSealedImpl : public SegmentSealed {
                   SearchResult& output) const override;
 
     void
-    set_up_fetch_data_function(SearchInfo& search_info) const;
-
-    void
     mask_with_delete(BitsetType& bitset,
                      int64_t ins_barrier,
                      Timestamp timestamp) const override;

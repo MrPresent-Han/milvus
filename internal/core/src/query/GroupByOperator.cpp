@@ -23,7 +23,6 @@ knowhere::DataSetPtr
 GroupByOperator::GroupBy(
         const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
         const knowhere::Json& search_conf,
-        milvus::FetchFieldRawDataFuncPtr fetch_data_ptr,
         std::vector<GroupByValueType>& group_by_values) {
     //1. get meta
     auto topK = search_conf[knowhere::meta::TOPK];
@@ -31,7 +30,7 @@ GroupByOperator::GroupBy(
     auto field_id = FieldId(group_by_field);
 
     //2. prepare data
-
+    //fetch_data_ptr()
     return nullptr;
 }
 

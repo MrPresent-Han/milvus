@@ -625,12 +625,6 @@ SegmentSealedImpl::mask_with_delete(BitsetType& bitset,
     bitset |= delete_bitset;
 }
 
-
-void
-SegmentSealedImpl::set_up_fetch_data_function(milvus::SearchInfo &search_info) const {
-    search_info.fetch_field_raw_data_func_ = bulk_subscript_impl;
-}
-
 void
 SegmentSealedImpl::vector_search(SearchInfo& search_info,
                                  const void* query_data,
@@ -654,27 +648,26 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
         AssertInfo(vector_indexings_.is_ready(field_id),
                    "vector indexes isn't ready for field " +
                        std::to_string(field_id.get()));
-        milvus::query::SearchContext searchContext(binlog_search_info, bitset, *this);
         query::SearchOnSealedIndex(*schema_,
                                    vector_indexings_,
+                                   binlog_search_info,
                                    query_data,
                                    query_count,
-                                   output,
-                                   searchContext,
-                                   *this);
+                                   bitset,
+                                   output);
         milvus::tracer::AddEvent(
             "finish_searching_vector_temperate_binlog_index");
     } else if (get_bit(index_ready_bitset_, field_id)) {
         AssertInfo(vector_indexings_.is_ready(field_id),
                    "vector indexes isn't ready for field " +
                        std::to_string(field_id.get()));
-        milvus::query::SearchContext searchContext(search_info, bitset, *this);
         query::SearchOnSealedIndex(*schema_,
                                    vector_indexings_,
+                                   search_info,
                                    query_data,
                                    query_count,
-                                   output,
-                                   searchContext);
+                                   bitset,
+                                   output);
         milvus::tracer::AddEvent("finish_searching_vector_index");
     } else {
         AssertInfo(
@@ -946,7 +939,7 @@ SegmentSealedImpl::bulk_subscript(SystemFieldType system_type,
                       fmt::format("unknown subscript fields", system_type));
     }
 }
-//hc---stress entry
+
 template <typename S, typename T>
 void
 SegmentSealedImpl::bulk_subscript_impl(const void* src_raw,

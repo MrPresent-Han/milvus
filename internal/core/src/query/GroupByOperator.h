@@ -26,7 +26,6 @@ public:
     static knowhere::DataSetPtr GroupBy(
             const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
             const knowhere::Json& search_conf,
-            milvus::FetchFieldRawDataFuncPtr fetch_data_ptr,
             std::vector<GroupByValueType>& group_by_values);
 
 };

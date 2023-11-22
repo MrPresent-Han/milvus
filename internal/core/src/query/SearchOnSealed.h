@@ -16,32 +16,16 @@
 #include "query/SearchOnGrowing.h"
 #include "segcore/SealedIndexingRecord.h"
 
-namespace milvus::segcore{
-    class SegmentInternalInterface;
-}
-
 namespace milvus::query {
-
-struct SearchContext{
-    const SearchInfo& search_info_;
-    const BitsetView& bitset_;
-    const segcore::SegmentInternalInterface& segment_;
-
-    SearchContext(const SearchInfo& search_info,
-                  const BitsetView& bitset,
-                  const segcore::SegmentInternalInterface& segment):
-                  search_info_(search_info),
-                  bitset_(bitset),
-                  segment_(segment){}
-};
 
 void
 SearchOnSealedIndex(const Schema& schema,
                     const segcore::SealedIndexingRecord& record,
+                    const SearchInfo& search_info,
                     const void* query_data,
                     int64_t num_queries,
-                    SearchResult& result,
-                    const SearchContext& searchContext);
+                    const BitsetView& view,
+                    SearchResult& result);
 
 void
 SearchOnSealed(const Schema& schema,

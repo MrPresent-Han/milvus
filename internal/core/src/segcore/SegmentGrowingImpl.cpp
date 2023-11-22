@@ -323,13 +323,13 @@ SegmentGrowingImpl::vector_search(SearchInfo& search_info,
                                   SearchResult& output) const {
     auto& sealed_indexing = this->get_sealed_indexing_record();
     if (sealed_indexing.is_ready(search_info.field_id_)) {
-        milvus::query::SearchContext searchContext(search_info, bitset, *this);
         query::SearchOnSealedIndex(this->get_schema(),
                                    sealed_indexing,
+                                   search_info,
                                    query_data,
                                    query_count,
-                                   output,
-                                   searchContext);
+                                   bitset,
+                                   output);
     } else {
         query::SearchOnGrowing(*this,
                                search_info,
