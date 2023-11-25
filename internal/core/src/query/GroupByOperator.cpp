@@ -15,6 +15,8 @@
 // limitations under the License.
 #include "GroupByOperator.h"
 #include "common/Consts.h"
+#include "segcore/SegmentSealedImpl.h"
+#include "segcore/SegmentGrowingImpl.h"
 
 namespace milvus{
 namespace query{
@@ -29,18 +31,15 @@ GroupBy(
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
 
-
     switch(data_type){
-        case DataType::BOOL:{
-            GroupIteratorsByType<bool>(iterators, group_by_field_id, search_info.topk_, segment, group_by_values);
-            break;
-        }
         case DataType::INT8:{
-            GroupIteratorsByType<int8_t>(iterators, group_by_field_id, search_info.topk_, segment, group_by_values);
+            auto field_data = segment.chunk_data<int8_t>(group_by_field_id, 0);
+            GroupIteratorsByType<int8_t>(iterators, group_by_field_id, search_info.topk_, field_data, group_by_values);
             break;
         }
         case DataType::INT16:{
-            GroupIteratorsByType<int16_t>(iterators, group_by_field_id, search_info.topk_, segment, group_by_values);
+            auto field_data = segment.chunk_data<int16_t>(group_by_field_id, 0);
+            GroupIteratorsByType<int16_t>(iterators, group_by_field_id, search_info.topk_, field_data, group_by_values);
             break;
         }
         default:{
@@ -54,28 +53,76 @@ GroupBy(
 template <typename T>
 void
 GroupIteratorsByType(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> &iterators,
-                     const FieldId &field_id,
+                     FieldId field_id,
                      int64_t topK,
-                     const segcore::SegmentInternalInterface& segment,
+                     Span<T> field_data,
                      std::vector<GroupByValueType> &group_by_values){
     std::vector<int64_t> offsets;
     std::vector<float> distances;
     for(auto& iterator: iterators){
-        GroupIteratorResult<T>(iterator, field_id, topK, segment, group_by_values, offsets, distances);
+        GroupIteratorResult<T>(iterator, field_id, topK, field_data, group_by_values, offsets, distances);
     }
 }
 
 template<typename T>
 void
 GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
-                    const FieldId& field_id,
+                    FieldId field_id,
                     int64_t topK,
-                    const segcore::SegmentInternalInterface& segment,
+                    Span<T> field_data,
                     std::vector<GroupByValueType>& group_by_values,
                     std::vector<int64_t>& offsets,
                     std::vector<float>& distances){
-    
+    //1.
+    std::unordered_map<T, std::pair<int64_t, float>> groupMap;
+    std::vector<int64_t> tmpOffsets;
+    std::vector<float> tmpDistances;
 
+    //2.
+    int round = 0;
+    while(round < 10) {
+        int64_t count = 0;
+        while(iterator->HasNext()){
+            auto nextPair = iterator->Next();
+            int64_t offset = nextPair.first;
+            float dis = nextPair.second;
+            tmpOffsets.emplace_back(offset);
+            tmpDistances.emplace_back(dis);
+            count++;
+            if(count >= topK){
+                break;
+            }
+        }
+        count++;
+        round++;
+        GroupOneRound<T>(tmpOffsets, tmpDistances, field_data, groupMap);
+        tmpOffsets.clear();
+        tmpDistances.clear();
+        if(!iterator->HasNext() || groupMap.size()==topK) break;
+    }
+    for(auto iter = groupMap.cbegin(); iter != groupMap.cend(); iter++){
+        group_by_values.emplace_back(iter->first);
+        offsets.push_back(iter->second.first);
+        distances.push_back(iter->second.second);
+    }
+
+}
+
+template <typename T>
+void
+GroupOneRound(const std::vector<int64_t>& seg_offsets,
+              const std::vector<float>& distances,
+              Span<T> field_data,
+              std::unordered_map<T, std::pair<int64_t, float>>& groupMap) {
+
+    for(std::size_t idx = 0; idx < seg_offsets.size(); idx++){
+        auto seg_offset = seg_offsets.at(idx);
+        const T& row_data = field_data.operator[](seg_offset);
+        auto it = groupMap.find(row_data);
+        if(it == groupMap.end()){
+            groupMap.insert(std::make_pair(row_data, std::make_pair(seg_offset, distances[idx])));
+        }
+    }
 }
 
 

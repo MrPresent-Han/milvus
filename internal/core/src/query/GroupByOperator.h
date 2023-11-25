@@ -19,6 +19,7 @@
 #include "common/QueryInfo.h"
 #include "knowhere/index_node.h"
 #include "segcore/SegmentInterface.h"
+#include "common/Span.h"
 
 namespace milvus{
 namespace query{
@@ -31,20 +32,27 @@ namespace query{
     template <typename T>
     void
     GroupIteratorsByType(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> &iterators,
-                         const FieldId &field_id,
+                         FieldId field_id,
                          int64_t topK,
-                         const segcore::SegmentInternalInterface& segment,
+                         Span<T> field_data,
                          std::vector<GroupByValueType> &group_by_values);
 
     template <typename T>
     void
     GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
-                        const FieldId& field_id,
+                        FieldId field_id,
                         int64_t topK,
-                        const segcore::SegmentInternalInterface& segment,
+                        Span<T> field_data,
                         std::vector<GroupByValueType>& group_by_values,
                         std::vector<int64_t>& offsets,
                         std::vector<float>& distances);
+
+    template <typename T>
+    void
+    GroupOneRound(const std::vector<int64_t>& seg_offsets,
+                  const std::vector<float>& distances,
+                  Span<T> field_data,
+                  std::unordered_map<T, std::pair<int64_t, float>>& groupMap);
 
 }
 }
