@@ -305,7 +305,8 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
 
     auto num_queries = dataset->GetRows();
     knowhere::Json search_conf = search_info.search_params_;
-    if(CheckKeyInConfig(search_conf, GROUP_BY_FIELD)){
+    if(search_info.group_by_field_id_.has_value()){
+        LOG_SEGCORE_INFO_ << "hc---groupBy--field:" << search_info.group_by_field_id_->get();
         knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
                 iterators_val = index_.AnnIterator(*dataset, search_conf, bitset);
         auto result = std::make_unique<SearchResult>();

@@ -106,7 +106,8 @@ func getPartitionIDs(ctx context.Context, dbName string, collectionName string, 
 }
 
 // parseSearchInfo returns QueryInfo and offset
-func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryInfo, int64, error) {
+func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair, schema *schemapb.CollectionSchema) (*planpb.QueryInfo, int64, error) {
+	//1. parse offset and real topk
 	topKStr, err := funcutil.GetAttrByKeyFromRepeatedKV(TopKKey, searchParamsPair)
 	if err != nil {
 		return nil, 0, errors.New(TopKKey + " not found in search_params")
@@ -139,11 +140,13 @@ func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryIn
 		return nil, 0, fmt.Errorf("%s+%s [%d] is invalid, %w", OffsetKey, TopKKey, queryTopK, err)
 	}
 
+	//2. parse metrics type
 	metricType, err := funcutil.GetAttrByKeyFromRepeatedKV(common.MetricTypeKey, searchParamsPair)
 	if err != nil {
 		metricType = ""
 	}
 
+	//3. parse round decimal
 	roundDecimalStr, err := funcutil.GetAttrByKeyFromRepeatedKV(RoundDecimalKey, searchParamsPair)
 	if err != nil {
 		roundDecimalStr = "-1"
@@ -157,15 +160,41 @@ func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair) (*planpb.QueryIn
 	if roundDecimal != -1 && (roundDecimal > 6 || roundDecimal < 0) {
 		return nil, 0, fmt.Errorf("%s [%s] is invalid, should be -1 or an integer in range [0, 6]", RoundDecimalKey, roundDecimalStr)
 	}
+
+	//4. parse search param str
 	searchParamStr, err := funcutil.GetAttrByKeyFromRepeatedKV(SearchParamsKey, searchParamsPair)
 	if err != nil {
 		searchParamStr = ""
 	}
+
+	//5. parse group by field
+	groupByFieldName, err := funcutil.GetAttrByKeyFromRepeatedKV(GroupByFieldKey, searchParamsPair)
+	if err != nil {
+		groupByFieldName = ""
+	}
+	var groupByFieldId int64
+	if groupByFieldName != "" {
+		groupByFieldId = -1
+		fields := schema.GetFields()
+		for _, field := range fields {
+			if field.Name == groupByFieldName {
+				groupByFieldId = field.FieldID
+			}
+		}
+		if groupByFieldId == -1 {
+			return nil, 0, fmt.Errorf("GroupByFieldName:%s is invalid, cannot find field_id accordingly",
+				groupByFieldName)
+		}
+	}
+
+	log.Info("hc----", zap.String("groupByFieldName", groupByFieldName),
+		zap.Int64("groupByFieldId", groupByFieldId))
 	return &planpb.QueryInfo{
-		Topk:         queryTopK,
-		MetricType:   metricType,
-		SearchParams: searchParamStr,
-		RoundDecimal: roundDecimal,
+		Topk:           queryTopK,
+		MetricType:     metricType,
+		SearchParams:   searchParamStr,
+		RoundDecimal:   roundDecimal,
+		GroupByFieldId: groupByFieldId,
 	}, offset, nil
 }
 
@@ -291,7 +320,7 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 			}
 			annsField = vecFieldSchema.Name
 		}
-		queryInfo, offset, err := parseSearchInfo(t.request.GetSearchParams())
+		queryInfo, offset, err := parseSearchInfo(t.request.GetSearchParams(), t.schema)
 		if err != nil {
 			return err
 		}
@@ -397,7 +426,6 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 		zap.Bool("use_default_consistency", useDefaultConsistency),
 		zap.Any("consistency level", consistencyLevel),
 		zap.Uint64("timeout_ts", t.SearchRequest.GetTimeoutTimestamp()))
-
 	return nil
 }
 
