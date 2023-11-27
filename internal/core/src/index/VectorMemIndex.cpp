@@ -308,11 +308,12 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
     if(search_info.group_by_field_id_.has_value()){
         knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
                 iterators_val = index_.AnnIterator(*dataset, search_conf, bitset);
-        auto result = std::make_unique<SearchResult>();
         if(iterators_val.has_value()){
+            auto result = std::make_unique<SearchResult>();
             result->iterators = iterators_val.value();
+            return result;
         }
-        return result;
+        //if the target index doesn't support iterators, continue search without considering group by
     }
     auto topk = search_info.topk_;
     // TODO :: check dim of search data
