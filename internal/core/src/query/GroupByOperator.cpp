@@ -26,7 +26,9 @@ GroupBy(
         const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
         const SearchInfo& search_info,
         std::vector<GroupByValueType>& group_by_values,
-        const segcore::SegmentInternalInterface& segment) {
+        const segcore::SegmentInternalInterface& segment,
+        std::vector<int64_t>& seg_offsets,
+        std::vector<float>& distances) {
     //1. get meta
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
@@ -34,12 +36,26 @@ GroupBy(
     switch(data_type){
         case DataType::INT8:{
             auto field_data = segment.chunk_data<int8_t>(group_by_field_id, 0);
-            GroupIteratorsByType<int8_t>(iterators, group_by_field_id, search_info.topk_, field_data, group_by_values);
+            GroupIteratorsByType<int8_t>(iterators, group_by_field_id, search_info.topk_,
+                                         field_data, group_by_values, seg_offsets, distances);
             break;
         }
         case DataType::INT16:{
             auto field_data = segment.chunk_data<int16_t>(group_by_field_id, 0);
-            GroupIteratorsByType<int16_t>(iterators, group_by_field_id, search_info.topk_, field_data, group_by_values);
+            GroupIteratorsByType<int16_t>(iterators, group_by_field_id, search_info.topk_,
+                                          field_data, group_by_values, seg_offsets, distances);
+            break;
+        }
+        case DataType::INT32:{
+            auto field_data = segment.chunk_data<int32_t>(group_by_field_id, 0);
+            GroupIteratorsByType<int32_t>(iterators, group_by_field_id, search_info.topk_,
+                                          field_data, group_by_values, seg_offsets, distances);
+            break;
+        }
+        case DataType::INT64:{
+            auto field_data = segment.chunk_data<int64_t>(group_by_field_id, 0);
+            GroupIteratorsByType<int64_t>(iterators, group_by_field_id, search_info.topk_,
+                                          field_data, group_by_values, seg_offsets, distances);
             break;
         }
         default:{
@@ -56,11 +72,11 @@ GroupIteratorsByType(const std::vector<std::shared_ptr<knowhere::IndexNode::iter
                      FieldId field_id,
                      int64_t topK,
                      Span<T> field_data,
-                     std::vector<GroupByValueType> &group_by_values){
-    std::vector<int64_t> offsets;
-    std::vector<float> distances;
+                     std::vector<GroupByValueType> &group_by_values,
+                     std::vector<int64_t>& seg_offsets,
+                     std::vector<float>& distances){
     for(auto& iterator: iterators){
-        GroupIteratorResult<T>(iterator, field_id, topK, field_data, group_by_values, offsets, distances);
+        GroupIteratorResult<T>(iterator, field_id, topK, field_data, group_by_values, seg_offsets, distances);
     }
 }
 
@@ -93,7 +109,6 @@ GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterat
                 break;
             }
         }
-        count++;
         round++;
         GroupOneRound<T>(tmpOffsets, tmpDistances, field_data, groupMap);
         tmpOffsets.clear();
@@ -104,6 +119,12 @@ GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterat
         group_by_values.emplace_back(iter->first);
         offsets.push_back(iter->second.first);
         distances.push_back(iter->second.second);
+    }
+    //padding topk results
+    for(std::size_t idx = groupMap.size(); idx < topK; idx++){
+        offsets.push_back(INVALID_SEG_OFFSET);
+        distances.push_back(0.0);
+        group_by_values.emplace_back(std::monostate{});
     }
 
 }

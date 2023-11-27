@@ -306,13 +306,11 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
     auto num_queries = dataset->GetRows();
     knowhere::Json search_conf = search_info.search_params_;
     if(search_info.group_by_field_id_.has_value()){
-        LOG_SEGCORE_INFO_ << "hc---groupBy--field:" << search_info.group_by_field_id_->get();
         knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
                 iterators_val = index_.AnnIterator(*dataset, search_conf, bitset);
         auto result = std::make_unique<SearchResult>();
         if(iterators_val.has_value()){
-            result->iterators = std::make_optional<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>(
-                    std::move(iterators_val.value()));
+            result->iterators = iterators_val.value();
         }
         return result;
     }

@@ -63,6 +63,7 @@ SearchOnSealedIndex(const Schema& schema,
     result.distances_ = std::move(final->distances_);
     result.total_nq_ = num_queries;
     result.unity_topK_ = topk;
+    result.iterators = std::move(final->iterators);
 }
 
 void

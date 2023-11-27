@@ -27,7 +27,9 @@ namespace query{
             const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iterators,
             const SearchInfo& searchInfo,
             std::vector<GroupByValueType>& group_by_values,
-            const segcore::SegmentInternalInterface& segment);
+            const segcore::SegmentInternalInterface& segment,
+            std::vector<int64_t>& seg_offsets,
+            std::vector<float>& distances);
 
     template <typename T>
     void
@@ -35,7 +37,9 @@ namespace query{
                          FieldId field_id,
                          int64_t topK,
                          Span<T> field_data,
-                         std::vector<GroupByValueType> &group_by_values);
+                         std::vector<GroupByValueType> &group_by_values,
+                         std::vector<int64_t>& seg_offsets,
+                         std::vector<float>& distances);
 
     template <typename T>
     void

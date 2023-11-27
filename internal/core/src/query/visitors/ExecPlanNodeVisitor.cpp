@@ -130,7 +130,13 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
                 search_result.iterators.value(),
                 node.search_info_,
                 group_by_values,
-                *segment);
+                *segment,
+                search_result.seg_offsets_,
+                search_result.distances_);
+        LOG_SEGCORE_INFO_ << "hc---seg_offsets.size:" << search_result.seg_offsets_.size()
+            << "--distances_.size:" << search_result.distances_.size()
+            << ",group_by_values.size:" << group_by_values.size();
+        std::cout.flush();
         search_result.group_by_values_ = std::move(group_by_values);
     }
     search_result_opt_ = std::move(search_result);
