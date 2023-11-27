@@ -203,7 +203,12 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
 
         pairs_.emplace_back(
             primary_key, distance, search_result, i, offset_beg, offset_end);
-        heap_.push(&pairs_.back());
+        auto new_pair = pairs_.back();
+        //set group_by value if enabled
+        if(offset_beg < search_result->group_by_values_.size()){
+            new_pair.group_by_value_ = search_result->group_by_values_[offset_beg];
+        }
+        heap_.push(&new_pair);
     }
 
     // nq has no results for all segments
@@ -225,9 +230,18 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
         }
         // remove duplicates
         if (pk_set_.count(pk) == 0) {
-            pilot->search_result_->result_offsets_.push_back(offset++);
-            final_search_records_[index][qi].push_back(pilot->offset_);
-            pk_set_.insert(pk);
+            bool skip_for_group_by = false;
+            if(pilot->group_by_value_.has_value()){
+                if(group_by_val_set_.count(pilot->group_by_value_.value())>0){
+                    skip_for_group_by = true;
+                }
+            }
+            if(!skip_for_group_by){
+                pilot->search_result_->result_offsets_.push_back(offset++);
+                final_search_records_[index][qi].push_back(pilot->offset_);
+                pk_set_.insert(pk);
+                group_by_val_set_.insert(pilot->group_by_value_.value());
+            }
         } else {
             // skip entity with same primary key
             dup_cnt++;

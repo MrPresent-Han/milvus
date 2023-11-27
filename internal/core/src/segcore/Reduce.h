@@ -108,6 +108,7 @@ class ReduceHelper {
                         SearchResultPairComparator>
         heap_;
     std::unordered_set<milvus::PkType> pk_set_;
+    std::unordered_set<milvus::GroupByValueType> group_by_val_set_;
 };
 
 }  // namespace milvus::segcore

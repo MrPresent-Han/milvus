@@ -187,8 +187,6 @@ func parseSearchInfo(searchParamsPair []*commonpb.KeyValuePair, schema *schemapb
 		}
 	}
 
-	log.Info("hc----", zap.String("groupByFieldName", groupByFieldName),
-		zap.Int64("groupByFieldId", groupByFieldId))
 	return &planpb.QueryInfo{
 		Topk:           queryTopK,
 		MetricType:     metricType,
@@ -323,6 +321,10 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 		queryInfo, offset, err := parseSearchInfo(t.request.GetSearchParams(), t.schema)
 		if err != nil {
 			return err
+		}
+		if queryInfo.GroupByFieldId != 0 {
+			t.SearchRequest.IgnoreGrowing = true
+			//for group by operation, currently, we ignore growing segments
 		}
 		t.offset = offset
 
