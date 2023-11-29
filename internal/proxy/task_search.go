@@ -881,8 +881,9 @@ func reduceSearchResultData(ctx context.Context, subSearchResultData []*schemapb
 			// sum(cursors) == j
 			cursors = make([]int64, subSearchNum)
 
-			j     int64
-			idSet = make(map[interface{}]struct{})
+			j             int64
+			idSet         = make(map[interface{}]struct{})
+			groupByValSet = make(map[interface{}]struct{})
 		)
 
 		// skip offset results
@@ -904,17 +905,23 @@ func reduceSearchResultData(ctx context.Context, subSearchResultData []*schemapb
 			if subSearchIdx == -1 {
 				break
 			}
+			subSearchRes := subSearchResultData[subSearchIdx]
 
-			id := typeutil.GetPK(subSearchResultData[subSearchIdx].GetIds(), resultDataIdx)
-			score := subSearchResultData[subSearchIdx].Scores[resultDataIdx]
+			id := typeutil.GetPK(subSearchRes.GetIds(), resultDataIdx)
+			score := subSearchRes.Scores[resultDataIdx]
+			groupByVal := typeutil.GetData(subSearchRes.GetGroupByFieldValue(), int(resultDataIdx))
 
 			// remove duplicates
 			if _, ok := idSet[id]; !ok {
-				retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subSearchResultData[subSearchIdx].FieldsData, resultDataIdx)
-				typeutil.AppendPKs(ret.Results.Ids, id)
-				ret.Results.Scores = append(ret.Results.Scores, score)
-				idSet[id] = struct{}{}
-				j++
+				if _, groupByValExist := groupByValSet[groupByVal]; !groupByValExist {
+					retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subSearchResultData[subSearchIdx].FieldsData, resultDataIdx)
+					typeutil.AppendPKs(ret.Results.Ids, id)
+					ret.Results.Scores = append(ret.Results.Scores, score)
+					typeutil.MaybeAppendGroupByValue(ret.Results, groupByVal, subSearchRes)
+					idSet[id] = struct{}{}
+					groupByValSet[groupByVal] = struct{}{}
+					j++
+				}
 			} else {
 				// skip entity with same id
 				skipDupCnt++

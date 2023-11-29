@@ -83,7 +83,7 @@ class ReduceHelper {
     GetSearchResultDataSlice(int slice_index_);
 
     void
-    AssembleGroupByValues(const std::unique_ptr<milvus::proto::schema::SearchResultData>& search_result,
+    AssembleGroupByValues(std::unique_ptr<milvus::proto::schema::SearchResultData>& search_result,
                           const std::vector<GroupByValueType>& group_by_vals);
 
  private:

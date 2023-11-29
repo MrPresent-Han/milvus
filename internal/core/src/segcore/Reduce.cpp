@@ -209,7 +209,7 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
 
         pairs_.emplace_back(
             primary_key, distance, search_result, i, offset_beg, offset_end);
-        auto new_pair = pairs_.back();
+        auto& new_pair = pairs_.back();
         //set group_by value if enabled
         if(offset_beg < search_result->group_by_values_.size()){
             new_pair.group_by_value_ = search_result->group_by_values_[offset_beg];
@@ -446,10 +446,11 @@ ReduceHelper::GetSearchResultDataSlice(int slice_index) {
 }
 
 void
-ReduceHelper::AssembleGroupByValues(const std::unique_ptr<milvus::proto::schema::SearchResultData> &search_result,
+ReduceHelper::AssembleGroupByValues(std::unique_ptr<milvus::proto::schema::SearchResultData> &search_result,
                                     const std::vector<GroupByValueType> &group_by_vals) {
     auto group_by_field_id = plan_->plan_node_->search_info_.group_by_field_id_;
-    if(group_by_field_id.has_value()){
+    if(group_by_field_id.has_value()&&group_by_vals.size()>0){
+        //hc---here, group_by_vals can contain only one monostate
         auto group_by_values_field = std::make_unique<milvus::proto::schema::ScalarField>();
         auto group_by_field = plan_->schema_.operator[](group_by_field_id.value());
         DataType group_by_data_type = group_by_field.get_data_type();
@@ -486,7 +487,12 @@ ReduceHelper::AssembleGroupByValues(const std::unique_ptr<milvus::proto::schema:
                 }
             }
         }
-        search_result->mutable_group_by_field_value()->Swap(group_by_values_field.release());
+        LOG_SEGCORE_INFO_ << "hc---finish assembling groupby field data1111";
+        //search_result->mutable_group_by_field_value()->MergeFrom(*group_by_values_field.get());
+        search_result->mutable_group_by_field_value()->set_type(milvus::proto::schema::DataType(group_by_data_type));
+        search_result->mutable_group_by_field_value()->mutable_scalars()->MergeFrom(*group_by_values_field.get());
+        LOG_SEGCORE_INFO_ << "hc---finish assembling groupby field data2222";
+        std::cout.flush();
     }
 }
 
