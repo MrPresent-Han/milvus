@@ -506,18 +506,26 @@ ReduceHelper::AssembleGroupByValues(std::unique_ptr<milvus::proto::schema::Searc
                     *(obj->mutable_data()->Add()) = val;
                     break;
                 }
+                case DataType::BOOL:{
+                    bool val = std::get<bool>(group_by_vals[idx]);
+                    auto obj = group_by_values_field->mutable_bool_data();
+                    *(obj->mutable_data()->Add()) = val;
+                    break;
+                }
+                case DataType::VARCHAR:{
+                    std::string_view val = std::get<std::string_view>(group_by_vals[idx]);
+                    auto obj = group_by_values_field->mutable_string_data();
+                    *(obj->mutable_data()->Add()) = val;
+                    break;
+                }
                 default:{
                     PanicInfo(DataTypeInvalid,
                               fmt::format("unsupported datatype for group_by operations ", group_by_data_type));
                 }
             }
         }
-        LOG_SEGCORE_INFO_ << "hc---finish assembling groupby field data1111";
-        //search_result->mutable_group_by_field_value()->MergeFrom(*group_by_values_field.get());
         search_result->mutable_group_by_field_value()->set_type(milvus::proto::schema::DataType(group_by_data_type));
         search_result->mutable_group_by_field_value()->mutable_scalars()->MergeFrom(*group_by_values_field.get());
-        LOG_SEGCORE_INFO_ << "hc---finish assembling groupby field data2222";
-        std::cout.flush();
     }
 }
 

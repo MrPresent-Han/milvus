@@ -56,6 +56,18 @@ GroupBy(
                                           field_data, group_by_values, seg_offsets, distances);
             break;
         }
+        case DataType::BOOL: {
+            auto field_data = segment.chunk_data<bool>(group_by_field_id, 0);
+            GroupIteratorsByType<bool>(iterators, group_by_field_id, search_info.topk_,
+                                          field_data, group_by_values, seg_offsets, distances);
+            break;
+        }
+        case DataType::VARCHAR:{
+            auto field_data = segment.chunk_data<std::string>(group_by_field_id, 0);
+            GroupIteratorsByType<std::string>(iterators, group_by_field_id, search_info.topk_,
+                                       field_data, group_by_values, seg_offsets, distances);
+            break;
+        }
         default:{
             PanicInfo(DataTypeInvalid,
                       fmt::format("unsupported data type {} for group by operator", data_type));

@@ -1082,6 +1082,16 @@ func MaybeAppendGroupByValue(dstResData *schemapb.SearchResultData,
 	dstScalarField := dstResData.GroupByFieldValue.GetScalars()
 	srcValType := srcResData.GetGroupByFieldValue().GetType()
 	switch srcValType {
+	case schemapb.DataType_Bool:
+		if dstScalarField.GetBoolData() == nil {
+			dstScalarField.Data = &schemapb.ScalarField_BoolData{
+				BoolData: &schemapb.BoolArray{
+					Data: []bool{},
+				},
+			}
+		}
+		dstScalarField.GetBoolData().Data = append(dstScalarField.GetBoolData().Data, groupByVal.(bool))
+		break
 	case schemapb.DataType_Int8:
 	case schemapb.DataType_Int16:
 	case schemapb.DataType_Int32:
