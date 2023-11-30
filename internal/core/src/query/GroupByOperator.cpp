@@ -15,8 +15,6 @@
 // limitations under the License.
 #include "GroupByOperator.h"
 #include "common/Consts.h"
-#include "segcore/SegmentSealedImpl.h"
-#include "segcore/SegmentGrowingImpl.h"
 
 namespace milvus{
 namespace query{
@@ -29,7 +27,7 @@ GroupBy(
         const segcore::SegmentInternalInterface& segment,
         std::vector<int64_t>& seg_offsets,
         std::vector<float>& distances) {
-    //1. get meta
+    //1. get search meta
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
 
@@ -94,7 +92,7 @@ GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterat
     std::vector<int64_t> tmpOffsets;
     std::vector<float> tmpDistances;
 
-    //2.
+    //2. do iteration for at most 10 rounds
     int round = 0;
     while(round < 10) {
         int64_t count = 0;
@@ -115,12 +113,14 @@ GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterat
         tmpDistances.clear();
         if(!iterator->HasNext() || groupMap.size()==topK) break;
     }
+    //3. save groupBy results
     for(auto iter = groupMap.cbegin(); iter != groupMap.cend(); iter++){
         group_by_values.emplace_back(iter->first);
         offsets.push_back(iter->second.first);
         distances.push_back(iter->second.second);
     }
-    //padding topk results
+
+    //4. padding topK results, extra memory consumed will be removed when reducing
     for(std::size_t idx = groupMap.size(); idx < topK; idx++){
         offsets.push_back(INVALID_SEG_OFFSET);
         distances.push_back(0.0);

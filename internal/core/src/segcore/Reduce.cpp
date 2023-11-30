@@ -90,6 +90,14 @@ ReduceHelper::FilterInvalidSearchResult(SearchResult* search_result) {
     auto segment = static_cast<SegmentInterface*>(search_result->segment_);
     auto& offsets = search_result->seg_offsets_;
     auto& distances = search_result->distances_;
+    bool need_filter_group_by = !search_result->group_by_values_.empty();
+    if(need_filter_group_by){
+        AssertInfo(search_result->distances_.size() == search_result->group_by_values_.size(),
+                   "wrong group_by_values size, size= " +
+                   std::to_string(search_result->group_by_values_.size()) +
+                   ", expected size = " + std::to_string(search_result->distances_.size()));
+    }
+
     for (auto i = 0; i < nq; ++i) {
         for (auto j = 0; j < topK; ++j) {
             auto index = i * topK + j;
@@ -104,12 +112,16 @@ ReduceHelper::FilterInvalidSearchResult(SearchResult* search_result) {
                 real_topks[i]++;
                 offsets[valid_index] = offsets[index];
                 distances[valid_index] = distances[index];
+                if(need_filter_group_by)
+                    search_result->group_by_values_[valid_index] = search_result->group_by_values_[index];
                 valid_index++;
             }
         }
     }
     offsets.resize(valid_index);
     distances.resize(valid_index);
+    if(need_filter_group_by)
+        search_result->group_by_values_.resize(valid_index);
 
     search_result->topk_per_nq_prefix_sum_.resize(nq + 1);
     std::partial_sum(real_topks.begin(),
@@ -126,11 +138,13 @@ ReduceHelper::FillPrimaryKey() {
         FilterInvalidSearchResult(search_result);
         LOG_SEGCORE_DEBUG_ << "the size of search result"
                            << search_result->seg_offsets_.size();
-        if (search_result->get_total_result_count() > 0) {
-            auto segment =
+        auto segment =
                 static_cast<SegmentInterface*>(search_result->segment_);
+        if (search_result->get_total_result_count() > 0) {
             segment->FillPrimaryKeys(plan_, *search_result);
             search_results_[valid_index++] = search_result;
+        } else {
+            LOG_SEGCORE_INFO_ << "hc--filter empty search result, from segment:" << segment->get_segment_id();
         }
     }
     search_results_.resize(valid_index);
@@ -142,6 +156,12 @@ ReduceHelper::RefreshSearchResult() {
     for (int i = 0; i < num_segments_; i++) {
         std::vector<int64_t> real_topks(total_nq_, 0);
         auto search_result = search_results_[i];
+        bool need_to_handle_group_by = !search_result->group_by_values_.empty();
+        if(need_to_handle_group_by){
+            AssertInfo(search_result->primary_keys_.size()==search_result->group_by_values_.size(),
+                       "Wrong size for group_by_values size:" + std::to_string(search_result->group_by_values_.size()) +
+                       ", not equal to primary_keys_.size:" + std::to_string(search_result->primary_keys_.size()));
+        }
         if (search_result->result_offsets_.size() != 0) {
             uint32_t size = 0;
             for (int j = 0; j < total_nq_; j++) {
@@ -158,7 +178,7 @@ ReduceHelper::RefreshSearchResult() {
                     primary_keys[index] = search_result->primary_keys_[offset];
                     distances[index] = search_result->distances_[offset];
                     seg_offsets[index] = search_result->seg_offsets_[offset];
-                    if(offset < search_result->group_by_values_.size())
+                    if(need_to_handle_group_by)
                         group_by_values[index] = search_result->group_by_values_[offset];
                     index++;
                     real_topks[j]++;
@@ -167,7 +187,7 @@ ReduceHelper::RefreshSearchResult() {
             search_result->primary_keys_.swap(primary_keys);
             search_result->distances_.swap(distances);
             search_result->seg_offsets_.swap(seg_offsets);
-            if(!group_by_values.empty()){
+            if(need_to_handle_group_by){
                 search_result->group_by_values_.swap(group_by_values);
             }
         }
@@ -197,6 +217,10 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
     pairs_.clear();
 
     pairs_.reserve(num_segments_);
+    bool need_handle_group_by_values = false;
+    if(num_segments_>0){
+        need_handle_group_by_values = !search_results_[0]->group_by_values_.empty();
+    }
     for (int i = 0; i < num_segments_; i++) {
         auto search_result = search_results_[i];
         auto offset_beg = search_result->topk_per_nq_prefix_sum_[qi];
@@ -211,7 +235,7 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
             primary_key, distance, search_result, i, offset_beg, offset_end);
         auto& new_pair = pairs_.back();
         //set group_by value if enabled
-        if(offset_beg < search_result->group_by_values_.size()){
+        if(need_handle_group_by_values){
             new_pair.group_by_value_ = search_result->group_by_values_[offset_beg];
         }
         heap_.push(&new_pair);
@@ -237,7 +261,7 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
         // remove duplicates
         if (pk_set_.count(pk) == 0) {
             bool skip_for_group_by = false;
-            if(pilot->group_by_value_.has_value()){
+            if(need_handle_group_by_values&&pilot->group_by_value_.has_value()){
                 if(group_by_val_set_.count(pilot->group_by_value_.value())>0){
                     skip_for_group_by = true;
                 }
@@ -246,7 +270,7 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
                 pilot->search_result_->result_offsets_.push_back(offset++);
                 final_search_records_[index][qi].push_back(pilot->offset_);
                 pk_set_.insert(pk);
-                if(pilot->group_by_value_.has_value())
+                if(need_handle_group_by_values && pilot->group_by_value_.has_value())
                     group_by_val_set_.insert(pilot->group_by_value_.value());
             }
         } else {
