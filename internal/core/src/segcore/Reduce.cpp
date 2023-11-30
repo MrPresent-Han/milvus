@@ -215,6 +215,7 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
     }
     pk_set_.clear();
     pairs_.clear();
+    group_by_val_set_.clear();
 
     pairs_.reserve(num_segments_);
     bool need_handle_group_by_values = false;

@@ -113,8 +113,15 @@ GroupIteratorResult(const std::shared_ptr<knowhere::IndexNode::iterator>& iterat
         tmpDistances.clear();
         if(!iterator->HasNext() || groupMap.size()==topK) break;
     }
+
+    std::vector<std::pair<T, std::pair<int64_t, float>>> sortedGroupVals(groupMap.begin(), groupMap.end());
+    auto customComparator = [](const auto& lhs, const auto& rhs){
+        return lhs.second.second > rhs.second.second;
+    };
+    std::sort(sortedGroupVals.begin(), sortedGroupVals.end(), customComparator);
+
     //3. save groupBy results
-    for(auto iter = groupMap.cbegin(); iter != groupMap.cend(); iter++){
+    for(auto iter = sortedGroupVals.cbegin(); iter != sortedGroupVals.cend(); iter++){
         group_by_values.emplace_back(iter->first);
         offsets.push_back(iter->second.first);
         distances.push_back(iter->second.second);

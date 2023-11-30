@@ -147,13 +147,19 @@ func ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.Se
 
 			// remove duplicates
 			if _, ok := idSet[id]; !ok {
-				if _, groupByValExist := groupByValueSet[groupByVal]; !groupByValExist {
+				groupByValExist := false
+				if groupByVal != nil {
+					_, groupByValExist = groupByValueSet[groupByVal]
+				}
+				if !groupByValExist {
 					retSize += typeutil.AppendFieldData(ret.FieldsData, searchResultData[sel].FieldsData, idx)
 					typeutil.AppendPKs(ret.Ids, id)
 					ret.Scores = append(ret.Scores, score)
-					typeutil.MaybeAppendGroupByValue(ret, groupByVal, searchResultData[sel])
+					if groupByVal != nil {
+						groupByValueSet[groupByVal] = struct{}{}
+						typeutil.MaybeAppendGroupByValue(ret, groupByVal, searchResultData[sel])
+					}
 					idSet[id] = struct{}{}
-					groupByValueSet[groupByVal] = struct{}{}
 					j++
 				}
 			} else {

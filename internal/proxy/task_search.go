@@ -839,7 +839,6 @@ func reduceSearchResultData(ctx context.Context, subSearchResultData []*schemapb
 	default:
 		return nil, errors.New("unsupported pk type")
 	}
-
 	for i, sData := range subSearchResultData {
 		pkLength := typeutil.GetSizeOfIDs(sData.GetIds())
 		log.Ctx(ctx).Debug("subSearchResultData",
@@ -874,6 +873,7 @@ func reduceSearchResultData(ctx context.Context, subSearchResultData []*schemapb
 
 	var retSize int64
 	maxOutputSize := paramtable.Get().QuotaConfig.MaxOutputSize.GetAsInt64()
+
 	// reducing nq * topk results
 	for i := int64(0); i < nq; i++ {
 		var (
@@ -913,13 +913,19 @@ func reduceSearchResultData(ctx context.Context, subSearchResultData []*schemapb
 
 			// remove duplicates
 			if _, ok := idSet[id]; !ok {
-				if _, groupByValExist := groupByValSet[groupByVal]; !groupByValExist {
+				groupByValExist := false
+				if groupByVal != nil {
+					_, groupByValExist = groupByValSet[groupByVal]
+				}
+				if !groupByValExist {
 					retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subSearchResultData[subSearchIdx].FieldsData, resultDataIdx)
 					typeutil.AppendPKs(ret.Results.Ids, id)
 					ret.Results.Scores = append(ret.Results.Scores, score)
-					typeutil.MaybeAppendGroupByValue(ret.Results, groupByVal, subSearchRes)
 					idSet[id] = struct{}{}
-					groupByValSet[groupByVal] = struct{}{}
+					if groupByVal != nil {
+						groupByValSet[groupByVal] = struct{}{}
+						typeutil.MaybeAppendGroupByValue(ret.Results, groupByVal, subSearchRes)
+					}
 					j++
 				}
 			} else {
