@@ -15,6 +15,7 @@
 // limitations under the License.
 #include "GroupByOperator.h"
 #include "common/Consts.h"
+#include "segcore/SegmentSealedImpl.h"
 
 namespace milvus{
 namespace query{
@@ -27,6 +28,13 @@ GroupBy(
         const segcore::SegmentInternalInterface& segment,
         std::vector<int64_t>& seg_offsets,
         std::vector<float>& distances) {
+    //0. check segment type, for period-1, only support group by for sealed segments
+    if(!dynamic_cast<const segcore::SegmentSealedImpl*>(&segment)){
+        LOG_SEGCORE_ERROR_ << "Not support group_by operation "
+                              "for non-sealed segment, segment_id:" << segment.get_segment_id();
+        return nullptr;
+    }
+
     //1. get search meta
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
