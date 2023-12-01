@@ -1116,6 +1116,17 @@ func MaybeAppendGroupByValue(dstResData *schemapb.SearchResultData,
 		dstScalarField.GetLongData().Data =
 			append(dstScalarField.GetLongData().Data, groupByVal.(int64))
 		break
+	case schemapb.DataType_VarChar:
+		if dstScalarField.GetStringData() == nil {
+			dstScalarField.Data = &schemapb.ScalarField_StringData{
+				StringData: &schemapb.StringArray{
+					Data: []string{},
+				},
+			}
+		}
+		dstScalarField.GetStringData().Data =
+			append(dstScalarField.GetStringData().Data, groupByVal.(string))
+		break
 	default:
 		log.Error("Not supported field type from groupby value field", zap.String("field type",
 			srcValType.String()))

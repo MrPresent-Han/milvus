@@ -63,8 +63,8 @@ GroupBy(
             break;
         }
         case DataType::VARCHAR:{
-            auto field_data = segment.chunk_data<std::string>(group_by_field_id, 0);
-            GroupIteratorsByType<std::string>(iterators, group_by_field_id, search_info.topk_,
+            auto field_data = segment.chunk_data<std::string_view>(group_by_field_id, 0);
+            GroupIteratorsByType<std::string_view>(iterators, group_by_field_id, search_info.topk_,
                                        field_data, group_by_values, seg_offsets, distances);
             break;
         }
