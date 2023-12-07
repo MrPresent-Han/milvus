@@ -47,7 +47,7 @@ struct SearchResultPair {
         //according to FLT_EPSILON in cfloat, 0.000000119 is the maximum flaw for float32
         //we use this to differentiate distances that are too close to each other to maintain the
         //stable order for reduce
-        if (std::fabs(distance_ - other.distance_) < 0.000000119) {
+        if (std::fabs(distance_ - other.distance_) < 0.0000000119) {
             return primary_key_ < other.primary_key_;
         }
         return distance_ > other.distance_;
