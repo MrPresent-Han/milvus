@@ -21,7 +21,7 @@ SkipIndex::GetFieldChunkMetrics(milvus::FieldId field_id, int chunk_id) const {
     if (field_metrics != fieldChunkMetrics_.end()) {
         auto field_chunk_metrics = field_metrics->second.find(chunk_id);
         if (field_chunk_metrics != field_metrics->second.end()) {
-            return field_chunk_metrics->second;
+            return *(field_chunk_metrics->second.get());
         }
     }
     return defaultFieldChunkMetrics;
@@ -33,17 +33,18 @@ SkipIndex::LoadPrimitive(milvus::FieldId field_id,
                          milvus::DataType data_type,
                          const void* chunk_data,
                          int64_t count) {
-    FieldChunkMetrics chunkMetrics;
+    auto chunkMetrics = std::make_unique<FieldChunkMetrics>();
+
     if (count > 0) {
-        chunkMetrics.hasValue_ = true;
+        chunkMetrics->hasValue_ = true;
         switch (data_type) {
             case DataType::INT8: {
                 const int8_t* typedData =
                     static_cast<const int8_t*>(chunk_data);
                 std::pair<int8_t, int8_t> minMax =
                     ProcessFieldMetrics<int8_t>(typedData, count);
-                chunkMetrics.min_ = Metrics(minMax.first);
-                chunkMetrics.max_ = Metrics(minMax.second);
+                chunkMetrics->min_ = Metrics(minMax.first);
+                chunkMetrics->max_ = Metrics(minMax.second);
                 break;
             }
             case DataType::INT16: {
@@ -51,8 +52,8 @@ SkipIndex::LoadPrimitive(milvus::FieldId field_id,
                     static_cast<const int16_t*>(chunk_data);
                 std::pair<int16_t, int16_t> minMax =
                     ProcessFieldMetrics<int16_t>(typedData, count);
-                chunkMetrics.min_ = Metrics(minMax.first);
-                chunkMetrics.max_ = Metrics(minMax.second);
+                chunkMetrics->min_ = Metrics(minMax.first);
+                chunkMetrics->max_ = Metrics(minMax.second);
                 break;
             }
             case DataType::INT32: {
@@ -60,8 +61,8 @@ SkipIndex::LoadPrimitive(milvus::FieldId field_id,
                     static_cast<const int32_t*>(chunk_data);
                 std::pair<int32_t, int32_t> minMax =
                     ProcessFieldMetrics<int32_t>(typedData, count);
-                chunkMetrics.min_ = Metrics(minMax.first);
-                chunkMetrics.max_ = Metrics(minMax.second);
+                chunkMetrics->min_ = Metrics(minMax.first);
+                chunkMetrics->max_ = Metrics(minMax.second);
                 break;
             }
             case DataType::INT64: {
@@ -69,16 +70,16 @@ SkipIndex::LoadPrimitive(milvus::FieldId field_id,
                     static_cast<const int64_t*>(chunk_data);
                 std::pair<int64_t, int64_t> minMax =
                     ProcessFieldMetrics<int64_t>(typedData, count);
-                chunkMetrics.min_ = Metrics(minMax.first);
-                chunkMetrics.max_ = Metrics(minMax.second);
+                chunkMetrics->min_ = Metrics(minMax.first);
+                chunkMetrics->max_ = Metrics(minMax.second);
                 break;
             }
             case DataType::FLOAT: {
                 const float* typedData = static_cast<const float*>(chunk_data);
                 std::pair<float, float> minMax =
                     ProcessFieldMetrics<float>(typedData, count);
-                chunkMetrics.min_ = Metrics(minMax.first);
-                chunkMetrics.max_ = Metrics(minMax.second);
+                chunkMetrics->min_ = Metrics(minMax.first);
+                chunkMetrics->max_ = Metrics(minMax.second);
                 break;
             }
             case DataType::DOUBLE: {
@@ -86,17 +87,17 @@ SkipIndex::LoadPrimitive(milvus::FieldId field_id,
                     static_cast<const double*>(chunk_data);
                 std::pair<double, double> minMax =
                     ProcessFieldMetrics<double>(typedData, count);
-                chunkMetrics.min_ = Metrics(minMax.first);
-                chunkMetrics.max_ = Metrics(minMax.second);
+                chunkMetrics->min_ = Metrics(minMax.first);
+                chunkMetrics->max_ = Metrics(minMax.second);
                 break;
             }
         }
     }
     if(fieldChunkMetrics_.count(field_id)==0){
-        fieldChunkMetrics_.insert(std::make_pair(field_id, std::unordered_map<int64_t, FieldChunkMetrics>()));
+        fieldChunkMetrics_.insert(std::make_pair(field_id, std::unordered_map<int64_t, std::unique_ptr<FieldChunkMetrics>>()));
     }
 
-    fieldChunkMetrics_[field_id].emplace(chunk_id, chunkMetrics);
+    fieldChunkMetrics_[field_id].emplace(chunk_id, std::move(chunkMetrics));
 }
 
 void
@@ -104,9 +105,9 @@ SkipIndex::LoadString(milvus::FieldId field_id,
                       int64_t chunk_id,
                       const milvus::VariableColumn<std::string>& var_column) {
     int num_rows = var_column.NumRows();
-    FieldChunkMetrics chunkMetrics;
+    auto chunkMetrics = std::make_unique<FieldChunkMetrics>();
     if (num_rows > 0) {
-        chunkMetrics.hasValue_ = true;
+        chunkMetrics->hasValue_ = true;
         std::string_view min_string = var_column.RawAt(0);
         std::string_view max_string = var_column.RawAt(0);
         for (size_t i = 1; i < num_rows; i++) {
@@ -118,13 +119,13 @@ SkipIndex::LoadString(milvus::FieldId field_id,
                 max_string = val;
             }
         }
-        chunkMetrics.min_ = Metrics(min_string);
-        chunkMetrics.max_ = Metrics(max_string);
+        chunkMetrics->min_ = Metrics(min_string);
+        chunkMetrics->max_ = Metrics(max_string);
     }
     if(fieldChunkMetrics_.count(field_id)==0){
-        fieldChunkMetrics_.insert(std::make_pair(field_id, std::unordered_map<int64_t, FieldChunkMetrics>()));
+        fieldChunkMetrics_.insert(std::make_pair(field_id, std::unordered_map<int64_t, std::unique_ptr<FieldChunkMetrics>>()));
     }
-    fieldChunkMetrics_[field_id].emplace(chunk_id, chunkMetrics);
+    fieldChunkMetrics_[field_id].emplace(chunk_id, std::move(chunkMetrics));
 }
 
 }  // namespace milvus

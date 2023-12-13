@@ -239,7 +239,7 @@ class SkipIndex {
     }
 
  private:
-    std::unordered_map<FieldId, std::unordered_map<int64_t, FieldChunkMetrics>>
+    std::unordered_map<FieldId, std::unordered_map<int64_t, std::unique_ptr<FieldChunkMetrics>>>
         fieldChunkMetrics_;
 };
 }  // namespace milvus
