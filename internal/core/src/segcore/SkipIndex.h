@@ -35,12 +35,6 @@ struct FieldChunkMetrics {
 
 class SkipIndex {
  public:
-    SkipIndex() {
-        fieldChunkMetrics_ = std::unordered_map<
-            FieldId,
-            std::unordered_map<int64_t, FieldChunkMetrics>>();
-    }
-
     template <typename T>
     bool
     CanSkipUnaryRange(FieldId field_id,

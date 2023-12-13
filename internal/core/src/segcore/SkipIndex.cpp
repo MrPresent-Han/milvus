@@ -92,7 +92,11 @@ SkipIndex::LoadPrimitive(milvus::FieldId field_id,
             }
         }
     }
-    fieldChunkMetrics_[field_id][chunk_id] = chunkMetrics;
+    if(fieldChunkMetrics_.count(field_id)==0){
+        fieldChunkMetrics_.insert(std::make_pair(field_id, std::unordered_map<int64_t, FieldChunkMetrics>()));
+    }
+
+    fieldChunkMetrics_[field_id].emplace(chunk_id, chunkMetrics);
 }
 
 void
@@ -117,7 +121,10 @@ SkipIndex::LoadString(milvus::FieldId field_id,
         chunkMetrics.min_ = Metrics(min_string);
         chunkMetrics.max_ = Metrics(max_string);
     }
-    fieldChunkMetrics_[field_id][chunk_id] = chunkMetrics;
+    if(fieldChunkMetrics_.count(field_id)==0){
+        fieldChunkMetrics_.insert(std::make_pair(field_id, std::unordered_map<int64_t, FieldChunkMetrics>()));
+    }
+    fieldChunkMetrics_[field_id].emplace(chunk_id, chunkMetrics);
 }
 
 }  // namespace milvus
