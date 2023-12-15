@@ -150,9 +150,9 @@ func sealByMaxBinlogFileNumberPolicy(maxBinlogFileNumber int) segmentSealPolicy 
 // A: We don't want to influence segments which are accepting `frequent small` batch entities.
 func sealLongTimeIdlePolicy(idleTimeTolerance time.Duration, minSizeToSealIdleSegment float64, maxSizeOfSegment float64) segmentSealPolicy {
 	return func(segment *SegmentInfo, ts Timestamp) bool {
-		limit := (minSizeToSealIdleSegment / maxSizeOfSegment) * float64(segment.GetMaxRowNum())
-		return time.Since(segment.lastWrittenTime) > idleTimeTolerance &&
-			float64(segment.currRows) > limit
+		//limit := (minSizeToSealIdleSegment / maxSizeOfSegment) * float64(segment.GetMaxRowNum())
+		return time.Since(segment.lastWrittenTime) > idleTimeTolerance /*&&
+		float64(segment.currRows) > limit*/
 	}
 }
 
