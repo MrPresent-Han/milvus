@@ -19,6 +19,7 @@ package storage
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/paramtable"
 
 	"github.com/bits-and-blooms/bloom/v3"
 
@@ -26,12 +27,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/merr"
-)
-
-const (
-	// TODO silverxia maybe need set from config
-	BloomFilterSize       uint    = 100000
-	MaxBloomFalsePositive float64 = 0.005
 )
 
 // PrimaryKeyStats contains statistics data for pk column
@@ -197,7 +192,7 @@ func NewPrimaryKeyStats(fieldID, pkType, rowNum int64) (*PrimaryKeyStats, error)
 	return &PrimaryKeyStats{
 		FieldID: fieldID,
 		PkType:  pkType,
-		BF:      bloom.NewWithEstimates(uint(rowNum), MaxBloomFalsePositive),
+		BF:      bloom.NewWithEstimates(uint(rowNum), paramtable.Get().CommonCfg.MaxBloomFalsePositive.GetAsFloat()),
 	}, nil
 }
 
@@ -236,7 +231,7 @@ func (sw *StatsWriter) GenerateByData(fieldID int64, pkType schemapb.DataType, m
 	stats := &PrimaryKeyStats{
 		FieldID: fieldID,
 		PkType:  int64(pkType),
-		BF:      bloom.NewWithEstimates(uint(msgs.RowNum()), MaxBloomFalsePositive),
+		BF:      bloom.NewWithEstimates(uint(msgs.RowNum()), paramtable.Get().CommonCfg.MaxBloomFalsePositive.GetAsFloat()),
 	}
 
 	stats.UpdateByMsgs(msgs)
