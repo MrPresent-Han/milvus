@@ -19,12 +19,14 @@
 #include "common/QueryInfo.h"
 #include "knowhere/index_node.h"
 #include "segcore/SegmentInterface.h"
+#include "segcore/SegmentGrowingImpl.h"
+#include "segcore/ConcurrentVector.h"
 #include "common/Span.h"
 
 namespace milvus {
 namespace query {
 
-template <typename T>
+/*template <typename T>
 struct DataGetter {
     std::shared_ptr<Span<T>> field_data_;
     std::shared_ptr<Span<std::string_view>> str_field_data_;
@@ -65,6 +67,29 @@ struct DataGetter {
         } else {
             return (*field_index_).Reverse_Lookup(idx);
         }
+    }
+};*/
+
+template <typename T>
+class DataGetter {
+public:
+    virtual T Get(int64_t idx) const = 0;
+    static DataGetter<T> GetDataGetter(const segcore::SegmentInternalInterface& segment,
+                                    FieldId fieldId){
+
+    }
+};
+
+template <typename T>
+class GrowingDataGetter: public DataGetter<T>{
+public:
+    const segcore::ConcurrentVector<T>* growing_data_vector_;
+    GrowingDataGetter(const segcore::SegmentGrowingImpl& segment, FieldId fieldId){
+        growing_data_vector_ = segment.get_insert_record().get_field_data<T>();
+    }
+
+    T Get(int64_t idx) const{
+        growing_data_vector_->operator[](idx);
     }
 };
 
