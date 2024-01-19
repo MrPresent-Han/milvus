@@ -89,7 +89,9 @@ public:
     }
 
     T Get(int64_t idx) const{
-        growing_data_vector_->operator[](idx);
+        const T& val_ref = growing_data_vector_->operator[](idx);
+        T val = val_ref;
+        return val;
     }
 };
 
