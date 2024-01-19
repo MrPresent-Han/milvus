@@ -44,11 +44,11 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
 
     switch (data_type) {
         case DataType::INT8: {
-            DataGetter<int8_t> dataGetter(segment, group_by_field_id);
+            auto dataGetter = GetDataGetter<int8_t>(segment, group_by_field_id);
             GroupIteratorsByType<int8_t>(iterators,
                                          group_by_field_id,
                                          search_info.topk_,
-                                         dataGetter,
+                                         *dataGetter,
                                          group_by_values,
                                          seg_offsets,
                                          distances,
@@ -56,11 +56,11 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
             break;
         }
         case DataType::INT16: {
-            DataGetter<int16_t> dataGetter(segment, group_by_field_id);
+            auto dataGetter = GetDataGetter<int16_t>(segment, group_by_field_id);
             GroupIteratorsByType<int16_t>(iterators,
                                           group_by_field_id,
                                           search_info.topk_,
-                                          dataGetter,
+                                          *dataGetter,
                                           group_by_values,
                                           seg_offsets,
                                           distances,
@@ -68,11 +68,11 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
             break;
         }
         case DataType::INT32: {
-            DataGetter<int32_t> dataGetter(segment, group_by_field_id);
+            auto dataGetter = GetDataGetter<int32_t>(segment, group_by_field_id);
             GroupIteratorsByType<int32_t>(iterators,
                                           group_by_field_id,
                                           search_info.topk_,
-                                          dataGetter,
+                                          *dataGetter,
                                           group_by_values,
                                           seg_offsets,
                                           distances,
@@ -80,11 +80,11 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
             break;
         }
         case DataType::INT64: {
-            DataGetter<int64_t> dataGetter(segment, group_by_field_id);
+            auto dataGetter = GetDataGetter<int64_t>(segment, group_by_field_id);
             GroupIteratorsByType<int64_t>(iterators,
                                           group_by_field_id,
                                           search_info.topk_,
-                                          dataGetter,
+                                          *dataGetter,
                                           group_by_values,
                                           seg_offsets,
                                           distances,
@@ -92,11 +92,11 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
             break;
         }
         case DataType::BOOL: {
-            DataGetter<bool> dataGetter(segment, group_by_field_id);
+            auto dataGetter = GetDataGetter<bool>(segment, group_by_field_id);
             GroupIteratorsByType<bool>(iterators,
                                        group_by_field_id,
                                        search_info.topk_,
-                                       dataGetter,
+                                       *dataGetter,
                                        group_by_values,
                                        seg_offsets,
                                        distances,
@@ -104,11 +104,11 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
             break;
         }
         case DataType::VARCHAR: {
-            DataGetter<std::string> dataGetter(segment, group_by_field_id);
+            auto dataGetter = GetDataGetter<std::string>(segment, group_by_field_id);
             GroupIteratorsByType<std::string>(iterators,
                                               group_by_field_id,
                                               search_info.topk_,
-                                              dataGetter,
+                                              *dataGetter,
                                               group_by_values,
                                               seg_offsets,
                                               distances,

@@ -20,29 +20,56 @@
 #include "knowhere/index_node.h"
 #include "segcore/SegmentInterface.h"
 #include "segcore/SegmentGrowingImpl.h"
+#include "segcore/SegmentSealedImpl.h"
 #include "segcore/ConcurrentVector.h"
 #include "common/Span.h"
 
 namespace milvus {
 namespace query {
 
-/*template <typename T>
-struct DataGetter {
+template <typename T>
+class DataGetter {
+public:
+    virtual T Get(int64_t idx) const = 0;
+};
+
+template <typename T>
+class GrowingDataGetter: public DataGetter<T>{
+public:
+    const segcore::ConcurrentVector<T>* growing_raw_data_;
+    GrowingDataGetter(const segcore::SegmentGrowingImpl& segment, FieldId fieldId){
+        growing_raw_data_ = segment.get_insert_record().get_field_data<T>(fieldId);
+    }
+
+    GrowingDataGetter(const GrowingDataGetter<T>& other): growing_raw_data_(other.growing_raw_data_){
+    }
+
+    T Get(int64_t idx) const{
+        const T& val_ref = growing_raw_data_->operator[](idx);
+        T val = val_ref;
+        return val;
+    }
+};
+
+template <typename T>
+class SealedDataGetter: public DataGetter<T>{
+private:
     std::shared_ptr<Span<T>> field_data_;
     std::shared_ptr<Span<std::string_view>> str_field_data_;
     const index::ScalarIndex<T>* field_index_;
 
-    DataGetter(const segcore::SegmentInternalInterface& segment,
+public:
+    SealedDataGetter(const segcore::SegmentSealedImpl& segment,
                FieldId& field_id) {
         if (segment.HasFieldData(field_id)) {
             if constexpr (std::is_same_v<T, std::string>) {
                 auto span = segment.chunk_data<std::string_view>(field_id, 0);
                 str_field_data_ = std::make_shared<Span<std::string_view>>(
-                    span.data(), span.row_count());
+                        span.data(), span.row_count());
             } else {
                 auto span = segment.chunk_data<T>(field_id, 0);
                 field_data_ =
-                    std::make_shared<Span<T>>(span.data(), span.row_count());
+                        std::make_shared<Span<T>>(span.data(), span.row_count());
             }
         } else if (segment.HasIndex(field_id)) {
             this->field_index_ = &(segment.chunk_scalar_index<T>(field_id, 0));
@@ -54,13 +81,16 @@ struct DataGetter {
         }
     }
 
- public:
+    SealedDataGetter(const SealedDataGetter<T>& other): field_data_(other.field_data_),
+        str_field_data_(other.str_field_data_), field_index_(other.field_index_){
+    }
+
     T
     Get(int64_t idx) const {
         if (field_data_ || str_field_data_) {
             if constexpr (std::is_same_v<T, std::string>) {
                 std::string_view str_val_view =
-                    str_field_data_->operator[](idx);
+                        str_field_data_->operator[](idx);
                 return std::string(str_val_view.data(), str_val_view.length());
             }
             return field_data_->operator[](idx);
@@ -68,32 +98,19 @@ struct DataGetter {
             return (*field_index_).Reverse_Lookup(idx);
         }
     }
-};*/
-
-template <typename T>
-class DataGetter {
-public:
-    virtual T Get(int64_t idx) const = 0;
-    static DataGetter<T> GetDataGetter(const segcore::SegmentInternalInterface& segment,
-                                    FieldId fieldId){
-
-    }
 };
 
 template <typename T>
-class GrowingDataGetter: public DataGetter<T>{
-public:
-    const segcore::ConcurrentVector<T>* growing_data_vector_;
-    GrowingDataGetter(const segcore::SegmentGrowingImpl& segment, FieldId fieldId){
-        growing_data_vector_ = segment.get_insert_record().get_field_data<T>();
+static const std::shared_ptr<DataGetter<T>> GetDataGetter(const segcore::SegmentInternalInterface& segment,
+                                   FieldId fieldId){
+    if(const segcore::SegmentGrowingImpl* growing_segment = dynamic_cast<const segcore::SegmentGrowingImpl*>(&segment)){
+        return std::make_shared<GrowingDataGetter<T>>(*growing_segment, fieldId);
+    } else if(const segcore::SegmentSealedImpl* sealed_segment = dynamic_cast<const segcore::SegmentSealedImpl*>(&segment)) {
+        return std::make_shared<SealedDataGetter<T>>(*sealed_segment, fieldId);
+    } else {
+        PanicInfo(UnexpectedError, "The segment used to init data getter is neither growing or sealed, wrong state");
     }
-
-    T Get(int64_t idx) const{
-        const T& val_ref = growing_data_vector_->operator[](idx);
-        T val = val_ref;
-        return val;
-    }
-};
+}
 
 void
 GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
