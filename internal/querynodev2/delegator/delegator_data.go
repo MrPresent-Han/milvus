@@ -472,6 +472,12 @@ func (sd *shardDelegator) LoadSegments(ctx context.Context, req *querypb.LoadSeg
 	// alter distribution
 	sd.distribution.AddDistributions(entries...)
 
+	partStatsToReload := make([]UniqueID, 0)
+	lo.ForEach(req.GetInfos(), func(info *querypb.SegmentLoadInfo, _ int) {
+		partStatsToReload = append(partStatsToReload, info.PartitionID)
+	})
+	sd.maybeReloadPartitionStats(ctx, partStatsToReload...)
+
 	return nil
 }
 
@@ -845,7 +851,12 @@ func (sd *shardDelegator) ReleaseSegments(ctx context.Context, req *querypb.Rele
 	if hasLevel0 {
 		sd.GenerateLevel0DeletionCache()
 	}
-
+	partitionsToReload := make([]UniqueID, 0)
+	lo.ForEach(req.GetSegmentIDs(), func(segmentID int64, _ int) {
+		segment := sd.segmentManager.Get(segmentID)
+		partitionsToReload = append(partitionsToReload, segment.Partition())
+	})
+	sd.maybeReloadPartitionStats(ctx, partitionsToReload...)
 	return nil
 }
 

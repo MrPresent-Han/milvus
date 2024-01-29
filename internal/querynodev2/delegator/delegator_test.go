@@ -161,7 +161,7 @@ func (s *DelegatorSuite) SetupTest() {
 		NewMsgStreamFunc: func(_ context.Context) (msgstream.MsgStream, error) {
 			return s.mq, nil
 		},
-	}, 10000, nil)
+	}, 10000, nil, nil)
 	s.Require().NoError(err)
 }
 

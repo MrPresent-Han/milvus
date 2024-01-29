@@ -319,10 +319,19 @@ type PartitionStats struct {
 	// todo move primaryKeyStats into segmentStats
 	primaryKeyStats map[segmentID]PrimaryKeyStats
 	segmentStats    map[segmentID][]FieldStats
+	version         int64
 }
 
 // GetPrimaryKeyStats return PrimaryKeyStats of the partition
-func (ps PartitionStats) GetPrimaryKeyStats() map[segmentID]PrimaryKeyStats {
+func (ps *PartitionStats) GetPrimaryKeyStats() map[segmentID]PrimaryKeyStats {
 	// todo: get from segmentStats after FieldStats is compatible to primaryKeyStats
 	return ps.primaryKeyStats
+}
+
+func (ps *PartitionStats) GetVersion() int64 {
+	return ps.version
+}
+
+func DeserializePartitionsStats(blob []byte) (*PartitionStats, error) {
+	return nil, nil
 }

@@ -135,7 +135,7 @@ func (s *DelegatorDataSuite) SetupTest() {
 		NewMsgStreamFunc: func(_ context.Context) (msgstream.MsgStream, error) {
 			return s.mq, nil
 		},
-	}, 10000, nil)
+	}, 10000, nil, nil)
 	s.Require().NoError(err)
 	sd, ok := delegator.(*shardDelegator)
 	s.Require().True(ok)
@@ -542,7 +542,7 @@ func (s *DelegatorDataSuite) TestLoadSegments() {
 				NewMsgStreamFunc: func(_ context.Context) (msgstream.MsgStream, error) {
 					return s.mq, nil
 				},
-			}, 10000, nil)
+			}, 10000, nil, nil)
 		s.NoError(err)
 
 		growing0 := segments.NewMockSegment(s.T())
