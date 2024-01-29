@@ -2015,6 +2015,7 @@ type queryNodeConfig struct {
 	FlowGraphMaxParallelism ParamItem `refreshable:"false"`
 
 	MemoryIndexLoadPredictMemoryUsageFactor ParamItem `refreshable:"true"`
+	UsePartitionPrune                       ParamItem `refreshable:"false"`
 }
 
 func (p *queryNodeConfig) init(base *BaseTable) {
@@ -2478,6 +2479,13 @@ Max read concurrency must greater than or equal to 1, and less than or equal to 
 		Doc:          "memory usage prediction factor for memory index loaded",
 	}
 	p.MemoryIndexLoadPredictMemoryUsageFactor.Init(base.mgr)
+	p.UsePartitionPrune = ParamItem{
+		Key:          "queryNode.usePartitionPrune",
+		Version:      "2.3.4",
+		DefaultValue: "false",
+		Doc:          "use partition prune function on shard delegator",
+	}
+	p.UsePartitionPrune.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////
