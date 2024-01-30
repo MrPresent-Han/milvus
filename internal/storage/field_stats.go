@@ -33,7 +33,7 @@ import (
 // todo: compatible to PrimaryKeyStats
 type FieldStats struct {
 	FieldID   int64                  `json:"fieldID"`
-	Type      int64                  `json:"Type"`
+	Type      schemapb.DataType      `json:"Type"`
 	Max       ScalarFieldValue       `json:"max"`      // for scalar field
 	Min       ScalarFieldValue       `json:"min"`      // for scalar field
 	BF        *bloom.BloomFilter     `json:"bf"`       // for scalar field
@@ -53,15 +53,15 @@ func (stats *FieldStats) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	stats.Type = int64(schemapb.DataType_Int64)
+	stats.Type = schemapb.DataType_Int64
 	if value, ok := messageMap["Type"]; ok && value != nil {
-		var typeValue int64
+		var typeValue int32
 		err = json.Unmarshal(*value, &typeValue)
 		if err != nil {
 			return err
 		}
 		if typeValue > 0 {
-			stats.Type = typeValue
+			stats.Type = schemapb.DataType(typeValue)
 		}
 	}
 
@@ -188,7 +188,7 @@ func NewFieldStats(fieldID, pkType, rowNum int64) (*FieldStats, error) {
 	}
 	return &FieldStats{
 		FieldID: fieldID,
-		Type:    pkType,
+		Type:    schemapb.DataType(pkType),
 		BF:      bloom.NewWithEstimates(uint(rowNum), paramtable.Get().CommonCfg.MaxBloomFalsePositive.GetAsFloat()),
 	}, nil
 }
@@ -234,7 +234,7 @@ func (sw *FieldStatsWriter) GenerateByData(fieldID int64, pkType schemapb.DataTy
 	for _, msg := range msgs {
 		stats := &FieldStats{
 			FieldID: fieldID,
-			Type:    int64(pkType),
+			Type:    schemapb.DataType(pkType),
 			BF:      bloom.NewWithEstimates(uint(msg.RowNum()), paramtable.Get().CommonCfg.MaxBloomFalsePositive.GetAsFloat()),
 		}
 
@@ -313,25 +313,42 @@ func DeserializeFieldStatsList(blob *Blob) ([]*FieldStats, error) {
 	return stats, nil
 }
 
-type segmentID int64
+type SegmentID int64
 
 type PartitionStats struct {
-	// todo move primaryKeyStats into segmentStats
-	primaryKeyStats map[segmentID]PrimaryKeyStats
-	segmentStats    map[segmentID][]FieldStats
-	version         int64
-}
-
-// GetPrimaryKeyStats return PrimaryKeyStats of the partition
-func (ps *PartitionStats) GetPrimaryKeyStats() map[segmentID]PrimaryKeyStats {
-	// todo: get from segmentStats after FieldStats is compatible to primaryKeyStats
-	return ps.primaryKeyStats
+	SegmentStats map[SegmentID][]FieldStats `json:"segmentStats"`
+	version      int64
 }
 
 func (ps *PartitionStats) GetVersion() int64 {
 	return ps.version
 }
 
-func DeserializePartitionsStats(blob []byte) (*PartitionStats, error) {
-	return nil, nil
+func (ps *PartitionStats) SetVersion(v int64) {
+	ps.version = v
+}
+
+func DeserializePartitionsStats(data []byte) (*PartitionStats, error) {
+	var messageMap map[string]*json.RawMessage
+	err := json.Unmarshal(data, &messageMap)
+	if err != nil {
+		return nil, err
+	}
+
+	partitionStats := &PartitionStats{
+		SegmentStats: make(map[SegmentID][]FieldStats),
+	}
+	err = json.Unmarshal(*messageMap["segmentStats"], &partitionStats.SegmentStats)
+	if err != nil {
+		return nil, err
+	}
+	return partitionStats, nil
+}
+
+func SerializePartitionStats(partStats *PartitionStats) ([]byte, error) {
+	partData, err := json.Marshal(partStats)
+	if err != nil {
+		return nil, err
+	}
+	return partData, nil
 }

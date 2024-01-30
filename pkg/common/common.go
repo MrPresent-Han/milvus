@@ -86,7 +86,7 @@ const (
 	SegmentIndexPath = `index_files`
 
 	// PartitionStatsPath storage path const for partition stats files
-	PartitionStatsPath = `stats_log`
+	PartitionStatsPath = `part_stats`
 )
 
 // Search, Index parameter keys

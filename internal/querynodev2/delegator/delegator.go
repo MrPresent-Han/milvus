@@ -698,7 +698,7 @@ func (sd *shardDelegator) maybeReloadPartitionStats(ctx context.Context, partIDs
 	for _, partID := range partsToReload {
 		idPath := metautil.JoinIDPath(colID, partID)
 		statsPathPrefix := path.Join(sd.chunkManager.RootPath(), common.PartitionStatsPath, idPath)
-		filePaths, _, err := sd.chunkManager.ListWithPrefix(ctx, statsPathPrefix, false)
+		filePaths, _, err := sd.chunkManager.ListWithPrefix(ctx, statsPathPrefix, true)
 		if err != nil {
 			continue
 		}
@@ -719,6 +719,7 @@ func (sd *shardDelegator) maybeReloadPartitionStats(ctx context.Context, partIDs
 				continue
 			}
 			sd.partitionStats[partID] = partStats
+			partStats.SetVersion(maxVersion)
 			log.Info("Updated partitionStats for partition", zap.Int64("partitionID", partID))
 		}
 	}
@@ -763,6 +764,7 @@ func NewShardDelegator(ctx context.Context, collectionID UniqueID, replicaID Uni
 		factory:         factory,
 		queryHook:       queryHook,
 		chunkManager:    chunkManager,
+		partitionStats:  make(map[UniqueID]*storage.PartitionStats),
 	}
 	m := sync.Mutex{}
 	sd.tsCond = sync.NewCond(&m)

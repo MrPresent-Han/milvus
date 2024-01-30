@@ -854,7 +854,9 @@ func (sd *shardDelegator) ReleaseSegments(ctx context.Context, req *querypb.Rele
 	partitionsToReload := make([]UniqueID, 0)
 	lo.ForEach(req.GetSegmentIDs(), func(segmentID int64, _ int) {
 		segment := sd.segmentManager.Get(segmentID)
-		partitionsToReload = append(partitionsToReload, segment.Partition())
+		if segment != nil {
+			partitionsToReload = append(partitionsToReload, segment.Partition())
+		}
 	})
 	sd.maybeReloadPartitionStats(ctx, partitionsToReload...)
 	return nil
