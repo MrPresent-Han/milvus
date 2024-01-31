@@ -120,7 +120,7 @@ type shardDelegator struct {
 	latestTsafe *atomic.Uint64
 	// queryHook
 	queryHook      optimizers.QueryHook
-	partitionStats map[UniqueID]*storage.PartitionStats
+	partitionStats map[UniqueID]*storage.PartitionStatsSnapshot
 	chunkManager   storage.ChunkManager
 }
 
@@ -208,6 +208,9 @@ func (sd *shardDelegator) search(ctx context.Context, req *querypb.SearchRequest
 	if err != nil {
 		log.Warn("failed to optimize search params", zap.Error(err))
 		return nil, err
+	}
+	if paramtable.Get().QueryNodeCfg.UsePartitionPrune.GetAsBool() {
+		PruneSegments(sd.partitionStats, req.GetReq(), nil, sd.collection.Schema(), sealed, PruneInfo{filterRatio: defaultFilterRatio})
 	}
 
 	tasks, err := organizeSubTask(ctx, req, sealed, growing, sd, sd.modifySearchRequest)
@@ -491,12 +494,17 @@ func (sd *shardDelegator) Query(ctx context.Context, req *querypb.QueryRequest) 
 		return nil, merr.WrapErrChannelNotAvailable(sd.vchannelName, "distribution is not servcieable")
 	}
 	defer sd.distribution.Unpin(version)
-	existPartitions := sd.collection.GetPartitions()
-	growing = lo.Filter(growing, func(segment SegmentEntry, _ int) bool {
-		return funcutil.SliceContain(existPartitions, segment.PartitionID)
-	})
 	if req.Req.IgnoreGrowing {
 		growing = []SegmentEntry{}
+	} else {
+		existPartitions := sd.collection.GetPartitions()
+		growing = lo.Filter(growing, func(segment SegmentEntry, _ int) bool {
+			return funcutil.SliceContain(existPartitions, segment.PartitionID)
+		})
+	}
+
+	if paramtable.Get().QueryNodeCfg.UsePartitionPrune.GetAsBool() {
+		PruneSegments(sd.partitionStats, nil, req.GetReq(), sd.collection.Schema(), sealed, PruneInfo{defaultFilterRatio})
 	}
 
 	sealedNum := lo.SumBy(sealed, func(item SnapshotItem) int { return len(item.Segments) })
@@ -822,14 +830,14 @@ func (sd *shardDelegator) maybeReloadPartitionStats(ctx context.Context, partIDs
 			log.Info("failed to find valid partition stats file for partition", zap.Int64("partitionID", partID))
 			continue
 		}
-		partStats, exists := sd.partitionStats[maxVersion]
+		partStats, exists := sd.partitionStats[partID]
 		if !exists || (exists && partStats.GetVersion() < maxVersion) {
 			statsBytes, err := sd.chunkManager.Read(ctx, maxVersionFilePath)
 			if err != nil {
 				log.Error("failed to read stats file from object storage", zap.String("path", maxVersionFilePath))
 				continue
 			}
-			partStats, err := storage.DeserializePartitionsStats(statsBytes)
+			partStats, err := storage.DeserializePartitionsStatsSnapshot(statsBytes)
 			if err != nil {
 				log.Error("failed to parse partition stats from bytes", zap.Int("bytes_length", len(statsBytes)))
 				continue
@@ -880,7 +888,7 @@ func NewShardDelegator(ctx context.Context, collectionID UniqueID, replicaID Uni
 		factory:         factory,
 		queryHook:       queryHook,
 		chunkManager:    chunkManager,
-		partitionStats:  make(map[UniqueID]*storage.PartitionStats),
+		partitionStats:  make(map[UniqueID]*storage.PartitionStatsSnapshot),
 	}
 	m := sync.Mutex{}
 	sd.tsCond = sync.NewCond(&m)

@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/exprutil"
 	"strconv"
 	"strings"
 
@@ -358,11 +359,11 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	if !t.reQuery {
 		partitionNames := t.request.GetPartitionNames()
 		if t.partitionKeyMode {
-			expr, err := ParseExprFromPlan(t.plan)
+			expr, err := exprutil.ParseExprFromPlan(t.plan)
 			if err != nil {
 				return err
 			}
-			partitionKeys := ParsePartitionKeys(expr)
+			partitionKeys := exprutil.ParseKeys(expr, exprutil.PartitionKey)
 			hashedPartitionNames, err := assignPartitionKeys(ctx, t.request.GetDbName(), t.request.CollectionName, partitionKeys)
 			if err != nil {
 				return err

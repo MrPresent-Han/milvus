@@ -1,9 +1,16 @@
-package proxy
+package exprutil
 
 import (
 	"github.com/cockroachdb/errors"
 
 	"github.com/milvus-io/milvus/internal/proto/planpb"
+)
+
+type KeyType int64
+
+const (
+	PartitionKey  KeyType = iota
+	ClusteringKey KeyType = PartitionKey + 1
 )
 
 func ParseExprFromPlan(plan *planpb.PlanNode) (*planpb.Expr, error) {
@@ -26,9 +33,9 @@ func ParseExprFromPlan(plan *planpb.PlanNode) (*planpb.Expr, error) {
 	return expr, nil
 }
 
-func ParsePartitionKeysFromBinaryExpr(expr *planpb.BinaryExpr) ([]*planpb.GenericValue, bool) {
-	leftRes, leftInRange := ParsePartitionKeysFromExpr(expr.Left)
-	RightRes, rightInRange := ParsePartitionKeysFromExpr(expr.Right)
+func ParsePartitionKeysFromBinaryExpr(expr *planpb.BinaryExpr, keyType KeyType) ([]*planpb.GenericValue, bool) {
+	leftRes, leftInRange := ParseKeysFromExpr(expr.Left, keyType)
+	RightRes, rightInRange := ParseKeysFromExpr(expr.Right, keyType)
 
 	if expr.Op == planpb.BinaryExpr_LogicalAnd {
 		// case: partition_key_field in [7, 8] && partition_key > 8
@@ -55,8 +62,8 @@ func ParsePartitionKeysFromBinaryExpr(expr *planpb.BinaryExpr) ([]*planpb.Generi
 	return nil, false
 }
 
-func ParsePartitionKeysFromUnaryExpr(expr *planpb.UnaryExpr) ([]*planpb.GenericValue, bool) {
-	res, partitionInRange := ParsePartitionKeysFromExpr(expr.GetChild())
+func ParsePartitionKeysFromUnaryExpr(expr *planpb.UnaryExpr, keyType KeyType) ([]*planpb.GenericValue, bool) {
+	res, partitionInRange := ParseKeysFromExpr(expr.GetChild(), keyType)
 	if expr.Op == planpb.UnaryExpr_Not {
 		// case: partition_key_field not in [7, 8]
 		if len(res) != 0 {
@@ -71,41 +78,44 @@ func ParsePartitionKeysFromUnaryExpr(expr *planpb.UnaryExpr) ([]*planpb.GenericV
 	return res, partitionInRange
 }
 
-func ParsePartitionKeysFromTermExpr(expr *planpb.TermExpr) ([]*planpb.GenericValue, bool) {
-	if expr.GetColumnInfo().GetIsPartitionKey() {
+func ParsePartitionKeysFromTermExpr(expr *planpb.TermExpr, keyType KeyType) ([]*planpb.GenericValue, bool) {
+	if keyType == PartitionKey && expr.GetColumnInfo().GetIsPartitionKey() {
+		return expr.GetValues(), false
+	} else if keyType == ClusteringKey && expr.GetColumnInfo().GetIsClusteringKey() {
 		return expr.GetValues(), false
 	}
-
 	return nil, false
 }
 
-func ParsePartitionKeysFromUnaryRangeExpr(expr *planpb.UnaryRangeExpr) ([]*planpb.GenericValue, bool) {
-	if expr.GetColumnInfo().GetIsPartitionKey() && expr.GetOp() == planpb.OpType_Equal {
-		return []*planpb.GenericValue{expr.Value}, false
+func ParsePartitionKeysFromUnaryRangeExpr(expr *planpb.UnaryRangeExpr, keyType KeyType) ([]*planpb.GenericValue, bool) {
+	if expr.GetOp() == planpb.OpType_Equal {
+		if expr.GetColumnInfo().GetIsPartitionKey() && keyType == PartitionKey ||
+			expr.GetColumnInfo().GetIsClusteringKey() && keyType == ClusteringKey {
+			return []*planpb.GenericValue{expr.Value}, false
+		}
 	}
-
 	return nil, true
 }
 
-func ParsePartitionKeysFromExpr(expr *planpb.Expr) ([]*planpb.GenericValue, bool) {
+func ParseKeysFromExpr(expr *planpb.Expr, keyType KeyType) ([]*planpb.GenericValue, bool) {
 	var res []*planpb.GenericValue
 	partitionKeyInRange := false
 	switch expr := expr.GetExpr().(type) {
 	case *planpb.Expr_BinaryExpr:
-		res, partitionKeyInRange = ParsePartitionKeysFromBinaryExpr(expr.BinaryExpr)
+		res, partitionKeyInRange = ParsePartitionKeysFromBinaryExpr(expr.BinaryExpr, keyType)
 	case *planpb.Expr_UnaryExpr:
-		res, partitionKeyInRange = ParsePartitionKeysFromUnaryExpr(expr.UnaryExpr)
+		res, partitionKeyInRange = ParsePartitionKeysFromUnaryExpr(expr.UnaryExpr, keyType)
 	case *planpb.Expr_TermExpr:
-		res, partitionKeyInRange = ParsePartitionKeysFromTermExpr(expr.TermExpr)
+		res, partitionKeyInRange = ParsePartitionKeysFromTermExpr(expr.TermExpr, keyType)
 	case *planpb.Expr_UnaryRangeExpr:
-		res, partitionKeyInRange = ParsePartitionKeysFromUnaryRangeExpr(expr.UnaryRangeExpr)
+		res, partitionKeyInRange = ParsePartitionKeysFromUnaryRangeExpr(expr.UnaryRangeExpr, keyType)
 	}
 
 	return res, partitionKeyInRange
 }
 
-func ParsePartitionKeys(expr *planpb.Expr) []*planpb.GenericValue {
-	res, partitionKeyInRange := ParsePartitionKeysFromExpr(expr)
+func ParseKeys(expr *planpb.Expr, kType KeyType) []*planpb.GenericValue {
+	res, partitionKeyInRange := ParseKeysFromExpr(expr, kType)
 	if partitionKeyInRange {
 		res = nil
 	}

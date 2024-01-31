@@ -1,4 +1,4 @@
-package proxy
+package exprutil
 
 import (
 	"testing"
@@ -9,6 +9,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/parser/planparserv2"
 	"github.com/milvus-io/milvus/internal/proto/planpb"
+	"github.com/milvus-io/milvus/internal/util/testutil"
 	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
@@ -22,7 +23,8 @@ func TestParsePartitionKeys(t *testing.T) {
 	fieldName2Type["int64_field"] = schemapb.DataType_Int64
 	fieldName2Type["varChar_field"] = schemapb.DataType_VarChar
 	fieldName2Type["fvec_field"] = schemapb.DataType_FloatVector
-	schema := constructCollectionSchemaByDataType(collectionName, fieldName2Type, "int64_field", false)
+	schema := testutil.ConstructCollectionSchemaByDataType(collectionName, fieldName2Type,
+		"int64_field", false, 8)
 	partitionKeyField := &schemapb.FieldSchema{
 		Name:           "partition_key_field",
 		DataType:       schemapb.DataType_Int64,
@@ -118,7 +120,7 @@ func TestParsePartitionKeys(t *testing.T) {
 			assert.NoError(t, err)
 			expr, err := ParseExprFromPlan(searchPlan)
 			assert.NoError(t, err)
-			partitionKeys := ParsePartitionKeys(expr)
+			partitionKeys := ParseKeys(expr, PartitionKey)
 			assert.Equal(t, tc.expected, len(partitionKeys))
 			for _, key := range partitionKeys {
 				int64Val := key.Val.(*planpb.GenericValue_Int64Val).Int64Val
@@ -131,7 +133,7 @@ func TestParsePartitionKeys(t *testing.T) {
 			assert.NoError(t, err)
 			expr, err = ParseExprFromPlan(queryPlan)
 			assert.NoError(t, err)
-			partitionKeys = ParsePartitionKeys(expr)
+			partitionKeys = ParseKeys(expr, PartitionKey)
 			assert.Equal(t, tc.expected, len(partitionKeys))
 			for _, key := range partitionKeys {
 				int64Val := key.Val.(*planpb.GenericValue_Int64Val).Int64Val

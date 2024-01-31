@@ -910,7 +910,7 @@ func (s *DelegatorDataSuite) TestReleaseSegment() {
 }
 
 func (s *DelegatorDataSuite) TestLoadPartitionStats() {
-	segStats := make(map[UniqueID][]storage.FieldStats)
+	segStats := make(map[UniqueID]storage.SegmentStat)
 	{
 		// p1 stats
 		fieldStats := make([]storage.FieldStats, 0)
@@ -928,12 +928,12 @@ func (s *DelegatorDataSuite) TestLoadPartitionStats() {
 		}
 		fieldStats = append(fieldStats, fieldStat1)
 		fieldStats = append(fieldStats, fieldStat2)
-		segStats[1] = fieldStats
+		segStats[1] = *storage.NewSegmentStat(fieldStats, 0)
 	}
-	partitionStats1 := &storage.PartitionStats{
+	partitionStats1 := &storage.PartitionStatsSnapshot{
 		SegmentStats: segStats,
 	}
-	statsData1, err := storage.SerializePartitionStats(partitionStats1)
+	statsData1, err := storage.SerializePartitionStatsSnapshot(partitionStats1)
 	s.NoError(err)
 	partitionID1 := int64(1001)
 	idPath1 := metautil.JoinIDPath(s.collectionID, partitionID1)

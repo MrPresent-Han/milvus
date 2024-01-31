@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/exprutil"
 	"io"
 
 	"github.com/cockroachdb/errors"
@@ -356,11 +357,11 @@ func (dr *deleteRunner) getStreamingQueryAndDelteFunc(plan *planpb.PlanNode) exe
 
 		// optimize query when partitionKey on
 		if dr.partitionKeyMode {
-			expr, err := ParseExprFromPlan(plan)
+			expr, err := exprutil.ParseExprFromPlan(plan)
 			if err != nil {
 				return err
 			}
-			partitionKeys := ParsePartitionKeys(expr)
+			partitionKeys := exprutil.ParseKeys(expr, exprutil.PartitionKey)
 			hashedPartitionNames, err := assignPartitionKeys(ctx, dr.req.GetDbName(), dr.req.GetCollectionName(), partitionKeys)
 			if err != nil {
 				return err
