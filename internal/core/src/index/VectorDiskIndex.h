@@ -100,6 +100,12 @@ class VectorDiskAnnIndex : public VectorIndex {
     void
     CleanLocalData() override;
 
+    knowhere::expected<
+            std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+    VectorIterators(const DatasetPtr dataset,
+                    const SearchInfo& search_info,
+                    const BitsetView& bitset) override;
+
  private:
     knowhere::Json
     update_load_json(const Config& config);

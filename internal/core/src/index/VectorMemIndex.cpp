@@ -129,6 +129,14 @@ VectorMemIndex<T>::UploadV2(const Config& config) {
 }
 
 template <typename T>
+knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+VectorMemIndex<T>::VectorIterators(const milvus::DatasetPtr dataset,
+                                   const milvus::SearchInfo &search_info,
+                                   const milvus::BitsetView &bitset) {
+    return this->index_.AnnIterator(*dataset, search_info.search_params_, bitset);
+}
+
+template <typename T>
 BinarySet
 VectorMemIndex<T>::Upload(const Config& config) {
     auto binary_set = Serialize(config);

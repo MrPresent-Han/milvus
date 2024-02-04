@@ -405,6 +405,15 @@ VectorDiskAnnIndex<T>::Query(const DatasetPtr dataset,
 }
 
 template <typename T>
+knowhere::expected<
+        std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+VectorDiskAnnIndex<T>::VectorIterators(const DatasetPtr dataset,
+                const SearchInfo& search_info,
+                const BitsetView& bitset){
+    return this->index_.AnnIterator(*dataset, search_info.search_params_, bitset);
+}
+
+template <typename T>
 const bool
 VectorDiskAnnIndex<T>::HasRawData() const {
     return index_.HasRawData(GetMetricType());

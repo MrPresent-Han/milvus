@@ -59,6 +59,15 @@ class VectorIndex : public IndexBase {
           const SearchInfo& search_info,
           const BitsetView& bitset) = 0;
 
+    virtual knowhere::expected<
+            std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+    VectorIterators(const DatasetPtr dataset,
+                     const SearchInfo& search_info,
+                     const BitsetView& bitset) {
+        throw std::runtime_error("VectorIndex didn't implement VectorIterators interface, "
+                                 "there must be sth wrong in the code");
+    }
+
     virtual const bool
     HasRawData() const = 0;
 
@@ -88,6 +97,8 @@ class VectorIndex : public IndexBase {
     virtual void
     CleanLocalData() {
     }
+
+    virtual
 
     void
     CheckCompatible(const IndexVersion& version) {

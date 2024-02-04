@@ -90,6 +90,12 @@ class VectorMemIndex : public VectorIndex {
     BinarySet
     UploadV2(const Config& config = {}) override;
 
+    knowhere::expected<
+            std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
+    VectorIterators(const DatasetPtr dataset,
+                    const SearchInfo& search_info,
+                    const BitsetView& bitset) override;
+
  protected:
     virtual void
     LoadWithoutAssemble(const BinarySet& binary_set, const Config& config);

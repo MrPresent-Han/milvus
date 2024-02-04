@@ -49,9 +49,13 @@ FloatSegmentIndexSearch(const segcore::SegmentGrowingImpl& segment,
         auto indexing = field_indexing.get_segment_indexing();
         SearchInfo search_conf = field_indexing.get_search_params(info);
         auto vec_index = dynamic_cast<index::VectorIndex*>(indexing);
-        auto result =
-            SearchOnIndex(search_dataset, *vec_index, search_conf, bitset);
-        results.merge(result);
+        if(search_conf.group_by_field_id_.has_value()){
+
+        } else {
+            auto result =
+                    SearchOnIndex(search_dataset, *vec_index, search_conf, bitset);
+            results.merge(result);
+        }
     }
 }
 
