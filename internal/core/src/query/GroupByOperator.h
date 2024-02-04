@@ -125,6 +125,37 @@ GetDataGetter(const segcore::SegmentInternalInterface& segment,
     }
 }
 
+static bool
+PrepareVectorIteratorsFromIndex(const SearchInfo& search_info, const DatasetPtr dataset, SearchResult& search_result,
+                                const BitsetView& bitset,
+                                index::VectorIndex& index) {
+    if(search_info.group_by_field_id_.has_value()){
+        try{
+            knowhere::expected<
+            std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>> iterators_val = index.VectorIterators(dataset, search_info, bitset);
+            if(iterators_val.has_value()){
+                search_result.iterators = iterators_val.value();
+            } else {
+                LOG_ERROR(
+                        "Returned knowhere iterator has non-ready iterators "
+                        "inside, terminate group_by operation");
+                PanicInfo(ErrorCode::Unsupported,
+                          "Returned knowhere iterator has non-ready iterators "
+                          "inside, terminate group_by operation");
+            }
+        } catch (const std::runtime_error& e){
+            LOG_ERROR(
+                    "Caught error:{} when trying to initialize ann iterators for "
+                    "group_by: "
+                    "group_by operation will be terminated",
+                    e.what());
+            throw e;
+        }
+        return true;
+    }
+    return false;
+}
+
 void
 GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
             iterators,
