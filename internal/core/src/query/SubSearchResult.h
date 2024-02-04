@@ -14,11 +14,34 @@
 #include <limits>
 #include <utility>
 #include <vector>
+#include <queue>
 
 #include "common/Types.h"
 #include "common/Utils.h"
+#include "knowhere/index_node.h"
 
 namespace milvus::query {
+
+using OffsetDisPair = std::pair<int64_t, float>;
+struct OffsetDisPairComparator {
+    bool
+    operator()(const OffsetDisPair* left, const OffsetDisPair* right) const{
+        if(left->second!=right->second){
+            return left->second < right->second;
+        }
+        return left->first < right->first;
+    }
+};
+struct VectorIterators {
+    std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> iterators_;
+    std::priority_queue<OffsetDisPair*, std::vector<OffsetDisPair*>, OffsetDisPairComparator> heap_;
+    OffsetDisPair Next(){
+        return std::make_pair(0,0.0);
+    }
+    bool HasNext(){
+        return false;
+    }
+};
 
 class SubSearchResult {
  public:
