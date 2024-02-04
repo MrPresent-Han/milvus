@@ -24,9 +24,8 @@ FloatSegmentIndexSearch(const segcore::SegmentGrowingImpl& segment,
                         const SearchInfo& info,
                         const void* query_data,
                         int64_t num_queries,
-                        int64_t ins_barrier,
                         const BitsetView& bitset,
-                        SubSearchResult& results) {
+                        SearchResult& search_result) {
     auto& schema = segment.get_schema();
     auto& indexing_record = segment.get_indexing_record();
     auto& record = segment.get_insert_record();
@@ -49,13 +48,7 @@ FloatSegmentIndexSearch(const segcore::SegmentGrowingImpl& segment,
         auto indexing = field_indexing.get_segment_indexing();
         SearchInfo search_conf = field_indexing.get_search_params(info);
         auto vec_index = dynamic_cast<index::VectorIndex*>(indexing);
-        if(search_conf.group_by_field_id_.has_value()){
-
-        } else {
-            auto result =
-                    SearchOnIndex(search_dataset, *vec_index, search_conf, bitset);
-            results.merge(result);
-        }
+        SearchOnIndex(search_dataset, *vec_index, search_conf, bitset, search_result);
     }
 }
 
@@ -66,7 +59,7 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
                 int64_t num_queries,
                 Timestamp timestamp,
                 const BitsetView& bitset,
-                SearchResult& results) {
+                SearchResult& search_result) {
     auto& schema = segment.get_schema();
     auto& record = segment.get_insert_record();
     auto active_count =
@@ -88,23 +81,17 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
     auto round_decimal = info.round_decimal_;
 
     // step 2: small indexing search
-    SubSearchResult final_qr(num_queries, topk, metric_type, round_decimal);
-    dataset::SearchDataset search_dataset{
-        metric_type, num_queries, topk, round_decimal, dim, query_data};
-
     if (segment.get_indexing_record().SyncDataWithIndex(field.get_id())) {
         FloatSegmentIndexSearch(segment,
                                 info,
                                 query_data,
                                 num_queries,
-                                active_count,
                                 bitset,
-                                final_qr);
-        results.distances_ = std::move(final_qr.mutable_distances());
-        results.seg_offsets_ = std::move(final_qr.mutable_seg_offsets());
-        results.unity_topK_ = topk;
-        results.total_nq_ = num_queries;
+                                search_result);
     } else {
+        SubSearchResult final_qr(num_queries, topk, metric_type, round_decimal);
+        dataset::SearchDataset search_dataset{
+                metric_type, num_queries, topk, round_decimal, dim, query_data};
         std::shared_lock<std::shared_mutex> read_chunk_mutex(
             segment.get_chunk_mutex());
         int32_t current_chunk_id = 0;
@@ -138,10 +125,10 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
             }
             final_qr.merge(sub_qr);
         }
-        results.distances_ = std::move(final_qr.mutable_distances());
-        results.seg_offsets_ = std::move(final_qr.mutable_seg_offsets());
-        results.unity_topK_ = topk;
-        results.total_nq_ = num_queries;
+        search_result.distances_ = std::move(final_qr.mutable_distances());
+        search_result.seg_offsets_ = std::move(final_qr.mutable_seg_offsets());
+        search_result.unity_topK_ = topk;
+        search_result.total_nq_ = num_queries;
     }
 }
 

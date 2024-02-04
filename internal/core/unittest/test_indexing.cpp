@@ -288,13 +288,14 @@ TEST(Indexing, Naive) {
     searchInfo.metric_type_ = knowhere::metric::L2;
     searchInfo.search_params_ = search_conf;
     auto vec_index = dynamic_cast<index::VectorIndex*>(index.get());
-    auto result = vec_index->Query(query_ds, searchInfo, view);
+    SearchResult result;
+    vec_index->Query(query_ds, searchInfo, view, result);
 
     for (int i = 0; i < TOPK; ++i) {
-        if (result->seg_offsets_[i] < N / 2) {
+        if (result.seg_offsets_[i] < N / 2) {
             std::cout << "WRONG: ";
         }
-        std::cout << result->seg_offsets_[i] << "->" << result->distances_[i]
+        std::cout << result.seg_offsets_[i] << "->" << result.distances_[i]
                   << std::endl;
     }
 }
@@ -439,16 +440,17 @@ TEST_P(IndexTest, BuildAndQuery) {
     search_info.topk_ = K;
     search_info.metric_type_ = metric_type;
     search_info.search_params_ = search_conf;
-    auto result = vec_index->Query(xq_dataset, search_info, nullptr);
-    EXPECT_EQ(result->total_nq_, NQ);
-    EXPECT_EQ(result->unity_topK_, K);
-    EXPECT_EQ(result->distances_.size(), NQ * K);
-    EXPECT_EQ(result->seg_offsets_.size(), NQ * K);
+    SearchResult result;
+    vec_index->Query(xq_dataset, search_info, nullptr, result);
+    EXPECT_EQ(result.total_nq_, NQ);
+    EXPECT_EQ(result.unity_topK_, K);
+    EXPECT_EQ(result.distances_.size(), NQ * K);
+    EXPECT_EQ(result.seg_offsets_.size(), NQ * K);
     if (!is_binary) {
-        EXPECT_EQ(result->seg_offsets_[0], query_offset);
+        EXPECT_EQ(result.seg_offsets_[0], query_offset);
     }
     search_info.search_params_ = range_search_conf;
-    vec_index->Query(xq_dataset, search_info, nullptr);
+    vec_index->Query(xq_dataset, search_info, nullptr, result);
 }
 
 TEST_P(IndexTest, Mmap) {
@@ -497,16 +499,17 @@ TEST_P(IndexTest, Mmap) {
     search_info.topk_ = K;
     search_info.metric_type_ = metric_type;
     search_info.search_params_ = search_conf;
-    auto result = vec_index->Query(xq_dataset, search_info, nullptr);
-    EXPECT_EQ(result->total_nq_, NQ);
-    EXPECT_EQ(result->unity_topK_, K);
-    EXPECT_EQ(result->distances_.size(), NQ * K);
-    EXPECT_EQ(result->seg_offsets_.size(), NQ * K);
+    SearchResult result;
+    vec_index->Query(xq_dataset, search_info, nullptr, result);
+    EXPECT_EQ(result.total_nq_, NQ);
+    EXPECT_EQ(result.unity_topK_, K);
+    EXPECT_EQ(result.distances_.size(), NQ * K);
+    EXPECT_EQ(result.seg_offsets_.size(), NQ * K);
     if (!is_binary) {
-        EXPECT_EQ(result->seg_offsets_[0], query_offset);
+        EXPECT_EQ(result.seg_offsets_[0], query_offset);
     }
     search_info.search_params_ = range_search_conf;
-    vec_index->Query(xq_dataset, search_info, nullptr);
+    vec_index->Query(xq_dataset, search_info, nullptr, result);
 }
 
 TEST_P(IndexTest, GetVector) {
@@ -743,6 +746,7 @@ TEST(Indexing, SearchDiskAnnWithInvalidParam) {
 // }
 #endif
 
+<<<<<<< HEAD
 //class IndexTestV2
 //    : public ::testing::TestWithParam<std::tuple<Param, int64_t, bool>> {
 // protected:

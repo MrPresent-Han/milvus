@@ -54,16 +54,17 @@ class VectorIndex : public IndexBase {
         PanicInfo(Unsupported, "vector index don't support add with dataset");
     }
 
-    virtual std::unique_ptr<SearchResult>
+    virtual void
     Query(const DatasetPtr dataset,
           const SearchInfo& search_info,
-          const BitsetView& bitset) = 0;
+          const BitsetView& bitset,
+          SearchResult& search_result) const = 0;
 
     virtual knowhere::expected<
             std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
     VectorIterators(const DatasetPtr dataset,
                      const SearchInfo& search_info,
-                     const BitsetView& bitset) {
+                     const BitsetView& bitset) const {
         throw std::runtime_error("VectorIndex didn't implement VectorIterators interface, "
                                  "there must be sth wrong in the code");
     }

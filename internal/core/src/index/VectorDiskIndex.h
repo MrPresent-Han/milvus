@@ -86,10 +86,11 @@ class VectorDiskAnnIndex : public VectorIndex {
     void
     BuildV2(const Config& config = {}) override;
 
-    std::unique_ptr<SearchResult>
+    void
     Query(const DatasetPtr dataset,
           const SearchInfo& search_info,
-          const BitsetView& bitset) override;
+          const BitsetView& bitset,
+          SearchResult& search_result) const override;
 
     const bool
     HasRawData() const override;
@@ -104,7 +105,7 @@ class VectorDiskAnnIndex : public VectorIndex {
             std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
     VectorIterators(const DatasetPtr dataset,
                     const SearchInfo& search_info,
-                    const BitsetView& bitset) override;
+                    const BitsetView& bitset) const override;
 
  private:
     knowhere::Json

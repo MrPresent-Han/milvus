@@ -50,9 +50,7 @@ class GrowingDataGetter : public DataGetter<T> {
 
     T
     Get(int64_t idx) const {
-        const T& val_ref = growing_raw_data_->operator[](idx);
-        T val = val_ref;
-        return val;
+        return growing_raw_data_->operator[](idx);
     }
 };
 
@@ -126,9 +124,11 @@ GetDataGetter(const segcore::SegmentInternalInterface& segment,
 }
 
 static bool
-PrepareVectorIteratorsFromIndex(const SearchInfo& search_info, const DatasetPtr dataset, SearchResult& search_result,
+PrepareVectorIteratorsFromIndex(const SearchInfo& search_info,
+                                const DatasetPtr dataset,
+                                SearchResult& search_result,
                                 const BitsetView& bitset,
-                                index::VectorIndex& index) {
+                                const index::VectorIndex& index) {
     if(search_info.group_by_field_id_.has_value()){
         try{
             knowhere::expected<
