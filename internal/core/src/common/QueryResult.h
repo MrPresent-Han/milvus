@@ -20,6 +20,7 @@
 #include <map>
 #include <limits>
 #include <string>
+#include <queue>
 #include <utility>
 #include <vector>
 #include <boost/align/aligned_allocator.hpp>
@@ -31,6 +32,71 @@
 #include "knowhere/index_node.h"
 
 namespace milvus {
+
+struct OffsetDisPair{
+    std::pair<int64_t, float> off_dis_;
+    int iterator_idx_;
+public:
+    OffsetDisPair(std::pair<int64_t, float> off_dis, int iter_idx): off_dis_(off_dis), iterator_idx_(iter_idx){}
+};
+
+const std::pair<int64_t, float> EmptyOffsetPair = std::make_pair(-1, -1.0);
+
+struct OffsetDisPairComparator {
+    bool
+    operator()(const std::shared_ptr<OffsetDisPair>& left, const std::shared_ptr<OffsetDisPair>& right) const{
+        if(left->off_dis_.second!=right->off_dis_.second){
+            return left->off_dis_.second < right->off_dis_.second;
+        }
+        return left->off_dis_.first < right->off_dis_.first;
+    }
+};
+struct VectorIterator {
+public:
+    VectorIterator(int count){
+        iterators_.reserve(count);
+    }
+
+    std::pair<int64_t, float> Next(){
+        if(!heap_.empty()){
+            auto top = heap_.top();
+            heap_.pop();
+            if(iterators_[top->iterator_idx_]->HasNext()){
+                auto off_dis_pair = std::make_shared<OffsetDisPair>(iterators_[top->iterator_idx_]->Next(), top->iterator_idx_);
+                heap_.push(off_dis_pair);
+            }
+            return top->off_dis_;
+        }
+        return EmptyOffsetPair;
+    }
+    bool HasNext(){
+        return !heap_.empty();
+    }
+    bool AddIterator(std::shared_ptr<knowhere::IndexNode::iterator> iter){
+        if(!sealed && iter!= nullptr){
+            iterators_.emplace_back(iter);
+            return true;
+        }
+        return false;
+    }
+    void seal(){
+        sealed = true;
+        int idx = 0;
+        for(auto& iter: iterators_){
+            if(iter->HasNext()){
+                auto off_dis_pair = std::make_shared<OffsetDisPair>(iter->Next(), idx++);
+                heap_.push(off_dis_pair);
+            }
+        }
+    }
+private:
+    std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> iterators_;
+    std::priority_queue<std::shared_ptr<OffsetDisPair>, std::vector<std::shared_ptr<OffsetDisPair>>, OffsetDisPairComparator> heap_;
+    bool sealed = false;
+    //currently, VectorIterator is guaranteed to be used serially without concurrent problem, in the future
+    //we may need to add mutex to protect the variable sealed
+};
+
 struct SearchResult {
     SearchResult() = default;
 
@@ -43,6 +109,26 @@ struct SearchResult {
                    "wrong topk_per_nq_prefix_sum_ size {}",
                    topk_per_nq_prefix_sum_.size());
         return topk_per_nq_prefix_sum_[total_nq_];
+    }
+ public:
+    void AssembleChunkVectorIterators(int64_t nq, int chunk_count, const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& kw_iterators){
+        AssertInfo(kw_iterators.size()==nq*chunk_count, "kw_iterators count:{} is not equal to nq*chunk_count:{}, wrong state",
+                   kw_iterators.size(), nq*chunk_count);
+        std::vector<std::shared_ptr<VectorIterator>> vector_iterators;
+        vector_iterators.reserve(nq);
+        for(int i = 0, vec_iter_idx = 0; i < kw_iterators.size(); i++){
+            vec_iter_idx = vec_iter_idx % nq;
+            if(vector_iterators.size()<nq){
+                auto vector_iterator = std::make_shared<VectorIterator>(chunk_count);
+                vector_iterators.emplace_back(vector_iterator);
+            }
+            auto kw_iterator = kw_iterators[i];
+            vector_iterators[vec_iter_idx++]->AddIterator(kw_iterator);
+        }
+        for(auto vector_iter: vector_iterators){
+            vector_iter->seal();
+        }
+        this->vector_iterators_ = vector_iterators;
     }
 
  public:
@@ -70,9 +156,9 @@ struct SearchResult {
     // used for reduce, filter invalid pk, get real topks count
     std::vector<size_t> topk_per_nq_prefix_sum_;
 
-    //knowhere iterators, used for group by or other operators in the future
-    std::optional<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
-        iterators;
+    //Vector iterators, used for group by
+    std::optional<std::vector<std::shared_ptr<VectorIterator>>>
+        vector_iterators_;
 };
 
 using SearchResultPtr = std::shared_ptr<SearchResult>;

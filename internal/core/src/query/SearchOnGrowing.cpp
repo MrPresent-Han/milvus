@@ -110,25 +110,39 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
             auto size_per_chunk = element_end - element_begin;
 
             auto sub_view = bitset.subview(element_begin, size_per_chunk);
-            auto sub_qr = BruteForceSearch(search_dataset,
-                                           chunk_data,
-                                           size_per_chunk,
-                                           info.search_params_,
-                                           sub_view,
-                                           data_type);
+            if(info.group_by_field_id_.has_value()){
+                auto sub_qr = BruteForceSearchIterators(search_dataset,
+                                                        chunk_data,
+                                                        size_per_chunk,
+                                                        info.search_params_,
+                                                        sub_view,
+                                                        data_type);
+                final_qr.merge(sub_qr);
+            } else {
+                auto sub_qr = BruteForceSearch(search_dataset,
+                                               chunk_data,
+                                               size_per_chunk,
+                                               info.search_params_,
+                                               sub_view,
+                                               data_type);
 
-            // convert chunk uid to segment uid
-            for (auto& x : sub_qr.mutable_seg_offsets()) {
-                if (x != -1) {
-                    x += chunk_id * vec_size_per_chunk;
+                // convert chunk uid to segment uid
+                for (auto& x : sub_qr.mutable_seg_offsets()) {
+                    if (x != -1) {
+                        x += chunk_id * vec_size_per_chunk;
+                    }
                 }
+                final_qr.merge(sub_qr);
             }
-            final_qr.merge(sub_qr);
         }
-        search_result.distances_ = std::move(final_qr.mutable_distances());
-        search_result.seg_offsets_ = std::move(final_qr.mutable_seg_offsets());
-        search_result.unity_topK_ = topk;
-        search_result.total_nq_ = num_queries;
+        if(info.group_by_field_id_.has_value()) {
+            search_result.AssembleChunkVectorIterators(num_queries, max_chunk, final_qr.chunk_iterators());
+        } else {
+            search_result.distances_ = std::move(final_qr.mutable_distances());
+            search_result.seg_offsets_ = std::move(final_qr.mutable_seg_offsets());
+            search_result.unity_topK_ = topk;
+            search_result.total_nq_ = num_queries;
+        }
     }
 }
 

@@ -52,6 +52,24 @@ prepareSegmentSystemFieldData(const std::unique_ptr<SegmentSealed>& segment,
     segment->LoadFieldData(TimestampFieldID, field_data_info);
 }
 
+int GetSearchResultBound(const SearchResult& search_result){
+    int i = 0;
+    for(; i < search_result.seg_offsets_.size(); i++){
+        if(search_result.seg_offsets_[i]==INVALID_SEG_OFFSET) break;
+    }
+    return i - 1;
+}
+
+void CheckGroupBySearchResult(const SearchResult& search_result, int topK){
+    ASSERT_TRUE(search_result.group_by_values_.size()==topK);
+    ASSERT_TRUE(search_result.seg_offsets_.size()==topK);
+    ASSERT_TRUE(search_result.distances_.size()==topK);
+    ASSERT_TRUE(search_result.seg_offsets_[0]!=INVALID_SEG_OFFSET);
+    int res_bound = GetSearchResultBound(search_result);
+    ASSERT_TRUE(res_bound>0);
+    ASSERT_TRUE(res_bound==topK-1||search_result.seg_offsets_[res_bound+1]==INVALID_SEG_OFFSET);
+}
+
 TEST(GroupBY, Normal2) {
     using namespace milvus;
     using namespace milvus::query;
@@ -97,6 +115,7 @@ TEST(GroupBY, Normal2) {
     load_index_info.index = std::move(indexing);
     load_index_info.index_params[METRICS_TYPE] = knowhere::metric::L2;
     segment->LoadIndex(load_index_info);
+    int topK = 100;
 
     //4. search group by int8
     {
@@ -111,7 +130,6 @@ TEST(GroupBY, Normal2) {
                                         placeholder_tag: "$0"
 
          >)";
-
         auto plan_str = translate_text_plan_to_binary_plan(raw_plan);
         auto plan =
             CreateSearchPlanByExpr(*schema, plan_str.data(), plan_str.size());
@@ -122,12 +140,9 @@ TEST(GroupBY, Normal2) {
             ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
         auto search_result =
             segment->Search(plan.get(), ph_group.get(), 1L << 63);
-        auto& group_by_values = search_result->group_by_values_;
-        ASSERT_EQ(search_result->group_by_values_.size(),
-                  search_result->seg_offsets_.size());
-        ASSERT_EQ(search_result->distances_.size(),
-                  search_result->seg_offsets_.size());
+        CheckGroupBySearchResult(*search_result, topK);
 
+        auto& group_by_values = search_result->group_by_values_;
         int size = group_by_values.size();
         std::unordered_set<int8_t> i8_set;
         float lastDistance = 0.0;
@@ -174,12 +189,9 @@ TEST(GroupBY, Normal2) {
             ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
         auto search_result =
             segment->Search(plan.get(), ph_group.get(), 1L << 63);
-        auto& group_by_values = search_result->group_by_values_;
-        ASSERT_EQ(search_result->group_by_values_.size(),
-                  search_result->seg_offsets_.size());
-        ASSERT_EQ(search_result->distances_.size(),
-                  search_result->seg_offsets_.size());
+        CheckGroupBySearchResult(*search_result, topK);
 
+        auto& group_by_values = search_result->group_by_values_;
         int size = group_by_values.size();
         std::unordered_set<int16_t> i16_set;
         float lastDistance = 0.0;
@@ -226,13 +238,10 @@ TEST(GroupBY, Normal2) {
             ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
         auto search_result =
             segment->Search(plan.get(), ph_group.get(), 1L << 63);
+        CheckGroupBySearchResult(*search_result, topK);
         auto& group_by_values = search_result->group_by_values_;
-        ASSERT_EQ(search_result->group_by_values_.size(),
-                  search_result->seg_offsets_.size());
-        ASSERT_EQ(search_result->distances_.size(),
-                  search_result->seg_offsets_.size());
-
         int size = group_by_values.size();
+
         std::unordered_set<int32_t> i32_set;
         float lastDistance = 0.0;
         for (size_t i = 0; i < size; i++) {
@@ -278,11 +287,8 @@ TEST(GroupBY, Normal2) {
             ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
         auto search_result =
             segment->Search(plan.get(), ph_group.get(), 1L << 63);
+        CheckGroupBySearchResult(*search_result, topK);
         auto& group_by_values = search_result->group_by_values_;
-        ASSERT_EQ(search_result->group_by_values_.size(),
-                  search_result->seg_offsets_.size());
-        ASSERT_EQ(search_result->distances_.size(),
-                  search_result->seg_offsets_.size());
 
         int size = group_by_values.size();
         std::unordered_set<int64_t> i64_set;
@@ -330,12 +336,8 @@ TEST(GroupBY, Normal2) {
             ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
         auto search_result =
             segment->Search(plan.get(), ph_group.get(), 1L << 63);
+        CheckGroupBySearchResult(*search_result, topK);
         auto& group_by_values = search_result->group_by_values_;
-        ASSERT_EQ(search_result->group_by_values_.size(),
-                  search_result->seg_offsets_.size());
-        ASSERT_EQ(search_result->distances_.size(),
-                  search_result->seg_offsets_.size());
-
         int size = group_by_values.size();
         std::unordered_set<std::string> strs_set;
         float lastDistance = 0.0;
@@ -383,12 +385,8 @@ TEST(GroupBY, Normal2) {
             ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
         auto search_result =
             segment->Search(plan.get(), ph_group.get(), 1L << 63);
+        CheckGroupBySearchResult(*search_result, topK);
         auto& group_by_values = search_result->group_by_values_;
-        ASSERT_EQ(search_result->group_by_values_.size(),
-                  search_result->seg_offsets_.size());
-        ASSERT_EQ(search_result->distances_.size(),
-                  search_result->seg_offsets_.size());
-
         int size = group_by_values.size();
         std::unordered_set<bool> bools_set;
         int boolValCount = 0;

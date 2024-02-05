@@ -14,35 +14,12 @@
 #include <limits>
 #include <utility>
 #include <vector>
-#include <queue>
 
 #include "common/Types.h"
 #include "common/Utils.h"
 #include "knowhere/index_node.h"
 
 namespace milvus::query {
-
-using OffsetDisPair = std::pair<int64_t, float>;
-struct OffsetDisPairComparator {
-    bool
-    operator()(const OffsetDisPair* left, const OffsetDisPair* right) const{
-        if(left->second!=right->second){
-            return left->second < right->second;
-        }
-        return left->first < right->first;
-    }
-};
-struct VectorIterators {
-    std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> iterators_;
-    std::priority_queue<OffsetDisPair*, std::vector<OffsetDisPair*>, OffsetDisPairComparator> heap_;
-    OffsetDisPair Next(){
-        return std::make_pair(0,0.0);
-    }
-    bool HasNext(){
-        return false;
-    }
-};
-
 class SubSearchResult {
  public:
     SubSearchResult(int64_t num_queries,
@@ -55,6 +32,10 @@ class SubSearchResult {
           metric_type_(metric_type),
           seg_offsets_(num_queries * topk, INVALID_SEG_OFFSET),
           distances_(num_queries * topk, init_value(metric_type)) {
+    }
+
+    SubSearchResult(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& iters):chunk_iterators_(std::move(iters)){
+
     }
 
     SubSearchResult(SubSearchResult&& other) noexcept
@@ -118,7 +99,12 @@ class SubSearchResult {
     round_values();
 
     void
-    merge(const SubSearchResult& sub_result);
+    merge(const SubSearchResult& other);
+
+    const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
+    chunk_iterators(){
+        return this->chunk_iterators_;
+    }
 
  private:
     template <bool is_desc>
@@ -132,6 +118,7 @@ class SubSearchResult {
     knowhere::MetricType metric_type_;
     std::vector<int64_t> seg_offsets_;
     std::vector<float> distances_;
+    std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> chunk_iterators_;
 };
 
 }  // namespace milvus::query

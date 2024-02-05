@@ -746,7 +746,6 @@ TEST(Indexing, SearchDiskAnnWithInvalidParam) {
 // }
 #endif
 
-<<<<<<< HEAD
 //class IndexTestV2
 //    : public ::testing::TestWithParam<std::tuple<Param, int64_t, bool>> {
 // protected:

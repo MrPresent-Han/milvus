@@ -22,22 +22,13 @@ namespace milvus {
 namespace query {
 
 void
-GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
+GroupBy(const std::vector<std::shared_ptr<VectorIterator>>&
             iterators,
         const SearchInfo& search_info,
         std::vector<GroupByValueType>& group_by_values,
         const segcore::SegmentInternalInterface& segment,
         std::vector<int64_t>& seg_offsets,
         std::vector<float>& distances) {
-    //0. check segment type, for period-1, only support group by for sealed segments
-    if (!dynamic_cast<const segcore::SegmentSealedImpl*>(&segment)) {
-        LOG_ERROR(
-            "Not support group_by operation for non-sealed segment, "
-            "segment_id:{}",
-            segment.get_segment_id());
-        return;
-    }
-
     //1. get search meta
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
@@ -125,7 +116,7 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
 template <typename T>
 void
 GroupIteratorsByType(
-    const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
+    const std::vector<std::shared_ptr<VectorIterator>>&
         iterators,
     int64_t topK,
     const DataGetter<T>& data_getter,
@@ -147,7 +138,7 @@ GroupIteratorsByType(
 template <typename T>
 void
 GroupIteratorResult(
-    const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
+    const std::shared_ptr<VectorIterator>& iterator,
     int64_t topK,
     const DataGetter<T>& data_getter,
     std::vector<GroupByValueType>& group_by_values,

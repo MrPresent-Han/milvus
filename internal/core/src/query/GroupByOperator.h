@@ -125,6 +125,7 @@ GetDataGetter(const segcore::SegmentInternalInterface& segment,
 
 static bool
 PrepareVectorIteratorsFromIndex(const SearchInfo& search_info,
+                                int   nq,
                                 const DatasetPtr dataset,
                                 SearchResult& search_result,
                                 const BitsetView& bitset,
@@ -134,7 +135,7 @@ PrepareVectorIteratorsFromIndex(const SearchInfo& search_info,
             knowhere::expected<
             std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>> iterators_val = index.VectorIterators(dataset, search_info, bitset);
             if(iterators_val.has_value()){
-                search_result.iterators = iterators_val.value();
+                search_result.AssembleChunkVectorIterators(nq, 1, iterators_val.value());
             } else {
                 LOG_ERROR(
                         "Returned knowhere iterator has non-ready iterators "
@@ -157,7 +158,7 @@ PrepareVectorIteratorsFromIndex(const SearchInfo& search_info,
 }
 
 void
-GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
+GroupBy(const std::vector<std::shared_ptr<VectorIterator>>&
             iterators,
         const SearchInfo& searchInfo,
         std::vector<GroupByValueType>& group_by_values,
@@ -168,7 +169,7 @@ GroupBy(const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
 template <typename T>
 void
 GroupIteratorsByType(
-    const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>&
+    const std::vector<std::shared_ptr<VectorIterator>>&
         iterators,
     int64_t topK,
     const DataGetter<T>& data_getter,
@@ -180,7 +181,7 @@ GroupIteratorsByType(
 template <typename T>
 void
 GroupIteratorResult(
-    const std::shared_ptr<knowhere::IndexNode::iterator>& iterator,
+    const std::shared_ptr<VectorIterator>& iterator,
     int64_t topK,
     const DataGetter<T>& data_getter,
     std::vector<GroupByValueType>& group_by_values,

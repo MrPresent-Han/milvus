@@ -46,7 +46,7 @@ SearchOnSealedIndex(const Schema& schema,
     auto dataset = knowhere::GenDataSet(num_queries, dim, query_data);
     auto vec_index =
             dynamic_cast<index::VectorIndex*>(field_indexing->indexing_.get());
-    if (!PrepareVectorIteratorsFromIndex(search_info, dataset, search_result, bitset, *vec_index)){
+    if (!PrepareVectorIteratorsFromIndex(search_info, num_queries, dataset, search_result, bitset, *vec_index)){
         auto index_type = vec_index->GetIndexType();
         vec_index->Query(dataset, search_info, bitset, search_result);
         float* distances = search_result.distances_.data();
@@ -58,9 +58,9 @@ SearchOnSealedIndex(const Schema& schema,
                         std::round(distances[i] * multiplier) / multiplier;
             }
         }
-        search_result.total_nq_ = num_queries;
-        search_result.unity_topK_ = topK;
     }
+    search_result.total_nq_ = num_queries;
+    search_result.unity_topK_ = topK;
 }
 
 void

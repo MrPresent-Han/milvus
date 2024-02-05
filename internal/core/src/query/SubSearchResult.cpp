@@ -74,13 +74,20 @@ SubSearchResult::merge_impl(const SubSearchResult& right) {
 }
 
 void
-SubSearchResult::merge(const SubSearchResult& sub_result) {
-    AssertInfo(metric_type_ == sub_result.metric_type_,
+SubSearchResult::merge(const SubSearchResult& other) {
+    AssertInfo(metric_type_ == other.metric_type_,
                "[SubSearchResult]Metric type check failed when merge");
-    if (PositivelyRelated(metric_type_)) {
-        this->merge_impl<true>(sub_result);
+    if(!other.chunk_iterators_.empty()&&!this->chunk_iterators_.empty()){
+         std::move(std::begin(other.chunk_iterators_), std::end(other.chunk_iterators_), std::back_inserter(this->chunk_iterators_));
+    } else if (other.chunk_iterators_.empty()&&this->chunk_iterators_.empty()){
+        if (PositivelyRelated(metric_type_)) {
+            this->merge_impl<true>(other);
+        } else {
+            this->merge_impl<false>(other);
+        }
     } else {
-        this->merge_impl<false>(sub_result);
+        PanicInfo(Unsupported, fmt::format("Trying to merge a subSearchResult having iterators with another one without, "
+                                           "Wrong state, please check the code"));
     }
 }
 

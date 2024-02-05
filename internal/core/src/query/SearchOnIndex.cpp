@@ -24,7 +24,7 @@ SearchOnIndex(const dataset::SearchDataset& search_dataset,
     auto metric_type = search_dataset.metric_type;
     auto dataset =
         knowhere::GenDataSet(num_queries, dim, search_dataset.query_data);
-    if(!PrepareVectorIteratorsFromIndex(search_conf, dataset, search_result, bitset, indexing)){
+    if(!PrepareVectorIteratorsFromIndex(search_conf, num_queries, dataset, search_result, bitset, indexing)){
         indexing.Query(dataset, search_conf, bitset, search_result);
     }
 }

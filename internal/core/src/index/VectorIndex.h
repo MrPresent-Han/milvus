@@ -65,7 +65,7 @@ class VectorIndex : public IndexBase {
     VectorIterators(const DatasetPtr dataset,
                      const SearchInfo& search_info,
                      const BitsetView& bitset) const {
-        throw std::runtime_error("VectorIndex didn't implement VectorIterators interface, "
+        throw std::runtime_error("VectorIndex didn't implement VectorIterator interface, "
                                  "there must be sth wrong in the code");
     }
 
