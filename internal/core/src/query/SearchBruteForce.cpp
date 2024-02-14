@@ -187,7 +187,8 @@ BruteForceSearchIterators(const dataset::SearchDataset& dataset,
             PanicInfo(ErrorCode::Unsupported, "Unsupported dataType for chunk brute force iterator:{}", data_type);
     }
     if(iterators_val.has_value()){
-        SubSearchResult subSearchResult(iterators_val.value());
+        SubSearchResult subSearchResult(dataset.num_queries, dataset.topk, dataset.metric_type,
+                                        dataset.round_decimal, iterators_val.value());
         return subSearchResult;
     } else{
         LOG_ERROR(
