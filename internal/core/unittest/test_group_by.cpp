@@ -707,3 +707,93 @@ TEST(GroupBY, GrowingRawData){
         }
     }
 }
+
+TEST(GroupBY, GrowingIndex){
+    //0. set up growing segment
+    int dim = 128;
+    uint64_t seed = 512;
+    auto schema = std::make_shared<Schema>();
+    auto metric_type = knowhere::metric::L2;
+    auto int64_field_id = schema->AddDebugField("int64", DataType::INT64);
+    auto int32_field_id = schema->AddDebugField("int32", DataType::INT32);
+    auto vec_field_id = schema->AddDebugField(
+            "embeddings", DataType::VECTOR_FLOAT, 128, metric_type);
+    schema->set_primary_field_id(int64_field_id);
+
+    std::map<std::string, std::string> index_params = {
+            {"index_type", "IVF_FLAT"},
+            {"metric_type", metric_type},
+            {"nlist", "128"}};
+    std::map<std::string, std::string> type_params = {{"dim", "128"}};
+    FieldIndexMeta fieldIndexMeta(
+            vec_field_id, std::move(index_params), std::move(type_params));
+    std::map<FieldId, FieldIndexMeta> fieldMap = {{vec_field_id, fieldIndexMeta}};
+    IndexMetaPtr metaPtr =
+            std::make_shared<CollectionIndexMeta>(10000, std::move(fieldMap));
+
+    auto config = SegcoreConfig::default_config();
+    config.set_chunk_rows(128);
+    config.set_enable_interim_segment_index(true);//no growing index, test growing inter index
+    config.set_nlist(128);
+    auto segment_growing = CreateGrowingSegment(schema, metaPtr, 1, config);
+    auto segment_growing_impl = dynamic_cast<SegmentGrowingImpl*>(segment_growing.get());
+
+    //1. prepare raw data in growing segment
+    int64_t rows_per_batch = 1024;
+    int n_batch = 10;
+    for(int i = 0; i < n_batch; i++){
+        auto data_set = DataGen(schema, rows_per_batch);
+        auto offset = segment_growing_impl->PreInsert(rows_per_batch);
+        segment_growing_impl->Insert(offset, rows_per_batch, data_set.row_ids_.data(),
+                                     data_set.timestamps_.data(),
+                                     data_set.raw_);
+    }
+
+
+    //2. Search group by int32
+    const char* raw_plan = R"(vector_anns: <
+                                        field_id: 102
+                                        query_info: <
+                                          topk: 100
+                                          metric_type: "L2"
+                                          search_params: "{\"ef\": 10}"
+                                          group_by_field_id: 101
+                                        >
+                                        placeholder_tag: "$0"
+
+         >)";
+    auto plan_str = translate_text_plan_to_binary_plan(raw_plan);
+    auto plan = CreateSearchPlanByExpr(*schema, plan_str.data(), plan_str.size());
+    auto num_queries = 10;
+    auto topK = 100;
+    auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
+    auto ph_group =
+            ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
+    auto search_result =
+            segment_growing_impl->Search(plan.get(), ph_group.get(), 1L << 63);
+    CheckGroupBySearchResult(*search_result, topK, num_queries, true);
+
+    auto& group_by_values = search_result->group_by_values_;
+    int idx = 0;
+    for (int i = 0; i < num_queries; i++){
+        std::unordered_set<int32_t> i32_set;
+        float lastDistance = 0.0;
+        for (int j = 0; j < topK; j++){
+            if (std::holds_alternative<int32_t>(group_by_values[idx])) {
+                int32_t g_val = std::get<int32_t>(group_by_values[idx]);
+                ASSERT_FALSE(i32_set.count(g_val) >0);  //no repetition on groupBy field
+                i32_set.insert(g_val);
+                auto distance = search_result->distances_.at(idx);
+                ASSERT_TRUE(
+                        lastDistance <=
+                        distance);  //distance should be decreased as metrics_type is L2
+                lastDistance = distance;
+            } else {
+                //check padding
+                ASSERT_EQ(search_result->seg_offsets_[idx], INVALID_SEG_OFFSET);
+                ASSERT_EQ(search_result->distances_[idx], 0.0);
+            }
+            idx++;
+        }
+    }
+}
