@@ -135,7 +135,7 @@ PrepareVectorIteratorsFromIndex(const SearchInfo& search_info,
             knowhere::expected<
             std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>> iterators_val = index.VectorIterators(dataset, search_info, bitset);
             if(iterators_val.has_value()){
-                search_result.AssembleChunkVectorIterators(nq, 1, iterators_val.value());
+                search_result.AssembleChunkVectorIterators(nq, 1, -1, iterators_val.value());
             } else {
                 LOG_ERROR(
                         "Returned knowhere iterator has non-ready iterators "

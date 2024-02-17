@@ -53,8 +53,8 @@ struct OffsetDisPairComparator {
 };
 struct VectorIterator {
 public:
-    VectorIterator(int count){
-        iterators_.reserve(count);
+    VectorIterator(int chunk_count, int64_t chunk_rows=-1):chunk_rows_(chunk_rows){
+        iterators_.reserve(chunk_count);
     }
 
     std::pair<int64_t, float> Next(){
@@ -62,7 +62,9 @@ public:
             auto top = heap_.top();
             heap_.pop();
             if(iterators_[top->iterator_idx_]->HasNext()){
-                auto off_dis_pair = std::make_shared<OffsetDisPair>(iterators_[top->iterator_idx_]->Next(), top->iterator_idx_);
+                auto origin_pair = iterators_[top->iterator_idx_]->Next();
+                origin_pair.first = convert_to_segment_offset(origin_pair.first, top->iterator_idx_);
+                auto off_dis_pair = std::make_shared<OffsetDisPair>(origin_pair, top->iterator_idx_);
                 heap_.push(off_dis_pair);
             }
             return top->off_dis_;
@@ -90,9 +92,20 @@ public:
         }
     }
 private:
+    int64_t convert_to_segment_offset(int64_t chunk_offset, int chunk_idx){
+        if(chunk_rows_==-1) {
+            AssertInfo(iterators_.size()==1, "Wrong state for vectorIterators, which having incorrect kw_iterator count:{} "
+                                     "without setting value for chunk_rows, "
+                                     "cannot convert chunk_offset to segment_offset correctly", iterators_.size());
+            return chunk_offset;
+        }
+        return chunk_idx * chunk_rows_ + chunk_offset;
+    }
+private:
     std::vector<std::shared_ptr<knowhere::IndexNode::iterator>> iterators_;
     std::priority_queue<std::shared_ptr<OffsetDisPair>, std::vector<std::shared_ptr<OffsetDisPair>>, OffsetDisPairComparator> heap_;
     bool sealed = false;
+    int64_t chunk_rows_ = -1;
     //currently, VectorIterator is guaranteed to be used serially without concurrent problem, in the future
     //we may need to add mutex to protect the variable sealed
 };
@@ -111,7 +124,10 @@ struct SearchResult {
         return topk_per_nq_prefix_sum_[total_nq_];
     }
  public:
-    void AssembleChunkVectorIterators(int64_t nq, int chunk_count, const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& kw_iterators){
+    void AssembleChunkVectorIterators(int64_t nq,
+                                      int chunk_count,
+                                      int64_t rows_per_chunk,
+                                      const std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>& kw_iterators){
         AssertInfo(kw_iterators.size()==nq*chunk_count, "kw_iterators count:{} is not equal to nq*chunk_count:{}, wrong state",
                    kw_iterators.size(), nq*chunk_count);
         std::vector<std::shared_ptr<VectorIterator>> vector_iterators;
@@ -119,7 +135,7 @@ struct SearchResult {
         for(int i = 0, vec_iter_idx = 0; i < kw_iterators.size(); i++){
             vec_iter_idx = vec_iter_idx % nq;
             if(vector_iterators.size()<nq){
-                auto vector_iterator = std::make_shared<VectorIterator>(chunk_count);
+                auto vector_iterator = std::make_shared<VectorIterator>(chunk_count, rows_per_chunk);
                 vector_iterators.emplace_back(vector_iterator);
             }
             auto kw_iterator = kw_iterators[i];

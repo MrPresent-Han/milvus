@@ -136,7 +136,7 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
             }
         }
         if(info.group_by_field_id_.has_value()) {
-            search_result.AssembleChunkVectorIterators(num_queries, max_chunk, final_qr.chunk_iterators());
+            search_result.AssembleChunkVectorIterators(num_queries, max_chunk, vec_size_per_chunk, final_qr.chunk_iterators());
         } else {
             search_result.distances_ = std::move(final_qr.mutable_distances());
             search_result.seg_offsets_ = std::move(final_qr.mutable_seg_offsets());

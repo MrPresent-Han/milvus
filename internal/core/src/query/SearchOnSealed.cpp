@@ -91,7 +91,7 @@ SearchOnSealed(const Schema& schema,
                                                 search_info.search_params_,
                                                 bitset,
                                                 data_type);
-        result.AssembleChunkVectorIterators(num_queries, 1, sub_qr.chunk_iterators());
+        result.AssembleChunkVectorIterators(num_queries, 1, -1, sub_qr.chunk_iterators());
     } else {
         auto sub_qr = BruteForceSearch(dataset,
                                        vec_data,
