@@ -140,9 +140,9 @@ SearchOnGrowing(const segcore::SegmentGrowingImpl& segment,
         } else {
             search_result.distances_ = std::move(final_qr.mutable_distances());
             search_result.seg_offsets_ = std::move(final_qr.mutable_seg_offsets());
-            search_result.unity_topK_ = topk;
-            search_result.total_nq_ = num_queries;
         }
+        search_result.unity_topK_ = topk;
+        search_result.total_nq_ = num_queries;
     }
 }
 
