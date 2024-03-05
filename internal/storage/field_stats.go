@@ -72,25 +72,45 @@ func (stats *FieldStats) UnmarshalJSON(data []byte) error {
 		}
 	}
 
+	isScalarField := false
 	switch stats.Type {
+	case schemapb.DataType_Int8:
+		stats.Max = &Int8FieldValue{}
+		stats.Min = &Int8FieldValue{}
+		isScalarField = true
+	case schemapb.DataType_Int16:
+		stats.Max = &Int16FieldValue{}
+		stats.Min = &Int16FieldValue{}
+		isScalarField = true
+	case schemapb.DataType_Int32:
+		stats.Max = &Int32FieldValue{}
+		stats.Min = &Int32FieldValue{}
+		isScalarField = true
 	case schemapb.DataType_Int64:
 		stats.Max = &Int64FieldValue{}
 		stats.Min = &Int64FieldValue{}
-		if value, ok := messageMap["max"]; ok && value != nil {
-			err = json.Unmarshal(*messageMap["max"], &stats.Max)
-			if err != nil {
-				return err
-			}
-		}
-		if value, ok := messageMap["min"]; ok && value != nil {
-			err = json.Unmarshal(*messageMap["min"], &stats.Min)
-			if err != nil {
-				return err
-			}
-		}
+		isScalarField = true
+	case schemapb.DataType_Float:
+		stats.Max = &FloatFieldValue{}
+		stats.Min = &FloatFieldValue{}
+		isScalarField = true
+	case schemapb.DataType_Double:
+		stats.Max = &DoubleFieldValue{}
+		stats.Min = &DoubleFieldValue{}
+		isScalarField = true
+	case schemapb.DataType_String:
+		stats.Max = &StringFieldValue{}
+		stats.Min = &StringFieldValue{}
+		isScalarField = true
 	case schemapb.DataType_VarChar:
 		stats.Max = &VarCharFieldValue{}
 		stats.Min = &VarCharFieldValue{}
+		isScalarField = true
+	default:
+		// todo support vector field
+	}
+
+	if isScalarField {
 		if value, ok := messageMap["max"]; ok && value != nil {
 			err = json.Unmarshal(*messageMap["max"], &stats.Max)
 			if err != nil {
@@ -103,8 +123,6 @@ func (stats *FieldStats) UnmarshalJSON(data []byte) error {
 				return err
 			}
 		}
-	default:
-		// todo support vector field
 	}
 
 	// compatible with primaryKeyStats
@@ -227,7 +245,7 @@ func (sw *FieldStatsWriter) GenerateList(stats []*FieldStats) error {
 	return nil
 }
 
-// GenerateByData writes Int64Stats or StringStats from @msgs with @fieldID to @buffer
+// GenerateByData writes data from @msgs with @fieldID to @buffer
 func (sw *FieldStatsWriter) GenerateByData(fieldID int64, pkType schemapb.DataType, msgs ...FieldData) error {
 	statsList := make([]*FieldStats, 0)
 	for _, msg := range msgs {

@@ -337,17 +337,52 @@ func TestCompatible_ReadPrimaryKeyStatsWithFieldStatsReader(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestFieldStatsMarshal(t *testing.T) {
-	stats, err := NewFieldStats(1, schemapb.DataType_Int64, 1)
-	assert.NoError(t, err)
-	err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, }"))
-	assert.Error(t, err)
-	err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, \"maxPk\":\"A\"}"))
-	assert.Error(t, err)
-	err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, \"maxPk\":10, \"minPk\": \"b\"}"))
-	assert.Error(t, err)
-	err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, \"maxPk\":10, \"minPk\": 1, \"bf\": \"2\"}"))
-	assert.Error(t, err)
+func TestFieldStatsUnMarshal(t *testing.T) {
+	t.Run("fail", func(t *testing.T) {
+		stats, err := NewFieldStats(1, schemapb.DataType_Int64, 1)
+		assert.NoError(t, err)
+		err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, }"))
+		assert.Error(t, err)
+		err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, \"maxPk\":\"A\"}"))
+		assert.Error(t, err)
+		err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, \"maxPk\":10, \"minPk\": \"b\"}"))
+		assert.Error(t, err)
+		err = stats.UnmarshalJSON([]byte("{\"fieldID\":1,\"max\":10, \"maxPk\":10, \"minPk\": 1, \"bf\": \"2\"}"))
+		assert.Error(t, err)
+	})
+
+	t.Run("succeed", func(t *testing.T) {
+		int8stats, err := NewFieldStats(1, schemapb.DataType_Int8, 1)
+		assert.NoError(t, err)
+		err = int8stats.UnmarshalJSON([]byte("{\"type\":2, \"fieldID\":1,\"max\":10, \"min\": 1}"))
+		assert.NoError(t, err)
+
+		int16stats, err := NewFieldStats(1, schemapb.DataType_Int16, 1)
+		assert.NoError(t, err)
+		err = int16stats.UnmarshalJSON([]byte("{\"type\":3, \"fieldID\":1,\"max\":10, \"min\": 1}"))
+		assert.NoError(t, err)
+
+		int32stats, err := NewFieldStats(1, schemapb.DataType_Int32, 1)
+		assert.NoError(t, err)
+		err = int32stats.UnmarshalJSON([]byte("{\"type\":4, \"fieldID\":1,\"max\":10, \"min\": 1}"))
+		assert.NoError(t, err)
+
+		int64stats, err := NewFieldStats(1, schemapb.DataType_Int64, 1)
+		assert.NoError(t, err)
+		err = int64stats.UnmarshalJSON([]byte("{\"type\":5, \"fieldID\":1,\"max\":10, \"min\": 1}"))
+		assert.NoError(t, err)
+
+		floatstats, err := NewFieldStats(1, schemapb.DataType_Float, 1)
+		assert.NoError(t, err)
+		err = floatstats.UnmarshalJSON([]byte("{\"type\":10, \"fieldID\":1,\"max\":10.0, \"min\": 1.2}"))
+		assert.NoError(t, err)
+
+		doublestats, err := NewFieldStats(1, schemapb.DataType_Double, 1)
+		assert.NoError(t, err)
+		err = doublestats.UnmarshalJSON([]byte("{\"type\":11, \"fieldID\":1,\"max\":10.0, \"min\": 1.2}"))
+		assert.NoError(t, err)
+	})
+
 }
 
 func TestCompatible_ReadFieldStatsWithPrimaryKeyStatsReader(t *testing.T) {
