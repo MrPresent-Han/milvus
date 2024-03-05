@@ -62,7 +62,7 @@ func (sps *SegmentPrunerSuite) SetupForClustering(clusterKeyFieldName string,
 	//here, for convenience, we set up both min/max and Centroids
 	//into the same struct, in the real user cases, a field stat
 	//can either contain min&&max or centroids
-	segStats := make(map[UniqueID]storage.SegmentStat)
+	segStats := make(map[UniqueID]storage.SegmentStats)
 	{
 		fieldStats := make([]storage.FieldStats, 0)
 		fieldStat1 := storage.FieldStats{
@@ -70,20 +70,15 @@ func (sps *SegmentPrunerSuite) SetupForClustering(clusterKeyFieldName string,
 			Type:    schemapb.DataType_Int64,
 			Min:     storage.NewInt64FieldValue(100),
 			Max:     storage.NewInt64FieldValue(200),
-			Centroids: []schemapb.VectorField{
-				{
-					Dim: 8,
-					Data: &schemapb.VectorField_FloatVector{
-						FloatVector: &schemapb.FloatArray{
-							Data: []float32{0.6951474, 0.45225978, 0.51508516, 0.24968886,
-								0.6085484, 0.964968, 0.32239532, 0.7771577},
-						},
-					},
+			Centroids: []storage.VectorFieldValue{
+				&storage.FloatVectorFieldValue{
+					Value: []float32{0.6951474, 0.45225978, 0.51508516, 0.24968886,
+						0.6085484, 0.964968, 0.32239532, 0.7771577},
 				},
 			},
 		}
 		fieldStats = append(fieldStats, fieldStat1)
-		segStats[1] = *storage.NewSegmentStat(fieldStats, 80)
+		segStats[1] = *storage.NewSegmentStats(fieldStats, 80)
 	}
 	{
 		fieldStats := make([]storage.FieldStats, 0)
@@ -92,19 +87,14 @@ func (sps *SegmentPrunerSuite) SetupForClustering(clusterKeyFieldName string,
 			Type:    schemapb.DataType_Int64,
 			Min:     storage.NewInt64FieldValue(100),
 			Max:     storage.NewInt64FieldValue(400),
-			Centroids: []schemapb.VectorField{
-				{
-					Dim: 8,
-					Data: &schemapb.VectorField_FloatVector{
-						FloatVector: &schemapb.FloatArray{
-							Data: []float32{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0},
-						},
-					},
+			Centroids: []storage.VectorFieldValue{
+				&storage.FloatVectorFieldValue{
+					Value: []float32{0.12345678, 0.23456789, 0.34567890, 0.45678901, 0.56789012, 0.67890123, 0.78901234, 0.89012345},
 				},
 			},
 		}
 		fieldStats = append(fieldStats, fieldStat1)
-		segStats[2] = *storage.NewSegmentStat(fieldStats, 80)
+		segStats[2] = *storage.NewSegmentStats(fieldStats, 80)
 	}
 	{
 		fieldStats := make([]storage.FieldStats, 0)
@@ -113,20 +103,14 @@ func (sps *SegmentPrunerSuite) SetupForClustering(clusterKeyFieldName string,
 			Type:    schemapb.DataType_Int64,
 			Min:     storage.NewInt64FieldValue(600),
 			Max:     storage.NewInt64FieldValue(900),
-			Centroids: []schemapb.VectorField{
-				{
-					Dim: 8,
-					Data: &schemapb.VectorField_FloatVector{
-						FloatVector: &schemapb.FloatArray{
-							Data: []float32{0.40448594, 0.16214314, 0.17850745, 0.6640584,
-								0.77309024, 0.48807725, 0.66572666, 0.15990956},
-						},
-					},
+			Centroids: []storage.VectorFieldValue{
+				&storage.FloatVectorFieldValue{
+					Value: []float32{0.98765432, 0.87654321, 0.76543210, 0.65432109, 0.54321098, 0.43210987, 0.32109876, 0.21098765},
 				},
 			},
 		}
 		fieldStats = append(fieldStats, fieldStat1)
-		segStats[3] = *storage.NewSegmentStat(fieldStats, 80)
+		segStats[3] = *storage.NewSegmentStats(fieldStats, 80)
 	}
 	{
 		fieldStats := make([]storage.FieldStats, 0)
@@ -135,20 +119,14 @@ func (sps *SegmentPrunerSuite) SetupForClustering(clusterKeyFieldName string,
 			Type:    schemapb.DataType_Int64,
 			Min:     storage.NewInt64FieldValue(500),
 			Max:     storage.NewInt64FieldValue(1000),
-			Centroids: []schemapb.VectorField{
-				{
-					Dim: 8,
-					Data: &schemapb.VectorField_FloatVector{
-						FloatVector: &schemapb.FloatArray{
-							Data: []float32{0.40448594, 0.16214314, 0.17850745, 0.6640584,
-								0.77309024, 0.48807725, 0.66572666, 0.15990956},
-						},
-					},
+			Centroids: []storage.VectorFieldValue{
+				&storage.FloatVectorFieldValue{
+					Value: []float32{0.11111111, 0.22222222, 0.33333333, 0.44444444, 0.55555555, 0.66666666, 0.77777777, 0.88888888},
 				},
 			},
 		}
 		fieldStats = append(fieldStats, fieldStat1)
-		segStats[4] = *storage.NewSegmentStat(fieldStats, 80)
+		segStats[4] = *storage.NewSegmentStats(fieldStats, 80)
 	}
 	sps.partitionStats = make(map[UniqueID]*storage.PartitionStatsSnapshot)
 	sps.targetPartition = 11111
@@ -272,8 +250,9 @@ func (sps *SegmentPrunerSuite) TestPruneSegmentsByVectorField() {
 	}
 
 	PruneSegments(sps.partitionStats, req, nil, sps.schema, sealedSegments, PruneInfo{0.25})
-	sps.Equal(2, len(sealedSegments[0].Segments))
+	sps.Equal(1, len(sealedSegments[0].Segments))
 	sps.Equal(1, len(sealedSegments[1].Segments))
+	//only segment2 on node1 and segment4 on node4 will be searched after pruned
 }
 
 func TestSegmentPrunerSuite(t *testing.T) {

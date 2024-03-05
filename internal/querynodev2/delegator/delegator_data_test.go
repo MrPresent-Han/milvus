@@ -910,25 +910,41 @@ func (s *DelegatorDataSuite) TestReleaseSegment() {
 }
 
 func (s *DelegatorDataSuite) TestLoadPartitionStats() {
-	segStats := make(map[UniqueID]storage.SegmentStat)
+	segStats := make(map[UniqueID]storage.SegmentStats)
+	centroid := []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}
+	var segID int64 = 1
+	rows := 1990
 	{
 		// p1 stats
 		fieldStats := make([]storage.FieldStats, 0)
 		fieldStat1 := storage.FieldStats{
 			FieldID: 1,
 			Type:    schemapb.DataType_Int64,
-			Max:     storage.NewInt64FieldValue(100),
-			Min:     storage.NewInt64FieldValue(200),
+			Max:     storage.NewInt64FieldValue(200),
+			Min:     storage.NewInt64FieldValue(100),
 		}
 		fieldStat2 := storage.FieldStats{
 			FieldID: 2,
 			Type:    schemapb.DataType_Int64,
-			Max:     storage.NewInt64FieldValue(100),
-			Min:     storage.NewInt64FieldValue(200),
+			Max:     storage.NewInt64FieldValue(400),
+			Min:     storage.NewInt64FieldValue(300),
+		}
+		fieldStat3 := storage.FieldStats{
+			FieldID: 3,
+			Type:    schemapb.DataType_FloatVector,
+			Centroids: []storage.VectorFieldValue{
+				&storage.FloatVectorFieldValue{
+					Value: centroid,
+				},
+				&storage.FloatVectorFieldValue{
+					Value: centroid,
+				},
+			},
 		}
 		fieldStats = append(fieldStats, fieldStat1)
 		fieldStats = append(fieldStats, fieldStat2)
-		segStats[1] = *storage.NewSegmentStat(fieldStats, 0)
+		fieldStats = append(fieldStats, fieldStat3)
+		segStats[segID] = *storage.NewSegmentStats(fieldStats, rows)
 	}
 	partitionStats1 := &storage.PartitionStatsSnapshot{
 		SegmentStats: segStats,
@@ -939,12 +955,29 @@ func (s *DelegatorDataSuite) TestLoadPartitionStats() {
 	idPath1 := metautil.JoinIDPath(s.collectionID, partitionID1)
 	statsPath1 := path.Join(s.chunkManager.RootPath(), common.PartitionStatsPath, idPath1, strconv.Itoa(1))
 	s.chunkManager.Write(context.Background(), statsPath1, statsData1)
+	defer s.chunkManager.Remove(context.Background(), statsPath1)
 
 	// reload and check partition stats
 	s.delegator.maybeReloadPartitionStats(context.Background())
 	s.Equal(1, len(s.delegator.partitionStats))
 	s.NotNil(s.delegator.partitionStats[partitionID1])
-	s.Equal(int64(1), s.delegator.partitionStats[partitionID1].GetVersion())
+	p1Stats := s.delegator.partitionStats[partitionID1]
+	s.Equal(int64(1), p1Stats.GetVersion())
+	s.Equal(rows, p1Stats.SegmentStats[segID].NumRows)
+	s.Equal(3, len(p1Stats.SegmentStats[segID].FieldStats))
+
+	//judge vector stats
+	vecFieldStats := p1Stats.SegmentStats[segID].FieldStats[2]
+	s.Equal(2, len(vecFieldStats.Centroids))
+	s.Equal(8, len(vecFieldStats.Centroids[0].GetValue().([]float32)))
+
+	//judge scalar stats
+	fieldStats1 := p1Stats.SegmentStats[segID].FieldStats[0]
+	s.Equal(int64(100), fieldStats1.Min.GetValue().(int64))
+	s.Equal(int64(200), fieldStats1.Max.GetValue().(int64))
+	fieldStats2 := p1Stats.SegmentStats[segID].FieldStats[1]
+	s.Equal(int64(300), fieldStats2.Min.GetValue().(int64))
+	s.Equal(int64(400), fieldStats2.Max.GetValue().(int64))
 }
 
 func (s *DelegatorDataSuite) TestSyncTargetVersion() {

@@ -31,12 +31,12 @@ import (
 // FieldStats contains statistics data for any column
 // todo: compatible to PrimaryKeyStats
 type FieldStats struct {
-	FieldID   int64                  `json:"fieldID"`
-	Type      schemapb.DataType      `json:"type"`
-	Max       ScalarFieldValue       `json:"max"`      // for scalar field
-	Min       ScalarFieldValue       `json:"min"`      // for scalar field
-	BF        *bloom.BloomFilter     `json:"bf"`       // for scalar field
-	Centroids []schemapb.VectorField `json:"centroid"` // for vector field
+	FieldID   int64              `json:"fieldID"`
+	Type      schemapb.DataType  `json:"type"`
+	Max       ScalarFieldValue   `json:"max"`       // for scalar field
+	Min       ScalarFieldValue   `json:"min"`       // for scalar field
+	BF        *bloom.BloomFilter `json:"bf"`        // for scalar field
+	Centroids []VectorFieldValue `json:"centroids"` // for vector field
 }
 
 // UnmarshalJSON unmarshal bytes to FieldStats
@@ -106,6 +106,9 @@ func (stats *FieldStats) UnmarshalJSON(data []byte) error {
 		stats.Max = &VarCharFieldValue{}
 		stats.Min = &VarCharFieldValue{}
 		isScalarField = true
+	case schemapb.DataType_FloatVector:
+		stats.Centroids = []VectorFieldValue{}
+		isScalarField = false
 	default:
 		// todo support vector field
 	}
@@ -122,6 +125,12 @@ func (stats *FieldStats) UnmarshalJSON(data []byte) error {
 			if err != nil {
 				return err
 			}
+		}
+	} else {
+		stats.initCentroids(data)
+		err = json.Unmarshal(*messageMap["centroids"], &stats.Centroids)
+		if err != nil {
+			return err
 		}
 	}
 
@@ -149,6 +158,26 @@ func (stats *FieldStats) UnmarshalJSON(data []byte) error {
 	}
 
 	return nil
+}
+
+func (stats *FieldStats) initCentroids(data []byte) {
+	type FieldStatsAux struct {
+		FieldID   int64              `json:"fieldID"`
+		Type      schemapb.DataType  `json:"type"`
+		Max       json.RawMessage    `json:"max"`
+		Min       json.RawMessage    `json:"min"`
+		BF        *bloom.BloomFilter `json:"bf"`
+		Centroids []json.RawMessage  `json:"centroids"`
+	}
+	// Unmarshal JSON into the auxiliary struct
+	var aux FieldStatsAux
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return
+	}
+	for i := 0; i < len(aux.Centroids); i++ {
+		stats.Centroids = append(stats.Centroids, &FloatVectorFieldValue{})
+	}
+	return
 }
 
 func (stats *FieldStats) UpdateByMsgs(msgs FieldData) {
@@ -299,4 +328,63 @@ func DeserializeFieldStats(blob *Blob) ([]*FieldStats, error) {
 		return nil, err
 	}
 	return stats, nil
+}
+
+type VectorFieldValue interface {
+	MarshalJSON() ([]byte, error)
+	UnmarshalJSON(data []byte) error
+	SetValue(interface{}) error
+	GetValue() interface{}
+	Type() schemapb.DataType
+	Size() int64
+}
+
+type FloatVectorFieldValue struct {
+	Value []float32 `json:"value"`
+}
+
+func NewFloatVectorFieldValue(v []float32) *FloatVectorFieldValue {
+	return &FloatVectorFieldValue{
+		Value: v,
+	}
+}
+
+func (ifv *FloatVectorFieldValue) MarshalJSON() ([]byte, error) {
+	ret, err := json.Marshal(ifv.Value)
+	if err != nil {
+		return nil, err
+	}
+
+	return ret, nil
+}
+
+func (ifv *FloatVectorFieldValue) UnmarshalJSON(data []byte) error {
+	err := json.Unmarshal(data, &ifv.Value)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (ifv *FloatVectorFieldValue) SetValue(data interface{}) error {
+	value, ok := data.([]float32)
+	if !ok {
+		return fmt.Errorf("wrong type value when setValue for Int64FieldValue")
+	}
+
+	ifv.Value = value
+	return nil
+}
+
+func (ifv *FloatVectorFieldValue) Type() schemapb.DataType {
+	return schemapb.DataType_FloatVector
+}
+
+func (ifv *FloatVectorFieldValue) GetValue() interface{} {
+	return ifv.Value
+}
+
+func (ifv *FloatVectorFieldValue) Size() int64 {
+	return int64(len(ifv.Value) * 8)
 }

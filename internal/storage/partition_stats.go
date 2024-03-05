@@ -23,6 +23,13 @@ type SegmentStats struct {
 	NumRows    int
 }
 
+func NewSegmentStats(fieldStats []FieldStats, rows int) *SegmentStats {
+	return &SegmentStats{
+		FieldStats: fieldStats,
+		NumRows:    rows,
+	}
+}
+
 type PartitionStatsSnapshot struct {
 	SegmentStats map[UniqueID]SegmentStats `json:"segmentStats"`
 	Version      int64

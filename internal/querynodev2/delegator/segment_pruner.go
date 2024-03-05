@@ -107,7 +107,8 @@ func FilterSegmentsByVector(partitionStats *storage.PartitionStatsSnapshot,
 			for _, fieldStat := range segStats.FieldStats {
 				if fieldStat.FieldID == keyField.GetFieldID() {
 					dis, err := clustering.CalcVectorDistance(dimValue, keyField.GetDataType(),
-						vecBytes, &fieldStat.Centroids[0], searchReq.GetMetricType())
+						vecBytes, fieldStat.Centroids[0].GetValue().([]float32), searchReq.GetMetricType())
+					//currently, we only support float vector and only one center one segment
 					if err != nil {
 						neededSegments[segId] = struct{}{}
 						//when running across err, we need to set current segment as needed

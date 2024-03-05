@@ -8,10 +8,10 @@ import (
 	"math"
 )
 
-func CalcVectorDistance(dim int64, dataType schemapb.DataType, left []byte, right *schemapb.VectorField, metric string) ([]float32, error) {
+func CalcVectorDistance(dim int64, dataType schemapb.DataType, left []byte, right []float32, metric string) ([]float32, error) {
 	switch dataType {
 	case schemapb.DataType_FloatVector:
-		distance, err := distance.CalcFloatDistance(dim, DeserializeFloatVector(left), right.GetFloatVector().GetData(), metric)
+		distance, err := distance.CalcFloatDistance(dim, DeserializeFloatVector(left), right, metric)
 		if err != nil {
 			return nil, err
 		}
