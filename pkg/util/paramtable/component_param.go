@@ -1995,6 +1995,7 @@ type queryNodeConfig struct {
 
 	MemoryIndexLoadPredictMemoryUsageFactor ParamItem `refreshable:"true"`
 	EnableSegmentPrune                      ParamItem `refreshable:"false"`
+	UseStreamSearch                         ParamItem `refreshable:"false"`
 }
 
 func (p *queryNodeConfig) init(base *BaseTable) {
@@ -2475,6 +2476,13 @@ Max read concurrency must greater than or equal to 1, and less than or equal to 
 		Doc:          "use partition prune function on shard delegator",
 	}
 	p.EnableSegmentPrune.Init(base.mgr)
+	p.UseStreamSearch = ParamItem{
+		Key:          "queryNode.useStreamSearch",
+		Version:      "2.4.0",
+		DefaultValue: "false",
+		Doc:          "use stream search mode when searching or querying",
+	}
+	p.UseStreamSearch.Init(base.mgr)
 }
 
 // /////////////////////////////////////////////////////////////////////////////

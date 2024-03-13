@@ -2,6 +2,8 @@ package tasks
 
 // TODO: rename this file into search_task.go
 
+import "C"
+
 import (
 	"bytes"
 	"context"
@@ -319,7 +321,7 @@ func (t *SearchTask) Wait() error {
 	return <-t.notifier
 }
 
-func (t *SearchTask) Result() *internalpb.SearchResults {
+func (t *SearchTask) SearchResult() *internalpb.SearchResults {
 	if t.result != nil {
 		channelsMvcc := make(map[string]uint64)
 		for _, ch := range t.req.GetDmlChannels() {
@@ -354,4 +356,264 @@ func (t *SearchTask) combinePlaceHolderGroups() {
 		}
 		t.placeholderGroup, _ = proto.Marshal(ret)
 	}
+}
+
+type StreamingSearchTask struct {
+	SearchTask
+	others        []*StreamingSearchTask
+	resultBlobs   segments.SearchResultDataBlobs
+	streamReducer segments.StreamSearchReducer
+}
+
+func NewStreamingSearchTask(ctx context.Context,
+	collection *segments.Collection,
+	manager *segments.Manager,
+	req *querypb.SearchRequest,
+	serverID int64,
+) *StreamingSearchTask {
+	ctx, span := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, "schedule")
+	return &StreamingSearchTask{
+		SearchTask: SearchTask{
+			ctx:              ctx,
+			collection:       collection,
+			segmentManager:   manager,
+			req:              req,
+			merged:           false,
+			groupSize:        1,
+			topk:             req.GetReq().GetTopk(),
+			nq:               req.GetReq().GetNq(),
+			placeholderGroup: req.GetReq().GetPlaceholderGroup(),
+			originTopks:      []int64{req.GetReq().GetTopk()},
+			originNqs:        []int64{req.GetReq().GetNq()},
+			notifier:         make(chan error, 1),
+			tr:               timerecord.NewTimeRecorderWithTrace(ctx, "searchTask"),
+			scheduleSpan:     span,
+			serverID:         serverID,
+		},
+	}
+}
+
+func (t *StreamingSearchTask) MergeWith(other Task) bool {
+	switch otherTask := other.(type) {
+	case *StreamingSearchTask:
+		return t.Merge(otherTask)
+	}
+	return false
+}
+
+func (t *StreamingSearchTask) Merge(other *StreamingSearchTask) bool {
+	var (
+		nq        = t.nq
+		topk      = t.topk
+		otherNq   = other.nq
+		otherTopk = other.topk
+	)
+
+	diffTopk := topk != otherTopk
+	pre := funcutil.Min(nq*topk, otherNq*otherTopk)
+	maxTopK := funcutil.Max(topk, otherTopk)
+	after := (nq + otherNq) * maxTopK
+	ratio := float64(after) / float64(pre)
+
+	// Check mergeable
+	if t.req.GetReq().GetDbID() != other.req.GetReq().GetDbID() ||
+		t.req.GetReq().GetCollectionID() != other.req.GetReq().GetCollectionID() ||
+		t.req.GetReq().GetMvccTimestamp() != other.req.GetReq().GetMvccTimestamp() ||
+		t.req.GetReq().GetDslType() != other.req.GetReq().GetDslType() ||
+		t.req.GetDmlChannels()[0] != other.req.GetDmlChannels()[0] ||
+		nq+otherNq > paramtable.Get().QueryNodeCfg.MaxGroupNQ.GetAsInt64() ||
+		diffTopk && ratio > paramtable.Get().QueryNodeCfg.TopKMergeRatio.GetAsFloat() ||
+		!funcutil.SliceSetEqual(t.req.GetReq().GetPartitionIDs(), other.req.GetReq().GetPartitionIDs()) ||
+		!funcutil.SliceSetEqual(t.req.GetSegmentIDs(), other.req.GetSegmentIDs()) ||
+		!bytes.Equal(t.req.GetReq().GetSerializedExprPlan(), other.req.GetReq().GetSerializedExprPlan()) {
+		return false
+	}
+
+	// Merge
+	t.groupSize += other.groupSize
+	t.topk = maxTopK
+	t.nq += otherNq
+	t.originTopks = append(t.originTopks, other.originTopks...)
+	t.originNqs = append(t.originNqs, other.originNqs...)
+	t.others = append(t.others, other)
+	other.merged = true
+
+	return true
+}
+
+func (t *StreamingSearchTask) Execute() error {
+	log := log.Ctx(t.ctx).With(
+		zap.Int64("collectionID", t.collection.ID()),
+		zap.String("shard", t.req.GetDmlChannels()[0]),
+	)
+	// 0. prepare search req
+	if t.scheduleSpan != nil {
+		t.scheduleSpan.End()
+	}
+	tr := timerecord.NewTimeRecorderWithTrace(t.ctx, "SearchTask")
+	req := t.req
+	t.combinePlaceHolderGroups()
+	searchReq, err := segments.NewSearchRequest(t.ctx, t.collection, req, t.placeholderGroup)
+	if err != nil {
+		return err
+	}
+	defer searchReq.Delete()
+
+	var pinnedSegments []segments.Segment
+	// 1. search&&reduce or streaming-search&&streaming-reduce
+	metricType := searchReq.Plan().GetMetricType()
+	if req.GetScope() == querypb.DataScope_Historical {
+		streamingResultsChan := make(chan *segments.SearchResult, len(req.SegmentIDs))
+		errStream := make(chan error, len(req.SegmentIDs))
+		pinnedSegments, err = segments.SearchHistoricalStreamly(
+			t.ctx,
+			t.segmentManager,
+			searchReq,
+			req.GetReq().GetCollectionID(),
+			nil,
+			req.GetSegmentIDs(),
+			streamingResultsChan,
+			errStream)
+		searchResultsToDelete := make([]*segments.SearchResult, 0)
+		defer segments.DeleteSearchResults(searchResultsToDelete)
+		for result := range streamingResultsChan {
+			searchResultsToDelete = append(searchResultsToDelete, result)
+			resErr := <-errStream
+			if resErr != nil {
+				return err
+			}
+			t.streamReduce(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
+		}
+		t.resultBlobs, err = segments.GetStreamReduceResult(t.ctx, t.streamReducer)
+		if err != nil {
+			log.Error("Failed to get stream-reduced search result")
+			return err
+		}
+		defer segments.DeleteStreamReduceHelper(t.streamReducer)
+		defer segments.DeleteSearchResultDataBlobs(t.resultBlobs)
+	} else if req.GetScope() == querypb.DataScope_Streaming {
+		var results []*segments.SearchResult
+		results, pinnedSegments, err = segments.SearchStreaming(
+			t.ctx,
+			t.segmentManager,
+			searchReq,
+			req.GetReq().GetCollectionID(),
+			nil,
+			req.GetSegmentIDs(),
+		)
+		defer segments.DeleteSearchResults(results)
+		if err != nil {
+			return err
+		}
+		if t.maybeReturnForEmptyResults(results, metricType, tr) {
+			return nil
+		}
+		tr.RecordSpan()
+		t.resultBlobs, err = segments.ReduceSearchResultsAndFillData(
+			t.ctx,
+			searchReq.Plan(),
+			results,
+			int64(len(results)),
+			t.originNqs,
+			t.originTopks,
+		)
+		if err != nil {
+			log.Warn("failed to reduce search results", zap.Error(err))
+			return err
+		}
+		defer segments.DeleteSearchResultDataBlobs(t.resultBlobs)
+		metrics.QueryNodeReduceLatency.WithLabelValues(
+			fmt.Sprint(t.GetNodeID()),
+			metrics.SearchLabel,
+			metrics.ReduceSegments).
+			Observe(float64(tr.RecordSpan().Milliseconds()))
+	}
+	defer t.segmentManager.Segment.Unpin(pinnedSegments)
+
+	// 2. reorganize blobs to original search request
+	for i := range t.originNqs {
+		blob, err := segments.GetSearchResultDataBlob(t.ctx, t.resultBlobs, i)
+		if err != nil {
+			return err
+		}
+
+		var task *StreamingSearchTask
+		if i == 0 {
+			task = t
+		} else {
+			task = t.others[i-1]
+		}
+
+		// Note: blob is unsafe because get from C
+		bs := make([]byte, len(blob))
+		copy(bs, blob)
+
+		task.result = &internalpb.SearchResults{
+			Base: &commonpb.MsgBase{
+				SourceID: t.GetNodeID(),
+			},
+			Status:         merr.Success(),
+			MetricType:     metricType,
+			NumQueries:     t.originNqs[i],
+			TopK:           t.originTopks[i],
+			SlicedBlob:     bs,
+			SlicedOffset:   1,
+			SlicedNumCount: 1,
+			CostAggregation: &internalpb.CostAggregation{
+				ServiceTime: tr.ElapseSpan().Milliseconds(),
+			},
+		}
+	}
+
+	return nil
+}
+
+func (t *StreamingSearchTask) maybeReturnForEmptyResults(results []*segments.SearchResult,
+	metricType string, tr *timerecord.TimeRecorder,
+) bool {
+	if len(results) == 0 {
+		for i := range t.originNqs {
+			var task *StreamingSearchTask
+			if i == 0 {
+				task = t
+			} else {
+				task = t.others[i-1]
+			}
+
+			task.result = &internalpb.SearchResults{
+				Base: &commonpb.MsgBase{
+					SourceID: t.GetNodeID(),
+				},
+				Status:         merr.Success(),
+				MetricType:     metricType,
+				NumQueries:     t.originNqs[i],
+				TopK:           t.originTopks[i],
+				SlicedOffset:   1,
+				SlicedNumCount: 1,
+				CostAggregation: &internalpb.CostAggregation{
+					ServiceTime: tr.ElapseSpan().Milliseconds(),
+				},
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func (t *StreamingSearchTask) streamReduce(ctx context.Context,
+	plan *segments.SearchPlan,
+	newResult *segments.SearchResult,
+	sliceNQs []int64,
+	sliceTopKs []int64,
+) error {
+	if t.streamReducer == nil {
+		var err error
+		t.streamReducer, err = segments.NewStreamReducer(ctx, plan, sliceNQs, sliceTopKs)
+		if err != nil {
+			log.Error("Fail to init stream reducer, return")
+			return err
+		}
+	}
+
+	return segments.StreamReduceSearchResult(ctx, newResult, t.streamReducer)
 }
