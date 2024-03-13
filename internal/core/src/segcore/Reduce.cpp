@@ -579,4 +579,47 @@ ReduceHelper::AssembleGroupByValues(
     }
 }
 
+void
+MergeReduceHelper::MergeReduce() {
+    MaybeFillPrimaryKey();
+    ReduceResultData();
+    RefreshSearchResult();
+    FillEntryData();
+}
+
+void
+MergeReduceHelper::FillEntryData() {
+
+}
+
+CSearchResult
+MergeReduceHelper::MergedResult() {
+    return nullptr;
+}
+
+void
+MergeReduceHelper::MaybeFillPrimaryKey() {
+    std::vector<SearchResult*> valid_search_results;
+    uint32_t valid_index = 0;
+    for (auto& search_result : search_results_) {
+        // skip when results num is 0
+        if (search_result->unity_topK_ == 0) {
+            continue;
+        }
+        FilterInvalidSearchResult(search_result);
+        LOG_DEBUG("the size of search result: {}",
+                  search_result->seg_offsets_.size());
+        if (search_result->primary_keys_.size() > 0) {
+            //it's possible that pks for the result has been filled before
+            continue;
+        }
+        auto segment = static_cast<SegmentInterface*>(search_result->segment_);
+        if (search_result->get_total_result_count() > 0) {
+            segment->FillPrimaryKeys(plan_, *search_result);
+            search_results_[valid_index++] = search_result;
+        }
+    }
+}
+
+
 }  // namespace milvus::segcore

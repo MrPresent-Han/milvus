@@ -355,3 +355,174 @@ func (t *SearchTask) combinePlaceHolderGroups() {
 		t.placeholderGroup, _ = proto.Marshal(ret)
 	}
 }
+
+type StreamingSearchTask struct {
+	SearchTask
+	others                []*StreamingSearchTask
+	streamingSearchResult *segments.SearchResult
+	resultBlobs           segments.SearchResultDataBlobs
+}
+
+func (t *StreamingSearchTask) Execute() error {
+	log := log.Ctx(t.ctx).With(
+		zap.Int64("collectionID", t.collection.ID()),
+		zap.String("shard", t.req.GetDmlChannels()[0]),
+	)
+	//0. prepare search req
+	if t.scheduleSpan != nil {
+		t.scheduleSpan.End()
+	}
+	tr := timerecord.NewTimeRecorderWithTrace(t.ctx, "SearchTask")
+	req := t.req
+	t.combinePlaceHolderGroups()
+	searchReq, err := segments.NewSearchRequest(t.ctx, t.collection, req, t.placeholderGroup)
+	if err != nil {
+		return err
+	}
+	defer searchReq.Delete()
+
+	//1. search&&reduce or streaming-search&&streaming-reduce
+	metricType := searchReq.Plan().GetMetricType()
+	if req.GetScope() == querypb.DataScope_Historical {
+		streamingResultsChan := make(chan *segments.SearchResult, len(req.SegmentIDs))
+		errStream := make(chan error, len(req.SegmentIDs))
+		err = segments.SearchHistoricalStreamly(
+			t.ctx,
+			t.segmentManager,
+			searchReq,
+			req.GetReq().GetCollectionID(),
+			nil,
+			req.GetSegmentIDs(),
+			streamingResultsChan,
+			errStream)
+		defer close(streamingResultsChan)
+		defer close(errStream)
+		for result := range streamingResultsChan {
+			resErr := <-errStream
+			if resErr != nil {
+				return err
+			}
+			t.streamMerge(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
+		}
+		//resultBlobs = marshall t.result
+		//defer segments.DeleteSearchResultDataBlobs(resultBlobs)
+	} else if req.GetScope() == querypb.DataScope_Streaming {
+		var results []*segments.SearchResult
+		results, searchedSegments, err := segments.SearchStreaming(
+			t.ctx,
+			t.segmentManager,
+			searchReq,
+			req.GetReq().GetCollectionID(),
+			nil,
+			req.GetSegmentIDs(),
+		)
+		defer t.segmentManager.Segment.Unpin(searchedSegments)
+		defer segments.DeleteSearchResults(results)
+		if err != nil {
+			return err
+		}
+		if t.maybeReturnForEmptyResults(results, metricType, tr) {
+			return nil
+		}
+		tr.RecordSpan()
+		t.resultBlobs, err = segments.ReduceSearchResultsAndFillData(
+			t.ctx,
+			searchReq.Plan(),
+			results,
+			int64(len(results)),
+			t.originNqs,
+			t.originTopks,
+		)
+		if err != nil {
+			log.Warn("failed to reduce search results", zap.Error(err))
+			return err
+		}
+		defer segments.DeleteSearchResultDataBlobs(t.resultBlobs)
+		metrics.QueryNodeReduceLatency.WithLabelValues(
+			fmt.Sprint(t.GetNodeID()),
+			metrics.SearchLabel,
+			metrics.ReduceSegments).
+			Observe(float64(tr.RecordSpan().Milliseconds()))
+	}
+
+	//2. reorganize blobs to original search request
+	for i := range t.originNqs {
+		blob, err := segments.GetSearchResultDataBlob(t.ctx, t.resultBlobs, i)
+		if err != nil {
+			return err
+		}
+
+		var task *StreamingSearchTask
+		if i == 0 {
+			task = t
+		} else {
+			task = t.others[i-1]
+		}
+
+		// Note: blob is unsafe because get from C
+		bs := make([]byte, len(blob))
+		copy(bs, blob)
+
+		task.result = &internalpb.SearchResults{
+			Base: &commonpb.MsgBase{
+				SourceID: t.GetNodeID(),
+			},
+			Status:         merr.Success(),
+			MetricType:     metricType,
+			NumQueries:     t.originNqs[i],
+			TopK:           t.originTopks[i],
+			SlicedBlob:     bs,
+			SlicedOffset:   1,
+			SlicedNumCount: 1,
+			CostAggregation: &internalpb.CostAggregation{
+				ServiceTime: tr.ElapseSpan().Milliseconds(),
+			},
+		}
+	}
+
+	return nil
+}
+
+func (t *StreamingSearchTask) maybeReturnForEmptyResults(results []*segments.SearchResult,
+	metricType string, tr *timerecord.TimeRecorder) bool {
+	if len(results) == 0 {
+		for i := range t.originNqs {
+			var task *StreamingSearchTask
+			if i == 0 {
+				task = t
+			} else {
+				task = t.others[i-1]
+			}
+
+			task.result = &internalpb.SearchResults{
+				Base: &commonpb.MsgBase{
+					SourceID: t.GetNodeID(),
+				},
+				Status:         merr.Success(),
+				MetricType:     metricType,
+				NumQueries:     t.originNqs[i],
+				TopK:           t.originTopks[i],
+				SlicedOffset:   1,
+				SlicedNumCount: 1,
+				CostAggregation: &internalpb.CostAggregation{
+					ServiceTime: tr.ElapseSpan().Milliseconds(),
+				},
+			}
+		}
+		return true
+	}
+	return false
+}
+
+func (t *StreamingSearchTask) streamMerge(ctx context.Context,
+	plan *segments.SearchPlan,
+	newResult *segments.SearchResult,
+	sliceNQs []int64,
+	sliceTopKs []int64) error {
+
+	if t.streamingSearchResult == nil {
+		t.streamingSearchResult = newResult
+		return nil
+	}
+	return segments.StreamMergeSearchResult(ctx, plan, t.streamingSearchResult, newResult, sliceNQs, sliceTopKs)
+}

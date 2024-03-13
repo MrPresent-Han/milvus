@@ -20,6 +20,15 @@ extern "C" {
 typedef void* CSearchResultDataBlobs;
 
 CStatus
+MergeSearchResultsWithOutputFields(CSearchPlan c_plan,
+                                   CSearchResult* search_results,
+                                   CSearchResult* merged_search_result,
+                                   int64_t num_segments,
+                                   int64_t* slice_nqs,
+                                   int64_t* slice_topKs,
+                                   int64_t num_slices);
+
+CStatus
 ReduceSearchResultsAndFillData(CSearchResultDataBlobs* cSearchResultDataBlobs,
                                CSearchPlan c_plan,
                                CSearchResult* search_results,

@@ -22,6 +22,7 @@
 #include "common/QueryResult.h"
 #include "query/PlanImpl.h"
 #include "ReduceStructure.h"
+#include "segment_c.h"
 
 namespace milvus::segcore {
 
@@ -55,18 +56,22 @@ class ReduceHelper {
         return search_result_data_blobs_.release();
     }
 
- private:
-    void
-    Initialize();
-
+ protected:
     void
     FilterInvalidSearchResult(SearchResult* search_result);
 
     void
-    FillPrimaryKey();
+    ReduceResultData();
 
     void
     RefreshSearchResult();
+
+    void
+    FillPrimaryKey();
+
+ private:
+    void
+    Initialize();
 
     void
     FillEntryData();
@@ -76,9 +81,6 @@ class ReduceHelper {
                                int64_t topk,
                                int64_t& result_offset);
 
-    void
-    ReduceResultData();
-
     std::vector<char>
     GetSearchResultDataSlice(int slice_index_);
 
@@ -87,10 +89,11 @@ class ReduceHelper {
         std::unique_ptr<milvus::proto::schema::SearchResultData>& search_result,
         const std::vector<GroupByValueType>& group_by_vals);
 
- private:
+protected:
     std::vector<SearchResult*>& search_results_;
     milvus::query::Plan* plan_;
 
+ private:
     std::vector<int64_t> slice_nqs_;
     std::vector<int64_t> slice_topKs_;
     int64_t total_nq_;
@@ -114,6 +117,31 @@ class ReduceHelper {
         heap_;
     std::unordered_set<milvus::PkType> pk_set_;
     std::unordered_set<milvus::GroupByValueType> group_by_val_set_;
+};
+
+class MergeReduceHelper:ReduceHelper{
+public:
+    explicit MergeReduceHelper(std::vector<SearchResult*>& search_results,
+                               milvus::query::Plan* plan,
+                               int64_t* slice_nqs,
+                               int64_t* slice_topKs,
+                               int64_t slice_num): ReduceHelper(
+                                       search_results,
+                                       plan,
+                                       slice_nqs,
+                                       slice_topKs,
+                                       slice_num){}
+public:
+    void MergeReduce();
+
+    CSearchResult MergedResult();
+
+protected:
+    void
+    MaybeFillPrimaryKey();
+
+    void
+    FillEntryData();
 };
 
 }  // namespace milvus::segcore

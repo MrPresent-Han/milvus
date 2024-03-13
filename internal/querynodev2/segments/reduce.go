@@ -39,8 +39,8 @@ type SearchResult struct {
 	cSearchResult C.CSearchResult
 }
 
-// searchResultDataBlobs is the CSearchResultsDataBlobs in C++
-type searchResultDataBlobs = C.CSearchResultDataBlobs
+// SearchResultDataBlobs is the CSearchResultsDataBlobs in C++
+type SearchResultDataBlobs = C.CSearchResultDataBlobs
 
 // RetrieveResult contains a pointer to the retrieve result in C++ memory
 type RetrieveResult struct {
@@ -71,9 +71,48 @@ func ParseSliceInfo(originNQs []int64, originTopKs []int64, nqPerSlice int64) *S
 	return sInfo
 }
 
+func StreamMergeSearchResult(ctx context.Context,
+	plan *SearchPlan,
+	current *SearchResult,
+	newResult *SearchResult,
+	sliceNQs []int64,
+	sliceTopKs []int64) error {
+	if plan.cSearchPlan == nil {
+		return fmt.Errorf("nil search plan")
+	}
+	if len(sliceNQs) == 0 {
+		return fmt.Errorf("empty slice nqs is not allowed")
+	}
+	if len(sliceNQs) != len(sliceTopKs) {
+		return fmt.Errorf("unaligned sliceNQs(len=%d) and sliceTopKs(len=%d)", len(sliceNQs), len(sliceTopKs))
+	}
+	cSliceNQSPtr := (*C.int64_t)(&sliceNQs[0])
+	cSliceTopKSPtr := (*C.int64_t)(&sliceNQs[0])
+	cNumSlices := C.int64_t(len(sliceNQs))
+	cSearchResults := make([]C.CSearchResult, 0)
+	cSearchResults = append(cSearchResults, current.cSearchResult)
+	cSearchResults = append(cSearchResults, newResult.cSearchResult)
+	cSearchResultPtr := &cSearchResults[0]
+	cNumSegments := C.int64_t(2)
+	var mergedCSearchResult C.CSearchResult
+	cMergedSearchResultPtr := &mergedCSearchResult
+
+	status := C.MergeSearchResultsWithOutputFields(plan.cSearchPlan,
+		cSearchResultPtr,
+		cMergedSearchResultPtr,
+		cNumSegments,
+		cSliceNQSPtr,
+		cSliceTopKSPtr,
+		cNumSlices)
+	if err := HandleCStatus(ctx, &status, "MergeSearchResultsWithOutputFields failed"); err != nil {
+		return err
+	}
+	return nil
+}
+
 func ReduceSearchResultsAndFillData(ctx context.Context, plan *SearchPlan, searchResults []*SearchResult,
 	numSegments int64, sliceNQs []int64, sliceTopKs []int64,
-) (searchResultDataBlobs, error) {
+) (SearchResultDataBlobs, error) {
 	if plan.cSearchPlan == nil {
 		return nil, fmt.Errorf("nil search plan")
 	}
@@ -98,7 +137,7 @@ func ReduceSearchResultsAndFillData(ctx context.Context, plan *SearchPlan, searc
 	cSliceNQSPtr := (*C.int64_t)(&sliceNQs[0])
 	cSliceTopKSPtr := (*C.int64_t)(&sliceTopKs[0])
 	cNumSlices := C.int64_t(len(sliceNQs))
-	var cSearchResultDataBlobs searchResultDataBlobs
+	var cSearchResultDataBlobs SearchResultDataBlobs
 	status := C.ReduceSearchResultsAndFillData(&cSearchResultDataBlobs, plan.cSearchPlan, cSearchResultPtr,
 		cNumSegments, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices)
 	if err := HandleCStatus(ctx, &status, "ReduceSearchResultsAndFillData failed"); err != nil {
@@ -107,7 +146,7 @@ func ReduceSearchResultsAndFillData(ctx context.Context, plan *SearchPlan, searc
 	return cSearchResultDataBlobs, nil
 }
 
-func GetSearchResultDataBlob(ctx context.Context, cSearchResultDataBlobs searchResultDataBlobs, blobIndex int) ([]byte, error) {
+func GetSearchResultDataBlob(ctx context.Context, cSearchResultDataBlobs SearchResultDataBlobs, blobIndex int) ([]byte, error) {
 	var blob C.CProto
 	status := C.GetSearchResultDataBlob(&blob, cSearchResultDataBlobs, C.int32_t(blobIndex))
 	if err := HandleCStatus(ctx, &status, "marshal failed"); err != nil {
@@ -116,7 +155,7 @@ func GetSearchResultDataBlob(ctx context.Context, cSearchResultDataBlobs searchR
 	return GetCProtoBlob(&blob), nil
 }
 
-func DeleteSearchResultDataBlobs(cSearchResultDataBlobs searchResultDataBlobs) {
+func DeleteSearchResultDataBlobs(cSearchResultDataBlobs SearchResultDataBlobs) {
 	C.DeleteSearchResultDataBlobs(cSearchResultDataBlobs)
 }
 
