@@ -56,6 +56,9 @@ class SegmentInterface {
     virtual void
     FillTargetEntry(const query::Plan* plan, SearchResult& results) const = 0;
 
+    virtual void
+    FillFieldEntry(const FieldId field_id, SearchResult& result) const = 0;
+
     virtual bool
     Contain(const PkType& pk) const = 0;
 
@@ -158,6 +161,10 @@ class SegmentInternalInterface : public SegmentInterface {
     void
     FillTargetEntry(const query::Plan* plan,
                     SearchResult& results) const override;
+
+    void
+    FillFieldEntry(const FieldId field_id,
+                   SearchResult& result) const override;
 
     std::unique_ptr<proto::segcore::RetrieveResults>
     Retrieve(const query::RetrievePlan* Plan,

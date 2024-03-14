@@ -64,6 +64,16 @@ SegmentInternalInterface::FillTargetEntry(const query::Plan* plan,
     }
 }
 
+void
+SegmentInternalInterface::FillFieldEntry(const milvus::FieldId field_id, milvus::SearchResult &result) const {
+    std::shared_lock lck(mutex_);
+    auto size = result.distances_.size();
+    AssertInfo(result.seg_offsets_.size() == size,
+               "Size of result distances is not equal to size of ids");
+    auto field_data = bulk_subscript(field_id, result.seg_offsets_.data(), size);
+    result.output_fields_data_[field_id] = std::move(field_data);
+}
+
 std::unique_ptr<SearchResult>
 SegmentInternalInterface::Search(
     const query::Plan* plan,

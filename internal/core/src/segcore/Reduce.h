@@ -61,15 +61,16 @@ class ReduceHelper {
     FilterInvalidSearchResult(SearchResult* search_result);
 
     void
-    ReduceResultData();
-
-    void
     RefreshSearchResult();
 
     void
     FillPrimaryKey();
 
  private:
+
+    void
+    ReduceResultData();
+
     void
     Initialize();
 
@@ -92,31 +93,29 @@ class ReduceHelper {
 protected:
     std::vector<SearchResult*>& search_results_;
     milvus::query::Plan* plan_;
+    int64_t num_slices_;
+    std::vector<int64_t> slice_nqs_prefix_sum_;
+    int64_t num_segments_;
+    std::vector<int64_t> slice_topKs_;
+    std::priority_queue<SearchResultPair*,
+            std::vector<SearchResultPair*>,
+            SearchResultPairComparator>
+            heap_;
+    // Used for merge results,
+    // define these here to avoid allocating them for each query
+    std::vector<SearchResultPair> pairs_;
+    std::unordered_set<milvus::PkType> pk_set_;
+    std::unordered_set<milvus::GroupByValueType> group_by_val_set_;
 
  private:
     std::vector<int64_t> slice_nqs_;
-    std::vector<int64_t> slice_topKs_;
     int64_t total_nq_;
-    int64_t num_segments_;
-    int64_t num_slices_;
-
-    std::vector<int64_t> slice_nqs_prefix_sum_;
 
     // dim0: num_segments_; dim1: total_nq_; dim2: offset
     std::vector<std::vector<std::vector<int64_t>>> final_search_records_;
 
     // output
     std::unique_ptr<SearchResultDataBlobs> search_result_data_blobs_;
-
-    // Used for merge results,
-    // define these here to avoid allocating them for each query
-    std::vector<SearchResultPair> pairs_;
-    std::priority_queue<SearchResultPair*,
-                        std::vector<SearchResultPair*>,
-                        SearchResultPairComparator>
-        heap_;
-    std::unordered_set<milvus::PkType> pk_set_;
-    std::unordered_set<milvus::GroupByValueType> group_by_val_set_;
 };
 
 class MergeReduceHelper:ReduceHelper{
@@ -142,6 +141,18 @@ protected:
 
     void
     FillEntryData();
+
+    void
+    ReduceResultData();
+
+private:
+    void
+    AssembleMergedResult();
+
+    void
+    StreamReduceSearchResultForOneNQ(int64_t qi,
+                               int64_t topK,
+            std::unique_ptr<SearchResult> mergedResult);
 };
 
 }  // namespace milvus::segcore
