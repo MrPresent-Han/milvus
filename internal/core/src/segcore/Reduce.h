@@ -66,10 +66,10 @@ class ReduceHelper {
     void
     FillPrimaryKey();
 
- private:
-
     void
     ReduceResultData();
+
+ private:
 
     void
     Initialize();
@@ -106,53 +106,16 @@ protected:
     std::vector<SearchResultPair> pairs_;
     std::unordered_set<milvus::PkType> pk_set_;
     std::unordered_set<milvus::GroupByValueType> group_by_val_set_;
+    // dim0: num_segments_; dim1: total_nq_; dim2: offset
+    std::vector<std::vector<std::vector<int64_t>>> final_search_records_;
+    //hc---final_search_records保留所有入选的records的offsets
 
  private:
     std::vector<int64_t> slice_nqs_;
     int64_t total_nq_;
 
-    // dim0: num_segments_; dim1: total_nq_; dim2: offset
-    std::vector<std::vector<std::vector<int64_t>>> final_search_records_;
-
     // output
     std::unique_ptr<SearchResultDataBlobs> search_result_data_blobs_;
-};
-
-class MergeReduceHelper:ReduceHelper{
-public:
-    explicit MergeReduceHelper(std::vector<SearchResult*>& search_results,
-                               milvus::query::Plan* plan,
-                               int64_t* slice_nqs,
-                               int64_t* slice_topKs,
-                               int64_t slice_num): ReduceHelper(
-                                       search_results,
-                                       plan,
-                                       slice_nqs,
-                                       slice_topKs,
-                                       slice_num){}
-public:
-    void MergeReduce();
-
-    CSearchResult MergedResult();
-
-protected:
-    void
-    MaybeFillPrimaryKey();
-
-    void
-    FillEntryData();
-
-    void
-    ReduceResultData();
-
-private:
-    void
-    AssembleMergedResult();
-
-    void
-    StreamReduceSearchResultForOneNQ(int64_t qi,
-                               int64_t topK,
-            std::unique_ptr<SearchResult> mergedResult);
 };
 
 }  // namespace milvus::segcore

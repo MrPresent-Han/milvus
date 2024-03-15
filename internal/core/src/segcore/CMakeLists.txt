@@ -25,6 +25,7 @@ set(SEGCORE_FILES
         SegmentSealedImpl.cpp
         FieldIndexing.cpp
         Reduce.cpp
+        StreamReduce.cpp
         metrics_c.cpp
         plan_c.cpp
         reduce_c.cpp
