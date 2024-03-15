@@ -531,8 +531,7 @@ CreateDataArrayFrom(const void* data_raw,
 
 // TODO remove merge dataArray, instead fill target entity when get data slice
 std::unique_ptr<DataArray>
-MergeDataArray(
-    std::vector<std::pair<milvus::SearchResult*, int64_t>>& result_offsets,
+MergeDataArray(std::vector<MergeBase>& merge_bases,
     const FieldMeta& field_meta) {
     auto data_type = field_meta.get_data_type();
     auto data_array = std::make_unique<DataArray>();
@@ -540,10 +539,10 @@ MergeDataArray(
     data_array->set_type(static_cast<milvus::proto::schema::DataType>(
         field_meta.get_data_type()));
 
-    for (auto& result_pair : result_offsets) {
+    for (auto& merge_base : merge_bases) {
         auto src_field_data =
-            result_pair.first->output_fields_data_[field_meta.get_id()].get();
-        auto src_offset = result_pair.second;
+            merge_base.get_field_data(field_meta.get_id());
+        auto src_offset = merge_base.getOffset();
         AssertInfo(data_type == DataType(src_field_data->type()),
                    "merge field data type not consistent");
         if (field_meta.is_vector()) {

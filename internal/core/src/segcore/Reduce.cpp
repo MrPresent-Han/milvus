@@ -363,7 +363,7 @@ ReduceHelper::GetSearchResultDataSlice(int slice_index) {
     search_result_data->mutable_topks()->Resize(nq_end - nq_begin, 0);
 
     // `result_pairs` contains the SearchResult and result_offset info, used for filling output fields
-    std::vector<std::pair<SearchResult*, int64_t>> result_pairs(result_count);
+    std::vector<MergeBase> result_pairs(result_count);
 
     // reserve space for pks
     auto primary_field_id =
@@ -457,7 +457,7 @@ ReduceHelper::GetSearchResultDataSlice(int slice_index) {
                     group_by_values[loc] =
                         search_result->group_by_values_.value()[ki];
                 // set result offset to fill output fields data
-                result_pairs[loc] = std::make_pair(search_result, ki);
+                result_pairs[loc] = {&search_result->output_fields_data_, ki};
             }
         }
 

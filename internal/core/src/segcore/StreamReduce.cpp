@@ -11,6 +11,7 @@
 
 #include "StreamReduce.h"
 #include "SegmentInterface.h"
+#include "segcore/Utils.h"
 
 namespace milvus::segcore {
 
@@ -87,7 +88,7 @@ namespace milvus::segcore {
                                     search_result->topk_per_nq_prefix_sum_[nq_begin];
                 }
                 result_count += merged_search_result->topk_per_nq_prefix_sum_[nq_end] - merged_search_result->topk_per_nq_prefix_sum_[nq_begin];
-                std::vector<std::pair<SearchResult*, int64_t>> new_result_pairs(result_count);
+                std::vector<MergeBase> new_result_pairs(result_count);
                 int nq_base_offset = valid_size;
                 valid_size+=result_count;
                 new_merged_pks.resize(valid_size);
@@ -116,7 +117,7 @@ namespace milvus::segcore {
                               if(need_handle_groupBy){
                                   new_merged_groupBy_vals[nq_base_offset + loc] = search_result->group_by_values_.value()[ki];
                               }
-                              new_result_pairs[loc] = std::make_pair(search_result, ki);
+                              new_result_pairs[loc] = {&search_result->output_fields_data_, ki};
                           }
                       }
                       auto topK_start = merged_search_result->topk_per_nq_prefix_sum_[qi];
@@ -133,11 +134,9 @@ namespace milvus::segcore {
                          if(need_handle_groupBy){
                             new_merged_groupBy_vals[nq_base_offset + loc] = merged_search_result->group_by_values_.value()[ki];
                          }
-                         new_result_pairs[loc] = std::make_pair(merged_search_result, ki);
+                         new_result_pairs[loc] = {&merged_search_result->output_fields_data_, ki};
                       }
                 }
-
-
             }
         }
     }
