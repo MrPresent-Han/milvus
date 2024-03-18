@@ -46,12 +46,12 @@ struct StreamSearchResultPairComparator{
     }
 };
 
-class MergeReduceHelper{
+class StreamReducerHelper{
 public:
-    explicit MergeReduceHelper(milvus::query::Plan* plan,
-                               int64_t* slice_nqs,
-                               int64_t* slice_topKs,
-                               int64_t slice_num):
+    explicit StreamReducerHelper(milvus::query::Plan* plan,
+                                 int64_t* slice_nqs,
+                                 int64_t* slice_topKs,
+                                 int64_t slice_num):
                                plan_(plan),
                                slice_nqs_(slice_nqs, slice_nqs + slice_num),
                                slice_topKs_(slice_topKs, slice_topKs + slice_num){
@@ -72,6 +72,7 @@ public:
 
 public:
     void MergeReduce();
+    void* SerializeMergedResult();
 
 protected:
     void
@@ -95,7 +96,7 @@ private:
     void
     FillEntryData();
 
-    void
+    std::unique_ptr<MergedSearchResult>
     AssembleMergedResult();
 
     std::unique_ptr<MergedSearchResult> merged_search_result;

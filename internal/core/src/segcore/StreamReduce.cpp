@@ -16,7 +16,7 @@
 namespace milvus::segcore {
 
    /* void
-    MergeReduceHelper::AssembleMergedResult() {
+    StreamReducerHelper::AssembleMergedResult() {
         auto merge_search_result = std::make_unique<SearchResult>();
         std::vector<PkType> pks;
         std::vector<float> distances;
@@ -59,7 +59,7 @@ namespace milvus::segcore {
    */
 
     void
-    MergeReduceHelper::FillEntryData() {
+    StreamReducerHelper::FillEntryData() {
         for (auto search_result: search_results_to_merge_) {
             auto segment = static_cast<milvus::segcore::SegmentInterface*>(
                     search_result->segment_);
@@ -67,15 +67,16 @@ namespace milvus::segcore {
         }
     }
 
-    void
-    MergeReduceHelper::AssembleMergedResult() {
-        std::unique_ptr<MergedSearchResult> new_merged_result = std::make_unique<MergedSearchResult>();
-        std::vector<PkType> new_merged_pks;
-        std::vector<float> new_merged_distances;
-        std::vector<GroupByValueType> new_merged_groupBy_vals;
-        bool need_handle_groupBy = plan_->plan_node_->search_info_.group_by_field_id_.has_value();
-        int valid_size = 0;
+    std::unique_ptr<MergedSearchResult>
+    StreamReducerHelper::AssembleMergedResult() {
         if(search_results_to_merge_.size() > 0) {
+            std::unique_ptr<MergedSearchResult> new_merged_result = std::make_unique<MergedSearchResult>();
+            std::vector<PkType> new_merged_pks;
+            std::vector<float> new_merged_distances;
+            std::vector<GroupByValueType> new_merged_groupBy_vals;
+            std::vector<MergeBase> new_result_pairs;
+            bool need_handle_groupBy = plan_->plan_node_->search_info_.group_by_field_id_.has_value();
+            int valid_size = 0;
             for(int i = 0; i < num_slice_; i++) {
                 auto nq_begin = slice_nqs_prefix_sum_[i];
                 auto nq_end = slice_nqs_prefix_sum_[i+1];
@@ -88,11 +89,11 @@ namespace milvus::segcore {
                                     search_result->topk_per_nq_prefix_sum_[nq_begin];
                 }
                 result_count += merged_search_result->topk_per_nq_prefix_sum_[nq_end] - merged_search_result->topk_per_nq_prefix_sum_[nq_begin];
-                std::vector<MergeBase> new_result_pairs(result_count);
                 int nq_base_offset = valid_size;
                 valid_size+=result_count;
                 new_merged_pks.resize(valid_size);
                 new_merged_distances.resize(valid_size);
+                new_result_pairs.resize(valid_size);
                 if(need_handle_groupBy){
                     new_merged_groupBy_vals.resize(valid_size);
                 }
@@ -117,7 +118,7 @@ namespace milvus::segcore {
                               if(need_handle_groupBy){
                                   new_merged_groupBy_vals[nq_base_offset + loc] = search_result->group_by_values_.value()[ki];
                               }
-                              new_result_pairs[loc] = {&search_result->output_fields_data_, ki};
+                              new_result_pairs[nq_base_offset + loc] = {&search_result->output_fields_data_, ki};
                           }
                       }
                       auto topK_start = merged_search_result->topk_per_nq_prefix_sum_[qi];
@@ -134,15 +135,33 @@ namespace milvus::segcore {
                          if(need_handle_groupBy){
                             new_merged_groupBy_vals[nq_base_offset + loc] = merged_search_result->group_by_values_.value()[ki];
                          }
-                         new_result_pairs[loc] = {&merged_search_result->output_fields_data_, ki};
+                         new_result_pairs[nq_base_offset + loc] = {&merged_search_result->output_fields_data_, ki};
                       }
                 }
             }
+            new_merged_result->primary_keys_ = std::move(new_merged_pks);
+            new_merged_result->distances_ = std::move(new_merged_distances);
+            if(need_handle_groupBy){
+                new_merged_result->group_by_values_ = std::move(new_merged_groupBy_vals);
+            }
+            for(auto field_id: plan_->target_entries_){
+                auto& field_meta = plan_->schema_[field_id];
+                auto field_data = MergeDataArray(new_result_pairs, field_meta);
+                if (field_meta.get_data_type() == DataType::ARRAY) {
+                    field_data->mutable_scalars()
+                            ->mutable_array_data()
+                            ->set_element_type(
+                                    proto::schema::DataType(field_meta.get_element_type()));
+                }
+                new_merged_result->output_fields_data_[field_id] = std::move(field_data);
+            }
+            return new_merged_result;
         }
+        return nullptr;
     }
 
     void
-    MergeReduceHelper::MergeReduce() {
+    StreamReducerHelper::MergeReduce() {
         FillPrimaryKey();
         ReduceResultData();
         RefreshSearchResult();
@@ -150,9 +169,12 @@ namespace milvus::segcore {
         AssembleMergedResult();
     }
 
+    void* StreamReducerHelper::SerializeMergedResult() {
+
+    }
 
     void
-    MergeReduceHelper::ReduceResultData() {
+    StreamReducerHelper::ReduceResultData() {
         for (int i = 0; i < num_segments_; i++) {
             auto search_result = search_results_to_merge_[i];
             auto result_count = search_result->get_total_result_count();
@@ -178,7 +200,7 @@ namespace milvus::segcore {
     }
 
     void
-    MergeReduceHelper::FillPrimaryKey() {
+    StreamReducerHelper::FillPrimaryKey() {
         uint32_t valid_index = 0;
         for (auto& search_result : search_results_to_merge_) {
             // skip when results num is 0
@@ -197,7 +219,7 @@ namespace milvus::segcore {
     }
 
     void
-    MergeReduceHelper::FilterInvalidSearchResult(SearchResult* search_result) {
+    StreamReducerHelper::FilterInvalidSearchResult(SearchResult* search_result) {
         auto nq = search_result->total_nq_;
         auto topK = search_result->unity_topK_;
         AssertInfo(search_result->seg_offsets_.size() == nq * topK,
@@ -254,9 +276,9 @@ namespace milvus::segcore {
     }
 
     void
-    MergeReduceHelper::StreamReduceSearchResultForOneNQ(int64_t qi,
-                                                        int64_t topK,
-                                                        int64_t& offset) {
+    StreamReducerHelper::StreamReduceSearchResultForOneNQ(int64_t qi,
+                                                          int64_t topK,
+                                                          int64_t& offset) {
         //1. clear heap for preceding left elements
         while (!heap_.empty()) {
             heap_.pop();
@@ -362,7 +384,7 @@ namespace milvus::segcore {
     }
 
     void
-    MergeReduceHelper::RefreshSearchResult() {
+    StreamReducerHelper::RefreshSearchResult() {
         //1. refresh new input results
         for(int i = 0; i < num_segments_; i++){
             std::vector<int64_t> real_topKs(total_nq_, 0);

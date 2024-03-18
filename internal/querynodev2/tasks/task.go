@@ -2,6 +2,7 @@ package tasks
 
 // TODO: rename this file into search_task.go
 
+import "C"
 import (
 	"bytes"
 	"context"
@@ -358,9 +359,9 @@ func (t *SearchTask) combinePlaceHolderGroups() {
 
 type StreamingSearchTask struct {
 	SearchTask
-	others                []*StreamingSearchTask
-	streamingSearchResult *segments.SearchResult
-	resultBlobs           segments.SearchResultDataBlobs
+	others        []*StreamingSearchTask
+	resultBlobs   segments.SearchResultDataBlobs
+	streamReducer segments.StreamSearchReducer
 }
 
 func (t *StreamingSearchTask) Execute() error {
@@ -402,7 +403,7 @@ func (t *StreamingSearchTask) Execute() error {
 			if resErr != nil {
 				return err
 			}
-			t.streamMerge(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
+			t.streamReduce(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
 		}
 		//resultBlobs = marshall t.result
 		//defer segments.DeleteSearchResultDataBlobs(resultBlobs)
@@ -514,15 +515,14 @@ func (t *StreamingSearchTask) maybeReturnForEmptyResults(results []*segments.Sea
 	return false
 }
 
-func (t *StreamingSearchTask) streamMerge(ctx context.Context,
+func (t *StreamingSearchTask) streamReduce(ctx context.Context,
 	plan *segments.SearchPlan,
 	newResult *segments.SearchResult,
 	sliceNQs []int64,
 	sliceTopKs []int64) error {
-
-	if t.streamingSearchResult == nil {
-		t.streamingSearchResult = newResult
-		return nil
+	if t.streamReducer == nil {
+		segments.NewStreamReducer(ctx, plan, sliceNQs, sliceTopKs, t.streamReducer)
 	}
-	return segments.StreamMergeSearchResult(ctx, plan, t.streamingSearchResult, newResult, sliceNQs, sliceTopKs)
+
+	return segments.StreamReduceSearchResult(ctx, t.streamReducer, newResult)
 }

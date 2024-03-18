@@ -41,6 +41,7 @@ type SearchResult struct {
 
 // SearchResultDataBlobs is the CSearchResultsDataBlobs in C++
 type SearchResultDataBlobs = C.CSearchResultDataBlobs
+type StreamSearchReducer = C.CSearchStreamReducer
 
 // RetrieveResult contains a pointer to the retrieve result in C++ memory
 type RetrieveResult struct {
@@ -71,12 +72,11 @@ func ParseSliceInfo(originNQs []int64, originTopKs []int64, nqPerSlice int64) *S
 	return sInfo
 }
 
-func StreamMergeSearchResult(ctx context.Context,
+func NewStreamReducer(ctx context.Context,
 	plan *SearchPlan,
-	current *SearchResult,
-	newResult *SearchResult,
 	sliceNQs []int64,
-	sliceTopKs []int64) error {
+	sliceTopKs []int64,
+	streamReducer StreamSearchReducer) error {
 	if plan.cSearchPlan == nil {
 		return fmt.Errorf("nil search plan")
 	}
@@ -89,22 +89,23 @@ func StreamMergeSearchResult(ctx context.Context,
 	cSliceNQSPtr := (*C.int64_t)(&sliceNQs[0])
 	cSliceTopKSPtr := (*C.int64_t)(&sliceNQs[0])
 	cNumSlices := C.int64_t(len(sliceNQs))
+
+	status := C.NewStreamReducer(plan.cSearchPlan, cSliceNQSPtr, cSliceTopKSPtr, cNumSlices, &streamReducer)
+	if err := HandleCStatus(ctx, &status, "MergeSearchResultsWithOutputFields failed"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func StreamReduceSearchResult(ctx context.Context,
+	newResult *SearchResult, streamReducer StreamSearchReducer) error {
+
 	cSearchResults := make([]C.CSearchResult, 0)
-	cSearchResults = append(cSearchResults, current.cSearchResult)
 	cSearchResults = append(cSearchResults, newResult.cSearchResult)
 	cSearchResultPtr := &cSearchResults[0]
-	cNumSegments := C.int64_t(2)
-	var mergedCSearchResult C.CSearchResult
-	cMergedSearchResultPtr := &mergedCSearchResult
 
-	status := C.MergeSearchResultsWithOutputFields(plan.cSearchPlan,
-		cSearchResultPtr,
-		cMergedSearchResultPtr,
-		cNumSegments,
-		cSliceNQSPtr,
-		cSliceTopKSPtr,
-		cNumSlices)
-	if err := HandleCStatus(ctx, &status, "MergeSearchResultsWithOutputFields failed"); err != nil {
+	status := C.StreamReduce(streamReducer, cSearchResultPtr)
+	if err := HandleCStatus(ctx, &status, "StreamReduceSearchResult failed"); err != nil {
 		return err
 	}
 	return nil

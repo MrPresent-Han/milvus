@@ -15,31 +15,49 @@
 #include "common/EasyAssert.h"
 #include "query/Plan.h"
 #include "segcore/reduce_c.h"
+#include "segcore/StreamReduce.h"
 #include "segcore/Utils.h"
 
 using SearchResult = milvus::SearchResult;
 
 CStatus
-MergeSearchResultsWithOutputFields(CSearchPlan c_plan,
-                                   CSearchResult* c_search_results,
-                                   CSearchResult* merge_search_result,
-                                   int64_t num_segments,
-                                   int64_t* slice_nqs,
-                                   int64_t* slice_topKs,
-                                   int64_t num_slices){
+NewStreamReducer(CSearchPlan c_plan,
+                 int64_t* slice_nqs,
+                 int64_t* slice_topKs,
+                 int64_t num_slices,
+                 CSearchStreamReducer* stream_reducer){
     try {
         //convert search results and search plan
         auto plan = static_cast<milvus::query::Plan*>(c_plan);
-        AssertInfo(num_segments > 0, "num_segments must be greater than 0 for merging search results");
+        auto stream_reduce_helper = std::make_unique<milvus::segcore::StreamReducerHelper>(
+                plan, slice_nqs, slice_topKs, num_slices);
+        *stream_reducer = stream_reduce_helper.release();
+        return milvus::SuccessCStatus();
+    } catch(std::exception& e){
+        return milvus::FailureCStatus(&e);
+    }
+}
+
+CStatus
+StreamReduce(CSearchStreamReducer c_stream_reducer, CSearchResult* c_search_results, int64_t num_segments){
+    try {
+        auto stream_reducer = static_cast<milvus::segcore::StreamReducerHelper*>(c_stream_reducer);
         std::vector<SearchResult*> search_results(num_segments);
-        for(int i = 0; i < num_segments; i++) {
+        for(int i = 0; i < num_segments; i++){
             search_results[i] = static_cast<SearchResult*>(c_search_results[i]);
         }
-        auto merge_reduce_helper = milvus::segcore::MergeReduceHelper(
-                search_results, plan, slice_nqs, slice_topKs, num_slices);
-        merge_reduce_helper.MergeReduce();
-        *merge_search_result = merge_reduce_helper.MergedResult();
-        return milvus::SuccessCStatus();
+        stream_reducer->SetSearchResultsToMerge(search_results);
+        stream_reducer->MergeReduce();
+    } catch(std::exception& e) {
+        return milvus::FailureCStatus(&e);
+    }
+}
+
+CStatus
+GetStreamReduceResult(CSearchStreamReducer c_stream_reducer, CSearchResultDataBlobs* c_search_result_data_blobs) {
+    try {
+        auto stream_reducer = static_cast<milvus::segcore::StreamReducerHelper*>(c_stream_reducer);
+        *c_search_result_data_blobs = stream_reducer->SerializeMergedResult();
     } catch(std::exception& e){
         return milvus::FailureCStatus(&e);
     }
