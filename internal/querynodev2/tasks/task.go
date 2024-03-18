@@ -396,8 +396,6 @@ func (t *StreamingSearchTask) Execute() error {
 			req.GetSegmentIDs(),
 			streamingResultsChan,
 			errStream)
-		defer close(streamingResultsChan)
-		defer close(errStream)
 		for result := range streamingResultsChan {
 			resErr := <-errStream
 			if resErr != nil {
@@ -405,8 +403,13 @@ func (t *StreamingSearchTask) Execute() error {
 			}
 			t.streamReduce(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
 		}
-		//resultBlobs = marshall t.result
-		//defer segments.DeleteSearchResultDataBlobs(resultBlobs)
+		_, err = segments.GetStreamReduceResult(t.ctx, t.streamReducer, t.result)
+		if err != nil {
+			log.Error("Failed to get stream-reduced search result")
+			return err
+		}
+		defer segments.DeleteStreamReduceHelper(t.streamReducer)
+		defer segments.DeleteSearchResultDataBlobs(t.resultBlobs)
 	} else if req.GetScope() == querypb.DataScope_Streaming {
 		var results []*segments.SearchResult
 		results, searchedSegments, err := segments.SearchStreaming(

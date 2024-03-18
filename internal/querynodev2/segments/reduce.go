@@ -104,11 +104,19 @@ func StreamReduceSearchResult(ctx context.Context,
 	cSearchResults = append(cSearchResults, newResult.cSearchResult)
 	cSearchResultPtr := &cSearchResults[0]
 
-	status := C.StreamReduce(streamReducer, cSearchResultPtr)
+	status := C.StreamReduce(streamReducer, cSearchResultPtr, 1)
 	if err := HandleCStatus(ctx, &status, "StreamReduceSearchResult failed"); err != nil {
 		return err
 	}
 	return nil
+}
+
+func GetStreamReduceResult(ctx context.Context, streamReducer StreamSearchReducer, cSearchResultDataBlobs SearchResultDataBlobs) (SearchResultDataBlobs, error) {
+	status := C.GetStreamReduceResult(streamReducer, cSearchResultDataBlobs)
+	if err := HandleCStatus(ctx, &status, "ReduceSearchResultsAndFillData failed"); err != nil {
+		return nil, err
+	}
+	return cSearchResultDataBlobs, nil
 }
 
 func ReduceSearchResultsAndFillData(ctx context.Context, plan *SearchPlan, searchResults []*SearchResult,
@@ -158,6 +166,10 @@ func GetSearchResultDataBlob(ctx context.Context, cSearchResultDataBlobs SearchR
 
 func DeleteSearchResultDataBlobs(cSearchResultDataBlobs SearchResultDataBlobs) {
 	C.DeleteSearchResultDataBlobs(cSearchResultDataBlobs)
+}
+
+func DeleteStreamReduceHelper(cStreamReduceHelper StreamSearchReducer) {
+	C.DeleteStreamSearchReducer(cStreamReduceHelper)
 }
 
 func DeleteSearchResults(results []*SearchResult) {

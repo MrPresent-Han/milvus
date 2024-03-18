@@ -99,6 +99,14 @@ private:
     std::unique_ptr<MergedSearchResult>
     AssembleMergedResult();
 
+    std::vector<char>
+    GetSearchResultDataSlice(int slice_index);
+
+    void
+    AssembleGroupByValues(
+            std::unique_ptr<milvus::proto::schema::SearchResultData>& search_result,
+            const std::vector<GroupByValueType>& group_by_vals);
+
     std::unique_ptr<MergedSearchResult> merged_search_result;
     milvus::query::Plan* plan_;
     std::vector<int64_t> slice_nqs_;

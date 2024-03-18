@@ -125,3 +125,12 @@ DeleteSearchResultDataBlobs(CSearchResultDataBlobs cSearchResultDataBlobs) {
             cSearchResultDataBlobs);
     delete search_result_data_blobs;
 }
+
+CStatus
+DeleteStreamSearchReducer(CSearchStreamReducer c_stream_reducer){
+    if (c_stream_reducer == nullptr) {
+        return;
+    }
+    auto stream_reducer = static_cast<milvus::segcore::StreamReducerHelper*>(c_stream_reducer);
+    delete stream_reducer;
+}

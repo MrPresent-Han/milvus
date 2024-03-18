@@ -169,6 +169,8 @@ func searchSegmentsStreamly(ctx context.Context,
 		}(segment, i)
 	}
 	wg.Wait()
+	defer close(resultStream)
+	defer close(errStream)
 }
 
 // search will search on the historical segments the target segments in historical.

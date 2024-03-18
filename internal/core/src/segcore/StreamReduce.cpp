@@ -12,51 +12,10 @@
 #include "StreamReduce.h"
 #include "SegmentInterface.h"
 #include "segcore/Utils.h"
+#include "Reduce.h"
+#include "segcore/pkVisitor.h"
 
 namespace milvus::segcore {
-
-   /* void
-    StreamReducerHelper::AssembleMergedResult() {
-        auto merge_search_result = std::make_unique<SearchResult>();
-        std::vector<PkType> pks;
-        std::vector<float> distances;
-        std::vector<GroupByValueType> group_by_values;
-
-        for(int i = 0; i < num_slices_; i++) {
-            //1. calculate the result count for current nq
-            auto nq_begin = slice_nqs_prefix_sum_[i];
-            auto nq_end = slice_nqs_prefix_sum_[i+1];
-            int64_t nq_result_count = 0;
-            for (auto search_result: search_results_){
-                AssertInfo(search_result->topk_per_nq_prefix_sum_.size() ==
-                           search_result->total_nq_ + 1,
-                           "incorrect topk_per_nq_prefix_sum_ size in search result");
-                nq_result_count += (search_result->topk_per_nq_prefix_sum_[nq_end] -
-                                    search_result->topk_per_nq_prefix_sum_[nq_begin]);
-            }
-
-            for(auto qi = nq_begin; qi < nq_end; qi++){
-                for(auto search_result : search_results_) {
-                    AssertInfo(search_result != nullptr,
-                               "null search result when assembling merged result");
-                    if (search_result->result_offsets_.size() == 0) continue;
-                    auto topK_start = search_result->topk_per_nq_prefix_sum_[qi];
-                    auto topK_end = search_result->topk_per_nq_prefix_sum_[qi+1];
-                    for(auto k = topK_start; k < topK_end; k++){
-                        auto loc = search_result->result_offsets_[k];
-                        AssertInfo(loc < nq_result_count && loc >= 0,
-                                   "invalid loc when GetSearchResultDataSlice, loc = " +
-                                   std::to_string(loc) + ", result_count = " +
-                                   std::to_string(nq_result_count));
-                        //auto offset = final_search_records_[]
-                        //append pk, offset, distance, mergeOutputFields
-                    }
-                }
-            }
-
-        }
-    }
-   */
 
     void
     StreamReducerHelper::FillEntryData() {
@@ -170,7 +129,13 @@ namespace milvus::segcore {
     }
 
     void* StreamReducerHelper::SerializeMergedResult() {
-
+        std::unique_ptr<SearchResultDataBlobs> search_result_blobs = std::make_unique<milvus::segcore::SearchResultDataBlobs>();
+        search_result_blobs->blobs.resize(num_slice_);
+        for(int i = 0; i < num_slice_; i++){
+            auto proto = GetSearchResultDataSlice(i);
+            search_result_blobs->blobs[i] = proto;
+        }
+        return search_result_blobs.release();
     }
 
     void
@@ -421,31 +386,232 @@ namespace milvus::segcore {
             }
             std::partial_sum(real_topKs.begin(), real_topKs.end(), search_result->topk_per_nq_prefix_sum_.begin() + 1);
         }
+    }
 
-        //2. refresh merged result
-        /*if(merged_search_result->result_offsets_.size() > 0){
-            std::vector<int64_t> real_topKs(total_nq_, 0);
-            uint32_t final_size = 0;
-            for (int i = 0; i < total_nq_; i++){
-                final_size += final_search_records_[num_segments_][i].size();
+    std::vector<char>
+    StreamReducerHelper::GetSearchResultDataSlice(int slice_index) {
+        auto nq_begin = slice_nqs_prefix_sum_[slice_index];
+        auto nq_end = slice_nqs_prefix_sum_[slice_index + 1];
+
+        int64_t result_count = merged_search_result->topk_per_nq_prefix_sum_[nq_end] -
+                merged_search_result->topk_per_nq_prefix_sum_[nq_begin];
+
+        auto search_result_data =
+                std::make_unique<milvus::proto::schema::SearchResultData>();
+        // set unify_topK and total_nq
+        search_result_data->set_top_k(slice_topKs_[slice_index]);
+        search_result_data->set_num_queries(nq_end - nq_begin);
+        search_result_data->mutable_topks()->Resize(nq_end - nq_begin, 0);
+
+        // `result_pairs` contains the SearchResult and result_offset info, used for filling output fields
+        std::vector<MergeBase> result_pairs(result_count);
+
+        // reserve space for pks
+        auto primary_field_id =
+                plan_->schema_.get_primary_field_id().value_or(milvus::FieldId(-1));
+        AssertInfo(primary_field_id.get() != INVALID_FIELD_ID, "Primary key is -1");
+        auto pk_type = plan_->schema_[primary_field_id].get_data_type();
+        switch (pk_type) {
+            case milvus::DataType::INT64: {
+                auto ids = std::make_unique<milvus::proto::schema::LongArray>();
+                ids->mutable_data()->Resize(result_count, 0);
+                search_result_data->mutable_ids()->set_allocated_int_id(
+                        ids.release());
+                break;
             }
-            std::vector<milvus::PkType> reduced_pks(final_size);
-            std::vector<float> reduced_distances(final_size);
-            std::vector<GroupByValueType> reduced_group_by_values(final_size);
+            case milvus::DataType::VARCHAR: {
+                auto ids = std::make_unique<milvus::proto::schema::StringArray>();
+                std::vector<std::string> string_pks(result_count);
+                // TODO: prevent mem copy
+                *ids->mutable_data() = {string_pks.begin(), string_pks.end()};
+                search_result_data->mutable_ids()->set_allocated_str_id(
+                        ids.release());
+                break;
+            }
+            default: {
+                PanicInfo(DataTypeInvalid,
+                          fmt::format("unsupported primary key type {}", pk_type));
+            }
+        }
 
-            uint32_t final_index = 0;
-            for (int i = 0; i < total_nq_; i++){
-                for (auto offset : final_search_records_[num_segments_][i]){
-                    reduced_pks[final_index] = merged_search_result->primary_keys_[offset];
-                    reduced_distances[final_index] = merged_search_result->distances_[offset];
-                    if (merged_search_result->group_by_values_.has_value())
-                        reduced_group_by_values[final_index] =
-                                merged_search_result->group_by_values_.value()[offset];
-                    final_index++;
-                    real_topKs[i]++;
+        // reserve space for distances
+        search_result_data->mutable_scores()->Resize(result_count, 0);
+
+        //reserve space for group_by_values
+        std::vector<GroupByValueType> group_by_values;
+        if (plan_->plan_node_->search_info_.group_by_field_id_.has_value()) {
+            group_by_values.resize(result_count);
+        }
+
+        // fill pks and distances
+        for (auto qi = nq_begin; qi < nq_end; qi++) {
+            int64_t topk_count = 0;
+            AssertInfo(merged_search_result != nullptr, "null merged search result when reorganize");
+            if (merged_search_result->result_offsets_.size() == 0) {
+                continue;
+            }
+
+            auto topk_start = merged_search_result->topk_per_nq_prefix_sum_[qi];
+            auto topk_end = merged_search_result->topk_per_nq_prefix_sum_[qi + 1];
+            topk_count += topk_end - topk_start;
+
+            for (auto ki = topk_start; ki < topk_end; ki++) {
+                auto loc = merged_search_result->result_offsets_[ki];
+                AssertInfo(loc < result_count && loc >= 0,
+                           "invalid loc when GetSearchResultDataSlice, loc = " +
+                           std::to_string(loc) + ", result_count = " +
+                           std::to_string(result_count));
+                // set result pks
+                switch (pk_type) {
+                    case milvus::DataType::INT64: {
+                        search_result_data->mutable_ids()
+                                ->mutable_int_id()
+                                ->mutable_data()
+                                ->Set(loc,
+                                      std::visit(Int64PKVisitor{},
+                                                 merged_search_result->primary_keys_[ki]));
+                        break;
+                    }
+                    case milvus::DataType::VARCHAR: {
+                        *search_result_data->mutable_ids()
+                                ->mutable_str_id()
+                                ->mutable_data()
+                                ->Mutable(loc) = std::visit(
+                                StrPKVisitor{}, merged_search_result->primary_keys_[ki]);
+                        break;
+                    }
+                    default: {
+                        PanicInfo(DataTypeInvalid,
+                                  fmt::format("unsupported primary key type {}",
+                                              pk_type));
+                    }
+                }
+
+                search_result_data->mutable_scores()->Set(
+                        loc, merged_search_result->distances_[ki]);
+                // set group by values
+                if (merged_search_result->group_by_values_.has_value() &&
+                    ki < merged_search_result->group_by_values_.value().size())
+                    group_by_values[loc] =
+                            merged_search_result->group_by_values_.value()[ki];
+                // set result offset to fill output fields data
+                result_pairs[loc] = {&merged_search_result->output_fields_data_, ki};
+            }
+
+            // update result topKs
+            search_result_data->mutable_topks()->Set(qi - nq_begin, topk_count);
+        }
+        AssembleGroupByValues(search_result_data, group_by_values);
+
+        AssertInfo(search_result_data->scores_size() == result_count,
+                   "wrong scores size, size = " +
+                   std::to_string(search_result_data->scores_size()) +
+                   ", expected size = " + std::to_string(result_count));
+
+        // set output fields
+        for (auto field_id : plan_->target_entries_) {
+            auto& field_meta = plan_->schema_[field_id];
+            auto field_data =
+                    milvus::segcore::MergeDataArray(result_pairs, field_meta);
+            if (field_meta.get_data_type() == DataType::ARRAY) {
+                field_data->mutable_scalars()
+                        ->mutable_array_data()
+                        ->set_element_type(
+                                proto::schema::DataType(field_meta.get_element_type()));
+            }
+            search_result_data->mutable_fields_data()->AddAllocated(
+                    field_data.release());
+        }
+
+        // SearchResultData to blob
+        auto size = search_result_data->ByteSizeLong();
+        auto buffer = std::vector<char>(size);
+        search_result_data->SerializePartialToArray(buffer.data(), size);
+        return buffer;
+    }
+
+    void
+    StreamReducerHelper::AssembleGroupByValues(
+            std::unique_ptr<milvus::proto::schema::SearchResultData>& search_result,
+            const std::vector<GroupByValueType>& group_by_vals) {
+        auto group_by_field_id = plan_->plan_node_->search_info_.group_by_field_id_;
+        if (group_by_field_id.has_value() && group_by_vals.size() > 0) {
+            auto group_by_values_field =
+                    std::make_unique<milvus::proto::schema::ScalarField>();
+            auto group_by_field =
+                    plan_->schema_.operator[](group_by_field_id.value());
+            DataType group_by_data_type = group_by_field.get_data_type();
+
+            int group_by_val_size = group_by_vals.size();
+            switch (group_by_data_type) {
+                case DataType::INT8: {
+                    auto field_data = group_by_values_field->mutable_int_data();
+                    field_data->mutable_data()->Resize(group_by_val_size, 0);
+                    for (std::size_t idx = 0; idx < group_by_val_size; idx++) {
+                        int8_t val = std::get<int8_t>(group_by_vals[idx]);
+                        field_data->mutable_data()->Set(idx, val);
+                    }
+                    break;
+                }
+                case DataType::INT16: {
+                    auto field_data = group_by_values_field->mutable_int_data();
+                    field_data->mutable_data()->Resize(group_by_val_size, 0);
+                    for (std::size_t idx = 0; idx < group_by_val_size; idx++) {
+                        int16_t val = std::get<int16_t>(group_by_vals[idx]);
+                        field_data->mutable_data()->Set(idx, val);
+                    }
+                    break;
+                }
+                case DataType::INT32: {
+                    auto field_data = group_by_values_field->mutable_int_data();
+                    field_data->mutable_data()->Resize(group_by_val_size, 0);
+                    for (std::size_t idx = 0; idx < group_by_val_size; idx++) {
+                        int32_t val = std::get<int32_t>(group_by_vals[idx]);
+                        field_data->mutable_data()->Set(idx, val);
+                    }
+                    break;
+                }
+                case DataType::INT64: {
+                    auto field_data = group_by_values_field->mutable_long_data();
+                    field_data->mutable_data()->Resize(group_by_val_size, 0);
+                    for (std::size_t idx = 0; idx < group_by_val_size; idx++) {
+                        int64_t val = std::get<int64_t>(group_by_vals[idx]);
+                        field_data->mutable_data()->Set(idx, val);
+                    }
+                    break;
+                }
+                case DataType::BOOL: {
+                    auto field_data = group_by_values_field->mutable_bool_data();
+                    field_data->mutable_data()->Resize(group_by_val_size, 0);
+                    for (std::size_t idx = 0; idx < group_by_val_size; idx++) {
+                        bool val = std::get<bool>(group_by_vals[idx]);
+                        field_data->mutable_data()->Set(idx, val);
+                    }
+                    break;
+                }
+                case DataType::VARCHAR: {
+                    auto field_data = group_by_values_field->mutable_string_data();
+                    for (std::size_t idx = 0; idx < group_by_val_size; idx++) {
+                        std::string val =
+                                std::move(std::get<std::string>(group_by_vals[idx]));
+                        *(field_data->mutable_data()->Add()) = val;
+                    }
+                    break;
+                }
+                default: {
+                    PanicInfo(
+                            DataTypeInvalid,
+                            fmt::format("unsupported datatype for group_by operations ",
+                                        group_by_data_type));
                 }
             }
-            std::partial_sum(real_topKs.begin(), real_topKs.end(), merged_search_result->topk_per_nq_prefix_sum_.begin() + 1);
-        }*/
+
+            search_result->mutable_group_by_field_value()->set_type(
+                    milvus::proto::schema::DataType(group_by_data_type));
+            search_result->mutable_group_by_field_value()
+                    ->mutable_scalars()
+                    ->MergeFrom(*group_by_values_field.get());
+            return;
+        }
     }
 }
