@@ -129,6 +129,7 @@ func searchSegmentsStreamly(ctx context.Context,
 		mu                   sync.Mutex
 		segmentsWithoutIndex []int64
 	)
+	log := log.Ctx(ctx)
 
 	searchLabel := metrics.SealedSegmentLabel
 	if segType == commonpb.SegmentState_Growing {
@@ -143,7 +144,9 @@ func searchSegmentsStreamly(ctx context.Context,
 	searcher := func(seg Segment) error {
 		// record search time
 		tr := timerecord.NewTimeRecorder("searchOnSegments")
+		log.Debug("before stream searcher doing search", zap.Int64("segID", seg.ID()))
 		searchResult, err := seg.Search(ctx, searchReq)
+		log.Debug("after stream searcher doing search", zap.Int64("segID", seg.ID()), zap.Error(err))
 		errStream <- err
 		resultStream <- searchResult
 		// update metrics

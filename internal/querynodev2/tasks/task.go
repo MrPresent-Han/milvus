@@ -439,11 +439,14 @@ func (t *StreamingSearchTask) Execute() error {
 		var reduceErr error
 		for result := range streamingResultsChan {
 			searchResultsToDelete = append(searchResultsToDelete, result)
+			log.Debug("streamingResultChan got streamed result")
 			searchErr = <-errStream
 			if searchErr != nil {
 				break
 			}
+			log.Debug("streamingResultChan before doing stream reduce")
 			reduceErr = t.streamReduce(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
+			log.Debug("streamingResultChan after doing stream reduce", zap.Error(reduceErr))
 			if reduceErr != nil {
 				break
 			}
