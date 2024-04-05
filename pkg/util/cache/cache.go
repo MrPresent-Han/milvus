@@ -3,7 +3,6 @@ package cache
 import (
 	"container/list"
 	"fmt"
-	"github.com/milvus-io/milvus/pkg/log"
 	"go.uber.org/zap"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"go.uber.org/atomic"
 	"golang.org/x/sync/singleflight"
 
+	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 )
 
@@ -239,7 +239,7 @@ func (c *lruCache[K, V]) DoWait(key K, timeout time.Duration, doer func(V) error
 		// Wait for the key to be available
 		timeLeft := time.Until(start.Add(timeout))
 		if timeLeft <= 0 || timedWait(ele.Value.(*Waiter[K]).c, timeLeft) {
-			log.Error("failed to wait cached item", zap.Any("key", key))
+			log.Warn("failed to get item for key", zap.Any("key", key), zap.Int("wait_len", c.waitQueue.Len()))
 			return missing, ErrTimeOut
 		}
 	}
@@ -259,14 +259,12 @@ func (c *lruCache[K, V]) Unpin(key K) {
 	if item.pinCount.Load() == 0 && c.waitQueue.Len() > 0 {
 		log.Info("Unpin item to zero ref, trigger activating waiters")
 		// Notify waiters
-		collector := c.scavenger.Spare(key)
+		//collector := c.scavenger.Spare(key)
 		for e := c.waitQueue.Front(); e != nil; e = e.Next() {
 			w := e.Value.(*Waiter[K])
-			if ok := collector(w.key); ok {
-				log.Info("Activating waiter", zap.Any("activated_waiter_key", w.key))
-				w.c.Broadcast()
-				//we try best to activate as many waiters as possible every time
-			}
+			log.Info("try to activate waiter", zap.Any("activated_waiter_key", w.key))
+			w.c.Broadcast()
+			//we try best to activate as many waiters as possible every time
 		}
 	} else {
 		log.Info("Miss to trigger activating waiters",
@@ -298,7 +296,7 @@ func (c *lruCache[K, V]) getAndPin(key K) (*cacheItem[K, V], bool, error) {
 		// Try scavenge if there is room. If not, fail fast.
 		//	Note that the test is not accurate since we are not locking `loader` here.
 		if _, ok := c.tryScavenge(key); !ok {
-			log.Info("ErrNotEnoughSpace for key", zap.Any("key", key))
+			log.Warn("getAndPin ran into scavenge failure, return", zap.Any("key", key))
 			return nil, true, ErrNotEnoughSpace
 		}
 
