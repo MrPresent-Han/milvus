@@ -233,6 +233,7 @@ func (c *lruCache[K, V]) DoWait(key K, timeout time.Duration, doer func(V) error
 			c.rwlock.Lock()
 			waiter := newWaiter(key)
 			ele = c.waitQueue.PushBack(&waiter)
+			log.Info("push waiter into waiter queue", zap.Any("key", key))
 			c.rwlock.Unlock()
 		}
 		// Wait for the key to be available
@@ -253,17 +254,24 @@ func (c *lruCache[K, V]) Unpin(key K) {
 	}
 	item := e.Value.(*cacheItem[K, V])
 	item.pinCount.Dec()
-	if c.waitQueue.Len() > 0 {
+
+	log := log.With(zap.Any("UnPinedKey", key))
+	if item.pinCount.Load() == 0 && c.waitQueue.Len() > 0 {
+		log.Info("Unpin item to zero ref, trigger activating waiters")
 		// Notify waiters
 		collector := c.scavenger.Spare(key)
 		for e := c.waitQueue.Front(); e != nil; e = e.Next() {
 			w := e.Value.(*Waiter[K])
 			if ok := collector(w.key); ok {
+				log.Info("Activating waiter", zap.Any("activated_waiter_key", w.key))
 				w.c.Broadcast()
-			} else {
-				break
+				//we try best to activate as many waiters as possible every time
 			}
 		}
+	} else {
+		log.Info("Miss to trigger activating waiters",
+			zap.Int32("PinCount", item.pinCount.Load()),
+			zap.Int("wait_len", c.waitQueue.Len()))
 	}
 }
 
@@ -363,6 +371,7 @@ func (c *lruCache[K, V]) setAndPin(key K, value V) (*cacheItem[K, V], error) {
 
 	if !ok {
 		if c.finalizer != nil {
+			log.Warn("setAndPin ran into scavenge failure, release data for", zap.Any("key", key))
 			c.finalizer(key, value)
 		}
 		return nil, ErrNotEnoughSpace
@@ -378,11 +387,12 @@ func (c *lruCache[K, V]) setAndPin(key K, value V) (*cacheItem[K, V], error) {
 			item := e.Value.(*cacheItem[K, V])
 			c.finalizer(ek, item.value)
 		}
+		log.Info("setAndPin trigger releasing memory back", zap.Any("ek", ek))
 	}
 
 	c.scavenger.Collect(key)
 	e := c.accessList.PushFront(item)
 	c.items[item.key] = e
-
+	log.Info("setAndPin set up item", zap.Any("item.key", item.key))
 	return item, nil
 }
