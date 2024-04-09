@@ -520,6 +520,13 @@ StreamReducerHelper::GetSearchResultDataSlice(int slice_index) {
     auto nq_begin = slice_nqs_prefix_sum_[slice_index];
     auto nq_end = slice_nqs_prefix_sum_[slice_index + 1];
 
+    AssertInfo(nq_begin<merged_search_result->topk_per_nq_prefix_sum_.size(),
+               "nq_begin is incorrect for reduce, nq_begin:{}, topk_size:{}",
+               nq_begin, merged_search_result->topk_per_nq_prefix_sum_.size());
+    AssertInfo(nq_end<merged_search_result->topk_per_nq_prefix_sum_.size(),
+               "nq_end is incorrect for reduce, nq_end:{}, topk_size:{}",
+               nq_end, merged_search_result->topk_per_nq_prefix_sum_.size());
+
     int64_t result_count =
         merged_search_result->topk_per_nq_prefix_sum_[nq_end] -
         merged_search_result->topk_per_nq_prefix_sum_[nq_begin];
