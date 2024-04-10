@@ -430,23 +430,40 @@ func (t *StreamingSearchTask) Execute() error {
 			req.GetSegmentIDs(),
 			streamingResultsChan,
 			errStream)
+		if err != nil {
+			log.Error("Failed to search sealed segments streamly", zap.Error(err))
+			return err
+		}
 		searchResultsToDelete := make([]*segments.SearchResult, 0)
-		defer segments.DeleteSearchResults(searchResultsToDelete)
+		var searchErr error
+		var reduceErr error
 		for result := range streamingResultsChan {
 			searchResultsToDelete = append(searchResultsToDelete, result)
-			resErr := <-errStream
-			if resErr != nil {
-				return resErr
+			searchErr = <-errStream
+			if searchErr != nil {
+				break
 			}
-			t.streamReduce(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
+			reduceErr = t.streamReduce(t.ctx, searchReq.Plan(), result, t.originNqs, t.originTopks)
+			if reduceErr != nil {
+				break
+			}
+		}
+		defer segments.DeleteStreamReduceHelper(t.streamReducer)
+		defer segments.DeleteSearchResults(searchResultsToDelete)
+		if searchErr != nil {
+			log.Error("Failed to get search result from segments", zap.Error(searchErr))
+			return searchErr
+		}
+		if reduceErr != nil {
+			log.Error("Failed to stream reduce searched segments", zap.Error(reduceErr))
+			return reduceErr
 		}
 		t.resultBlobs, err = segments.GetStreamReduceResult(t.ctx, t.streamReducer)
+		defer segments.DeleteSearchResultDataBlobs(t.resultBlobs)
 		if err != nil {
 			log.Error("Failed to get stream-reduced search result")
 			return err
 		}
-		defer segments.DeleteStreamReduceHelper(t.streamReducer)
-		defer segments.DeleteSearchResultDataBlobs(t.resultBlobs)
 	} else if req.GetScope() == querypb.DataScope_Streaming {
 		var results []*segments.SearchResult
 		results, pinnedSegments, err = segments.SearchStreaming(
