@@ -333,6 +333,7 @@ SegmentSealedImpl::LoadFieldDataV2(const LoadFieldDataInfo& load_info) {
 void
 SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
     auto num_rows = data.row_count;
+    LOG_INFO("Start loadFieldData, segmentID:{}, field_id:{}", this->id_, field_id.get());
     if (SystemProperty::Instance().IsSystem(field_id)) {
         auto system_field_type =
             SystemProperty::Instance().GetSystemFieldType(field_id);
@@ -364,6 +365,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
             AssertInfo(insert_record_.timestamps_.num_chunk() == 1,
                        "num chunk not equal to 1 for sealed segment");
             stats_.mem_size += sizeof(Timestamp) * data.row_count;
+            LOG_INFO("Finish loadFieldData, segmentID:{}, timestamp field", this->id_);
         } else {
             AssertInfo(system_field_type == SystemFieldType::RowId,
                        "System field type of id column is not RowId");
@@ -377,6 +379,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
             AssertInfo(insert_record_.row_ids_.num_chunk() == 1,
                        "num chunk not equal to 1 for sealed segment");
             stats_.mem_size += sizeof(idx_t) * data.row_count;
+            LOG_INFO("Finish loadFieldData, segmentID:{}, rowID field", this->id_);
         }
         ++system_ready_count_;
     } else {
@@ -514,6 +517,7 @@ SegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
             set_bit(field_data_ready_bitset_, field_id, true);
         }
     }
+    LOG_INFO("Finish loadFieldData, segmentID:{}, field_id:{}", this->id_, field_id.get());
     {
         std::unique_lock lck(mutex_);
         update_row_count(num_rows);
@@ -742,7 +746,7 @@ SegmentSealedImpl::vector_search(SearchInfo& search_info,
                                  Timestamp timestamp,
                                  const BitsetView& bitset,
                                  SearchResult& output) const {
-    AssertInfo(is_system_field_ready(), "System field is not ready");
+    AssertInfo(is_system_field_ready(), "System field is not ready, segmentID:{}", id_);
     auto field_id = search_info.field_id_;
     auto& field_meta = schema_->operator[](field_id);
 

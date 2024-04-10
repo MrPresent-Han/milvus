@@ -47,7 +47,7 @@ func HandleCStatus(ctx context.Context, status *C.CStatus, extraInfo string, fie
 	errorMsg := C.GoString(status.error_msg)
 	defer C.free(unsafe.Pointer(status.error_msg))
 
-	log.Ctx(ctx).With(fields...).
+	log := log.Ctx(ctx).With(fields...).
 		WithOptions(zap.AddCallerSkip(1)) // Add caller stack to show HandleCStatus caller
 
 	err := merr.SegcoreError(int32(errorCode), errorMsg)

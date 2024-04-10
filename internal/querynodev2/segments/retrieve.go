@@ -50,6 +50,7 @@ func retrieveOnSegments(ctx context.Context, mgr *Manager, segments []Segment, s
 	if segType == commonpb.SegmentState_Growing {
 		label = metrics.GrowingSegmentLabel
 	}
+	log := log.Ctx(ctx)
 
 	retriever := func(s Segment) error {
 		tr := timerecord.NewTimeRecorder("retrieveOnSegments")
@@ -82,7 +83,9 @@ func retrieveOnSegments(ctx context.Context, mgr *Manager, segments []Segment, s
 					return
 				}
 				var missing bool
+				log.Info("before retrieving segment", zap.Int64("segID", seg.ID()))
 				missing, err = mgr.DiskCache.DoWait(seg.ID(), timeout, retriever)
+				log.Info("after retrieving segment", zap.Int64("segID", seg.ID()), zap.Error(err))
 				if missing {
 					accessRecord.CacheMissing()
 				}
