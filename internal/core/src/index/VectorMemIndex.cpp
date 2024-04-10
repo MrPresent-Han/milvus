@@ -788,8 +788,7 @@ VectorMemIndex<T>::LoadFromFile(const Config& config) {
         std::chrono::duration_cast<std::chrono::milliseconds>(load_duration_sum)
             .count());
     milvus::storage::internal_storage_write_disk_duration.Observe(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            write_disk_duration_sum)
+        std::chrono::duration_cast<std::chrono::milliseconds>(write_disk_duration_sum)
             .count());
     file.Close();
 
