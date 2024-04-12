@@ -260,6 +260,7 @@ func (c *lruCache[K, V]) DoWait(key K, timeout time.Duration, doer func(V) error
 				c.rwlock.Unlock()
 			}
 			defer c.Unpin(key)
+			log.Info("get key success, before doing", zap.Any("key", key))
 			return missing, doer(item.value)
 		} else if err != ErrNotEnoughSpace {
 			return true, err
@@ -329,9 +330,20 @@ func (c *lruCache[K, V]) peekAndPin(key K) *cacheItem[K, V] {
 				}
 				item.needReload = false
 			}
+			log.Info("reload item",
+				zap.Any("item_key", key),
+				zap.Int32("pinCount", item.pinCount.Load()),
+				zap.Any("item:", item),
+				zap.Bool("ok", ok),
+			)
 		}
 		c.accessList.MoveToFront(e)
 		item.pinCount.Inc()
+		log.Info("peek item",
+			zap.Any("item_key", key),
+			zap.Int32("pinCount", item.pinCount.Load()),
+			zap.Any("item:", item),
+		)
 		return item
 	}
 	return nil
@@ -350,7 +362,7 @@ func (c *lruCache[K, V]) getAndPin(key K) (*cacheItem[K, V], bool, error) {
 			log.Warn("getAndPin ran into scavenge failure, return", zap.Any("key", key))
 			return nil, true, ErrNotEnoughSpace
 		}
-
+		log.Info("try Scavenge for key success, going to load", zap.Any("key", key))
 		strKey := fmt.Sprint(key)
 		item, err, _ := c.loaderSingleFlight.Do(strKey, func() (interface{}, error) {
 			if item := c.peekAndPin(key); item != nil {
@@ -394,6 +406,8 @@ func (c *lruCache[K, V]) lockfreeTryScavenge(key K) ([]K, bool) {
 			if evictItem.pinCount.Load() > 0 {
 				continue
 			}
+			log.Info("item is added to evict", zap.Int32("pinCount", evictItem.pinCount.Load()),
+				zap.Any("evict_key", evictItem.key), zap.Any("evict_item:", evictItem))
 			toEvict = append(toEvict, evictItem.key)
 			done = collector(evictItem.key)
 		}
@@ -428,7 +442,7 @@ func (c *lruCache[K, V]) setAndPin(key K, value V) (*cacheItem[K, V], error) {
 
 	for _, ek := range toEvict {
 		c.evict(ek)
-		log.Info("setAndPin trigger releasing memory back", zap.Any("ek", ek))
+		log.Info("cache evicting", zap.Any("key", ek), zap.Any("by", key))
 	}
 
 	c.scavenger.Collect(key)
