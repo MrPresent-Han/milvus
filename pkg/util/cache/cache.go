@@ -346,6 +346,9 @@ func (c *lruCache[K, V]) peekAndPin(key K) *cacheItem[K, V] {
 		)
 		return item
 	}
+	log.Info("failed to peek item",
+		zap.Any("item_key", key),
+	)
 	return nil
 }
 
@@ -365,19 +368,24 @@ func (c *lruCache[K, V]) getAndPin(key K) (*cacheItem[K, V], bool, error) {
 		log.Info("try Scavenge for key success, going to load", zap.Any("key", key))
 		strKey := fmt.Sprint(key)
 		item, err, _ := c.loaderSingleFlight.Do(strKey, func() (interface{}, error) {
+			log.Info("loader flight start for key", zap.Any("key", key))
 			if item := c.peekAndPin(key); item != nil {
+				log.Info("peek failed for key", zap.Any("key", key))
 				return item, nil
 			}
 
 			value, ok := c.loader(key)
 			if !ok {
+				log.Info("loader failed for key", zap.Any("key", key))
 				return nil, ErrNoSuchItem
 			}
 
 			item, err := c.setAndPin(key, value)
 			if err != nil {
+				log.Info("setAndPin failed for key", zap.Any("key", key))
 				return nil, err
 			}
+			log.Info("loader flight completed for key", zap.Any("key", key))
 			return item, nil
 		})
 
@@ -448,7 +456,8 @@ func (c *lruCache[K, V]) setAndPin(key K, value V) (*cacheItem[K, V], error) {
 	c.scavenger.Collect(key)
 	e := c.accessList.PushFront(item)
 	c.items[item.key] = e
-	log.Info("setAndPin set up item", zap.Any("item.key", item.key))
+	log.Info("setAndPin set up item", zap.Any("item.key", item.key),
+		zap.Int32("pinCount", item.pinCount.Load()))
 	return item, nil
 }
 
