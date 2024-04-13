@@ -2,17 +2,15 @@ package cache
 
 import (
 	"container/list"
-	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/lock"
 	"sync"
 	"time"
 
 	"go.uber.org/zap"
 
-	"go.uber.org/atomic"
-	"golang.org/x/sync/singleflight"
-
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/merr"
+	"go.uber.org/atomic"
 )
 
 var (
@@ -138,9 +136,9 @@ func newWaiter[K comparable](key K) Waiter[K] {
 type lruCache[K comparable, V any] struct {
 	rwlock sync.RWMutex
 	// the value is *cacheItem[V]
-	items              map[K]*list.Element
-	accessList         *list.List
-	loaderSingleFlight singleflight.Group
+	items          map[K]*list.Element
+	accessList     *list.List
+	loaderKeyLocks *lock.KeyLock[K]
 
 	waitQueue *list.List
 
@@ -211,14 +209,14 @@ func newLRUCache[K comparable, V any](
 	reloader Loader[K, V],
 ) Cache[K, V] {
 	return &lruCache[K, V]{
-		items:              make(map[K]*list.Element),
-		accessList:         list.New(),
-		waitQueue:          list.New(),
-		loaderSingleFlight: singleflight.Group{},
-		loader:             loader,
-		finalizer:          finalizer,
-		scavenger:          scavenger,
-		reloader:           reloader,
+		items:          make(map[K]*list.Element),
+		accessList:     list.New(),
+		waitQueue:      list.New(),
+		loaderKeyLocks: lock.NewKeyLock[K](),
+		loader:         loader,
+		finalizer:      finalizer,
+		scavenger:      scavenger,
+		reloader:       reloader,
 	}
 }
 
@@ -366,35 +364,30 @@ func (c *lruCache[K, V]) getAndPin(key K) (*cacheItem[K, V], bool, error) {
 			return nil, true, ErrNotEnoughSpace
 		}
 		log.Info("try Scavenge for key success, going to load", zap.Any("key", key))
-		strKey := fmt.Sprint(key)
-		item, err, _ := c.loaderSingleFlight.Do(strKey, func() (interface{}, error) {
-			log.Info("loader flight start for key", zap.Any("key", key))
-			if item := c.peekAndPin(key); item != nil {
-				log.Info("peek failed for key", zap.Any("key", key))
-				return item, nil
-			}
-
-			value, ok := c.loader(key)
-			if !ok {
-				log.Info("loader failed for key", zap.Any("key", key))
-				return nil, ErrNoSuchItem
-			}
-
-			item, err := c.setAndPin(key, value)
-			if err != nil {
-				log.Info("setAndPin failed for key", zap.Any("key", key))
-				return nil, err
-			}
-			log.Info("loader flight completed for key", zap.Any("key", key))
-			return item, nil
-		})
-
-		if err == nil {
-			return item.(*cacheItem[K, V]), true, nil
+		//------------------------
+		c.loaderKeyLocks.Lock(key)
+		defer c.loaderKeyLocks.Unlock(key)
+		log.Info("try to peek or setPin key", zap.Any("key", key))
+		if item := c.peekAndPin(key); item != nil {
+			log.Info("peeked item for key", zap.Any("key", key))
+			return item, false, nil
 		}
-		return nil, true, err
-	}
+		value, ok := c.loader(key)
+		if !ok {
+			log.Info("loader failed for key", zap.Any("key", key))
+			return nil, true, ErrNoSuchItem
+		}
 
+		item, err := c.setAndPin(key, value)
+		if err != nil {
+			log.Info("setAndPin failed for key", zap.Any("key", key))
+			return nil, true, err
+		}
+		log.Info("getAndPin success for key", zap.Any("key", key),
+			zap.Int32("pinCount", item.pinCount.Load()))
+		return item, true, nil
+	}
+	log.Info("getAndPin failed for key, no such item", zap.Any("key", key))
 	return nil, true, ErrNoSuchItem
 }
 
