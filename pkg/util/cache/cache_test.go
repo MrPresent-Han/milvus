@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -20,7 +21,7 @@ func TestLRUCache(t *testing.T) {
 		cache := cacheBuilder.WithCapacity(int64(size)).Build()
 
 		for i := 0; i < size; i++ {
-			missing, err := cache.Do(i, func(v int) error {
+			missing, err := cache.Do(context.Background(), i, func(v int) error {
 				assert.Equal(t, i, v)
 				return nil
 			})
@@ -38,7 +39,7 @@ func TestLRUCache(t *testing.T) {
 		}).Build()
 
 		for i := 0; i < size*2; i++ {
-			missing, err := cache.Do(i, func(v int) error {
+			missing, err := cache.Do(context.Background(), i, func(v int) error {
 				assert.Equal(t, i, v)
 				return nil
 			})
@@ -49,7 +50,7 @@ func TestLRUCache(t *testing.T) {
 
 		// Hit the cache again, there should be no swap-out
 		for i := size; i < size*2; i++ {
-			missing, err := cache.Do(i, func(v int) error {
+			missing, err := cache.Do(context.Background(), i, func(v int) error {
 				assert.Equal(t, i, v)
 				return nil
 			})
@@ -70,7 +71,7 @@ func TestLRUCache(t *testing.T) {
 		}).Build()
 
 		for i := 0; i < 20; i++ {
-			missing, err := cache.Do(i, func(v int) error {
+			missing, err := cache.Do(context.Background(), i, func(v int) error {
 				assert.Equal(t, i, v)
 				return nil
 			})
@@ -83,7 +84,7 @@ func TestLRUCache(t *testing.T) {
 	t.Run("test do negative", func(t *testing.T) {
 		cache := cacheBuilder.Build()
 		theErr := errors.New("error")
-		missing, err := cache.Do(-1, func(v int) error {
+		missing, err := cache.Do(context.Background(), -1, func(v int) error {
 			return theErr
 		})
 		assert.True(t, missing)
@@ -101,7 +102,7 @@ func TestLRUCache(t *testing.T) {
 		}).Build()
 
 		for i := 0; i < 20; i++ {
-			missing, err := cache.Do(i, func(v int) error {
+			missing, err := cache.Do(context.Background(), i, func(v int) error {
 				assert.Equal(t, i, v)
 				return nil
 			})
@@ -109,7 +110,7 @@ func TestLRUCache(t *testing.T) {
 			assert.NoError(t, err)
 		}
 		assert.Equal(t, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18}, finalizeSeq)
-		missing, err := cache.Do(100, func(v int) error {
+		missing, err := cache.Do(context.Background(), 100, func(v int) error {
 			return nil
 		})
 		assert.True(t, missing)
@@ -123,12 +124,12 @@ func TestLRUCache(t *testing.T) {
 			}
 			return key, true
 		}).Build()
-		missing, err := cache.Do(0, func(v int) error {
+		missing, err := cache.Do(context.Background(), 0, func(v int) error {
 			return nil
 		})
 		assert.True(t, missing)
 		assert.NoError(t, err)
-		missing, err = cache.Do(-1, func(v int) error {
+		missing, err = cache.Do(context.Background(), -1, func(v int) error {
 			return nil
 		})
 		assert.True(t, missing)
@@ -139,11 +140,11 @@ func TestLRUCache(t *testing.T) {
 		cache := cacheBuilder.WithReloader(func(key int) (int, bool) {
 			return -key, true
 		}).Build()
-		_, err := cache.Do(1, func(i int) error { return nil })
+		_, err := cache.Do(context.Background(), 1, func(i int) error { return nil })
 		assert.NoError(t, err)
-		exist := cache.MarkItemNeedReload(1)
+		exist := cache.MarkItemNeedReload(context.Background(), 1)
 		assert.True(t, exist)
-		cache.Do(1, func(i int) error {
+		cache.Do(context.Background(), 1, func(i int) error {
 			assert.Equal(t, -1, i)
 			return nil
 		})
@@ -151,11 +152,11 @@ func TestLRUCache(t *testing.T) {
 
 	t.Run("test mark", func(t *testing.T) {
 		cache := cacheBuilder.WithCapacity(1).Build()
-		exist := cache.MarkItemNeedReload(1)
+		exist := cache.MarkItemNeedReload(context.Background(), 1)
 		assert.False(t, exist)
-		_, err := cache.Do(1, func(i int) error { return nil })
+		_, err := cache.Do(context.Background(), 1, func(i int) error { return nil })
 		assert.NoError(t, err)
-		exist = cache.MarkItemNeedReload(1)
+		exist = cache.MarkItemNeedReload(context.Background(), 1)
 		assert.True(t, exist)
 	})
 }
@@ -238,7 +239,7 @@ func TestLRUCacheConcurrency(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 				for j := 0; j < 100; j++ {
-					_, err := cache.Do(j, func(v int) error {
+					_, err := cache.Do(context.Background(), j, func(v int) error {
 						return nil
 					})
 					assert.NoError(t, err)
@@ -259,13 +260,13 @@ func TestLRUCacheConcurrency(t *testing.T) {
 		var wg1 sync.WaitGroup // Make sure goroutine is started
 		wg.Add(1)
 		wg1.Add(1)
-		go cache.Do(1000, func(v int) error {
+		go cache.Do(context.Background(), 1000, func(v int) error {
 			wg1.Done()
 			wg.Wait()
 			return nil
 		})
 		wg1.Wait()
-		_, err := cache.Do(1001, func(v int) error {
+		_, err := cache.Do(context.Background(), 1001, func(v int) error {
 			return nil
 		})
 		wg.Done()
@@ -283,13 +284,13 @@ func TestLRUCacheConcurrency(t *testing.T) {
 		var wg1 sync.WaitGroup // Make sure goroutine is started
 		wg.Add(1)
 		wg1.Add(1)
-		go cache.Do(1000, func(v int) error {
+		go cache.Do(context.Background(), 1000, func(v int) error {
 			wg1.Done()
 			wg.Wait()
 			return nil
 		})
 		wg1.Wait()
-		missing, err := cache.DoWait(1001, time.Nanosecond, func(v int) error {
+		missing, err := cache.DoWait(context.Background(), 1001, time.Nanosecond, func(v int) error {
 			return nil
 		})
 		wg.Done()
@@ -307,13 +308,13 @@ func TestLRUCacheConcurrency(t *testing.T) {
 		var wg1 sync.WaitGroup // Make sure goroutine is started
 
 		wg1.Add(1)
-		go cache.Do(1000, func(v int) error {
+		go cache.Do(context.Background(), 1000, func(v int) error {
 			wg1.Done()
 			time.Sleep(time.Second)
 			return nil
 		})
 		wg1.Wait()
-		missing, err := cache.DoWait(1001, time.Second*2, func(v int) error {
+		missing, err := cache.DoWait(context.Background(), 1001, time.Second*2, func(v int) error {
 			return nil
 		})
 		assert.True(t, missing)
@@ -335,7 +336,7 @@ func TestLRUCacheConcurrency(t *testing.T) {
 			go func(i int) {
 				defer wg.Done()
 				for j := 0; j < 100; j++ {
-					_, err := cache.DoWait(j, 2*time.Second, func(v int) error {
+					_, err := cache.DoWait(context.Background(), j, 2*time.Second, func(v int) error {
 						return nil
 					})
 					assert.NoError(t, err)
@@ -355,7 +356,7 @@ func TestLRUCacheConcurrency(t *testing.T) {
 		}).Build()
 
 		for i := 0; i < 100; i++ {
-			cache.DoWait(i, 2*time.Second, func(v int) error { return nil })
+			cache.DoWait(context.Background(), i, 2*time.Second, func(v int) error { return nil })
 		}
 		var wg sync.WaitGroup
 		wg.Add(2)
@@ -363,7 +364,7 @@ func TestLRUCacheConcurrency(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < 10; i++ {
 				for j := 0; j < 100; j++ {
-					cache.MarkItemNeedReload(j)
+					cache.MarkItemNeedReload(context.Background(), j)
 				}
 			}
 		}()
@@ -372,7 +373,7 @@ func TestLRUCacheConcurrency(t *testing.T) {
 			defer wg.Done()
 			for i := 0; i < 10; i++ {
 				for j := 0; j < 100; j++ {
-					cache.DoWait(j, 2*time.Second, func(v int) error { return nil })
+					cache.DoWait(context.Background(), j, 2*time.Second, func(v int) error { return nil })
 				}
 			}
 		}()
@@ -389,12 +390,12 @@ func TestLRUCacheConcurrency(t *testing.T) {
 		}).Build()
 
 		for i := 0; i < 100; i++ {
-			cache.DoWait(i, 2*time.Second, func(v int) error { return nil })
+			cache.DoWait(context.Background(), i, 2*time.Second, func(v int) error { return nil })
 		}
 
 		evicted := 0
 		for i := 0; i < 100; i++ {
-			if cache.Expire(i) {
+			if cache.Expire(context.Background(), i) {
 				evicted++
 			}
 		}
@@ -402,14 +403,14 @@ func TestLRUCacheConcurrency(t *testing.T) {
 
 		// all item shouldn't be evicted if they are in used.
 		for i := 0; i < 5; i++ {
-			cache.DoWait(i, 2*time.Second, func(v int) error { return nil })
+			cache.DoWait(context.Background(), i, 2*time.Second, func(v int) error { return nil })
 		}
 		wg := sync.WaitGroup{}
 		wg.Add(5)
 		for i := 0; i < 5; i++ {
 			go func(i int) {
 				defer wg.Done()
-				cache.DoWait(i, 2*time.Second, func(v int) error {
+				cache.DoWait(context.Background(), i, 2*time.Second, func(v int) error {
 					time.Sleep(2 * time.Second)
 					return nil
 				})
@@ -418,7 +419,7 @@ func TestLRUCacheConcurrency(t *testing.T) {
 		time.Sleep(1 * time.Second)
 		evicted = 0
 		for i := 0; i < 5; i++ {
-			if cache.Expire(i) {
+			if cache.Expire(context.Background(), i) {
 				evicted++
 			}
 		}
@@ -427,7 +428,7 @@ func TestLRUCacheConcurrency(t *testing.T) {
 
 		evicted = 0
 		for i := 0; i < 5; i++ {
-			if cache.Expire(i) {
+			if cache.Expire(context.Background(), i) {
 				evicted++
 			}
 		}
