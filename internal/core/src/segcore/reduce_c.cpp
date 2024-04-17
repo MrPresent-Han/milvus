@@ -17,6 +17,7 @@
 #include "segcore/reduce_c.h"
 #include "segcore/StreamReduce.h"
 #include "segcore/Utils.h"
+#include "log/Log.h"
 
 using SearchResult = milvus::SearchResult;
 
@@ -128,20 +129,24 @@ GetSearchResultDataBlob(CProto* searchResultDataBlob,
 void
 DeleteSearchResultDataBlobs(CSearchResultDataBlobs cSearchResultDataBlobs) {
     if (cSearchResultDataBlobs == nullptr) {
+        LOG_INFO("deleteSearchResultDataBlobs nullptr");
         return;
     }
     auto search_result_data_blobs =
         reinterpret_cast<milvus::segcore::SearchResultDataBlobs*>(
             cSearchResultDataBlobs);
     delete search_result_data_blobs;
+    LOG_INFO("deleted searchResultDataBlobs");
 }
 
 void
 DeleteStreamSearchReducer(CSearchStreamReducer c_stream_reducer) {
     if (c_stream_reducer == nullptr) {
+        LOG_INFO("DeleteStreamSearchReducer nullptr");
         return;
     }
     auto stream_reducer =
         static_cast<milvus::segcore::StreamReducerHelper*>(c_stream_reducer);
     delete stream_reducer;
+    LOG_INFO("deleted StreamSearchReduce");
 }

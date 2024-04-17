@@ -27,6 +27,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus-storage/go/common/log"
 )
 
 type SliceInfo struct {
@@ -169,19 +170,23 @@ func GetSearchResultDataBlob(ctx context.Context, cSearchResultDataBlobs SearchR
 }
 
 func DeleteSearchResultDataBlobs(cSearchResultDataBlobs SearchResultDataBlobs) {
+	log.Info("deleted search result data blobs")
 	C.DeleteSearchResultDataBlobs(cSearchResultDataBlobs)
 }
 
 func DeleteStreamReduceHelper(cStreamReduceHelper StreamSearchReducer) {
+	log.Info("deleted StreamReduceHelper")
 	C.DeleteStreamSearchReducer(cStreamReduceHelper)
 }
 
 func DeleteSearchResults(results []*SearchResult) {
 	if len(results) == 0 {
+		log.Info("no search results to delete")
 		return
 	}
 	for _, result := range results {
 		if result != nil {
+			log.Info("deleted search result")
 			C.DeleteSearchResult(result.cSearchResult)
 		}
 	}

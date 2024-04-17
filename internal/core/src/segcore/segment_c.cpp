@@ -78,6 +78,7 @@ ClearSegmentData(CSegmentInterface c_segment) {
 void
 DeleteSearchResult(CSearchResult search_result) {
     auto res = static_cast<milvus::SearchResult*>(search_result);
+    LOG_INFO("deleted searchResult");
     delete res;
 }
 
