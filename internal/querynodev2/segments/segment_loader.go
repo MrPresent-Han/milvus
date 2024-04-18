@@ -1531,20 +1531,20 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 					loadInfo.GetSegmentID(),
 					fieldIndexInfo.GetBuildID())
 			}
+			segmentMemorySize += neededMemSize
 			if mmapEnabled {
 				segmentDiskSize += neededMemSize + neededDiskSize
 			} else {
-				segmentMemorySize += neededMemSize
 				segmentDiskSize += neededDiskSize
 			}
 		} else {
 			mmapEnabled = common.IsFieldMmapEnabled(schema, fieldID) ||
 				(!common.FieldHasMmapKey(schema, fieldID) && params.Params.QueryNodeCfg.MmapEnabled.GetAsBool())
 			binlogSize := uint64(getBinlogDataSize(fieldBinlog))
+			segmentMemorySize += binlogSize
 			if mmapEnabled {
 				segmentDiskSize += binlogSize
 			} else {
-				segmentMemorySize += binlogSize
 				if multiplyFactor.enableTempSegmentIndex {
 					segmentMemorySize += uint64(float64(binlogSize) * multiplyFactor.tempSegmentIndexFactor)
 				}
