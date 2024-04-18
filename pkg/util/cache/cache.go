@@ -44,7 +44,7 @@ type cacheItem[K comparable, V any] struct {
 }
 
 type (
-	Loader[K comparable, V any]    func(ctx context.Context, key K) (V, bool)
+	Loader[K comparable, V any]    func(ctx context.Context, key K) (V, error)
 	Finalizer[K comparable, V any] func(ctx context.Context, key K, value V) error
 )
 
@@ -298,7 +298,7 @@ func (c *lruCache[K, V]) DoWait(ctx context.Context, key K, timeout time.Duratio
 
 	var ele *list.Element
 	start := time.Now()
-	log := log.Ctx(ctx)
+	log := log.Ctx(ctx).With(zap.Any("key", key))
 	for {
 		item, missing, err := c.getAndPin(ctx, key)
 		if err == nil {
@@ -309,7 +309,11 @@ func (c *lruCache[K, V]) DoWait(ctx context.Context, key K, timeout time.Duratio
 			}
 			defer c.Unpin(key)
 			return missing, doer(ctx, item.value)
-		} else if err != ErrNotEnoughSpace {
+		} else if err == ErrNotEnoughSpace {
+			log.Warn("Failed to get disk cache for segment, wait and try again")
+		} else if err == merr.ErrSegmentLoadFailed {
+			log.Warn("Failed to load segment, wait and try again")
+		} else if err != nil {
 			return true, err
 		}
 		if ele == nil {
@@ -376,8 +380,8 @@ func (c *lruCache[K, V]) peekAndPin(ctx context.Context, key K) *cacheItem[K, V]
 			if ok {
 				// there is room for reload and no one is using the item
 				if c.reloader != nil {
-					reloaded, ok := c.reloader(ctx, key)
-					if ok {
+					reloaded, err := c.reloader(ctx, key)
+					if err == nil {
 						item.value = reloaded
 					} else if retback != nil {
 						retback()
@@ -418,12 +422,12 @@ func (c *lruCache[K, V]) getAndPin(ctx context.Context, key K) (*cacheItem[K, V]
 			return item, false, nil
 		}
 		timer := time.Now()
-		value, ok := c.loader(ctx, key)
+		value, err := c.loader(ctx, key)
 		c.stats.TotalLoadTimeMs.Add(uint64(time.Since(timer).Milliseconds()))
-		if !ok {
+		if err != nil {
 			c.stats.LoadFailCount.Inc()
 			log.Debug("loader failed for key", zap.Any("key", key))
-			return nil, true, ErrNoSuchItem
+			return nil, true, err
 		}
 
 		c.stats.LoadSuccessCount.Inc()

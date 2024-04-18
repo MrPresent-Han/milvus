@@ -148,13 +148,6 @@ func IncreaseVersion(version int64) SegmentAction {
 	}
 }
 
-type actionType int32
-
-const (
-	removeAction actionType = iota
-	addAction
-)
-
 type Manager struct {
 	Collection CollectionManager
 	Segment    SegmentManager
@@ -177,7 +170,7 @@ func NewManager() *Manager {
 			return int64(segment.ResourceUsageEstimate().DiskSize)
 		}
 		return 0
-	}, diskCap).WithLoader(func(ctx context.Context, key int64) (Segment, bool) {
+	}, diskCap).WithLoader(func(ctx context.Context, key int64) (Segment, error) {
 		log := log.Ctx(ctx).With(zap.Int64("segmentID", key))
 		log.Debug("cache missed segment")
 		segMgr.mu.RLock()
@@ -186,7 +179,7 @@ func NewManager() *Manager {
 		segment, ok := segMgr.sealedSegments[key]
 		if !ok {
 			// the segment has been released, just ignore it
-			return nil, false
+			return nil, merr.ErrSegmentNotFound
 		}
 		info := segment.LoadInfo()
 		_, err, _ := sf.Do(fmt.Sprint(segment.ID()), func() (nop interface{}, err error) {
@@ -206,9 +199,9 @@ func NewManager() *Manager {
 		})
 		if err != nil {
 			log.Warn("cache sealed segment failed", zap.Error(err))
-			return nil, false
+			return nil, merr.ErrSegmentLoadFailed
 		}
-		return segment, true
+		return segment, nil
 	}).WithFinalizer(func(ctx context.Context, key int64, segment Segment) error {
 		log.Ctx(ctx).Debug("evict segment from cache", zap.Int64("segmentID", key))
 		cacheEvictRecord := metricsutil.NewCacheEvictRecord(getSegmentMetricLabel(segment))
@@ -216,26 +209,26 @@ func NewManager() *Manager {
 		defer cacheEvictRecord.Finish(nil)
 		segment.Release(ctx, WithReleaseScope(ReleaseScopeData))
 		return nil
-	}).WithReloader(func(ctx context.Context, key int64) (Segment, bool) {
+	}).WithReloader(func(ctx context.Context, key int64) (Segment, error) {
 		segMgr.mu.RLock()
 		defer segMgr.mu.RUnlock()
 		segment, ok := segMgr.sealedSegments[key]
 		if !ok {
 			// the segment has been released, just ignore it
-			return nil, false
+			return nil, merr.ErrSegmentNotFound
 		}
 		localSegment := segment.(*LocalSegment)
 		err := manager.Loader.LoadIndex(ctx, localSegment, segment.LoadInfo(), segment.NeedUpdatedVersion())
 		if err != nil {
 			log.Warn("reload segment failed", zap.Int64("segmentID", key), zap.Error(err))
-			return nil, false
+			return nil, merr.ErrSegmentLoadFailed
 		}
 		if err := localSegment.RemoveUnusedFieldFiles(); err != nil {
 			log.Warn("remove unused field files failed", zap.Int64("segmentID", key), zap.Error(err))
-			return nil, false
+			return nil, merr.ErrSegmentReduplicate
 		}
 
-		return segment, true
+		return segment, nil
 	}).Build()
 
 	segMgr.registerReleaseCallback(func(s Segment) {

@@ -78,6 +78,7 @@ var (
 	ErrSegmentNotLoaded   = newMilvusError("segment not loaded", 601, false)
 	ErrSegmentLack        = newMilvusError("segment lacks", 602, false)
 	ErrSegmentReduplicate = newMilvusError("segment reduplicates", 603, false)
+	ErrSegmentLoadFailed  = newMilvusError("segment load failed", 604, false)
 
 	// Index related
 	ErrIndexNotFound     = newMilvusError("index not found", 700, false)
