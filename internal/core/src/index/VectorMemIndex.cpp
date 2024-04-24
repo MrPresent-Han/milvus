@@ -18,7 +18,6 @@
 
 #include <unistd.h>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -33,10 +32,8 @@
 
 #include "index/Index.h"
 #include "index/IndexInfo.h"
-#include "index/Meta.h"
 #include "index/Utils.h"
 #include "common/EasyAssert.h"
-#include "config/ConfigKnowhere.h"
 #include "knowhere/index/index_factory.h"
 #include "knowhere/comp/time_recorder.h"
 #include "common/BitsetView.h"
@@ -44,11 +41,9 @@
 #include "common/FieldData.h"
 #include "common/File.h"
 #include "common/Slice.h"
-#include "common/Tracer.h"
 #include "common/RangeSearchHelper.h"
 #include "common/Utils.h"
 #include "log/Log.h"
-#include "mmap/Types.h"
 #include "storage/DataCodec.h"
 #include "storage/MemFileManagerImpl.h"
 #include "storage/ThreadPools.h"
