@@ -29,6 +29,7 @@
 
 #include "common/Types.h"
 #include "common/FieldData.h"
+#include "common/QueryInfo.h"
 #include "index/IndexInfo.h"
 #include "storage/Types.h"
 
@@ -123,5 +124,9 @@ AssembleIndexDatas(std::map<std::string, FieldDataChannelPtr>& index_datas,
 // On Linux, read() (and similar system calls) will transfer at most 0x7ffff000 (2,147,479,552) bytes once
 void
 ReadDataFromFD(int fd, void* buf, size_t size, size_t chunk_size = 0x7ffff000);
+
+
+knowhere::Json
+PrepareSearchParams(const SearchInfo& search_info);
 
 }  // namespace milvus::index

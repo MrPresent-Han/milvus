@@ -68,6 +68,13 @@ SearchOnSealedIndex(const Schema& schema,
     }
     search_result.total_nq_ = num_queries;
     search_result.unity_topK_ = topK;
+    //
+    for(int i = 0; i < search_result.seg_offsets_.size(); i++){
+        int64_t off = search_result.seg_offsets_[i];
+        float dis = search_result.distances_[i];
+        LOG_INFO("hc==search=off:{}, dis:{}", off, dis);
+    }
+    LOG_INFO("hc==search=======================");
 }
 
 void

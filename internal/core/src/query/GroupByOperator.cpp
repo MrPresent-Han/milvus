@@ -162,6 +162,7 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
         auto offset = offset_dis_pair.value().first;
         auto dis = offset_dis_pair.value().second;
         T row_data = data_getter.Get(offset);
+        LOG_INFO("hc===groupBy-offset:{}, dis:{}, group_by_val:{}", offset, dis, row_data);
         auto it = groupMap.find(row_data);
         if (it == groupMap.end()) {
             groupMap.emplace(row_data, std::make_pair(offset, dis));
@@ -169,6 +170,7 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
             it->second = {offset, dis};
         }
     }
+    LOG_INFO("hc===groupBy-offset=========================");
 
     //3. sorted based on distances and metrics
     std::vector<std::pair<T, std::pair<int64_t, float>>> sortedGroupVals(

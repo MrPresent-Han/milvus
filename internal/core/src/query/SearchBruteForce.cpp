@@ -24,6 +24,7 @@
 #include "knowhere/comp/index_param.h"
 #include "knowhere/index_node.h"
 #include "log/Log.h"
+#include "index/Utils.h"
 
 namespace milvus::query {
 
@@ -39,27 +40,6 @@ CheckBruteForceSearchParam(const FieldMeta& field,
     bool is_float_metric_type = IsFloatMetricType(metric_type);
     AssertInfo(is_float_vec_data_type == is_float_metric_type,
                "[BruteForceSearch] Data type and metric type miss-match");
-}
-
-knowhere::Json
-PrepareBFSearchParams(const SearchInfo& search_info) {
-    knowhere::Json search_cfg = search_info.search_params_;
-
-    search_cfg[knowhere::meta::METRIC_TYPE] = search_info.metric_type_;
-    search_cfg[knowhere::meta::TOPK] = search_info.topk_;
-
-    // save trace context into search conf
-    if (search_info.trace_ctx_.traceID != nullptr &&
-        search_info.trace_ctx_.spanID != nullptr) {
-        search_cfg[knowhere::meta::TRACE_ID] =
-            tracer::GetTraceIDAsVector(&search_info.trace_ctx_);
-        search_cfg[knowhere::meta::SPAN_ID] =
-            tracer::GetSpanIDAsVector(&search_info.trace_ctx_);
-        search_cfg[knowhere::meta::TRACE_FLAGS] =
-            search_info.trace_ctx_.traceFlags;
-    }
-
-    return search_cfg;
 }
 
 SubSearchResult
@@ -79,7 +59,7 @@ BruteForceSearch(const dataset::SearchDataset& dataset,
 
     auto base_dataset = knowhere::GenDataSet(chunk_rows, dim, chunk_data_raw);
     auto query_dataset = knowhere::GenDataSet(nq, dim, dataset.query_data);
-    auto search_cfg = PrepareBFSearchParams(search_info);
+    auto search_cfg = index::PrepareSearchParams(search_info);
 
     sub_result.mutable_seg_offsets().resize(nq * topk);
     sub_result.mutable_distances().resize(nq * topk);
@@ -193,7 +173,7 @@ BruteForceSearchIterators(const dataset::SearchDataset& dataset,
     auto dim = dataset.dim;
     auto base_dataset = knowhere::GenDataSet(chunk_rows, dim, chunk_data_raw);
     auto query_dataset = knowhere::GenDataSet(nq, dim, dataset.query_data);
-    auto search_cfg = PrepareBFSearchParams(search_info);
+    auto search_cfg = index::PrepareSearchParams(search_info);
 
     knowhere::expected<
         std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>

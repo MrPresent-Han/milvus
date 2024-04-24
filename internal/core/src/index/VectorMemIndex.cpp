@@ -18,7 +18,6 @@
 
 #include <unistd.h>
 #include <cmath>
-#include <cstdint>
 #include <cstring>
 #include <filesystem>
 #include <memory>
@@ -33,10 +32,8 @@
 
 #include "index/Index.h"
 #include "index/IndexInfo.h"
-#include "index/Meta.h"
 #include "index/Utils.h"
 #include "common/EasyAssert.h"
-#include "config/ConfigKnowhere.h"
 #include "knowhere/factory.h"
 #include "knowhere/comp/time_recorder.h"
 #include "common/BitsetView.h"
@@ -44,11 +41,9 @@
 #include "common/FieldData.h"
 #include "common/File.h"
 #include "common/Slice.h"
-#include "common/Tracer.h"
 #include "common/RangeSearchHelper.h"
 #include "common/Utils.h"
 #include "log/Log.h"
-#include "mmap/Types.h"
 #include "storage/DataCodec.h"
 #include "storage/MemFileManagerImpl.h"
 #include "storage/ThreadPools.h"
@@ -152,6 +147,7 @@ knowhere::expected<std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
 VectorMemIndex<T>::VectorIterators(const milvus::DatasetPtr dataset,
                                    const knowhere::Json& conf,
                                    const milvus::BitsetView& bitset) const {
+    LOG_INFO("hc===iterators input conf:{}", conf.dump());
     return this->index_.AnnIterator(*dataset, conf, bitset);
 }
 
@@ -592,6 +588,7 @@ VectorMemIndex<T>::Query(const DatasetPtr dataset,
     auto num_queries = dataset->GetRows();
     knowhere::Json search_conf = PrepareSearchParams(search_info);
     auto topk = search_info.topk_;
+    LOG_INFO("hc===search input conf:{}", search_conf.dump());
     // TODO :: check dim of search data
     auto final = [&] {
         auto index_type = GetIndexType();

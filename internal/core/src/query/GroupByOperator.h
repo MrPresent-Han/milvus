@@ -23,6 +23,7 @@
 #include "segcore/SegmentSealedImpl.h"
 #include "segcore/ConcurrentVector.h"
 #include "common/Span.h"
+#include "common/Utils.h"
 
 namespace milvus {
 namespace query {
@@ -132,11 +133,7 @@ PrepareVectorIteratorsFromIndex(const SearchInfo& search_info,
                                 const index::VectorIndex& index) {
     if (search_info.group_by_field_id_.has_value()) {
         try {
-            auto search_conf = search_info.search_params_;
-            if (search_conf.contains(knowhere::indexparam::EF)) {
-                search_conf[knowhere::indexparam::SEED_EF] =
-                    search_conf[knowhere::indexparam::EF];
-            }
+            auto search_conf = index::PrepareSearchParams(search_info);
             knowhere::expected<
                 std::vector<std::shared_ptr<knowhere::IndexNode::iterator>>>
                 iterators_val =
