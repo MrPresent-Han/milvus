@@ -386,6 +386,20 @@ func (node *QueryNode) Init() error {
 	return initError
 }
 
+func (node *QueryNode) PrintMemStats() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-node.ctx.Done():
+			log.Info("Close memory stats ticker")
+			return
+		case <-ticker.C:
+			hardware.PrintMemStats(node.ctx)
+		}
+	}
+}
+
 // Start mainly start QueryNode's query service.
 func (node *QueryNode) Start() error {
 	node.startOnce.Do(func() {
@@ -403,6 +417,10 @@ func (node *QueryNode) Start() error {
 			zap.Bool("mmapEnabled", mmapEnabled),
 		)
 	})
+	go func() {
+		log.Info("query node start to print memory status")
+		node.PrintMemStats()
+	}()
 
 	return nil
 }

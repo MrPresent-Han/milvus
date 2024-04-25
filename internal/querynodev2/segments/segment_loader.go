@@ -839,6 +839,7 @@ func (loader *segmentLoader) requestResource(ctx context.Context, infos ...*quer
 		zap.Float64("disk", toMB(resource.DiskSize)),
 		zap.Float64("committedDisk", toMB(loader.committedResource.DiskSize)),
 	)
+	hardware.PrintMemStats(ctx)
 
 	return resource, concurrencyLevel, nil
 }

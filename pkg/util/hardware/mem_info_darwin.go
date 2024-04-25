@@ -33,6 +33,5 @@ func GetUsedMemoryCount() uint64 {
 			zap.Error(err))
 		return 0
 	}
-
 	return stats.Used
 }

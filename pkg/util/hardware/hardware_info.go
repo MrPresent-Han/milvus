@@ -12,6 +12,7 @@
 package hardware
 
 import (
+	"context"
 	"flag"
 	syslog "log"
 	"runtime"
@@ -95,6 +96,32 @@ func GetMemoryCount() uint64 {
 			zap.Error(err))
 	}
 	return stats.Total
+}
+
+func PrintMemStats(ctx context.Context) {
+	stats, err := mem.VirtualMemory()
+	if err != nil {
+		log.Warn("failed to get memory count",
+			zap.Error(err))
+	}
+	log.Ctx(ctx).Info("currentMemStats:",
+		zap.Uint64("total", stats.Total),
+		zap.Uint64("used", stats.Used),
+		zap.Uint64("active", stats.Active),
+		zap.Uint64("inActive", stats.Inactive),
+		zap.Uint64("wired", stats.Wired),
+		zap.Uint64("free", stats.Free),
+		zap.Uint64("Available", stats.Available),
+		zap.Uint64("Buffers", stats.Buffers),
+		zap.Uint64("Cached", stats.Cached),
+		zap.Uint64("SwapTotal", stats.SwapTotal),
+		zap.Uint64("SwapCached", stats.SwapCached),
+		zap.Uint64("SwapFree", stats.SwapFree),
+		zap.Uint64("Mapped", stats.Mapped),
+		zap.Uint64("Shared", stats.Shared),
+		zap.Uint64("Dirty", stats.Dirty),
+	)
+
 }
 
 // GetFreeMemoryCount returns the free memory in bytes.
