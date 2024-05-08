@@ -294,10 +294,11 @@ func (c *lruCache[K, V]) Unpin(key K) {
 }
 
 func (c *lruCache[K, V]) peekAndPin(ctx context.Context, key K) *cacheItem[K, V] {
+	log := log.Ctx(ctx)
+	log.Debug("try to peekAndPin", zap.Any("key", key))
 	c.rwlock.Lock()
 	defer c.rwlock.Unlock()
 	e, ok := c.items[key]
-	log := log.Ctx(ctx)
 	if ok {
 		item := e.Value.(*cacheItem[K, V])
 		if item.needReload && item.pinCount.Load() == 0 {
@@ -397,6 +398,8 @@ func (c *lruCache[K, V]) lockfreeTryScavenge(key K) ([]K, bool) {
 
 // for cache miss
 func (c *lruCache[K, V]) setAndPin(ctx context.Context, key K, value V) (*cacheItem[K, V], error) {
+	log := log.Ctx(ctx)
+	log.Debug("try to setAndPin", zap.Any("key", key))
 	c.rwlock.Lock()
 	defer c.rwlock.Unlock()
 
@@ -405,7 +408,6 @@ func (c *lruCache[K, V]) setAndPin(ctx context.Context, key K, value V) (*cacheI
 
 	// tryScavenge is done again since the load call is lock free.
 	toEvict, ok := c.lockfreeTryScavenge(key)
-	log := log.Ctx(ctx)
 	if !ok {
 		if c.finalizer != nil {
 			log.Warn("setAndPin ran into scavenge failure, release data for", zap.Any("key", key))

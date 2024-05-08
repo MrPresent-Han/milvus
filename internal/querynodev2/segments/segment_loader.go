@@ -1113,6 +1113,7 @@ func (loader *segmentLoader) LoadSegment(ctx context.Context,
 			return err
 		}
 	}
+	log.Info("finish loading segment files")
 	return nil
 }
 

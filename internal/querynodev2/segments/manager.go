@@ -172,6 +172,7 @@ func NewManager() *Manager {
 		}
 		return int64(segment.ResourceUsageEstimate().DiskSize)
 	}, diskCap).WithLoader(func(ctx context.Context, key int64) (Segment, error) {
+		log := log.Ctx(ctx)
 		log.Debug("cache missed segment", zap.Int64("segmentID", key))
 		segment := segMgr.GetWithType(key, SegmentTypeSealed)
 		if segment == nil {
@@ -199,6 +200,7 @@ func NewManager() *Manager {
 			log.Warn("cache sealed segment failed", zap.Error(err))
 			return nil, err
 		}
+		log.Info("cache sealed segment success", zap.Error(err))
 		return segment, nil
 	}).WithFinalizer(func(ctx context.Context, key int64, segment Segment) error {
 		log.Ctx(ctx).Debug("evict segment from cache", zap.Int64("segmentID", key))
@@ -208,6 +210,7 @@ func NewManager() *Manager {
 		segment.Release(ctx, WithReleaseScope(ReleaseScopeData))
 		return nil
 	}).WithReloader(func(ctx context.Context, key int64) (Segment, error) {
+		log := log.Ctx(ctx)
 		segment := segMgr.GetWithType(key, SegmentTypeSealed)
 		if segment == nil {
 			// the segment has been released, just ignore it
