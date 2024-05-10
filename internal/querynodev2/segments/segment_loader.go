@@ -64,7 +64,7 @@ import (
 )
 
 const (
-	UsedDiskMemoryRatio = 4
+	UsedDiskMemoryRatio = 2
 )
 
 type Loader interface {
