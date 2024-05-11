@@ -114,6 +114,8 @@ func (c *LeaderChecker) Check(ctx context.Context) []task.Task {
 
 func (c *LeaderChecker) findNeedSyncPartitionStats(ctx context.Context, replica *meta.Replica, leaderView *meta.LeaderView, nodeID int64) []task.Task {
 	ret := make([]task.Task, 0)
+	log.Info("hc===note", zap.Any("replica", replica), zap.Any("leaderView", leaderView),
+		zap.Any("nodeID", nodeID), zap.Any("ctx", ctx))
 	curDmlChannel := c.target.GetDmChannel(leaderView.CollectionID, leaderView.Channel, meta.CurrentTarget)
 	if curDmlChannel == nil {
 		return ret
