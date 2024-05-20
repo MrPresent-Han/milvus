@@ -156,7 +156,7 @@ class StreamReducerHelper {
 
     void
     SetSearchResultsToMerge(std::vector<SearchResult*>& search_results) {
-        search_results_to_merge_ = search_results;
+        search_results_to_merge_ = std::move(search_results);
         num_segments_ = search_results_to_merge_.size();
         AssertInfo(num_segments_ > 0, "empty search result");
     }

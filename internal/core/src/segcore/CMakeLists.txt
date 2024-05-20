@@ -26,6 +26,7 @@ set(SEGCORE_FILES
         FieldIndexing.cpp
         Reduce.cpp
         StreamReduce.cpp
+        StreamReduceV2.cpp
         metrics_c.cpp
         plan_c.cpp
         reduce_c.cpp
