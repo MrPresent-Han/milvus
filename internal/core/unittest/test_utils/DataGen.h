@@ -461,6 +461,11 @@ inline GeneratedData DataGen(SchemaPtr schema,
                                "}";
                     data[i] = str;
                 }
+                int sizeSum = 0;
+                for(const auto& str: data){
+                    sizeSum += str.size();
+                }
+                std::cout << "json_sizeSum:" << sizeSum << std::endl;
                 insert_cols(data, N, field_meta);
                 break;
             }
@@ -502,6 +507,11 @@ inline GeneratedData DataGen(SchemaPtr schema,
                             }
                             data[i] = field_data;
                         }
+                        int sum_size = 0;
+                        for(const auto& d: data){
+                            sum_size += d.long_data().data_size();
+                        }
+                        std::cout << "int64_arr_size:" << sum_size << std::endl;
                         break;
                     }
                     case DataType::STRING:

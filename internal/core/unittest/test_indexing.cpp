@@ -530,6 +530,62 @@ TEST_P(IndexTest, BuildAndQuery) {
     }
 }
 
+TEST(IndexTest, LoadMMap) {
+    //0. prepare data
+    int64_t NB = 100000;
+    int64_t DIM = 16;
+    IndexType index_type = knowhere::IndexEnum::INDEX_HNSW;
+    MetricType metric_type = knowhere::metric::L2;
+    milvus::DataType vec_field_data_type = milvus::DataType::VECTOR_FLOAT;
+    auto dataset = GenDatasetWithDataType(NB, metric_type, vec_field_data_type);
+    FixedVector<float> xb_data = dataset.get_col<float>(milvus::FieldId(100));
+    knowhere::DataSetPtr xb_dataset = knowhere::GenDataSet(NB, DIM, xb_data.data());
+
+    //1. set up index info
+    milvus::index::CreateIndexInfo create_index_info;
+    create_index_info.index_type = index_type;
+    create_index_info.metric_type = metric_type;
+    create_index_info.field_type = milvus::DataType::VECTOR_FLOAT;
+    create_index_info.index_engine_version =
+            knowhere::Version::GetCurrentVersion().VersionNumber();
+
+    //2. Build + Upload index
+    milvus::Config build_conf = generate_build_conf(index_type, metric_type);
+    index::IndexBasePtr index;
+    milvus::storage::FieldDataMeta field_data_meta{1, 2, 3, 100};
+    milvus::storage::IndexMeta index_meta{3, 100, 1000, 1};
+    StorageConfig storage_config_ = get_default_local_storage_config();
+    auto chunk_manager = milvus::storage::CreateChunkManager(storage_config_);
+    milvus::storage::FileManagerContext file_manager_context(
+            field_data_meta, index_meta, chunk_manager);
+    index = milvus::index::IndexFactory::GetInstance().CreateIndex(
+            create_index_info, file_manager_context);
+    ASSERT_NO_THROW(index->BuildWithDataset(xb_dataset, build_conf));
+    auto binary_set = index->Upload();
+    index.reset();
+
+    //3. Download + load new_index
+    milvus::index::IndexBasePtr new_index;
+    milvus::index::VectorIndex* vec_index = nullptr;
+    new_index = milvus::index::IndexFactory::GetInstance().CreateIndex(
+            create_index_info, file_manager_context);
+    if (!new_index->IsMmapSupported()) {
+        return;
+    }
+    vec_index = dynamic_cast<milvus::index::VectorIndex*>(new_index.get());
+    std::vector<std::string> index_files;
+    for (auto& binary : binary_set.binary_map_) {
+        index_files.emplace_back(binary.first);
+    }
+    milvus::Config load_conf = generate_load_conf(index_type, metric_type, NB);
+    load_conf = generate_load_conf(index_type, metric_type, 0);
+    load_conf["index_files"] = index_files;
+    load_conf["mmap_filepath"] = "mmap/test_index_mmap_" + index_type;
+    vec_index->Load(milvus::tracer::TraceContext{}, load_conf);
+    EXPECT_EQ(vec_index->Count(), NB);
+    EXPECT_EQ(vec_index->GetDim(), DIM);
+}
+
 TEST_P(IndexTest, Mmap) {
     milvus::index::CreateIndexInfo create_index_info;
     create_index_info.index_type = index_type;

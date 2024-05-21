@@ -1086,6 +1086,49 @@ TEST(Sealed, OverlapDelete) {
         << std::endl;
 }
 
+TEST(Sealed, LoadFieldDataMmap2) {
+    auto dim = 16;
+    auto N = ROW_COUNT;
+    auto metric_type = knowhere::metric::L2;
+    auto schema = std::make_shared<Schema>();
+    auto fakevec_id = schema->AddDebugField(
+            "fakevec", DataType::VECTOR_FLOAT, dim, metric_type);
+    auto pk_id = schema->AddDebugField("pk", DataType::INT64);
+    schema->set_primary_field_id(pk_id);
+
+    auto dataset = DataGen(schema, N);
+    auto fakevec = dataset.get_col<float>(fakevec_id);
+    auto indexing = GenVecIndexing(
+            N, dim, fakevec.data(), knowhere::IndexEnum::INDEX_HNSW);
+
+    auto segment = CreateSealedSegment(schema);
+    SealedLoadFieldData(dataset, *segment, {}, true);
+    segment->DropFieldData(fakevec_id);
+
+    LoadIndexInfo vec_info;
+    vec_info.field_id = fakevec_id.get();
+    vec_info.index = std::move(indexing);
+    vec_info.index_params["metric_type"] = knowhere::metric::L2;
+    segment->LoadIndex(vec_info);
+
+    /*ASSERT_EQ(segment->num_chunk(), 1);
+    ASSERT_EQ(segment->num_chunk_index(double_id), 0);
+    ASSERT_EQ(segment->num_chunk_index(str_id), 0);
+    auto chunk_span1 = segment->chunk_data<int64_t>(counter_id, 0);
+    auto chunk_span2 = segment->chunk_data<double>(double_id, 0);
+    auto chunk_span3 = segment->chunk_data<std::string_view>(str_id, 0);
+    auto ref1 = dataset.get_col<int64_t>(counter_id);
+    auto ref2 = dataset.get_col<double>(double_id);
+    auto ref3 = dataset.get_col(str_id)->scalars().string_data().data();
+    for (int i = 0; i < N; ++i) {
+        ASSERT_EQ(chunk_span1[i], ref1[i]);
+        ASSERT_EQ(chunk_span2[i], ref2[i]);
+        ASSERT_EQ(chunk_span3[i], ref3[i]);
+    }*/
+    segment->DropIndex(fakevec_id);
+    std::cout << "Finish loading test" << std::endl;
+}
+
 auto
 GenMaxFloatVecs(int N, int dim) {
     std::vector<float> vecs;
