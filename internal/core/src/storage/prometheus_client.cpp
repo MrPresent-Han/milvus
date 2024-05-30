@@ -166,6 +166,22 @@ DEFINE_PROMETHEUS_HISTOGRAM(internal_storage_deserialize_duration,
                             internal_storage_load_duration,
                             deserializeDurationLabels)
 
+//reduce metrics
+std::map<std::string, std::string> reduceComputingDurationLabels{{"type", "computing"}};
+std::map<std::string, std::string> reduceIODurationLabels{{"type", "io"}};
+    std::map<std::string, std::string> reduceMarshallDurationLabels{{"type", "marshall"}};
+DEFINE_PROMETHEUS_HISTOGRAM_FAMILY(internal_reduce_duration,
+                                       "[cpp]durations of reduce")
+DEFINE_PROMETHEUS_HISTOGRAM(internal_reduce_computing_duration,
+                            internal_reduce_duration,
+                            reduceComputingDurationLabels)
+DEFINE_PROMETHEUS_HISTOGRAM(internal_reduce_io_duration,
+                            internal_reduce_duration,
+                            reduceIODurationLabels)
+DEFINE_PROMETHEUS_HISTOGRAM(internal_reduce_marshall_duration,
+                            internal_reduce_duration,
+                            reduceMarshallDurationLabels)
+
 // mmap metrics
 std::map<std::string, std::string> mmapAllocatedSpaceAnonLabel = {
     {"type", "anon"}};

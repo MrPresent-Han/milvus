@@ -128,4 +128,10 @@ DECLARE_PROMETHEUS_GAUGE_FAMILY(internal_mmap_in_used_space_bytes);
 DECLARE_PROMETHEUS_GAUGE(internal_mmap_in_used_space_bytes_anon);
 DECLARE_PROMETHEUS_GAUGE(internal_mmap_in_used_space_bytes_file);
 
+//reduce metrics
+DECLARE_PROMETHEUS_HISTOGRAM_FAMILY(internal_reduce_duration);
+DECLARE_PROMETHEUS_HISTOGRAM(internal_reduce_computing_duration);
+DECLARE_PROMETHEUS_HISTOGRAM(internal_reduce_io_duration);
+DECLARE_PROMETHEUS_HISTOGRAM(internal_reduce_marshall_duration);
+
 }  // namespace milvus::storage

@@ -63,6 +63,7 @@ ReduceHelper::Reduce() {
 void
 ReduceHelper::Marshal() {
     tracer::AutoSpan span("ReduceHelper::Marshal", trace_ctx_, false);
+    auto start_marshall = std::chrono::system_clock::now();
     // get search result data blobs of slices
     search_result_data_blobs_ =
         std::make_unique<milvus::segcore::SearchResultDataBlobs>();
@@ -71,6 +72,9 @@ ReduceHelper::Marshal() {
         auto proto = GetSearchResultDataSlice(i);
         search_result_data_blobs_->blobs[i] = proto;
     }
+    auto marshall_duration = std::chrono::system_clock::now() - start_marshall;
+    milvus::storage::internal_reduce_marshall_duration.Observe(
+            std::chrono::duration_cast<std::chrono::milliseconds>(marshall_duration).count());
 }
 
 void
@@ -217,11 +221,15 @@ ReduceHelper::RefreshSearchResult() {
 void
 ReduceHelper::FillEntryData() {
     tracer::AutoSpan span("ReduceHelper::FillEntryData", trace_ctx_, false);
+    auto start_fill_entry = std::chrono::system_clock::now();
     for (auto search_result : search_results_) {
         auto segment = static_cast<milvus::segcore::SegmentInterface*>(
             search_result->segment_);
         segment->FillTargetEntry(plan_, *search_result);
     }
+    auto fill_entry_duration = std::chrono::system_clock::now() - start_fill_entry;
+    milvus::storage::internal_reduce_io_duration.Observe(
+            std::chrono::duration_cast<std::chrono::milliseconds>(fill_entry_duration).count());
 }
 
 int64_t
@@ -331,6 +339,7 @@ ReduceHelper::ReduceResultData() {
                    "incorrect search result primary key size");
     }
 
+    auto start_reduce_computing = std::chrono::system_clock::now();
     int64_t skip_dup_cnt = 0;
     for (int64_t slice_index = 0; slice_index < num_slices_; slice_index++) {
         auto nq_begin = slice_nqs_prefix_sum_[slice_index];
@@ -343,6 +352,10 @@ ReduceHelper::ReduceResultData() {
                 qi, slice_topKs_[slice_index], offset);
         }
     }
+    auto reduce_computing_duration = std::chrono::system_clock::now() - start_reduce_computing;
+    milvus::storage::internal_reduce_computing_duration.Observe(
+            std::chrono::duration_cast<std::chrono::milliseconds>(reduce_computing_duration)
+                    .count());
     if (skip_dup_cnt > 0) {
         LOG_DEBUG("skip duplicated search result, count = {}", skip_dup_cnt);
     }
