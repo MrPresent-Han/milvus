@@ -10,12 +10,12 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include <vector>
-#include "Reduce.h"
+#include "segcore/reduce/Reduce.h"
 #include "common/QueryResult.h"
 #include "common/EasyAssert.h"
 #include "query/Plan.h"
 #include "segcore/reduce_c.h"
-#include "segcore/StreamReduce.h"
+#include "segcore/reduce/StreamReduce.h"
 #include "segcore/Utils.h"
 
 using SearchResult = milvus::SearchResult;

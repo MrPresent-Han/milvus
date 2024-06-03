@@ -13,21 +13,21 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include "GroupByOperator.h"
+#include "SearchGroupByOperator.h"
 #include "common/Consts.h"
 #include "segcore/SegmentSealedImpl.h"
-#include "Utils.h"
+#include "query/Utils.h"
 
 namespace milvus {
 namespace query {
 
 void
-GroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
-        const SearchInfo& search_info,
-        std::vector<GroupByValueType>& group_by_values,
-        const segcore::SegmentInternalInterface& segment,
-        std::vector<int64_t>& seg_offsets,
-        std::vector<float>& distances) {
+SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
+              const SearchInfo& search_info,
+              std::vector<GroupByValueType>& group_by_values,
+              const segcore::SegmentInternalInterface& segment,
+              std::vector<int64_t>& seg_offsets,
+              std::vector<float>& distances) {
     //1. get search meta
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
@@ -137,23 +137,20 @@ template <typename T>
 void
 GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
                     int64_t topK,
+                    int64_t group_size,
                     const DataGetter<T>& data_getter,
                     std::vector<GroupByValueType>& group_by_values,
                     std::vector<int64_t>& offsets,
                     std::vector<float>& distances,
                     const knowhere::MetricType& metrics_type) {
     //1.
-    std::unordered_map<T, std::pair<int64_t, float>> groupMap;
+    GroupByMap<T> groupMap(topK, group_size);
 
     //2. do iteration until fill the whole map or run out of all data
     //note it may enumerate all data inside a segment and can block following
     //query and search possibly
-    auto dis_closer = [&](float l, float r) {
-        if (PositivelyRelated(metrics_type))
-            return l > r;
-        return l < r;
-    };
-    while (iterator->HasNext() && groupMap.size() < topK) {
+    std::vector<std::tuple<int64_t, float, T>> res;
+    while (iterator->HasNext() && !groupMap.IsGroupResEnough()) {
         auto offset_dis_pair = iterator->Next();
         AssertInfo(
             offset_dis_pair.has_value(),
@@ -162,35 +159,32 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
         auto offset = offset_dis_pair.value().first;
         auto dis = offset_dis_pair.value().second;
         T row_data = data_getter.Get(offset);
-        auto it = groupMap.find(row_data);
-        if (it == groupMap.end()) {
-            groupMap.emplace(row_data, std::make_pair(offset, dis));
-        } else if (dis_closer(dis, it->second.second)) {
-            it->second = {offset, dis};
+        if(groupMap.Push(row_data, offset, dis, metrics_type)){
+            res.emplace_back(offset, dis, row_data);
         }
     }
 
     //3. sorted based on distances and metrics
-    std::vector<std::pair<T, std::pair<int64_t, float>>> sortedGroupVals(
-        groupMap.begin(), groupMap.end());
     auto customComparator = [&](const auto& lhs, const auto& rhs) {
         return dis_closer(lhs.second.second, rhs.second.second);
     };
-    std::sort(sortedGroupVals.begin(), sortedGroupVals.end(), customComparator);
+    std::sort(res.begin(), res.end(), customComparator);
 
     //4. save groupBy results
-    group_by_values.reserve(sortedGroupVals.size());
-    offsets.reserve(sortedGroupVals.size());
-    distances.reserve(sortedGroupVals.size());
-    for (auto iter = sortedGroupVals.cbegin(); iter != sortedGroupVals.cend();
+    int res_size = res.size();
+    group_by_values.reserve(res_size);
+    offsets.reserve(res_size);
+    distances.reserve(res_size);
+    for (auto iter = res.cbegin(); iter != res.cend();
          iter++) {
-        group_by_values.emplace_back(iter->first);
-        offsets.push_back(iter->second.first);
-        distances.push_back(iter->second.second);
+        offsets.push_back(std::get<0>(*iter));
+        distances.push_back(std::get<1>(*iter));
+        group_by_values.emplace_back(std::get<2>(*iter));
     }
 
     //5. padding topK results, extra memory consumed will be removed when reducing
-    for (std::size_t idx = groupMap.size(); idx < topK; idx++) {
+    int res_sum = topK * group_size;
+    for (std::size_t idx = groupMap.size(); idx < res_sum; idx++) {
         offsets.push_back(INVALID_SEG_OFFSET);
         distances.push_back(0.0);
         group_by_values.emplace_back(std::monostate{});

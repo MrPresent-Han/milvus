@@ -25,7 +25,7 @@
 #include "plan/PlanNode.h"
 #include "exec/Task.h"
 #include "segcore/SegmentInterface.h"
-#include "query/GroupByOperator.h"
+#include "query/groupby/SearchGroupByOperator.h"
 namespace milvus::query {
 
 namespace impl {
@@ -194,12 +194,12 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     search_result.total_data_cnt_ = final_view.size();
     if (search_result.vector_iterators_.has_value()) {
         std::vector<GroupByValueType> group_by_values;
-        GroupBy(search_result.vector_iterators_.value(),
-                node.search_info_,
-                group_by_values,
-                *segment,
-                search_result.seg_offsets_,
-                search_result.distances_);
+        SearchGroupBy(search_result.vector_iterators_.value(),
+                      node.search_info_,
+                      group_by_values,
+                      *segment,
+                      search_result.seg_offsets_,
+                      search_result.distances_);
         search_result.group_by_values_ = std::move(group_by_values);
         AssertInfo(search_result.seg_offsets_.size() ==
                        search_result.group_by_values_.value().size(),
