@@ -37,6 +37,7 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
             auto dataGetter = GetDataGetter<int8_t>(segment, group_by_field_id);
             GroupIteratorsByType<int8_t>(iterators,
                                          search_info.topk_,
+                                         search_info.group_size_,
                                          *dataGetter,
                                          group_by_values,
                                          seg_offsets,
@@ -49,6 +50,7 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                 GetDataGetter<int16_t>(segment, group_by_field_id);
             GroupIteratorsByType<int16_t>(iterators,
                                           search_info.topk_,
+                                          search_info.group_size_,
                                           *dataGetter,
                                           group_by_values,
                                           seg_offsets,
@@ -61,6 +63,7 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                 GetDataGetter<int32_t>(segment, group_by_field_id);
             GroupIteratorsByType<int32_t>(iterators,
                                           search_info.topk_,
+                                          search_info.group_size_,
                                           *dataGetter,
                                           group_by_values,
                                           seg_offsets,
@@ -73,6 +76,7 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                 GetDataGetter<int64_t>(segment, group_by_field_id);
             GroupIteratorsByType<int64_t>(iterators,
                                           search_info.topk_,
+                                          search_info.group_size_,
                                           *dataGetter,
                                           group_by_values,
                                           seg_offsets,
@@ -84,6 +88,7 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
             auto dataGetter = GetDataGetter<bool>(segment, group_by_field_id);
             GroupIteratorsByType<bool>(iterators,
                                        search_info.topk_,
+                                       search_info.group_size_,
                                        *dataGetter,
                                        group_by_values,
                                        seg_offsets,
@@ -96,6 +101,7 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                 GetDataGetter<std::string>(segment, group_by_field_id);
             GroupIteratorsByType<std::string>(iterators,
                                               search_info.topk_,
+                                              search_info.group_size_,
                                               *dataGetter,
                                               group_by_values,
                                               seg_offsets,
@@ -117,6 +123,7 @@ void
 GroupIteratorsByType(
     const std::vector<std::shared_ptr<VectorIterator>>& iterators,
     int64_t topK,
+    int64_t group_size,
     const DataGetter<T>& data_getter,
     std::vector<GroupByValueType>& group_by_values,
     std::vector<int64_t>& seg_offsets,
@@ -125,6 +132,7 @@ GroupIteratorsByType(
     for (auto& iterator : iterators) {
         GroupIteratorResult<T>(iterator,
                                topK,
+                               group_size,
                                data_getter,
                                group_by_values,
                                seg_offsets,
@@ -166,15 +174,15 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
 
     //3. sorted based on distances and metrics
     auto customComparator = [&](const auto& lhs, const auto& rhs) {
-        return dis_closer(lhs.second.second, rhs.second.second);
+        return dis_closer(std::get<1>(lhs), std::get<1>(rhs), metrics_type);
     };
     std::sort(res.begin(), res.end(), customComparator);
 
     //4. save groupBy results
-    int res_size = res.size();
-    group_by_values.reserve(res_size);
-    offsets.reserve(res_size);
-    distances.reserve(res_size);
+    int res_sum_size = topK * group_size;
+    group_by_values.reserve(res_sum_size);
+    offsets.reserve(res_sum_size);
+    distances.reserve(res_sum_size);
     for (auto iter = res.cbegin(); iter != res.cend();
          iter++) {
         offsets.push_back(std::get<0>(*iter));
@@ -183,8 +191,7 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
     }
 
     //5. padding topK results, extra memory consumed will be removed when reducing
-    int res_sum = topK * group_size;
-    for (std::size_t idx = groupMap.size(); idx < res_sum; idx++) {
+    for (std::size_t idx = res.size(); idx < res_sum_size; idx++) {
         offsets.push_back(INVALID_SEG_OFFSET);
         distances.push_back(0.0);
         group_by_values.emplace_back(std::monostate{});

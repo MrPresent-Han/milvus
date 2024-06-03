@@ -180,33 +180,17 @@ void
 GroupIteratorsByType(
     const std::vector<std::shared_ptr<VectorIterator>>& iterators,
     int64_t topK,
+    int64_t group_size,
     const DataGetter<T>& data_getter,
     std::vector<GroupByValueType>& group_by_values,
     std::vector<int64_t>& seg_offsets,
     std::vector<float>& distances,
     const knowhere::MetricType& metrics_type);
 
-
-struct GroupByGroup{
-    std::vector<int64_t> offsets_{};
-    std::vector<float> distances_{};
-
-public:
-    bool isFull(int group_size){
-        AssertInfo(distances_.size() > 0, "Wrong parameter, input group_size should not be zero for GroupByGroup");
-        return offsets_.size() >= group_size;
-    }
-
-    void push(int64_t offset, float distance){
-        offsets_.emplace_back(offset);
-        distances_.emplace_back(distance);
-    }
-};
-
 template <typename T>
 struct GroupByMap{
 private:
-    std::unordered_map<T, std::shared_ptr<GroupByGroup>> group_map_{};
+    std::unordered_map<T, int> group_map_{};
     int group_capacity_{0};
     int group_size_{0};
     int enough_group_count{0};
@@ -216,20 +200,15 @@ public:
         return group_map_.size() == group_capacity_ && enough_group_count == group_capacity_;
     }
     bool Push(const T& t, int64_t offset, float distance, const MetricType& metric_type){
-        auto group_it = group_map_.find(t);
-        if(group_it == group_map_.end()){
-            group_map_[t] = std::make_shared<GroupByGroup>();
-        }
-        group_it = group_map_.find(t);
-        auto group = group_it->second;
-        if(group->isFull(group_size_)){
+        if(group_map_.size() >= group_capacity_) return false;
+        if(group_map_[t] >= group_size_) {
             //we ignore following input no matter the distance as knowhere::iterator doesn't guarantee
             //strictly increase/decreasing distance output
             //but this should not be a very serious influence to overall recall rate
             return false;
         }
-        group->push(offset, distance);
-        if(group->isFull(group_size_)){
+        group_map_[t] += 1;
+        if(group_map_[t] >= group_size_){
             enough_group_count+=1;
         }
         return true;
