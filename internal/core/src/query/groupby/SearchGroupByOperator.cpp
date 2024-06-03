@@ -27,11 +27,16 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
               std::vector<GroupByValueType>& group_by_values,
               const segcore::SegmentInternalInterface& segment,
               std::vector<int64_t>& seg_offsets,
-              std::vector<float>& distances) {
+              std::vector<float>& distances,
+              std::vector<size_t>& topk_per_nq_prefix_sum) {
     //1. get search meta
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
-
+    int max_total_size = search_info.topk_ * search_info.group_size_ * iterators.size();
+    seg_offsets.reserve(max_total_size);
+    distances.reserve(max_total_size);
+    group_by_values.reserve(max_total_size);
+    topk_per_nq_prefix_sum.reserve(iterators.size() + 1);
     switch (data_type) {
         case DataType::INT8: {
             auto dataGetter = GetDataGetter<int8_t>(segment, group_by_field_id);
@@ -42,7 +47,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                                          group_by_values,
                                          seg_offsets,
                                          distances,
-                                         search_info.metric_type_);
+                                         search_info.metric_type_,
+                                         topk_per_nq_prefix_sum);
             break;
         }
         case DataType::INT16: {
@@ -55,7 +61,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                                           group_by_values,
                                           seg_offsets,
                                           distances,
-                                          search_info.metric_type_);
+                                          search_info.metric_type_,
+                                          topk_per_nq_prefix_sum);
             break;
         }
         case DataType::INT32: {
@@ -68,7 +75,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                                           group_by_values,
                                           seg_offsets,
                                           distances,
-                                          search_info.metric_type_);
+                                          search_info.metric_type_,
+                                          topk_per_nq_prefix_sum);
             break;
         }
         case DataType::INT64: {
@@ -81,7 +89,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                                           group_by_values,
                                           seg_offsets,
                                           distances,
-                                          search_info.metric_type_);
+                                          search_info.metric_type_,
+                                          topk_per_nq_prefix_sum);
             break;
         }
         case DataType::BOOL: {
@@ -93,7 +102,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                                        group_by_values,
                                        seg_offsets,
                                        distances,
-                                       search_info.metric_type_);
+                                       search_info.metric_type_,
+                                       topk_per_nq_prefix_sum);
             break;
         }
         case DataType::VARCHAR: {
@@ -106,7 +116,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
                                               group_by_values,
                                               seg_offsets,
                                               distances,
-                                              search_info.metric_type_);
+                                              search_info.metric_type_,
+                                              topk_per_nq_prefix_sum);
             break;
         }
         default: {
@@ -128,7 +139,9 @@ GroupIteratorsByType(
     std::vector<GroupByValueType>& group_by_values,
     std::vector<int64_t>& seg_offsets,
     std::vector<float>& distances,
-    const knowhere::MetricType& metrics_type) {
+    const knowhere::MetricType& metrics_type,
+    std::vector<size_t>& topk_per_nq_prefix_sum) {
+    topk_per_nq_prefix_sum.push_back(0);
     for (auto& iterator : iterators) {
         GroupIteratorResult<T>(iterator,
                                topK,
@@ -138,6 +151,7 @@ GroupIteratorsByType(
                                seg_offsets,
                                distances,
                                metrics_type);
+        topk_per_nq_prefix_sum.push_back(seg_offsets.size());
     }
 }
 
@@ -179,22 +193,11 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
     std::sort(res.begin(), res.end(), customComparator);
 
     //4. save groupBy results
-    int res_sum_size = topK * group_size;
-    group_by_values.reserve(res_sum_size);
-    offsets.reserve(res_sum_size);
-    distances.reserve(res_sum_size);
     for (auto iter = res.cbegin(); iter != res.cend();
          iter++) {
         offsets.push_back(std::get<0>(*iter));
         distances.push_back(std::get<1>(*iter));
         group_by_values.emplace_back(std::get<2>(*iter));
-    }
-
-    //5. padding topK results, extra memory consumed will be removed when reducing
-    for (std::size_t idx = res.size(); idx < res_sum_size; idx++) {
-        offsets.push_back(INVALID_SEG_OFFSET);
-        distances.push_back(0.0);
-        group_by_values.emplace_back(std::monostate{});
     }
 }
 

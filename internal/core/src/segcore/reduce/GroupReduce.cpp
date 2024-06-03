@@ -13,4 +13,7 @@
 
 namespace milvus::segcore{
 
+void GroupReduceHelper::Reduce() {
+
+}
 }

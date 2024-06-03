@@ -173,7 +173,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
               std::vector<GroupByValueType>& group_by_values,
               const segcore::SegmentInternalInterface& segment,
               std::vector<int64_t>& seg_offsets,
-              std::vector<float>& distances);
+              std::vector<float>& distances,
+              std::vector<size_t>& topk_per_nq_prefix_sum);
 
 template <typename T>
 void
@@ -185,7 +186,8 @@ GroupIteratorsByType(
     std::vector<GroupByValueType>& group_by_values,
     std::vector<int64_t>& seg_offsets,
     std::vector<float>& distances,
-    const knowhere::MetricType& metrics_type);
+    const knowhere::MetricType& metrics_type,
+    std::vector<size_t>& topk_per_nq_prefix_sum);
 
 template <typename T>
 struct GroupByMap{
