@@ -25,7 +25,7 @@
 #include "common/type_c.h"
 #include "pb/plan.pb.h"
 #include "segcore/Collection.h"
-#include "segcore/Reduce.h"
+#include "segcore/reduce/Reduce.h"
 #include "segcore/reduce_c.h"
 #include "segcore/segment_c.h"
 #include "DataGen.h"

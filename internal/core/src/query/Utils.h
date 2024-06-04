@@ -71,7 +71,7 @@ out_of_range(int64_t t) {
     return gt_ub<T>(t) || lt_lb<T>(t);
 }
 
-bool
+inline bool
 dis_closer(float dis1, float dis2, const MetricType& metric_type){
     if (PositivelyRelated(metric_type))
         return dis1 > dis2;
