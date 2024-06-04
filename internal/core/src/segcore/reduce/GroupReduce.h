@@ -25,14 +25,14 @@ public:
                                ReduceHelper(search_results, plan, slice_nqs, slice_topKs, slice_num, trace_ctx){}
 
     void
-    Reduce();
-
-    void
     Marshal();
 
 protected:
     void
-    FilterInvalidSearchResult(SearchResult* search_result);
+    FilterInvalidSearchResult(SearchResult* search_result) override;
+
+    int64_t
+    ReduceSearchResultForOneNQ(int64_t qi, int64_t topk, int64_t& result_offset) override;
 
 private:
     std::unordered_set<milvus::GroupByValueType> group_by_val_set_{};

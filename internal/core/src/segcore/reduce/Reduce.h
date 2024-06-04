@@ -60,7 +60,7 @@ class ReduceHelper {
     }
 
  protected:
-    void
+    virtual void
     FilterInvalidSearchResult(SearchResult* search_result);
 
     void
@@ -72,17 +72,17 @@ class ReduceHelper {
     void
     ReduceResultData();
 
+    virtual int64_t
+    ReduceSearchResultForOneNQ(int64_t qi,
+                               int64_t topk,
+                               int64_t& result_offset);
+
  private:
     void
     Initialize();
 
     void
     FillEntryData();
-
-    int64_t
-    ReduceSearchResultForOneNQ(int64_t qi,
-                               int64_t topk,
-                               int64_t& result_offset);
 
     std::vector<char>
     GetSearchResultDataSlice(int slice_index_);
@@ -94,10 +94,6 @@ class ReduceHelper {
     std::vector<int64_t> slice_nqs_prefix_sum_;
     int64_t num_segments_;
     std::vector<int64_t> slice_topKs_;
-    std::priority_queue<SearchResultPair*,
-                        std::vector<SearchResultPair*>,
-                        SearchResultPairComparator>
-        heap_;
     // Used for merge results,
     // define these here to avoid allocating them for each query
     std::vector<SearchResultPair> pairs_;

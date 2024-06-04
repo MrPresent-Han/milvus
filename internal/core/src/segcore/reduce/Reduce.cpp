@@ -190,9 +190,10 @@ int64_t
 ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
                                          int64_t topk,
                                          int64_t& offset) {
-    while (!heap_.empty()) {
-        heap_.pop();
-    }
+    std::priority_queue<SearchResultPair*,
+            std::vector<SearchResultPair*>,
+            SearchResultPairComparator>
+            heap;
     pk_set_.clear();
     pairs_.clear();
 
@@ -213,19 +214,19 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
             i,
             offset_beg,
             offset_end);
-        heap_.push(&pairs_.back());
+        heap.push(&pairs_.back());
     }
 
     // nq has no results for all segments
-    if (heap_.size() == 0) {
+    if (heap.size() == 0) {
         return 0;
     }
 
     int64_t dup_cnt = 0;
     auto start = offset;
-    while (offset - start < topk && !heap_.empty()) {
-        auto pilot = heap_.top();
-        heap_.pop();
+    while (offset - start < topk && !heap.empty()) {
+        auto pilot = heap.top();
+        heap.pop();
 
         auto index = pilot->segment_index_;
         auto pk = pilot->primary_key_;
@@ -244,7 +245,7 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
         }
         pilot->advance();
         if (pilot->primary_key_ != INVALID_PK) {
-            heap_.push(pilot);
+            heap.push(pilot);
         }
     }
     return dup_cnt;
@@ -266,7 +267,7 @@ ReduceHelper::ReduceResultData() {
                    "incorrect search result primary key size");
     }
 
-    int64_t skip_dup_cnt = 0;
+    int64_t filtered_count = 0;
     for (int64_t slice_index = 0; slice_index < num_slices_; slice_index++) {
         auto nq_begin = slice_nqs_prefix_sum_[slice_index];
         auto nq_end = slice_nqs_prefix_sum_[slice_index + 1];
@@ -274,12 +275,12 @@ ReduceHelper::ReduceResultData() {
         // reduce search results
         int64_t offset = 0;
         for (int64_t qi = nq_begin; qi < nq_end; qi++) {
-            skip_dup_cnt += ReduceSearchResultForOneNQ(
+            filtered_count += ReduceSearchResultForOneNQ(
                 qi, slice_topKs_[slice_index], offset);
         }
     }
-    if (skip_dup_cnt > 0) {
-        LOG_DEBUG("skip duplicated search result, count = {}", skip_dup_cnt);
+    if (filtered_count > 0) {
+        LOG_DEBUG("skip duplicated search result, count = {}", filtered_count);
     }
 }
 

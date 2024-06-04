@@ -204,6 +204,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
                       search_result.distances_,
                       search_result.topk_per_nq_prefix_sum_);
         search_result.group_by_values_ = std::move(group_by_values);
+        search_result.group_size_ = node.search_info_.group_size_;
         AssertInfo(search_result.seg_offsets_.size() ==
                        search_result.group_by_values_.value().size(),
                    "Wrong state! search_result group_by_values_ size:{} is not "
