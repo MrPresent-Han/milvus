@@ -202,7 +202,7 @@ public:
         return group_map_.size() == group_capacity_ && enough_group_count == group_capacity_;
     }
     bool Push(const T& t, int64_t offset, float distance, const MetricType& metric_type){
-        if(group_map_.size() >= group_capacity_) return false;
+        if(group_map_.size() >= group_capacity_ && group_map_[t] == 0) return false;
         if(group_map_[t] >= group_size_) {
             //we ignore following input no matter the distance as knowhere::iterator doesn't guarantee
             //strictly increase/decreasing distance output

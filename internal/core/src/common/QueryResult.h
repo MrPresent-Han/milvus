@@ -211,7 +211,7 @@ struct SearchResult {
     std::map<FieldId, std::unique_ptr<milvus::DataArray>> output_fields_data_;
 
     // used for reduce, filter invalid pk, get real topks count
-    std::vector<size_t> topk_per_nq_prefix_sum_;
+    std::vector<size_t> topk_per_nq_prefix_sum_{};
 
     //Vector iterators, used for group by
     std::optional<std::vector<std::shared_ptr<VectorIterator>>>
