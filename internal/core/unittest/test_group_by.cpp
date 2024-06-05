@@ -695,7 +695,7 @@ TEST(GroupBY, GrowingRawData) {
     const char* raw_plan = R"(vector_anns: <
                                         field_id: 102
                                         query_info: <
-                                          topk: 100
+                                          topk: 10
                                           metric_type: "L2"
                                           search_params: "{\"ef\": 10}"
                                           group_by_field_id: 101
@@ -817,8 +817,6 @@ TEST(GroupBY, GrowingIndex) {
     auto size = group_by_values.size();
     int expected_group_count = 100;
     ASSERT_EQ(size, expected_group_count * group_size * num_queries);
-
-
     int idx = 0;
     for (int i = 0; i < num_queries; i++) {
         std::unordered_map<int32_t, int> i32_map;
