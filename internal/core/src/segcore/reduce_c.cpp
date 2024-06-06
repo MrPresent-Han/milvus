@@ -11,6 +11,7 @@
 
 #include <vector>
 #include "segcore/reduce/Reduce.h"
+#include "segcore/reduce/GroupReduce.h"
 #include "common/QueryResult.h"
 #include "common/EasyAssert.h"
 #include "query/Plan.h"
@@ -95,17 +96,27 @@ ReduceSearchResultsAndFillData(CTraceContext c_trace,
             search_results[i] = static_cast<SearchResult*>(c_search_results[i]);
         }
 
-        auto reduce_helper = milvus::segcore::ReduceHelper(search_results,
-                                                           plan,
-                                                           slice_nqs,
-                                                           slice_topKs,
-                                                           num_slices,
-                                                           &trace_ctx);
-        reduce_helper.Reduce();
-        reduce_helper.Marshal();
+        std::shared_ptr<milvus::segcore::ReduceHelper> reduce_helper;
+        if(plan->plan_node_->search_info_.group_by_field_id_.has_value()){
+            reduce_helper = std::make_shared<milvus::segcore::GroupReduceHelper>(search_results,
+                                                          plan,
+                                                          slice_nqs,
+                                                          slice_topKs,
+                                                          num_slices,
+                                                          &trace_ctx);
+        } else {
+            reduce_helper = std::make_shared<milvus::segcore::ReduceHelper>(search_results,
+                                                          plan,
+                                                          slice_nqs,
+                                                          slice_topKs,
+                                                          num_slices,
+                                                          &trace_ctx);
+        }
+        reduce_helper->Reduce();
+        reduce_helper->Marshal();
 
         // set final result ptr
-        *cSearchResultDataBlobs = reduce_helper.GetSearchResultDataBlobs();
+        *cSearchResultDataBlobs = reduce_helper->GetSearchResultDataBlobs();
         return milvus::SuccessCStatus();
     } catch (std::exception& e) {
         return milvus::FailureCStatus(&e);

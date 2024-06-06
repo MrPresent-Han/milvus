@@ -547,8 +547,8 @@ TEST(GroupBY, Reduce) {
     uint64_t ts_offset = 0;
     int repeat_count_1 = 2;
     int repeat_count_2 = 5;
-    auto raw_data1 = DataGen(schema, N, seed, ts_offset, repeat_count_1);
-    auto raw_data2 = DataGen(schema, N, seed, ts_offset, repeat_count_2);
+    auto raw_data1 = DataGen(schema, N, seed, ts_offset, repeat_count_1, false, false);
+    auto raw_data2 = DataGen(schema, N, seed, ts_offset, repeat_count_2, false, false);
 
     auto fields = schema->get_fields();
     //load segment1 raw data
@@ -595,13 +595,17 @@ TEST(GroupBY, Reduce) {
     segment2->LoadIndex(load_index_info_2);
 
     //4. search group by respectively
+    auto num_queries = 10;
+    auto topK = 10;
+    int group_size = 3;
     const char* raw_plan = R"(vector_anns: <
                                         field_id: 100
                                         query_info: <
-                                          topk: 100
+                                          topk: 10
                                           metric_type: "L2"
                                           search_params: "{\"ef\": 10}"
                                           group_by_field_id: 101
+                                          group_size: 3
                                         >
                                         placeholder_tag: "$0"
 
@@ -609,8 +613,6 @@ TEST(GroupBY, Reduce) {
     auto plan_str = translate_text_plan_to_binary_plan(raw_plan);
     auto plan =
         CreateSearchPlanByExpr(*schema, plan_str.data(), plan_str.size());
-    auto num_queries = 10;
-    auto topK = 100;
     auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
     auto ph_group =
         ParsePlaceholderGroup(plan.get(), ph_group_raw.SerializeAsString());
@@ -642,7 +644,7 @@ TEST(GroupBY, Reduce) {
                                             slice_nqs.data(),
                                             slice_topKs.data(),
                                             slice_nqs.size());
-    CheckSearchResultDuplicate(results);
+    CheckSearchResultDuplicate(results, group_size);
     DeleteSearchResult(c_search_res_1);
     DeleteSearchResult(c_search_res_2);
     DeleteSearchResultDataBlobs(cSearchResultData);
