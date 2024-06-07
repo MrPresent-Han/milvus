@@ -64,7 +64,12 @@ class ReduceHelper {
     FilterInvalidSearchResult(SearchResult* search_result);
 
     void
-    RefreshSearchResult();
+    RefreshSearchResults();
+
+    virtual void
+    RefreshSingleSearchResult(SearchResult* search_result,
+                              int seg_res_idx,
+                              std::vector<int64_t>& real_topks);
 
     void
     FillPrimaryKey();
@@ -76,6 +81,13 @@ class ReduceHelper {
     ReduceSearchResultForOneNQ(int64_t qi,
                                int64_t topk,
                                int64_t& result_offset);
+
+    virtual void
+    FillOtherData(int result_count,
+                  int64_t nq_begin,
+                  int64_t nq_end,
+                  std::unique_ptr<milvus::proto::schema::SearchResultData>&
+                      search_res_data);
 
  private:
     void

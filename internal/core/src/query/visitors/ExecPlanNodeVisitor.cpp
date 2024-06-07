@@ -193,8 +193,10 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
                            search_result);
     search_result.total_data_cnt_ = final_view.size();
     if (search_result.vector_iterators_.has_value()) {
-        AssertInfo(search_result.vector_iterators_.value().size() == search_result.total_nq_,
-                   "Vector Iterators' count must be equal to total_nq_, Check your code");
+        AssertInfo(search_result.vector_iterators_.value().size() ==
+                       search_result.total_nq_,
+                   "Vector Iterators' count must be equal to total_nq_, Check "
+                   "your code");
         std::vector<GroupByValueType> group_by_values;
         SearchGroupBy(search_result.vector_iterators_.value(),
                       node.search_info_,

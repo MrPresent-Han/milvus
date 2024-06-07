@@ -97,20 +97,23 @@ ReduceSearchResultsAndFillData(CTraceContext c_trace,
         }
 
         std::shared_ptr<milvus::segcore::ReduceHelper> reduce_helper;
-        if(plan->plan_node_->search_info_.group_by_field_id_.has_value()){
-            reduce_helper = std::make_shared<milvus::segcore::GroupReduceHelper>(search_results,
-                                                          plan,
-                                                          slice_nqs,
-                                                          slice_topKs,
-                                                          num_slices,
-                                                          &trace_ctx);
+        if (plan->plan_node_->search_info_.group_by_field_id_.has_value()) {
+            reduce_helper =
+                std::make_shared<milvus::segcore::GroupReduceHelper>(
+                    search_results,
+                    plan,
+                    slice_nqs,
+                    slice_topKs,
+                    num_slices,
+                    &trace_ctx);
         } else {
-            reduce_helper = std::make_shared<milvus::segcore::ReduceHelper>(search_results,
-                                                          plan,
-                                                          slice_nqs,
-                                                          slice_topKs,
-                                                          num_slices,
-                                                          &trace_ctx);
+            reduce_helper =
+                std::make_shared<milvus::segcore::ReduceHelper>(search_results,
+                                                                plan,
+                                                                slice_nqs,
+                                                                slice_topKs,
+                                                                num_slices,
+                                                                &trace_ctx);
         }
         reduce_helper->Reduce();
         reduce_helper->Marshal();

@@ -209,8 +209,9 @@ ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
     if (query_info_proto.group_by_field_id() > 0) {
         auto group_by_field_id = FieldId(query_info_proto.group_by_field_id());
         search_info.group_by_field_id_ = group_by_field_id;
-        AssertInfo(query_info_proto.group_size() > 0, "group size must be greater than zero");
-        search_info.group_size_ = query_info_proto.group_size();
+        search_info.group_size_ = query_info_proto.group_size() > 0
+                                      ? query_info_proto.group_size()
+                                      : 1;
     }
 
     auto plan_node = [&]() -> std::unique_ptr<VectorPlanNode> {

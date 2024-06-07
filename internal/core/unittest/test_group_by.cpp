@@ -68,7 +68,7 @@ CheckGroupBySearchResult(const SearchResult& search_result,
     ASSERT_EQ(search_result.seg_offsets_.size(), size);
     ASSERT_EQ(search_result.distances_.size(), size);
     ASSERT_TRUE(search_result.seg_offsets_[0] != INVALID_SEG_OFFSET);
-    ASSERT_TRUE(search_result.seg_offsets_[size-1] != INVALID_SEG_OFFSET);
+    ASSERT_TRUE(search_result.seg_offsets_[size - 1] != INVALID_SEG_OFFSET);
     ASSERT_EQ(search_result.topk_per_nq_prefix_sum_.size(), nq + 1);
     ASSERT_EQ(size, search_result.topk_per_nq_prefix_sum_[nq]);
 }
@@ -137,9 +137,8 @@ TEST(GroupBY, SealedIndex) {
          >)";
         proto::plan::PlanNode plan_node;
         auto ok =
-                google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
-        auto plan =
-            CreateSearchPlanFromPlanNode(*schema, plan_node);
+            google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
+        auto plan = CreateSearchPlanFromPlanNode(*schema, plan_node);
         auto num_queries = 1;
         auto seed = 1024;
         auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
@@ -160,7 +159,7 @@ TEST(GroupBY, SealedIndex) {
         for (size_t i = 0; i < size; i++) {
             if (std::holds_alternative<int8_t>(group_by_values[i])) {
                 int8_t g_val = std::get<int8_t>(group_by_values[i]);
-                i8_map[g_val]+=1;
+                i8_map[g_val] += 1;
                 ASSERT_TRUE(i8_map[g_val] <= group_size);
                 //for every group, the number of hits should not exceed group_size
                 auto distance = search_result->distances_.at(i);
@@ -191,9 +190,8 @@ TEST(GroupBY, SealedIndex) {
 
         proto::plan::PlanNode plan_node;
         auto ok =
-                google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
-        auto plan =
-                CreateSearchPlanFromPlanNode(*schema, plan_node);
+            google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
+        auto plan = CreateSearchPlanFromPlanNode(*schema, plan_node);
         auto num_queries = 1;
         auto seed = 1024;
         auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
@@ -214,7 +212,7 @@ TEST(GroupBY, SealedIndex) {
         for (size_t i = 0; i < size; i++) {
             if (std::holds_alternative<int16_t>(group_by_values[i])) {
                 int16_t g_val = std::get<int16_t>(group_by_values[i]);
-                i16_map[g_val]+=1;
+                i16_map[g_val] += 1;
                 ASSERT_TRUE(i16_map[g_val] <= group_size);
                 auto distance = search_result->distances_.at(i);
                 ASSERT_TRUE(
@@ -242,9 +240,8 @@ TEST(GroupBY, SealedIndex) {
 
         proto::plan::PlanNode plan_node;
         auto ok =
-                google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
-        auto plan =
-                CreateSearchPlanFromPlanNode(*schema, plan_node);
+            google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
+        auto plan = CreateSearchPlanFromPlanNode(*schema, plan_node);
         auto num_queries = 1;
         auto seed = 1024;
         auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
@@ -265,7 +262,7 @@ TEST(GroupBY, SealedIndex) {
         for (size_t i = 0; i < size; i++) {
             if (std::holds_alternative<int32_t>(group_by_values[i])) {
                 int16_t g_val = std::get<int32_t>(group_by_values[i]);
-                i32_map[g_val]+=1;
+                i32_map[g_val] += 1;
                 ASSERT_TRUE(i32_map[g_val] <= group_size);
                 auto distance = search_result->distances_.at(i);
                 ASSERT_TRUE(
@@ -294,9 +291,8 @@ TEST(GroupBY, SealedIndex) {
 
         proto::plan::PlanNode plan_node;
         auto ok =
-                google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
-        auto plan =
-                CreateSearchPlanFromPlanNode(*schema, plan_node);
+            google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
+        auto plan = CreateSearchPlanFromPlanNode(*schema, plan_node);
         auto num_queries = 1;
         auto seed = 1024;
         auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
@@ -316,7 +312,7 @@ TEST(GroupBY, SealedIndex) {
         for (size_t i = 0; i < size; i++) {
             if (std::holds_alternative<int64_t>(group_by_values[i])) {
                 int16_t g_val = std::get<int64_t>(group_by_values[i]);
-                i64_map[g_val]+=1;
+                i64_map[g_val] += 1;
                 ASSERT_TRUE(i64_map[g_val] <= group_size);
                 auto distance = search_result->distances_.at(i);
                 ASSERT_TRUE(
@@ -325,9 +321,8 @@ TEST(GroupBY, SealedIndex) {
                 lastDistance = distance;
             }
         }
-        ASSERT_TRUE(i64_map.size()==7);
+        ASSERT_TRUE(i64_map.size() == 7);
     }
-
 
     //8. search group by string
     {
@@ -346,9 +341,8 @@ TEST(GroupBY, SealedIndex) {
 
         proto::plan::PlanNode plan_node;
         auto ok =
-                google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
-        auto plan =
-                CreateSearchPlanFromPlanNode(*schema, plan_node);
+            google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
+        auto plan = CreateSearchPlanFromPlanNode(*schema, plan_node);
         auto num_queries = 1;
         auto seed = 1024;
         auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
@@ -376,7 +370,7 @@ TEST(GroupBY, SealedIndex) {
                 lastDistance = distance;
             }
         }
-        ASSERT_TRUE(strs_map.size()==7);
+        ASSERT_TRUE(strs_map.size() == 7);
     }
 
     //9. search group by bool
@@ -396,9 +390,8 @@ TEST(GroupBY, SealedIndex) {
 
         proto::plan::PlanNode plan_node;
         auto ok =
-                google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
-        auto plan =
-                CreateSearchPlanFromPlanNode(*schema, plan_node);
+            google::protobuf::TextFormat::ParseFromString(raw_plan, &plan_node);
+        auto plan = CreateSearchPlanFromPlanNode(*schema, plan_node);
         auto num_queries = 1;
         auto seed = 1024;
         auto ph_group_raw = CreatePlaceholderGroup(num_queries, dim, seed);
@@ -419,7 +412,7 @@ TEST(GroupBY, SealedIndex) {
         for (size_t i = 0; i < size; i++) {
             if (std::holds_alternative<bool>(group_by_values[i])) {
                 bool g_val = std::get<bool>(group_by_values[i]);
-                bools_map[g_val]+=1;
+                bools_map[g_val] += 1;
                 ASSERT_TRUE(bools_map[g_val] <= group_size);
                 auto distance = search_result->distances_.at(i);
                 ASSERT_TRUE(
@@ -506,7 +499,7 @@ TEST(GroupBY, SealedData) {
         for (size_t i = 0; i < size; i++) {
             if (std::holds_alternative<int8_t>(group_by_values[i])) {
                 int8_t g_val = std::get<int8_t>(group_by_values[i]);
-                i8_map[g_val]+=1;
+                i8_map[g_val] += 1;
                 ASSERT_TRUE(i8_map[g_val] <= group_size);
                 auto distance = search_result->distances_.at(i);
                 ASSERT_TRUE(
@@ -516,7 +509,7 @@ TEST(GroupBY, SealedData) {
             }
         }
         ASSERT_TRUE(i8_map.size() == topK);
-        for(const auto& it: i8_map){
+        for (const auto& it : i8_map) {
             ASSERT_TRUE(it.second == group_size);
         }
     }
@@ -547,8 +540,10 @@ TEST(GroupBY, Reduce) {
     uint64_t ts_offset = 0;
     int repeat_count_1 = 2;
     int repeat_count_2 = 5;
-    auto raw_data1 = DataGen(schema, N, seed, ts_offset, repeat_count_1, false, false);
-    auto raw_data2 = DataGen(schema, N, seed, ts_offset, repeat_count_2, false, false);
+    auto raw_data1 =
+        DataGen(schema, N, seed, ts_offset, repeat_count_1, false, false);
+    auto raw_data2 =
+        DataGen(schema, N, seed, ts_offset, repeat_count_2, false, false);
 
     auto fields = schema->get_fields();
     //load segment1 raw data
@@ -679,7 +674,8 @@ TEST(GroupBY, GrowingRawData) {
     int64_t rows_per_batch = 512;
     int n_batch = 3;
     for (int i = 0; i < n_batch; i++) {
-        auto data_set = DataGen(schema, rows_per_batch, 42, 0, 8, 10, false, false);
+        auto data_set =
+            DataGen(schema, rows_per_batch, 42, 0, 8, 10, false, false);
         auto offset = segment_growing_impl->PreInsert(rows_per_batch);
         segment_growing_impl->Insert(offset,
                                      rows_per_batch,
@@ -695,7 +691,7 @@ TEST(GroupBY, GrowingRawData) {
     const char* raw_plan = R"(vector_anns: <
                                         field_id: 102
                                         query_info: <
-                                          topk: 10
+                                          topk: 100
                                           metric_type: "L2"
                                           search_params: "{\"ef\": 10}"
                                           group_by_field_id: 101
@@ -727,13 +723,12 @@ TEST(GroupBY, GrowingRawData) {
         for (int j = 0; j < expected_group_count; j++) {
             if (std::holds_alternative<int32_t>(group_by_values[idx])) {
                 int32_t g_val = std::get<int32_t>(group_by_values[idx]);
-                ASSERT_FALSE(i32_set.count(g_val) >
-                             0);  //as the group_size is 1, there should not be any duplication for group_by value
+                ASSERT_FALSE(
+                    i32_set.count(g_val) >
+                    0);  //as the group_size is 1, there should not be any duplication for group_by value
                 i32_set.insert(g_val);
                 auto distance = search_result->distances_.at(idx);
-                ASSERT_TRUE(
-                    lastDistance <=
-                    distance);
+                ASSERT_TRUE(lastDistance <= distance);
                 lastDistance = distance;
             }
             idx++;
@@ -778,7 +773,8 @@ TEST(GroupBY, GrowingIndex) {
     int64_t rows_per_batch = 1024;
     int n_batch = 10;
     for (int i = 0; i < n_batch; i++) {
-        auto data_set = DataGen(schema, rows_per_batch, 42, 0, 8, 10, false, false);
+        auto data_set =
+            DataGen(schema, rows_per_batch, 42, 0, 8, 10, false, false);
         auto offset = segment_growing_impl->PreInsert(rows_per_batch);
         segment_growing_impl->Insert(offset,
                                      rows_per_batch,
@@ -824,7 +820,7 @@ TEST(GroupBY, GrowingIndex) {
         for (int j = 0; j < expected_group_count * group_size; j++) {
             if (std::holds_alternative<int32_t>(group_by_values[idx])) {
                 int32_t g_val = std::get<int32_t>(group_by_values[idx]);
-                i32_map[g_val]+=1;
+                i32_map[g_val] += 1;
                 ASSERT_TRUE(i32_map[g_val] <= group_size);
                 auto distance = search_result->distances_.at(idx);
                 ASSERT_TRUE(
@@ -835,7 +831,7 @@ TEST(GroupBY, GrowingIndex) {
             idx++;
         }
         ASSERT_EQ(i32_map.size(), expected_group_count);
-        for(const auto& map_pair: i32_map){
+        for (const auto& map_pair : i32_map) {
             ASSERT_EQ(group_size, map_pair.second);
         }
     }

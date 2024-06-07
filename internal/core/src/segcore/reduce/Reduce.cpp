@@ -56,7 +56,7 @@ void
 ReduceHelper::Reduce() {
     FillPrimaryKey();
     ReduceResultData();
-    RefreshSearchResult();
+    RefreshSearchResults();
     FillEntryData();
 }
 
@@ -141,39 +141,46 @@ ReduceHelper::FillPrimaryKey() {
 }
 
 void
-ReduceHelper::RefreshSearchResult() {
+ReduceHelper::RefreshSearchResults() {
     tracer::AutoSpan span(
-        "ReduceHelper::RefreshSearchResult", trace_ctx_, false);
+        "ReduceHelper::RefreshSearchResults", trace_ctx_, false);
     for (int i = 0; i < num_segments_; i++) {
         std::vector<int64_t> real_topks(total_nq_, 0);
         auto search_result = search_results_[i];
         if (search_result->result_offsets_.size() != 0) {
-            uint32_t size = 0;
-            for (int j = 0; j < total_nq_; j++) {
-                size += final_search_records_[i][j].size();
-            }
-            std::vector<milvus::PkType> primary_keys(size);
-            std::vector<float> distances(size);
-            std::vector<int64_t> seg_offsets(size);
-
-            uint32_t index = 0;
-            for (int j = 0; j < total_nq_; j++) {
-                for (auto offset : final_search_records_[i][j]) {
-                    primary_keys[index] = search_result->primary_keys_[offset];
-                    distances[index] = search_result->distances_[offset];
-                    seg_offsets[index] = search_result->seg_offsets_[offset];
-                    index++;
-                    real_topks[j]++;
-                }
-            }
-            search_result->primary_keys_.swap(primary_keys);
-            search_result->distances_.swap(distances);
-            search_result->seg_offsets_.swap(seg_offsets);
+            RefreshSingleSearchResult(search_result, i, real_topks);
         }
         std::partial_sum(real_topks.begin(),
                          real_topks.end(),
                          search_result->topk_per_nq_prefix_sum_.begin() + 1);
     }
+}
+
+void
+ReduceHelper::RefreshSingleSearchResult(SearchResult* search_result,
+                                        int seg_res_idx,
+                                        std::vector<int64_t>& real_topks) {
+    uint32_t size = 0;
+    for (int j = 0; j < total_nq_; j++) {
+        size += final_search_records_[seg_res_idx][j].size();
+    }
+    std::vector<milvus::PkType> primary_keys(size);
+    std::vector<float> distances(size);
+    std::vector<int64_t> seg_offsets(size);
+
+    uint32_t index = 0;
+    for (int j = 0; j < total_nq_; j++) {
+        for (auto offset : final_search_records_[seg_res_idx][j]) {
+            primary_keys[index] = search_result->primary_keys_[offset];
+            distances[index] = search_result->distances_[offset];
+            seg_offsets[index] = search_result->seg_offsets_[offset];
+            index++;
+            real_topks[j]++;
+        }
+    }
+    search_result->primary_keys_.swap(primary_keys);
+    search_result->distances_.swap(distances);
+    search_result->seg_offsets_.swap(seg_offsets);
 }
 
 void
@@ -191,9 +198,9 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
                                          int64_t topk,
                                          int64_t& offset) {
     std::priority_queue<SearchResultPair*,
-            std::vector<SearchResultPair*>,
-            SearchResultPairComparator>
-            heap;
+                        std::vector<SearchResultPair*>,
+                        SearchResultPairComparator>
+        heap;
     pk_set_.clear();
     pairs_.clear();
 
@@ -208,12 +215,7 @@ ReduceHelper::ReduceSearchResultForOneNQ(int64_t qi,
         auto primary_key = search_result->primary_keys_[offset_beg];
         auto distance = search_result->distances_[offset_beg];
         pairs_.emplace_back(
-            primary_key,
-            distance,
-            search_result,
-            i,
-            offset_beg,
-            offset_end);
+            primary_key, distance, search_result, i, offset_beg, offset_end);
         heap.push(&pairs_.back());
     }
 
@@ -284,6 +286,15 @@ ReduceHelper::ReduceResultData() {
     }
 }
 
+void
+ReduceHelper::FillOtherData(
+    int result_count,
+    int64_t nq_begin,
+    int64_t nq_end,
+    std::unique_ptr<milvus::proto::schema::SearchResultData>& search_res_data) {
+    //simple batch reduce do nothing for other data
+}
+
 std::vector<char>
 ReduceHelper::GetSearchResultDataSlice(int slice_index) {
     auto nq_begin = slice_nqs_prefix_sum_[slice_index];
@@ -306,7 +317,6 @@ ReduceHelper::GetSearchResultDataSlice(int slice_index) {
     search_result_data->set_top_k(slice_topKs_[slice_index]);
     search_result_data->set_num_queries(nq_end - nq_begin);
     search_result_data->mutable_topks()->Resize(nq_end - nq_begin, 0);
-
     search_result_data->set_all_search_count(all_search_count);
 
     // `result_pairs` contains the SearchResult and result_offset info, used for filling output fields
@@ -404,6 +414,8 @@ ReduceHelper::GetSearchResultDataSlice(int slice_index) {
                "wrong scores size, size = " +
                    std::to_string(search_result_data->scores_size()) +
                    ", expected size = " + std::to_string(result_count));
+    // fill other wanted data
+    FillOtherData(result_count, nq_begin, nq_end, search_result_data);
 
     // set output fields
     for (auto field_id : plan_->target_entries_) {

@@ -417,7 +417,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                 vector<int> data(N);
                 for (int i = 0; i < N; i++) {
                     int x = 0;
-                    if(random_val)
+                    if (random_val)
                         x = random() % (2 * N);
                     else
                         x = i / repeat_count;
@@ -430,7 +430,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                 vector<int16_t> data(N);
                 for (int i = 0; i < N; i++) {
                     int16_t x = 0;
-                    if(random_val)
+                    if (random_val)
                         x = random() % (2 * N);
                     else
                         x = i / repeat_count;
@@ -443,7 +443,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                 vector<int8_t> data(N);
                 for (int i = 0; i < N; i++) {
                     int8_t x = 0;
-                    if(random_val)
+                    if (random_val)
                         x = random() % (2 * N);
                     else
                         x = i / repeat_count;

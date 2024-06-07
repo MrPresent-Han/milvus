@@ -85,7 +85,8 @@ generate_query_data(int nq) {
     return blob;
 }
 void
-CheckSearchResultDuplicate(const std::vector<CSearchResult>& results, int group_size = 1) {
+CheckSearchResultDuplicate(const std::vector<CSearchResult>& results,
+                           int group_size = 1) {
     auto nq = ((SearchResult*)results[0])->total_nq_;
     std::unordered_set<PkType> pk_set;
     std::unordered_map<GroupByValueType, int> group_by_map;
@@ -106,7 +107,7 @@ CheckSearchResultDuplicate(const std::vector<CSearchResult>& results, int group_
                     search_result->group_by_values_.value().size() > ki) {
                     auto group_by_val =
                         search_result->group_by_values_.value()[ki];
-                    group_by_map[group_by_val]+=1;
+                    group_by_map[group_by_val] += 1;
                     ASSERT_TRUE(group_by_map[group_by_val] <= group_size);
                 }
             }

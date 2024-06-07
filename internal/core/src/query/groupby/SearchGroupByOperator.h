@@ -190,28 +190,37 @@ GroupIteratorsByType(
     std::vector<size_t>& topk_per_nq_prefix_sum);
 
 template <typename T>
-struct GroupByMap{
-private:
+struct GroupByMap {
+ private:
     std::unordered_map<T, int> group_map_{};
     int group_capacity_{0};
     int group_size_{0};
     int enough_group_count{0};
-public:
-    GroupByMap(int group_capacity, int group_size): group_capacity_(group_capacity), group_size_(group_size){};
-    bool IsGroupResEnough(){
-        return group_map_.size() == group_capacity_ && enough_group_count == group_capacity_;
+
+ public:
+    GroupByMap(int group_capacity, int group_size)
+        : group_capacity_(group_capacity), group_size_(group_size){};
+    bool
+    IsGroupResEnough() {
+        return group_map_.size() == group_capacity_ &&
+               enough_group_count == group_capacity_;
     }
-    bool Push(const T& t, int64_t offset, float distance, const MetricType& metric_type){
-        if(group_map_.size() >= group_capacity_ && group_map_[t] == 0) return false;
-        if(group_map_[t] >= group_size_) {
+    bool
+    Push(const T& t,
+         int64_t offset,
+         float distance,
+         const MetricType& metric_type) {
+        if (group_map_.size() >= group_capacity_ && group_map_[t] == 0)
+            return false;
+        if (group_map_[t] >= group_size_) {
             //we ignore following input no matter the distance as knowhere::iterator doesn't guarantee
             //strictly increase/decreasing distance output
             //but this should not be a very serious influence to overall recall rate
             return false;
         }
         group_map_[t] += 1;
-        if(group_map_[t] >= group_size_){
-            enough_group_count+=1;
+        if (group_map_[t] >= group_size_) {
+            enough_group_count += 1;
         }
         return true;
     }

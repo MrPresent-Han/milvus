@@ -14,29 +14,45 @@
 #include "query/PlanImpl.h"
 
 namespace milvus::segcore {
-class GroupReduceHelper: public ReduceHelper{
-public:
+class GroupReduceHelper : public ReduceHelper {
+ public:
     explicit GroupReduceHelper(std::vector<SearchResult*>& search_results,
                                milvus::query::Plan* plan,
                                int64_t* slice_nqs,
                                int64_t* slice_topKs,
                                int64_t slice_num,
-                               tracer::TraceContext* trace_ctx):
-                               ReduceHelper(search_results, plan, slice_nqs, slice_topKs, slice_num, trace_ctx){}
+                               tracer::TraceContext* trace_ctx)
+        : ReduceHelper(search_results,
+                       plan,
+                       slice_nqs,
+                       slice_topKs,
+                       slice_num,
+                       trace_ctx) {
+    }
 
-    void
-    Marshal();
-
-protected:
+ protected:
     void
     FilterInvalidSearchResult(SearchResult* search_result) override;
 
     int64_t
-    ReduceSearchResultForOneNQ(int64_t qi, int64_t topk, int64_t& result_offset) override;
+    ReduceSearchResultForOneNQ(int64_t qi,
+                               int64_t topk,
+                               int64_t& result_offset) override;
 
-private:
+    void
+    RefreshSingleSearchResult(SearchResult* search_result,
+                              int seg_res_idx,
+                              std::vector<int64_t>& real_topks) override;
+
+    void
+    FillOtherData(int result_count,
+                  int64_t nq_begin,
+                  int64_t nq_end,
+                  std::unique_ptr<milvus::proto::schema::SearchResultData>&
+                      search_res_data) override;
+
+ private:
     std::unordered_set<milvus::GroupByValueType> group_by_val_set_{};
 };
 
-}
-
+}  // namespace milvus::segcore

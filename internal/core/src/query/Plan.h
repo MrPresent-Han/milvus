@@ -33,7 +33,8 @@ CreateSearchPlanByExpr(const Schema& schema,
                        const int64_t size);
 
 std::unique_ptr<Plan>
-CreateSearchPlanFromPlanNode(const Schema& schema, const proto::plan::PlanNode& plan_node);
+CreateSearchPlanFromPlanNode(const Schema& schema,
+                             const proto::plan::PlanNode& plan_node);
 
 std::unique_ptr<PlaceholderGroup>
 ParsePlaceholderGroup(const Plan* plan,

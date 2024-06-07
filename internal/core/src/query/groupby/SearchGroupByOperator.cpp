@@ -32,7 +32,8 @@ SearchGroupBy(const std::vector<std::shared_ptr<VectorIterator>>& iterators,
     //1. get search meta
     FieldId group_by_field_id = search_info.group_by_field_id_.value();
     auto data_type = segment.GetFieldDataType(group_by_field_id);
-    int max_total_size = search_info.topk_ * search_info.group_size_ * iterators.size();
+    int max_total_size =
+        search_info.topk_ * search_info.group_size_ * iterators.size();
     seg_offsets.reserve(max_total_size);
     distances.reserve(max_total_size);
     group_by_values.reserve(max_total_size);
@@ -181,7 +182,7 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
         auto offset = offset_dis_pair.value().first;
         auto dis = offset_dis_pair.value().second;
         T row_data = data_getter.Get(offset);
-        if(groupMap.Push(row_data, offset, dis, metrics_type)){
+        if (groupMap.Push(row_data, offset, dis, metrics_type)) {
             res.emplace_back(offset, dis, row_data);
         }
     }
@@ -193,8 +194,7 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
     std::sort(res.begin(), res.end(), customComparator);
 
     //4. save groupBy results
-    for (auto iter = res.cbegin(); iter != res.cend();
-         iter++) {
+    for (auto iter = res.cbegin(); iter != res.cend(); iter++) {
         offsets.push_back(std::get<0>(*iter));
         distances.push_back(std::get<1>(*iter));
         group_by_values.emplace_back(std::get<2>(*iter));

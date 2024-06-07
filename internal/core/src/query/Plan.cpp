@@ -91,7 +91,8 @@ CreateSearchPlanByExpr(const Schema& schema,
 }
 
 std::unique_ptr<Plan>
-CreateSearchPlanFromPlanNode(const Schema& schema, const proto::plan::PlanNode& plan_node){
+CreateSearchPlanFromPlanNode(const Schema& schema,
+                             const proto::plan::PlanNode& plan_node) {
     return ProtoParser(schema).CreatePlan(plan_node);
 }
 
