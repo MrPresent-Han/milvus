@@ -793,6 +793,7 @@ func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (
 		result, err2 = searchreduce.ReduceSearchResults(ctx, toReduceResults, searchreduce.NewReduceInfo(req.GetReq().GetNq(),
 			req.GetReq().GetTopk(),
 			req.GetReq().GetExtraSearchParam().GetGroupByFieldId(),
+			req.GetReq().GetExtraSearchParam().GetGroupSize(),
 			req.GetReq().GetMetricType()))
 	}
 

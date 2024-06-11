@@ -4,15 +4,52 @@ import (
 	"context"
 	"fmt"
 	"github.com/milvus-io/milvus/pkg/log"
+	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
+	"math"
 )
 import "github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 
 type SearchReduce interface {
 	ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.SearchResultData, req *ReduceInfo) (*schemapb.SearchResultData, error)
+}
+
+func SelectSearchResultData(dataArray []*schemapb.SearchResultData, resultOffsets [][]int64, offsets []int64, qi int64) int {
+	var (
+		sel                 = -1
+		maxDistance         = -float32(math.MaxFloat32)
+		resultDataIdx int64 = -1
+	)
+	for i, offset := range offsets { // query num, the number of ways to merge
+		if offset >= dataArray[i].Topks[qi] {
+			continue
+		}
+
+		idx := resultOffsets[i][qi] + offset
+		distance := dataArray[i].Scores[idx]
+
+		if distance > maxDistance {
+			sel = i
+			maxDistance = distance
+			resultDataIdx = idx
+		} else if distance == maxDistance {
+			if sel == -1 {
+				// A bad case happens where knowhere returns distance == +/-maxFloat32
+				// by mistake.
+				log.Warn("a bad distance is found, something is wrong here!", zap.Float32("score", distance))
+			} else if typeutil.ComparePK(
+				typeutil.GetPK(dataArray[i].GetIds(), idx),
+				typeutil.GetPK(dataArray[sel].GetIds(), resultDataIdx)) {
+				sel = i
+				maxDistance = distance
+				resultDataIdx = idx
+			}
+		}
+	}
+	return sel
 }
 
 type SearchCommonReduce struct {
@@ -133,17 +170,23 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 		ret.AllSearchCount += searchResultData[i].GetAllSearchCount()
 	}
 
-	var skipDupCnt int64
+	var filteredCount int64
 	var retSize int64
 	maxOutputSize := paramtable.Get().QuotaConfig.MaxOutputSize.GetAsInt64()
+	groupSize := info.groupSize
+	if groupSize <= 0 {
+		groupSize = 1
+	}
+	groupBound := info.topK * groupSize
+
 	for i := int64(0); i < info.nq; i++ {
 		offsets := make([]int64, len(searchResultData))
 
 		idSet := make(map[interface{}]struct{})
-		groupByValueSet := make(map[interface{}]int)
+		groupByValueMap := make(map[interface{}]int64)
 
 		var j int64
-		for j = 0; j < info.topK; {
+		for j = 0; j < groupBound; {
 			sel := SelectSearchResultData(searchResultData, resultOffsets, offsets, i)
 			if sel == -1 {
 				break
@@ -154,37 +197,38 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 			groupByVal := typeutil.GetData(searchResultData[sel].GetGroupByFieldValue(), int(idx))
 			score := searchResultData[sel].Scores[idx]
 
-			// remove duplicates
 			if _, ok := idSet[id]; !ok {
-				groupByValExist := false
-				if groupByVal != nil {
-					_, groupByValExist = groupByValueSet[groupByVal]
+				if groupByVal == nil {
+					return ret, merr.WrapErrParameterMissing("GroupByVal returned from segment cannot be null")
 				}
-				if !groupByValExist {
-					retSize += typeutil.AppendFieldData(ret.FieldsData, searchResultData[sel].FieldsData, idx)
-					typeutil.AppendPKs(ret.Ids, id)
-					ret.Scores = append(ret.Scores, score)
-					if groupByVal != nil {
-						groupByValueSet[groupByVal] = 2
-						if err := typeutil.AppendGroupByValue(ret, groupByVal, searchResultData[sel].GetGroupByFieldValue().GetType()); err != nil {
-							log.Error("Failed to append groupByValues", zap.Error(err))
-							return ret, err
-						}
-					}
-					idSet[id] = struct{}{}
-					j++
+
+				groupCount, _ := groupByValueMap[groupByVal]
+				if groupCount == 0 && int64(len(groupByValueMap)) >= info.topK {
+					//exceed the limit for group count, filter this entity
+					filteredCount++
+					continue
 				}
+				if groupCount >= groupSize {
+					//exceed the limit for each group, filter this entity
+					filteredCount++
+					continue
+				}
+				retSize += typeutil.AppendFieldData(ret.FieldsData, searchResultData[sel].FieldsData, idx)
+				typeutil.AppendPKs(ret.Ids, id)
+				ret.Scores = append(ret.Scores, score)
+				if err := typeutil.AppendGroupByValue(ret, groupByVal, searchResultData[sel].GetGroupByFieldValue().GetType()); err != nil {
+					log.Error("Failed to append groupByValues", zap.Error(err))
+					return ret, err
+				}
+				groupByValueMap[groupByVal] += 1
+				idSet[id] = struct{}{}
+				j++
 			} else {
-				// skip entity with same id
-				skipDupCnt++
+				// skip entity with same pk
+				filteredCount++
 			}
 			offsets[sel]++
 		}
-
-		// if realTopK != -1 && realTopK != j {
-		// 	log.Warn("Proxy Reduce Search Result", zap.Error(errors.New("the length (topk) between all result of query is different")))
-		// 	// return nil, errors.New("the length (topk) between all result of query is different")
-		// }
 		ret.Topks = append(ret.Topks, j)
 
 		// limit search result to avoid oom
@@ -192,7 +236,13 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 			return nil, fmt.Errorf("search results exceed the maxOutputSize Limit %d", maxOutputSize)
 		}
 	}
-	log.Debug("skip duplicated search result", zap.Int64("count", skipDupCnt))
+	if float64(filteredCount) >= 0.3*float64(groupBound) {
+		log.Warn("GroupBy reduce filtered too many results, "+
+			"this may influence the final result seriously",
+			zap.Int64("filteredCount", filteredCount),
+			zap.Int64("groupBound", groupBound))
+	}
+	log.Debug("skip duplicated search result", zap.Int64("count", filteredCount))
 	return ret, nil
 }
 

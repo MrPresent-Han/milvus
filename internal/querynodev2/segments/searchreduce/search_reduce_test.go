@@ -93,7 +93,7 @@ func (suite *SearchReduceSuite) TestResult_ReduceSearchResultData() {
 		topk       = 4
 		metricType = "L2"
 	)
-	reduceInfo := NewReduceInfo(nq, topk, 0, metricType)
+	reduceInfo := NewReduceInfo(nq, topk, 0, 0, metricType)
 	suite.Run("case1", func() {
 		ids := []int64{1, 2, 3, 4}
 		scores := []float32{-1.0, -2.0, -3.0, -4.0}
@@ -133,7 +133,7 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 		nq   = 1
 		topk = 4
 	)
-	reduceInfo := NewReduceInfo(nq, topk, 0, "")
+	reduceInfo := NewReduceInfo(nq, topk, 0, 0, "")
 	suite.Run("reduce_group_by_int", func() {
 		ids1 := []int64{1, 2, 3, 4}
 		scores1 := []float32{-1.0, -2.0, -3.0, -4.0}

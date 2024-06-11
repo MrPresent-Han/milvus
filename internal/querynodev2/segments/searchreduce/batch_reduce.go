@@ -27,9 +27,6 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"math"
-
-	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/pkg/log"
@@ -119,11 +116,12 @@ type ReduceInfo struct {
 	nq             int64
 	topK           int64
 	groupByFieldID int64
+	groupSize      int64
 	metricType     string
 }
 
-func NewReduceInfo(nq int64, topK int64, groupByFieldID int64, metric string) *ReduceInfo {
-	return &ReduceInfo{nq, topK, groupByFieldID, metric}
+func NewReduceInfo(nq int64, topK int64, groupByFieldID int64, groupSize int64, metric string) *ReduceInfo {
+	return &ReduceInfo{nq, topK, groupByFieldID, groupSize, metric}
 }
 
 func ReduceSearchResults(ctx context.Context,
@@ -200,39 +198,4 @@ func ReduceSearchResults(ctx context.Context,
 	searchResults.CostAggregation.TotalRelatedDataSize = relatedDataSize
 	searchResults.ChannelsMvcc = channelsMvcc
 	return searchResults, nil
-}
-
-func SelectSearchResultData(dataArray []*schemapb.SearchResultData, resultOffsets [][]int64, offsets []int64, qi int64) int {
-	var (
-		sel                 = -1
-		maxDistance         = -float32(math.MaxFloat32)
-		resultDataIdx int64 = -1
-	)
-	for i, offset := range offsets { // query num, the number of ways to merge
-		if offset >= dataArray[i].Topks[qi] {
-			continue
-		}
-
-		idx := resultOffsets[i][qi] + offset
-		distance := dataArray[i].Scores[idx]
-
-		if distance > maxDistance {
-			sel = i
-			maxDistance = distance
-			resultDataIdx = idx
-		} else if distance == maxDistance {
-			if sel == -1 {
-				// A bad case happens where knowhere returns distance == +/-maxFloat32
-				// by mistake.
-				log.Warn("a bad distance is found, something is wrong here!", zap.Float32("score", distance))
-			} else if typeutil.ComparePK(
-				typeutil.GetPK(dataArray[i].GetIds(), idx),
-				typeutil.GetPK(dataArray[sel].GetIds(), resultDataIdx)) {
-				sel = i
-				maxDistance = distance
-				resultDataIdx = idx
-			}
-		}
-	}
-	return sel
 }

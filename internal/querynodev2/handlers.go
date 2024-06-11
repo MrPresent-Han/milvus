@@ -393,6 +393,7 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		resp, err = searchreduce.ReduceSearchResults(ctx, results, searchreduce.NewReduceInfo(req.GetReq().GetNq(),
 			req.GetReq().GetTopk(),
 			req.GetReq().GetExtraSearchParam().GetGroupByFieldId(),
+			req.GetReq().GetExtraSearchParam().GetGroupSize(),
 			req.GetReq().GetMetricType()))
 	}
 
