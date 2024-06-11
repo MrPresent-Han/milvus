@@ -3,8 +3,6 @@ package segments
 import (
 	"context"
 	"fmt"
-	"github.com/milvus-io/milvus/internal/proto/internalpb"
-
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
@@ -14,21 +12,21 @@ import (
 import "github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 
 type SearchReduce interface {
-	ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.SearchResultData, req *internalpb.SearchRequest) (*schemapb.SearchResultData, error)
+	ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.SearchResultData, req *ReduceInfo) (*schemapb.SearchResultData, error)
 }
 
 type SearchCommonReduce struct {
 }
 
-func (scr *SearchCommonReduce) ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.SearchResultData, req *internalpb.SearchRequest) (*schemapb.SearchResultData, error) {
+func (scr *SearchCommonReduce) ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.SearchResultData, info *ReduceInfo) (*schemapb.SearchResultData, error) {
 	ctx, sp := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, "ReduceSearchResultData")
 	defer sp.End()
 	log := log.Ctx(ctx)
 
 	if len(searchResultData) == 0 {
 		return &schemapb.SearchResultData{
-			NumQueries: req.GetNq(),
-			TopK:       req.GetTopk(),
+			NumQueries: info.nq,
+			TopK:       info.topK,
 			FieldsData: make([]*schemapb.FieldData, 0),
 			Scores:     make([]float32, 0),
 			Ids:        &schemapb.IDs{},
@@ -36,8 +34,8 @@ func (scr *SearchCommonReduce) ReduceSearchResultData(ctx context.Context, searc
 		}, nil
 	}
 	ret := &schemapb.SearchResultData{
-		NumQueries: req.GetNq(),
-		TopK:       req.GetTopk(),
+		NumQueries: info.nq,
+		TopK:       info.topK,
 		FieldsData: make([]*schemapb.FieldData, len(searchResultData[0].FieldsData)),
 		Scores:     make([]float32, 0),
 		Ids:        &schemapb.IDs{},
@@ -47,7 +45,7 @@ func (scr *SearchCommonReduce) ReduceSearchResultData(ctx context.Context, searc
 	resultOffsets := make([][]int64, len(searchResultData))
 	for i := 0; i < len(searchResultData); i++ {
 		resultOffsets[i] = make([]int64, len(searchResultData[i].Topks))
-		for j := int64(1); j < req.GetNq(); j++ {
+		for j := int64(1); j < info.nq; j++ {
 			resultOffsets[i][j] = resultOffsets[i][j-1] + searchResultData[i].Topks[j-1]
 		}
 		ret.AllSearchCount += searchResultData[i].GetAllSearchCount()
@@ -56,11 +54,11 @@ func (scr *SearchCommonReduce) ReduceSearchResultData(ctx context.Context, searc
 	var skipDupCnt int64
 	var retSize int64
 	maxOutputSize := paramtable.Get().QuotaConfig.MaxOutputSize.GetAsInt64()
-	for i := int64(0); i < req.GetNq(); i++ {
+	for i := int64(0); i < info.nq; i++ {
 		offsets := make([]int64, len(searchResultData))
 		idSet := make(map[interface{}]struct{})
 		var j int64
-		for j = 0; j < req.GetTopk(); {
+		for j = 0; j < info.topK; {
 			sel := SelectSearchResultData(searchResultData, resultOffsets, offsets, i)
 			if sel == -1 {
 				break
@@ -102,15 +100,15 @@ func (scr *SearchCommonReduce) ReduceSearchResultData(ctx context.Context, searc
 type SearchGroupByReduce struct {
 }
 
-func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.SearchResultData, req *internalpb.SearchRequest) (*schemapb.SearchResultData, error) {
+func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, searchResultData []*schemapb.SearchResultData, info *ReduceInfo) (*schemapb.SearchResultData, error) {
 	ctx, sp := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, "ReduceSearchResultData")
 	defer sp.End()
 	log := log.Ctx(ctx)
 
 	if len(searchResultData) == 0 {
 		return &schemapb.SearchResultData{
-			NumQueries: req.GetNq(),
-			TopK:       req.GetTopk(),
+			NumQueries: info.nq,
+			TopK:       info.topK,
 			FieldsData: make([]*schemapb.FieldData, 0),
 			Scores:     make([]float32, 0),
 			Ids:        &schemapb.IDs{},
@@ -118,8 +116,8 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 		}, nil
 	}
 	ret := &schemapb.SearchResultData{
-		NumQueries: req.GetNq(),
-		TopK:       req.GetTopk(),
+		NumQueries: info.nq,
+		TopK:       info.topK,
 		FieldsData: make([]*schemapb.FieldData, len(searchResultData[0].FieldsData)),
 		Scores:     make([]float32, 0),
 		Ids:        &schemapb.IDs{},
@@ -129,7 +127,7 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 	resultOffsets := make([][]int64, len(searchResultData))
 	for i := 0; i < len(searchResultData); i++ {
 		resultOffsets[i] = make([]int64, len(searchResultData[i].Topks))
-		for j := int64(1); j < req.GetTopk(); j++ {
+		for j := int64(1); j < info.topK; j++ {
 			resultOffsets[i][j] = resultOffsets[i][j-1] + searchResultData[i].Topks[j-1]
 		}
 		ret.AllSearchCount += searchResultData[i].GetAllSearchCount()
@@ -138,14 +136,14 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 	var skipDupCnt int64
 	var retSize int64
 	maxOutputSize := paramtable.Get().QuotaConfig.MaxOutputSize.GetAsInt64()
-	for i := int64(0); i < req.GetNq(); i++ {
+	for i := int64(0); i < info.nq; i++ {
 		offsets := make([]int64, len(searchResultData))
 
 		idSet := make(map[interface{}]struct{})
 		groupByValueSet := make(map[interface{}]int)
 
 		var j int64
-		for j = 0; j < req.GetTopk(); {
+		for j = 0; j < info.topK; {
 			sel := SelectSearchResultData(searchResultData, resultOffsets, offsets, i)
 			if sel == -1 {
 				break
@@ -196,4 +194,12 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 	}
 	log.Debug("skip duplicated search result", zap.Int64("count", skipDupCnt))
 	return ret, nil
+}
+
+func InitSearchReducer(info *ReduceInfo) SearchReduce {
+	if info.groupByFieldID > 0 {
+		return &SearchGroupByReduce{}
+	} else {
+		return &SearchCommonReduce{}
+	}
 }

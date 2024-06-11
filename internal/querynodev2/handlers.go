@@ -31,6 +31,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	searchreduce "github.com/milvus-io/milvus/internal/querynodev2/segments/searchreduce"
 	"github.com/milvus-io/milvus/internal/querynodev2/tasks"
 	"github.com/milvus-io/milvus/internal/util/streamrpc"
 	"github.com/milvus-io/milvus/pkg/log"
@@ -385,11 +386,16 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 	))
 
 	var resp *internalpb.SearchResults
+
 	if req.GetReq().GetIsAdvanced() {
 		resp, err = segments.ReduceAdvancedSearchResults(ctx, results, req.Req.GetNq())
 	} else {
-		resp, err = segments.ReduceSearchResults(ctx, results, req.Req.GetNq(), req.Req.GetTopk(), req.Req.GetMetricType())
+		resp, err = searchreduce.ReduceSearchResults(ctx, results, searchreduce.NewReduceInfo(req.GetReq().GetNq(),
+			req.GetReq().GetTopk(),
+			req.GetReq().GetExtraSearchParam().GetGroupByFieldId(),
+			req.GetReq().GetMetricType()))
 	}
+
 	if err != nil {
 		return nil, err
 	}

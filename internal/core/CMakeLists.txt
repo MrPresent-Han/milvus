@@ -15,7 +15,7 @@
 # limitations under the License.
 
 cmake_minimum_required( VERSION 3.18 )
-
+set(CMAKE_BUILD_PARALLEL_LEVEL 2)
 if ( APPLE )
     set( CMAKE_CROSSCOMPILING TRUE )
     set( RUN_HAVE_GNU_POSIX_REGEX 0 )

@@ -332,9 +332,10 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 
 				return searchreduce.ReduceSearchResults(ctx,
 					results,
-					searchReq.Req.GetNq(),
-					searchReq.Req.GetTopk(),
-					searchReq.Req.GetMetricType())
+					searchreduce.NewReduceInfo(req.GetReq().GetNq(),
+						req.GetReq().GetTopk(),
+						req.GetReq().GetExtraSearchParam().GetGroupByFieldId(),
+						req.GetReq().GetMetricType()))
 			})
 			futures[index] = future
 		}

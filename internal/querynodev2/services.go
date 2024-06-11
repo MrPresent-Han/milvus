@@ -788,9 +788,12 @@ func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (
 	var result *internalpb.SearchResults
 	var err2 error
 	if req.GetReq().GetIsAdvanced() {
-		result, err2 = segments.ReduceAdvancedSearchResults(ctx, toReduceResults, req.Req.GetNq())
+		result, err2 = segments.ReduceAdvancedSearchResults(ctx, toReduceResults, req.GetReq().GetNq())
 	} else {
-		result, err2 = searchreduce.ReduceSearchResults(ctx, toReduceResults, req.Req.GetNq(), req.Req.GetTopk(), req.Req.GetMetricType())
+		result, err2 = searchreduce.ReduceSearchResults(ctx, toReduceResults, searchreduce.NewReduceInfo(req.GetReq().GetNq(),
+			req.GetReq().GetTopk(),
+			req.GetReq().GetExtraSearchParam().GetGroupByFieldId(),
+			req.GetReq().GetMetricType()))
 	}
 
 	if err2 != nil {
