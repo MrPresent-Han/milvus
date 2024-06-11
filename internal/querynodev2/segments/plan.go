@@ -42,7 +42,7 @@ type SearchPlan struct {
 	cSearchPlan C.CSearchPlan
 }
 
-func createSearchPlanByExpr(ctx context.Context, col *Collection, expr []byte) (*SearchPlan, error) {
+func CreateSearchPlanByExpr(ctx context.Context, col *Collection, expr []byte) (*SearchPlan, error) {
 	if col.collectionPtr == nil {
 		return nil, errors.New("nil collection ptr, collectionID = " + fmt.Sprintln(col.id))
 	}
@@ -57,7 +57,11 @@ func createSearchPlanByExpr(ctx context.Context, col *Collection, expr []byte) (
 	return &SearchPlan{cSearchPlan: cPlan}, nil
 }
 
-func (plan *SearchPlan) getTopK() int64 {
+func (plan *SearchPlan) GetCSearchPlan() C.CSearchPlan {
+	return plan.cSearchPlan
+}
+
+func (plan *SearchPlan) GetTopK() int64 {
 	topK := C.GetTopK(plan.cSearchPlan)
 	return int64(topK)
 }
@@ -90,7 +94,7 @@ type SearchRequest struct {
 func NewSearchRequest(ctx context.Context, collection *Collection, req *querypb.SearchRequest, placeholderGrp []byte) (*SearchRequest, error) {
 	metricType := req.GetReq().GetMetricType()
 	expr := req.Req.SerializedExprPlan
-	plan, err := createSearchPlanByExpr(ctx, collection, expr)
+	plan, err := CreateSearchPlanByExpr(ctx, collection, expr)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +154,11 @@ func (req *SearchRequest) Delete() {
 	C.DeletePlaceholderGroup(req.cPlaceholderGroup)
 }
 
-func parseSearchRequest(ctx context.Context, plan *SearchPlan, searchRequestBlob []byte) (*SearchRequest, error) {
+func (req *SearchRequest) SetMVCCTs(ts Timestamp) {
+	req.mvccTimestamp = ts
+}
+
+func ParseSearchRequest(ctx context.Context, plan *SearchPlan, searchRequestBlob []byte) (*SearchRequest, error) {
 	if len(searchRequestBlob) == 0 {
 		return nil, fmt.Errorf("empty search request")
 	}

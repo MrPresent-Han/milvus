@@ -41,6 +41,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querynodev2/collector"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	searchreduce "github.com/milvus-io/milvus/internal/querynodev2/segments/searchreduce"
 	"github.com/milvus-io/milvus/internal/querynodev2/tasks"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/streamrpc"
@@ -789,7 +790,7 @@ func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (
 	if req.GetReq().GetIsAdvanced() {
 		result, err2 = segments.ReduceAdvancedSearchResults(ctx, toReduceResults, req.Req.GetNq())
 	} else {
-		result, err2 = segments.ReduceSearchResults(ctx, toReduceResults, req.Req.GetNq(), req.Req.GetTopk(), req.Req.GetMetricType())
+		result, err2 = searchreduce.ReduceSearchResults(ctx, toReduceResults, req.Req.GetNq(), req.Req.GetTopk(), req.Req.GetMetricType())
 	}
 
 	if err2 != nil {

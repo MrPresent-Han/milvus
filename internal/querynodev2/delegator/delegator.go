@@ -41,6 +41,7 @@ import (
 	"github.com/milvus-io/milvus/internal/querynodev2/optimizers"
 	"github.com/milvus-io/milvus/internal/querynodev2/pkoracle"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	searchreduce "github.com/milvus-io/milvus/internal/querynodev2/segments/searchreduce"
 	"github.com/milvus-io/milvus/internal/querynodev2/tsafe"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/streamrpc"
@@ -329,7 +330,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 					return nil, err
 				}
 
-				return segments.ReduceSearchResults(ctx,
+				return searchreduce.ReduceSearchResults(ctx,
 					results,
 					searchReq.Req.GetNq(),
 					searchReq.Req.GetTopk(),

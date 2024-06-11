@@ -21,6 +21,7 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/querynodev2/collector"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	reduce "github.com/milvus-io/milvus/internal/querynodev2/segments/searchreduce"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/metrics"
 	"github.com/milvus-io/milvus/pkg/util/funcutil"
@@ -219,7 +220,7 @@ func (t *SearchTask) Execute() error {
 	}, 0)
 
 	tr.RecordSpan()
-	blobs, err := segments.ReduceSearchResultsAndFillData(
+	blobs, err := reduce.ReduceSearchResultsAndFillData(
 		t.ctx,
 		searchReq.Plan(),
 		results,
@@ -239,7 +240,7 @@ func (t *SearchTask) Execute() error {
 		metrics.BatchReduce).
 		Observe(float64(tr.RecordSpan().Milliseconds()))
 	for i := range t.originNqs {
-		blob, err := segments.GetSearchResultDataBlob(t.ctx, blobs, i)
+		blob, err := reduce.GetSearchResultDataBlob(t.ctx, blobs, i)
 		if err != nil {
 			return err
 		}
@@ -390,7 +391,7 @@ type StreamingSearchTask struct {
 	SearchTask
 	others        []*StreamingSearchTask
 	resultBlobs   segments.SearchResultDataBlobs
-	streamReducer segments.StreamSearchReducer
+	streamReducer reduce.StreamSearchReducer
 }
 
 func NewStreamingSearchTask(ctx context.Context,
@@ -459,13 +460,13 @@ func (t *StreamingSearchTask) Execute() error {
 			nil,
 			req.GetSegmentIDs(),
 			streamReduceFunc)
-		defer segments.DeleteStreamReduceHelper(t.streamReducer)
+		defer reduce.DeleteStreamReduceHelper(t.streamReducer)
 		defer t.segmentManager.Segment.Unpin(pinnedSegments)
 		if err != nil {
 			log.Error("Failed to search sealed segments streamly", zap.Error(err))
 			return err
 		}
-		t.resultBlobs, err = segments.GetStreamReduceResult(t.ctx, t.streamReducer)
+		t.resultBlobs, err = reduce.GetStreamReduceResult(t.ctx, t.streamReducer)
 		defer segments.DeleteSearchResultDataBlobs(t.resultBlobs)
 		if err != nil {
 			log.Error("Failed to get stream-reduced search result")
@@ -492,7 +493,7 @@ func (t *StreamingSearchTask) Execute() error {
 			return nil
 		}
 		tr.RecordSpan()
-		t.resultBlobs, err = segments.ReduceSearchResultsAndFillData(
+		t.resultBlobs, err = reduce.ReduceSearchResultsAndFillData(
 			t.ctx,
 			searchReq.Plan(),
 			results,
@@ -518,7 +519,7 @@ func (t *StreamingSearchTask) Execute() error {
 
 	// 2. reorganize blobs to original search request
 	for i := range t.originNqs {
-		blob, err := segments.GetSearchResultDataBlob(t.ctx, t.resultBlobs, i)
+		blob, err := reduce.GetSearchResultDataBlob(t.ctx, t.resultBlobs, i)
 		if err != nil {
 			return err
 		}
@@ -595,12 +596,12 @@ func (t *StreamingSearchTask) streamReduce(ctx context.Context,
 ) error {
 	if t.streamReducer == nil {
 		var err error
-		t.streamReducer, err = segments.NewStreamReducer(ctx, plan, sliceNQs, sliceTopKs)
+		t.streamReducer, err = reduce.NewStreamReducer(ctx, plan, sliceNQs, sliceTopKs)
 		if err != nil {
 			log.Error("Fail to init stream reducer, return")
 			return err
 		}
 	}
 
-	return segments.StreamReduceSearchResult(ctx, newResult, t.streamReducer)
+	return reduce.StreamReduceSearchResult(ctx, newResult, t.streamReducer)
 }

@@ -141,7 +141,7 @@ func (suite *SearchSuite) TestSearchSealed() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	searchReq, err := genSearchPlanAndRequests(suite.collection, []int64{suite.sealed.ID()}, IndexFaissIDMap, nq)
+	searchReq, err := GenSearchPlanAndRequests(suite.collection, []int64{suite.sealed.ID()}, IndexFaissIDMap, nq)
 	suite.NoError(err)
 
 	_, segments, err := SearchHistorical(ctx, suite.manager, searchReq, suite.collectionID, nil, []int64{suite.sealed.ID()})
@@ -150,7 +150,7 @@ func (suite *SearchSuite) TestSearchSealed() {
 }
 
 func (suite *SearchSuite) TestSearchGrowing() {
-	searchReq, err := genSearchPlanAndRequests(suite.collection, []int64{suite.growing.ID()}, IndexFaissIDMap, 1)
+	searchReq, err := GenSearchPlanAndRequests(suite.collection, []int64{suite.growing.ID()}, IndexFaissIDMap, 1)
 	suite.NoError(err)
 
 	res, segments, err := SearchStreaming(context.TODO(), suite.manager, searchReq,

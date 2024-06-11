@@ -76,7 +76,7 @@ const (
 	rowIDFieldID      = 0
 	timestampFieldID  = 1
 	metricTypeKey     = common.MetricTypeKey
-	defaultDim        = 128
+	DefaultDim        = 128
 	defaultMetricType = metric.L2
 
 	dimKey = common.DimKey
@@ -102,7 +102,7 @@ type constFieldParam struct {
 
 var simpleFloatVecField = vecFieldParam{
 	id:         100,
-	dim:        defaultDim,
+	dim:        DefaultDim,
 	metricType: defaultMetricType,
 	vecType:    schemapb.DataType_FloatVector,
 	fieldName:  "floatVectorField",
@@ -110,7 +110,7 @@ var simpleFloatVecField = vecFieldParam{
 
 var simpleBinVecField = vecFieldParam{
 	id:         101,
-	dim:        defaultDim,
+	dim:        DefaultDim,
 	metricType: metric.JACCARD,
 	vecType:    schemapb.DataType_BinaryVector,
 	fieldName:  "binVectorField",
@@ -118,7 +118,7 @@ var simpleBinVecField = vecFieldParam{
 
 var simpleFloat16VecField = vecFieldParam{
 	id:         112,
-	dim:        defaultDim,
+	dim:        DefaultDim,
 	metricType: defaultMetricType,
 	vecType:    schemapb.DataType_Float16Vector,
 	fieldName:  "float16VectorField",
@@ -126,7 +126,7 @@ var simpleFloat16VecField = vecFieldParam{
 
 var simpleBFloat16VecField = vecFieldParam{
 	id:         113,
-	dim:        defaultDim,
+	dim:        DefaultDim,
 	metricType: defaultMetricType,
 	vecType:    schemapb.DataType_BFloat16Vector,
 	fieldName:  "bfloat16VectorField",
@@ -685,13 +685,13 @@ func GenAndSaveIndexV2(collectionID, partitionID, segmentID, buildID int64,
 	var dataset *indexcgowrapper.Dataset
 	switch fieldSchema.DataType {
 	case schemapb.DataType_BinaryVector:
-		dataset = indexcgowrapper.GenBinaryVecDataset(testutils.GenerateBinaryVectors(msgLength, defaultDim))
+		dataset = indexcgowrapper.GenBinaryVecDataset(testutils.GenerateBinaryVectors(msgLength, DefaultDim))
 	case schemapb.DataType_FloatVector:
-		dataset = indexcgowrapper.GenFloatVecDataset(testutils.GenerateFloatVectors(msgLength, defaultDim))
+		dataset = indexcgowrapper.GenFloatVecDataset(testutils.GenerateFloatVectors(msgLength, DefaultDim))
 	case schemapb.DataType_Float16Vector:
-		dataset = indexcgowrapper.GenFloat16VecDataset(testutils.GenerateFloat16Vectors(msgLength, defaultDim))
+		dataset = indexcgowrapper.GenFloat16VecDataset(testutils.GenerateFloat16Vectors(msgLength, DefaultDim))
 	case schemapb.DataType_BFloat16Vector:
-		dataset = indexcgowrapper.GenBFloat16VecDataset(testutils.GenerateBFloat16Vectors(msgLength, defaultDim))
+		dataset = indexcgowrapper.GenBFloat16VecDataset(testutils.GenerateBFloat16Vectors(msgLength, DefaultDim))
 	case schemapb.DataType_SparseFloatVector:
 		data := testutils.GenerateSparseFloatVectors(msgLength)
 		dataset = indexcgowrapper.GenSparseFloatVecDataset(&storage.SparseFloatVectorFieldData{
@@ -758,7 +758,7 @@ func GenAndSaveIndex(collectionID, partitionID, segmentID, fieldID int64, msgLen
 	}
 	defer index.Delete()
 
-	err = index.Build(indexcgowrapper.GenFloatVecDataset(testutils.GenerateFloatVectors(msgLength, defaultDim)))
+	err = index.Build(indexcgowrapper.GenFloatVecDataset(testutils.GenerateFloatVectors(msgLength, DefaultDim)))
 	if err != nil {
 		return nil, err
 	}
@@ -811,7 +811,7 @@ func GenAndSaveIndex(collectionID, partitionID, segmentID, fieldID int64, msgLen
 
 func genIndexParams(indexType, metricType string) (map[string]string, map[string]string) {
 	typeParams := make(map[string]string)
-	typeParams[common.DimKey] = strconv.Itoa(defaultDim)
+	typeParams[common.DimKey] = strconv.Itoa(DefaultDim)
 
 	indexParams := make(map[string]string)
 	indexParams[common.IndexTypeKey] = indexType
@@ -900,8 +900,8 @@ func genPlaceHolderGroup(nq int64) ([]byte, error) {
 		Values: make([][]byte, 0),
 	}
 	for i := int64(0); i < nq; i++ {
-		vec := make([]float32, defaultDim)
-		for j := 0; j < defaultDim; j++ {
+		vec := make([]float32, DefaultDim)
+		for j := 0; j < DefaultDim; j++ {
 			vec[j] = rand.Float32()
 		}
 		var rawData []byte
@@ -1001,56 +1001,7 @@ func genHNSWDSL(schema *schemapb.CollectionSchema, ef int, topK int64, roundDeci
             >`, nil
 }
 
-func checkSearchResult(ctx context.Context, nq int64, plan *SearchPlan, searchResult *SearchResult) error {
-	searchResults := make([]*SearchResult, 0)
-	searchResults = append(searchResults, searchResult)
-
-	topK := plan.getTopK()
-	sliceNQs := []int64{nq / 5, nq / 5, nq / 5, nq / 5, nq / 5}
-	sliceTopKs := []int64{topK, topK / 2, topK, topK, topK / 2}
-	sInfo := ParseSliceInfo(sliceNQs, sliceTopKs, nq)
-
-	res, err := ReduceSearchResultsAndFillData(ctx, plan, searchResults, 1, sInfo.SliceNQs, sInfo.SliceTopKs)
-	if err != nil {
-		return err
-	}
-
-	for i := 0; i < len(sInfo.SliceNQs); i++ {
-		blob, err := GetSearchResultDataBlob(ctx, res, i)
-		if err != nil {
-			return err
-		}
-		if len(blob) == 0 {
-			return fmt.Errorf("wrong search result data blobs when checkSearchResult")
-		}
-
-		result := &schemapb.SearchResultData{}
-		err = proto.Unmarshal(blob, result)
-		if err != nil {
-			return err
-		}
-
-		if result.TopK != sliceTopKs[i] {
-			return fmt.Errorf("unexpected topK when checkSearchResult")
-		}
-		if result.NumQueries != sInfo.SliceNQs[i] {
-			return fmt.Errorf("unexpected nq when checkSearchResult")
-		}
-		// search empty segment, return empty result.IDs
-		if len(result.Ids.IdField.(*schemapb.IDs_IntId).IntId.Data) <= 0 {
-			return fmt.Errorf("unexpected Ids when checkSearchResult")
-		}
-		if len(result.Scores) <= 0 {
-			return fmt.Errorf("unexpected Scores when checkSearchResult")
-		}
-	}
-
-	DeleteSearchResults(searchResults)
-	DeleteSearchResultDataBlobs(res)
-	return nil
-}
-
-func genSearchPlanAndRequests(collection *Collection, segments []int64, indexType string, nq int64) (*SearchRequest, error) {
+func GenSearchPlanAndRequests(collection *Collection, segments []int64, indexType string, nq int64) (*SearchRequest, error) {
 	iReq, _ := genSearchRequest(nq, indexType, collection)
 	queryReq := &querypb.SearchRequest{
 		Req:         iReq,
@@ -1217,7 +1168,7 @@ func genFieldData(fieldName string, fieldID int64, fieldType schemapb.DataType, 
 	return testutils.GenerateVectorFieldDataWithValue(fieldType, fieldName, fieldID, fieldValue, int(dim))
 }
 
-func genSearchResultData(nq int64, topk int64, ids []int64, scores []float32, topks []int64) *schemapb.SearchResultData {
+func GenSearchResultData(nq int64, topk int64, ids []int64, scores []float32, topks []int64) *schemapb.SearchResultData {
 	return &schemapb.SearchResultData{
 		NumQueries: 1,
 		TopK:       topk,
