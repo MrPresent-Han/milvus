@@ -173,7 +173,8 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 			pkSet          = make(map[interface{}]struct{})
 			groupByValMap  = make(map[interface{}][]*reduceIdxPair)
 			skipOffsetMap  = make(map[interface{}]bool)
-			groupByValList = make([]interface{}, groupSize)
+			groupByValList = make([]interface{}, limit)
+			groupByValIdx  = 0
 		)
 
 		for j = 0; j < groupBound; {
@@ -195,41 +196,46 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 			if _, ok := pkSet[id]; !ok {
 				if int64(len(skipOffsetMap)) < offset || skipOffsetMap[groupByVal] {
 					skipOffsetMap[groupByVal] = true
+					//the first offset's group will be ignored
 					skipDupCnt++
-					continue
-				}
-				if len(groupByValMap[groupByVal]) == 0 && int64(len(groupByValMap)) >= limit {
+				} else if len(groupByValMap[groupByVal]) == 0 && int64(len(groupByValMap)) >= limit {
 					// skip when groupbyMap has been full and found new groupByVal
 					skipDupCnt++
-					continue
-				}
-				if int64(len(groupByValMap[groupByVal])) >= groupSize {
+				} else if int64(len(groupByValMap[groupByVal])) >= groupSize {
 					// skip when target group has been full
 					skipDupCnt++
-					continue
+				} else {
+					if len(groupByValMap[groupByVal]) == 0 {
+						groupByValList[groupByValIdx] = groupByVal
+						groupByValIdx++
+					}
+					groupByValMap[groupByVal] = append(groupByValMap[groupByVal], &reduceIdxPair{subSearchIdx: subSearchIdx,
+						resultIdx: resultDataIdx, id: id, score: score})
+					pkSet[id] = struct{}{}
+					j++
 				}
-				groupByValMap[groupByVal] = append(groupByValMap[groupByVal], &reduceIdxPair{subSearchIdx: subSearchIdx,
-					resultIdx: resultDataIdx, id: id, score: score})
-				groupByValList = append(groupByValList, groupByVal)
-				pkSet[id] = struct{}{}
-				j++
 			} else {
-				// skip entity with same pk
 				skipDupCnt++
 			}
+
 			cursors[subSearchIdx]++
 		}
+		log.Info("hc===Got", zap.Any("groupByValList", groupByValList),
+			zap.Any("groupByValMap", groupByValMap))
+
 		//assemble all eligible values in group
 		for _, groupVal := range groupByValList {
-			groupEntityPairs := groupByValMap[groupVal]
-			for _, groupEntity := range groupEntityPairs {
-				subResData := subSearchResultData[groupEntity.subSearchIdx]
-				retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subResData.FieldsData, groupEntity.resultIdx)
-				typeutil.AppendPKs(ret.Results.Ids, groupEntity.id)
-				ret.Results.Scores = append(ret.Results.Scores, groupEntity.score)
-				if err := typeutil.AppendGroupByValue(ret.Results, groupVal, subResData.GetGroupByFieldValue().GetType()); err != nil {
-					log.Ctx(ctx).Error("failed to append groupByValues", zap.Error(err))
-					return ret, err
+			if groupVal != nil {
+				groupEntityPairs := groupByValMap[groupVal]
+				for _, groupEntity := range groupEntityPairs {
+					subResData := subSearchResultData[groupEntity.subSearchIdx]
+					retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subResData.FieldsData, groupEntity.resultIdx)
+					typeutil.AppendPKs(ret.Results.Ids, groupEntity.id)
+					ret.Results.Scores = append(ret.Results.Scores, groupEntity.score)
+					if err := typeutil.AppendGroupByValue(ret.Results, groupVal, subResData.GetGroupByFieldValue().GetType()); err != nil {
+						log.Ctx(ctx).Error("failed to append groupByValues", zap.Error(err))
+						return ret, err
+					}
 				}
 			}
 		}
