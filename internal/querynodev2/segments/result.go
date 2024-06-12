@@ -42,7 +42,7 @@ var _ typeutil.ResultWithID = &internalpb.RetrieveResults{}
 
 var _ typeutil.ResultWithID = &segcorepb.RetrieveResults{}
 
-func ReduceSearchResults(ctx context.Context, results []*internalpb.SearchResults, nq int64, topk int64, metricType string) (*internalpb.SearchResults, error) {
+func ReduceSearchResults(ctx context.Context, results []*internalpb.SearchResults, info *ReduceInfo) (*internalpb.SearchResults, error) {
 	results = lo.Filter(results, func(result *internalpb.SearchResults, _ int) bool {
 		return result != nil && result.GetSlicedBlob() != nil
 	})
@@ -60,8 +60,8 @@ func ReduceSearchResults(ctx context.Context, results []*internalpb.SearchResult
 			channelsMvcc[ch] = ts
 		}
 		// shouldn't let new SearchResults.MetricType to be empty, though the req.MetricType is empty
-		if metricType == "" {
-			metricType = r.MetricType
+		if info.metricType == "" {
+			info.metricType = r.MetricType
 		}
 	}
 	log := log.Ctx(ctx)
@@ -80,12 +80,14 @@ func ReduceSearchResults(ctx context.Context, results []*internalpb.SearchResult
 			zap.Int64("topk", sData.TopK))
 	}
 
-	reducedResultData, err := ReduceSearchResultData(ctx, searchResultData, nq, topk)
+	searchReduce := InitSearchReducer(info)
+	reducedResultData, err := searchReduce.ReduceSearchResultData(ctx, searchResultData, info)
+
 	if err != nil {
 		log.Warn("shard leader reduce errors", zap.Error(err))
 		return nil, err
 	}
-	searchResults, err := EncodeSearchResultData(ctx, reducedResultData, nq, topk, metricType)
+	searchResults, err := EncodeSearchResultData(ctx, reducedResultData, info.nq, info.topK, info.metricType)
 	if err != nil {
 		log.Warn("shard leader encode search result errors", zap.Error(err))
 		return nil, err
