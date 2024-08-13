@@ -76,6 +76,7 @@ type MiniClusterSuite struct {
 }
 
 func (s *MiniClusterSuite) SetupSuite() {
+	log.Info("hc=====222")
 	s.Require().NoError(s.SetupEmbedEtcd())
 }
 

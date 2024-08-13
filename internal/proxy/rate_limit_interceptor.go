@@ -20,6 +20,9 @@ import (
 	"context"
 	"strconv"
 
+	"go.uber.org/zap"
+	"google.golang.org/grpc"
+
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/pkg/log"
@@ -28,8 +31,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/requestutil"
-	"go.uber.org/zap"
-	"google.golang.org/grpc"
 )
 
 // RateLimitInterceptor returns a new unary server interceptors that performs request rate limiting.
