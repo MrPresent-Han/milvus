@@ -462,6 +462,9 @@ func TestVectorDropCollection(t *testing.T) {
 func TestQuery(t *testing.T) {
 	paramtable.Init()
 	paramtable.Get().Save(proxy.Params.HTTPCfg.AcceptTypeAllowInt64.Key, "true")
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
 	testCases := []testCase{}
 
 	mp2 := mocks.NewMockProxy(t)
@@ -562,6 +565,9 @@ func genGetRequest() *http.Request {
 
 func TestDelete(t *testing.T) {
 	paramtable.Init()
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
 	testCases := []testCase{}
 	_, testCases = wrapWithDescribeColl(t, nil, ReturnFail, 1, testCases)
 	_, testCases = wrapWithDescribeColl(t, nil, ReturnWrongStatus, 1, testCases)
@@ -624,6 +630,11 @@ func TestDelete(t *testing.T) {
 }
 
 func TestDeleteForFilter(t *testing.T) {
+	paramtable.Init()
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
+
 	jsonBodyList := [][]byte{
 		[]byte(`{"collectionName": "` + DefaultCollectionName + `" , "id": [1,2,3]}`),
 		[]byte(`{"collectionName": "` + DefaultCollectionName + `" , "filter": "id in [1,2,3]"}`),
@@ -654,6 +665,10 @@ func TestDeleteForFilter(t *testing.T) {
 func TestInsert(t *testing.T) {
 	paramtable.Init()
 	paramtable.Get().Save(proxy.Params.HTTPCfg.AcceptTypeAllowInt64.Key, "true")
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
+
 	testCases := []testCase{}
 	_, testCases = wrapWithDescribeColl(t, nil, ReturnFail, 1, testCases)
 	_, testCases = wrapWithDescribeColl(t, nil, ReturnWrongStatus, 1, testCases)
@@ -766,6 +781,9 @@ func TestInsert(t *testing.T) {
 func TestInsertForDataType(t *testing.T) {
 	paramtable.Init()
 	paramtable.Get().Save(proxy.Params.HTTPCfg.AcceptTypeAllowInt64.Key, "true")
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
 	schemas := map[string]*schemapb.CollectionSchema{
 		"[success]kinds of data type": newCollectionSchema(generateCollectionSchema(schemapb.DataType_Int64)),
 		"[success]with dynamic field": withDynamicField(newCollectionSchema(generateCollectionSchema(schemapb.DataType_Int64))),
@@ -830,6 +848,9 @@ func TestInsertForDataType(t *testing.T) {
 func TestReturnInt64(t *testing.T) {
 	paramtable.Init()
 	paramtable.Get().Save(proxy.Params.HTTPCfg.AcceptTypeAllowInt64.Key, "false")
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
 	schemas := []schemapb.DataType{
 		schemapb.DataType_Int64,
 		schemapb.DataType_VarChar,
@@ -1095,6 +1116,9 @@ func TestReturnInt64(t *testing.T) {
 func TestUpsert(t *testing.T) {
 	paramtable.Init()
 	paramtable.Get().Save(proxy.Params.HTTPCfg.AcceptTypeAllowInt64.Key, "true")
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
 	testCases := []testCase{}
 	_, testCases = wrapWithDescribeColl(t, nil, ReturnFail, 1, testCases)
 	_, testCases = wrapWithDescribeColl(t, nil, ReturnWrongStatus, 1, testCases)
@@ -1208,9 +1232,12 @@ func genIDs(dataType schemapb.DataType) *schemapb.IDs {
 	return generateIDs(dataType, 3)
 }
 
-func TestSearch(t *testing.T) {
+func TestV1Search(t *testing.T) {
 	paramtable.Init()
 	paramtable.Get().Save(proxy.Params.HTTPCfg.AcceptTypeAllowInt64.Key, "true")
+	// disable rate limit
+	paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "false")
+	defer paramtable.Get().Save(paramtable.Get().QuotaConfig.QuotaAndLimitsEnabled.Key, "true")
 	testCases := []testCase{}
 
 	mp2 := mocks.NewMockProxy(t)

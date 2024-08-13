@@ -592,7 +592,9 @@ func (h *HandlersV2) query(ctx context.Context, c *gin.Context, anyReq any, dbNa
 		req.QueryParams = append(req.QueryParams, &commonpb.KeyValuePair{Key: ParamLimit, Value: strconv.FormatInt(int64(httpReq.Limit), 10)})
 	}
 	resp, err := wrapperProxy(ctx, c, req, h.checkAuth, false, "/milvus.proto.milvus.MilvusService/Query", func(reqCtx context.Context, req any) (interface{}, error) {
-		return h.proxy.Query(reqCtx, req.(*milvuspb.QueryRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "query", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Query(reqCtx, req.(*milvuspb.QueryRequest))
+		})
 	})
 	if err == nil {
 		queryResp := resp.(*milvuspb.QueryResults)
@@ -640,7 +642,9 @@ func (h *HandlersV2) get(ctx context.Context, c *gin.Context, anyReq any, dbName
 	}
 	c.Set(ContextRequest, req)
 	resp, err := wrapperProxy(ctx, c, req, h.checkAuth, false, "/milvus.proto.milvus.MilvusService/Query", func(reqCtx context.Context, req any) (interface{}, error) {
-		return h.proxy.Query(reqCtx, req.(*milvuspb.QueryRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "get", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Query(reqCtx, req.(*milvuspb.QueryRequest))
+		})
 	})
 	if err == nil {
 		queryResp := resp.(*milvuspb.QueryResults)
@@ -689,7 +693,9 @@ func (h *HandlersV2) delete(ctx context.Context, c *gin.Context, anyReq any, dbN
 		req.Expr = filter
 	}
 	resp, err := wrapperProxy(ctx, c, req, h.checkAuth, false, "/milvus.proto.milvus.MilvusService/Delete", func(reqCtx context.Context, req any) (interface{}, error) {
-		return h.proxy.Delete(reqCtx, req.(*milvuspb.DeleteRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "delete", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Delete(reqCtx, req.(*milvuspb.DeleteRequest))
+		})
 	})
 	if err == nil {
 		HTTPReturn(c, http.StatusOK, wrapperReturnDefaultWithCost(
@@ -735,7 +741,9 @@ func (h *HandlersV2) insert(ctx context.Context, c *gin.Context, anyReq any, dbN
 		return nil, err
 	}
 	resp, err := wrapperProxy(ctx, c, req, h.checkAuth, false, "/milvus.proto.milvus.MilvusService/Insert", func(reqCtx context.Context, req any) (interface{}, error) {
-		return h.proxy.Insert(reqCtx, req.(*milvuspb.InsertRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "insert", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Insert(reqCtx, req.(*milvuspb.InsertRequest))
+		})
 	})
 	if err == nil {
 		insertResp := resp.(*milvuspb.MutationResult)
@@ -813,7 +821,9 @@ func (h *HandlersV2) upsert(ctx context.Context, c *gin.Context, anyReq any, dbN
 		return nil, err
 	}
 	resp, err := wrapperProxy(ctx, c, req, h.checkAuth, false, "/milvus.proto.milvus.MilvusService/Upsert", func(reqCtx context.Context, req any) (interface{}, error) {
-		return h.proxy.Upsert(reqCtx, req.(*milvuspb.UpsertRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "upsert", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Upsert(reqCtx, req.(*milvuspb.UpsertRequest))
+		})
 	})
 	if err == nil {
 		upsertResp := resp.(*milvuspb.MutationResult)
@@ -958,7 +968,9 @@ func (h *HandlersV2) search(ctx context.Context, c *gin.Context, anyReq any, dbN
 	req.SearchParams = searchParams
 	req.PlaceholderGroup = placeholderGroup
 	resp, err := wrapperProxy(ctx, c, req, h.checkAuth, false, "/milvus.proto.milvus.MilvusService/Search", func(reqCtx context.Context, req any) (interface{}, error) {
-		return h.proxy.Search(reqCtx, req.(*milvuspb.SearchRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "search", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Search(reqCtx, req.(*milvuspb.SearchRequest))
+		})
 	})
 	if err == nil {
 		searchResp := resp.(*milvuspb.SearchResults)

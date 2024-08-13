@@ -517,7 +517,9 @@ func (h *HandlersV1) query(c *gin.Context) {
 	username, _ := c.Get(ContextUsername)
 	ctx := proxy.NewContextWithMetadata(c, username.(string), req.DbName)
 	response, err := h.executeRestRequestInterceptor(ctx, c, req, func(reqCtx context.Context, req any) (any, error) {
-		return h.proxy.Query(reqCtx, req.(*milvuspb.QueryRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "query", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Query(reqCtx, req.(*milvuspb.QueryRequest))
+		})
 	})
 	if err == RestRequestInterceptorErr {
 		return
@@ -589,7 +591,9 @@ func (h *HandlersV1) get(c *gin.Context) {
 		}
 		queryReq := req.(*milvuspb.QueryRequest)
 		queryReq.Expr = filter
-		return h.proxy.Query(reqCtx, queryReq)
+		return CheckLimiterHandler(c, reqCtx, req, "get", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Query(reqCtx, queryReq)
+		})
 	})
 	if err == RestRequestInterceptorErr {
 		return
@@ -661,7 +665,10 @@ func (h *HandlersV1) delete(c *gin.Context) {
 			}
 			deleteReq.Expr = filter
 		}
-		return h.proxy.Delete(ctx, deleteReq)
+
+		return CheckLimiterHandler(c, reqCtx, req, "delete", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Delete(reqCtx, deleteReq)
+		})
 	})
 	if err == RestRequestInterceptorErr {
 		return
@@ -737,7 +744,10 @@ func (h *HandlersV1) insert(c *gin.Context) {
 			})
 			return nil, RestRequestInterceptorErr
 		}
-		return h.proxy.Insert(ctx, insertReq)
+
+		return CheckLimiterHandler(c, reqCtx, req, "insert", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Insert(ctx, insertReq)
+		})
 	})
 	if err == RestRequestInterceptorErr {
 		return
@@ -836,7 +846,9 @@ func (h *HandlersV1) upsert(c *gin.Context) {
 			})
 			return nil, RestRequestInterceptorErr
 		}
-		return h.proxy.Upsert(ctx, upsertReq)
+		return CheckLimiterHandler(c, reqCtx, req, "upsert", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Upsert(ctx, upsertReq)
+		})
 	})
 	if err == RestRequestInterceptorErr {
 		return
@@ -932,7 +944,9 @@ func (h *HandlersV1) search(c *gin.Context) {
 	username, _ := c.Get(ContextUsername)
 	ctx := proxy.NewContextWithMetadata(c, username.(string), req.DbName)
 	response, err := h.executeRestRequestInterceptor(ctx, c, req, func(reqCtx context.Context, req any) (any, error) {
-		return h.proxy.Search(ctx, req.(*milvuspb.SearchRequest))
+		return CheckLimiterHandler(c, reqCtx, req, "query", h.proxy, func(reqCtx context.Context, req any) (any, error) {
+			return h.proxy.Search(ctx, req.(*milvuspb.SearchRequest))
+		})
 	})
 	if err == RestRequestInterceptorErr {
 		return
