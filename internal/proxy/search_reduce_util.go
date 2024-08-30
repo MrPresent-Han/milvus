@@ -52,6 +52,8 @@ func NewReduceSearchResultInfo(
 
 func reduceSearchResult(ctx context.Context, reduceInfo *reduceSearchResultInfo) (*milvuspb.SearchResults, error) {
 	if reduceInfo.queryInfo.GroupByFieldId > 0 {
+		log.Info("hc===reduce search group with groupBy", zap.Int64("groupBYField", reduceInfo.queryInfo.GetGroupByFieldId()),
+			zap.Int64("groupSize", reduceInfo.queryInfo.GetGroupSize()))
 		return reduceSearchResultDataWithGroupBy(ctx,
 			reduceInfo.subSearchResultData,
 			reduceInfo.nq,

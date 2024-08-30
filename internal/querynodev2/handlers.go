@@ -390,8 +390,8 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 	} else {
 		resp, err = segments.ReduceSearchResults(ctx, results, segments.NewReduceInfo(req.Req.GetNq(),
 			req.Req.GetTopk(),
-			req.Req.GetExtraSearchParam().GetGroupByFieldId(),
-			req.Req.GetExtraSearchParam().GetGroupSize(),
+			req.Req.GetGroupByFieldId(),
+			req.Req.GetGroupSize(),
 			req.Req.GetMetricType()))
 	}
 	if err != nil {

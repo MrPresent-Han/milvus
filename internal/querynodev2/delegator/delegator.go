@@ -331,6 +331,8 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 				IgnoreGrowing:      req.GetReq().GetIgnoreGrowing(),
 				Username:           req.GetReq().GetUsername(),
 				IsAdvanced:         false,
+				GroupByFieldId:     subReq.GetGroupByFieldId(),
+				GroupSize:          subReq.GetGroupSize(),
 			}
 			future := conc.Go(func() (*internalpb.SearchResults, error) {
 				searchReq := &querypb.SearchRequest{
@@ -353,8 +355,8 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 					results,
 					segments.NewReduceInfo(searchReq.Req.GetNq(),
 						searchReq.Req.GetTopk(),
-						searchReq.Req.GetExtraSearchParam().GetGroupByFieldId(),
-						searchReq.Req.GetExtraSearchParam().GetGroupSize(),
+						searchReq.Req.GetGroupByFieldId(),
+						searchReq.Req.GetGroupSize(),
 						searchReq.Req.GetMetricType()),
 				)
 			})

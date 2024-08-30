@@ -339,10 +339,9 @@ func setQueryInfoIfMvEnable(queryInfo *planpb.QueryInfo, t *searchTask, plan *pl
 func (t *searchTask) initAdvancedSearchRequest(ctx context.Context) error {
 	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "init advanced search request")
 	defer sp.End()
-
 	t.partitionIDsSet = typeutil.NewConcurrentSet[UniqueID]()
-
 	log := log.Ctx(ctx).With(zap.Int64("collID", t.GetCollectionID()), zap.String("collName", t.collectionName))
+
 	// fetch search_growing from search param
 	t.SearchRequest.SubReqs = make([]*internalpb.SubSearchRequest, len(t.request.GetSubReqs()))
 	t.queryInfos = make([]*planpb.QueryInfo, len(t.request.GetSubReqs()))
@@ -351,9 +350,7 @@ func (t *searchTask) initAdvancedSearchRequest(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if queryInfo.GetGroupByFieldId() != -1 {
-			return errors.New("not support search_group_by operation in the hybrid search")
-		}
+
 		internalSubReq := &internalpb.SubSearchRequest{
 			Dsl:                subReq.GetDsl(),
 			PlaceholderGroup:   subReq.GetPlaceholderGroup(),
@@ -461,7 +458,8 @@ func (t *searchTask) initSearchRequest(ctx context.Context) error {
 	t.SearchRequest.MetricType = queryInfo.GetMetricType()
 	t.queryInfos = append(t.queryInfos, queryInfo)
 	t.SearchRequest.DslType = commonpb.DslType_BoolExprV1
-	t.SearchRequest.ExtraSearchParam = &internalpb.ExtraSearchParam{GroupByFieldId: queryInfo.GroupByFieldId, GroupSize: queryInfo.GroupSize}
+	t.SearchRequest.GroupByFieldId = queryInfo.GroupByFieldId
+	t.SearchRequest.GroupSize = queryInfo.GroupSize
 	log.Debug("proxy init search request",
 		zap.Int64s("plan.OutputFieldIds", plan.GetOutputFieldIds()),
 		zap.Stringer("plan", plan)) // may be very large if large term passed.
@@ -647,9 +645,10 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 				multipleInternalResults[reqIndex] = append(multipleInternalResults[reqIndex], internalResults)
 			}
 		}
-
+		log.Info("hc====", zap.Int("multipleInternalResults.len", len(multipleInternalResults)))
 		multipleMilvusResults := make([]*milvuspb.SearchResults, len(t.SearchRequest.GetSubReqs()))
 		for index, internalResults := range multipleInternalResults {
+			log.Info("hc===assemble internal result", zap.Int("i", index))
 			subReq := t.SearchRequest.GetSubReqs()[index]
 
 			metricType := ""
