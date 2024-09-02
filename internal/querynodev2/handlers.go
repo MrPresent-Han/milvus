@@ -19,6 +19,7 @@ package querynodev2
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 	"strconv"
 
 	"github.com/samber/lo"
@@ -384,16 +385,18 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		req.GetSegmentIDs(),
 	))
 
-	var resp *internalpb.SearchResults
-	if req.GetReq().GetIsAdvanced() {
-		resp, err = segments.ReduceAdvancedSearchResults(ctx, results, req.Req.GetNq())
-	} else {
-		resp, err = segments.ReduceSearchResults(ctx, results, segments.NewReduceInfo(req.Req.GetNq(),
-			req.Req.GetTopk(),
-			req.Req.GetGroupByFieldId(),
-			req.Req.GetGroupSize(),
-			req.Req.GetMetricType()))
-	}
+	resp, err := segments.ReduceSearchOnQueryNode(ctx, results,
+		reduce.NewReduceSearchResultInfo(req.GetReq().GetNq(),
+			req.GetReq().GetTopk(),
+			req.GetReq().GetMetricType(),
+			0,
+			0,
+			req.GetReq().GetGroupByFieldId(),
+			req.GetReq().GetGroupSize(),
+			req.GetReq().GetIsAdvanced(),
+			req.GetReq().GetIsAdvanced() && req.GetReq().GetGroupByFieldId() > int64(0),
+		))
+
 	if err != nil {
 		return nil, err
 	}

@@ -20,6 +20,7 @@ package delegator
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 	"path"
 	"strconv"
 	"sync"
@@ -351,14 +352,18 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 					return nil, err
 				}
 
-				return segments.ReduceSearchResults(ctx,
+				return segments.ReduceSearchOnQueryNode(ctx,
 					results,
-					segments.NewReduceInfo(searchReq.Req.GetNq(),
-						searchReq.Req.GetTopk(),
-						searchReq.Req.GetGroupByFieldId(),
-						searchReq.Req.GetGroupSize(),
-						searchReq.Req.GetMetricType()),
-				)
+					reduce.NewReduceSearchResultInfo(searchReq.GetReq().GetNq(),
+						searchReq.GetReq().GetTopk(),
+						searchReq.GetReq().GetMetricType(),
+						0,
+						0,
+						searchReq.GetReq().GetGroupByFieldId(),
+						searchReq.GetReq().GetGroupSize(),
+						false,
+						searchReq.GetReq().GetGroupByFieldId() > int64(0),
+					))
 			})
 			futures[index] = future
 		}
@@ -377,12 +382,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 			}
 			results[i] = result
 		}
-		var ret *internalpb.SearchResults
-		ret, err = segments.MergeToAdvancedResults(ctx, results)
-		if err != nil {
-			return nil, err
-		}
-		return []*internalpb.SearchResults{ret}, nil
+		return results, nil
 	}
 	return sd.search(ctx, req, sealed, growing)
 }

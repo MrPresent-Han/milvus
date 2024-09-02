@@ -28,6 +28,7 @@ type reduceSearchResultInfo struct {
 	pkType              schemapb.DataType
 	offset              int64
 	queryInfo           *planpb.QueryInfo
+	reduceToGroup       bool
 }
 
 func NewReduceSearchResultInfo(
@@ -38,6 +39,7 @@ func NewReduceSearchResultInfo(
 	pkType schemapb.DataType,
 	offset int64,
 	queryInfo *planpb.QueryInfo,
+	isAdvance bool,
 ) *reduceSearchResultInfo {
 	return &reduceSearchResultInfo{
 		subSearchResultData: subSearchResultData,
@@ -47,21 +49,25 @@ func NewReduceSearchResultInfo(
 		pkType:              pkType,
 		offset:              offset,
 		queryInfo:           queryInfo,
+		reduceToGroup:       isAdvance,
 	}
 }
 
 func reduceSearchResult(ctx context.Context, reduceInfo *reduceSearchResultInfo) (*milvuspb.SearchResults, error) {
 	if reduceInfo.queryInfo.GroupByFieldId > 0 {
-		log.Info("hc===reduce search group with groupBy", zap.Int64("groupBYField", reduceInfo.queryInfo.GetGroupByFieldId()),
-			zap.Int64("groupSize", reduceInfo.queryInfo.GetGroupSize()))
-		return reduceSearchResultDataWithGroupBy(ctx,
-			reduceInfo.subSearchResultData,
-			reduceInfo.nq,
-			reduceInfo.topK,
-			reduceInfo.metricType,
-			reduceInfo.pkType,
-			reduceInfo.offset,
-			reduceInfo.queryInfo.GroupSize)
+		if reduceInfo.reduceToGroup {
+			return reduceSearchResultDataWithGroupBy(ctx,
+				reduceInfo.subSearchResultData,
+				reduceInfo.nq,
+				reduceInfo.topK,
+				reduceInfo.metricType,
+				reduceInfo.pkType,
+				reduceInfo.offset,
+				reduceInfo.queryInfo.GroupSize)
+		} else {
+
+		}
+
 	}
 	return reduceSearchResultDataNoGroupBy(ctx,
 		reduceInfo.subSearchResultData,

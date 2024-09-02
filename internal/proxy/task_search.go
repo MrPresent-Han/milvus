@@ -552,7 +552,7 @@ func (t *searchTask) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (t *searchTask) reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResults, nq, topK int64, offset int64, queryInfo *planpb.QueryInfo) (*milvuspb.SearchResults, error) {
+func (t *searchTask) reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResults, nq, topK int64, offset int64, queryInfo *planpb.QueryInfo, reduceToGroup bool) (*milvuspb.SearchResults, error) {
 	metricType := ""
 	if len(toReduceResults) >= 1 {
 		metricType = toReduceResults[0].GetMetricType()
@@ -584,7 +584,7 @@ func (t *searchTask) reduceResults(ctx context.Context, toReduceResults []*inter
 	}
 	var result *milvuspb.SearchResults
 	result, err = reduceSearchResult(ctx, NewReduceSearchResultInfo(validSearchResults, nq, topK,
-		metricType, primaryFieldSchema.DataType, offset, queryInfo))
+		metricType, primaryFieldSchema.GetDataType(), offset, queryInfo, reduceToGroup))
 	if err != nil {
 		log.Warn("failed to reduce search results", zap.Error(err))
 		return nil, err
@@ -655,7 +655,7 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 			if len(internalResults) >= 1 {
 				metricType = internalResults[0].GetMetricType()
 			}
-			result, err := t.reduceResults(t.ctx, internalResults, subReq.GetNq(), subReq.GetTopk(), subReq.GetOffset(), t.queryInfos[index])
+			result, err := t.reduceResults(t.ctx, internalResults, subReq.GetNq(), subReq.GetTopk(), subReq.GetOffset(), t.queryInfos[index], false)
 			if err != nil {
 				return err
 			}
@@ -672,7 +672,7 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 			return err
 		}
 	} else {
-		t.result, err = t.reduceResults(t.ctx, toReduceResults, t.SearchRequest.Nq, t.SearchRequest.GetTopk(), t.SearchRequest.GetOffset(), t.queryInfos[0])
+		t.result, err = t.reduceResults(t.ctx, toReduceResults, t.SearchRequest.Nq, t.SearchRequest.GetTopk(), t.SearchRequest.GetOffset(), t.queryInfos[0], true)
 		if err != nil {
 			return err
 		}
