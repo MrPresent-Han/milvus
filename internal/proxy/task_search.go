@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 	"math"
 	"strconv"
 
@@ -552,7 +553,7 @@ func (t *searchTask) Execute(ctx context.Context) error {
 	return nil
 }
 
-func (t *searchTask) reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResults, nq, topK int64, offset int64, queryInfo *planpb.QueryInfo, reduceToGroup bool) (*milvuspb.SearchResults, error) {
+func (t *searchTask) reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResults, nq, topK int64, offset int64, queryInfo *planpb.QueryInfo, isAdvance bool) (*milvuspb.SearchResults, error) {
 	metricType := ""
 	if len(toReduceResults) >= 1 {
 		metricType = toReduceResults[0].GetMetricType()
@@ -583,8 +584,9 @@ func (t *searchTask) reduceResults(ctx context.Context, toReduceResults []*inter
 		return nil, err
 	}
 	var result *milvuspb.SearchResults
-	result, err = reduceSearchResult(ctx, NewReduceSearchResultInfo(validSearchResults, nq, topK,
-		metricType, primaryFieldSchema.GetDataType(), offset, queryInfo, reduceToGroup))
+	result, err = reduceSearchResult(ctx, validSearchResults, reduce.NewReduceSearchResultInfo(nq, topK,
+		metricType, primaryFieldSchema.GetDataType(), offset, queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), isAdvance,
+		false, reduce.Proxy))
 	if err != nil {
 		log.Warn("failed to reduce search results", zap.Error(err))
 		return nil, err
@@ -913,7 +915,7 @@ func decodeSearchResults(ctx context.Context, searchResults []*internalpb.Search
 	return results, nil
 }
 
-func checkSearchResultData(data *schemapb.SearchResultData, nq int64, topk int64) error {
+func checkSearchResultData(data *schemapb.SearchResultData, nq int64, topk int64, pkHitNum int) error {
 	if data.NumQueries != nq {
 		return fmt.Errorf("search result's nq(%d) mis-match with %d", data.NumQueries, nq)
 	}
@@ -921,7 +923,6 @@ func checkSearchResultData(data *schemapb.SearchResultData, nq int64, topk int64
 		return fmt.Errorf("search result's topk(%d) mis-match with %d", data.TopK, topk)
 	}
 
-	pkHitNum := typeutil.GetSizeOfIDs(data.GetIds())
 	if len(data.Scores) != pkHitNum {
 		return fmt.Errorf("search result's score length invalid, score length=%d, expectedLength=%d",
 			len(data.Scores), pkHitNum)

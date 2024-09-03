@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 	"math"
 	"sort"
 
@@ -28,7 +29,11 @@ type reduceSearchResultInfo struct {
 	pkType              schemapb.DataType
 	offset              int64
 	queryInfo           *planpb.QueryInfo
-	reduceToGroup       bool
+	isAdvance           bool
+}
+
+func (reduceInfo *reduceSearchResultInfo) GetIsAdvance() bool {
+	return reduceInfo.isAdvance
 }
 
 func NewReduceSearchResultInfo(
@@ -49,33 +54,108 @@ func NewReduceSearchResultInfo(
 		pkType:              pkType,
 		offset:              offset,
 		queryInfo:           queryInfo,
-		reduceToGroup:       isAdvance,
+		isAdvance:           isAdvance,
 	}
 }
 
-func reduceSearchResult(ctx context.Context, reduceInfo *reduceSearchResultInfo) (*milvuspb.SearchResults, error) {
-	if reduceInfo.queryInfo.GroupByFieldId > 0 {
-		if reduceInfo.reduceToGroup {
-			return reduceSearchResultDataWithGroupBy(ctx,
-				reduceInfo.subSearchResultData,
-				reduceInfo.nq,
-				reduceInfo.topK,
-				reduceInfo.metricType,
-				reduceInfo.pkType,
-				reduceInfo.offset,
-				reduceInfo.queryInfo.GroupSize)
+func reduceSearchResult(ctx context.Context, subSearchResultData []*schemapb.SearchResultData, reduceInfo *reduce.ResultInfo) (*milvuspb.SearchResults, error) {
+	if reduceInfo.GetGroupByFieldId() > 0 {
+		if reduceInfo.GetIsAdvance() {
+			//for hybrid search groupby, we cannot reduce result for one subResult, because the final score has not been accumulated
+			//also, offset cannot be applied
+			return reduceAdvanceGroupBY(ctx,
+				subSearchResultData)
 		} else {
-
+			return reduceSearchResultDataWithGroupBy(ctx,
+				subSearchResultData,
+				reduceInfo.GetNq(),
+				reduceInfo.GetTopK(),
+				reduceInfo.GetMetricType(),
+				reduceInfo.GetPkType(),
+				reduceInfo.GetOffset(),
+				reduceInfo.GetGroupSize())
 		}
-
 	}
 	return reduceSearchResultDataNoGroupBy(ctx,
-		reduceInfo.subSearchResultData,
-		reduceInfo.nq,
-		reduceInfo.topK,
-		reduceInfo.metricType,
-		reduceInfo.pkType,
-		reduceInfo.offset)
+		subSearchResultData,
+		reduceInfo.GetNq(),
+		reduceInfo.GetTopK(),
+		reduceInfo.GetMetricType(),
+		reduceInfo.GetPkType(),
+		reduceInfo.GetOffset())
+}
+
+func checkResultDatas(ctx context.Context, subSearchResultData []*schemapb.SearchResultData,
+	nq int64, topK int64) (int64, int, error) {
+	var allSearchCount int64
+	var hitNum int
+	for i, sData := range subSearchResultData {
+		pkLength := typeutil.GetSizeOfIDs(sData.GetIds())
+		log.Ctx(ctx).Debug("subSearchResultData",
+			zap.Int("result No.", i),
+			zap.Int64("nq", sData.NumQueries),
+			zap.Int64("topk", sData.TopK),
+			zap.Int("length of pks", pkLength),
+			zap.Int("length of FieldsData", len(sData.FieldsData)))
+		allSearchCount += sData.GetAllSearchCount()
+		hitNum += pkLength
+		if err := checkSearchResultData(sData, nq, topK, pkLength); err != nil {
+			log.Ctx(ctx).Warn("invalid search results", zap.Error(err))
+			return allSearchCount, hitNum, err
+		}
+	}
+	return allSearchCount, hitNum, nil
+}
+
+func reduceAdvanceGroupBY(ctx context.Context, subSearchResultData []*schemapb.SearchResultData,
+	nq int64, topK int64, pkType MilvusPKType) (*milvuspb.SearchResults, error) {
+	log.Ctx(ctx).Debug("reduceAdvanceGroupBY", zap.Int("len(subSearchResultData)", len(subSearchResultData)), zap.Int64("nq", nq))
+	// for advance group by, offset is not applied, so just return when there's only one channel
+	if len(subSearchResultData) == 1 {
+		return &milvuspb.SearchResults{
+			Status:  merr.Success(),
+			Results: subSearchResultData[0],
+		}, nil
+	}
+
+	ret := &milvuspb.SearchResults{
+		Status: merr.Success(),
+		Results: &schemapb.SearchResultData{
+			NumQueries: nq,
+			TopK:       topK,
+			Scores:     []float32{},
+			Ids:        &schemapb.IDs{},
+			Topks:      []int64{},
+		},
+	}
+
+	var limit int64
+	if allSearchCount, hitNum, err := checkResultDatas(ctx, subSearchResultData, nq, topK); err != nil {
+		log.Ctx(ctx).Warn("invalid search results", zap.Error(err))
+		return ret, err
+	} else {
+		ret.GetResults().AllSearchCount = allSearchCount
+		limit = int64(hitNum)
+		ret.GetResults().FieldsData = typeutil.PrepareResultFieldData(subSearchResultData[0].GetFieldsData(), limit)
+	}
+
+	switch pkType {
+	case schemapb.DataType_Int64:
+		ret.GetResults().Ids.IdField = &schemapb.IDs_IntId{
+			IntId: &schemapb.LongArray{
+				Data: make([]int64, 0, limit),
+			},
+		}
+	case schemapb.DataType_VarChar:
+		ret.GetResults().Ids.IdField = &schemapb.IDs_StrId{
+			StrId: &schemapb.StringArray{
+				Data: make([]string, 0, limit),
+			},
+		}
+	default:
+		return nil, errors.New("unsupported pk type")
+	}
+
 }
 
 type MilvusPKType interface{}
@@ -134,20 +214,12 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 	default:
 		return nil, errors.New("unsupported pk type")
 	}
-	for i, sData := range subSearchResultData {
-		pkLength := typeutil.GetSizeOfIDs(sData.GetIds())
-		log.Ctx(ctx).Debug("subSearchResultData",
-			zap.Int("result No.", i),
-			zap.Int64("nq", sData.NumQueries),
-			zap.Int64("topk", sData.TopK),
-			zap.Int("length of pks", pkLength),
-			zap.Int("length of FieldsData", len(sData.FieldsData)))
-		ret.Results.AllSearchCount += sData.GetAllSearchCount()
-		if err := checkSearchResultData(sData, nq, topk); err != nil {
-			log.Ctx(ctx).Warn("invalid search results", zap.Error(err))
-			return ret, err
-		}
-		// printSearchResultData(sData, strconv.FormatInt(int64(i), 10))
+
+	if allSearchCount, _, err := checkResultDatas(ctx, subSearchResultData, nq, topk); err != nil {
+		log.Ctx(ctx).Warn("invalid search results", zap.Error(err))
+		return ret, err
+	} else {
+		ret.GetResults().AllSearchCount = allSearchCount
 	}
 
 	var (

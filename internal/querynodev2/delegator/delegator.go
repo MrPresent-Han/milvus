@@ -363,6 +363,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 						searchReq.GetReq().GetGroupSize(),
 						false,
 						searchReq.GetReq().GetGroupByFieldId() > int64(0),
+						reduce.SubDelegator,
 					))
 			})
 			futures[index] = future

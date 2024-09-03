@@ -4,6 +4,14 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 )
 
+type ReduceLevel int
+
+const (
+	Delegator    ReduceLevel = iota
+	SubDelegator ReduceLevel = 2
+	Proxy        ReduceLevel = 3
+)
+
 type ResultInfo struct {
 	nq             int64
 	topK           int64
@@ -14,6 +22,7 @@ type ResultInfo struct {
 	groupSize      int64
 	isAdvance      bool
 	advanceGroupBy bool
+	reduceLevel    ReduceLevel
 }
 
 func NewResultInfoNqTopK(
@@ -40,6 +49,7 @@ func NewReduceSearchResultInfo(
 	groupSize int64,
 	isAdvance bool,
 	advanceGroupBy bool,
+	reduceLevel ReduceLevel,
 ) *ResultInfo {
 	return &ResultInfo{
 		nq:             nq,
@@ -51,6 +61,7 @@ func NewReduceSearchResultInfo(
 		groupSize:      groupSize,
 		isAdvance:      isAdvance,
 		advanceGroupBy: advanceGroupBy,
+		reduceLevel:    reduceLevel,
 	}
 }
 
@@ -88,6 +99,10 @@ func (r *ResultInfo) GetIsAdvance() bool {
 
 func (r *ResultInfo) GetIsAdvanceGroupBy() bool {
 	return r.advanceGroupBy
+}
+
+func (r *ResultInfo) GetReduceLevel() ReduceLevel {
+	return r.reduceLevel
 }
 
 func (r *ResultInfo) SetMetricType(metricType string) {

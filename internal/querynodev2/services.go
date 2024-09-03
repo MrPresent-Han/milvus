@@ -773,7 +773,6 @@ func (node *QueryNode) Search(ctx context.Context, req *querypb.SearchRequest) (
 		resp.Status = merr.Status(err)
 		return resp, nil
 	}
-
 	collector.Rate.Add(metricsinfo.NQPerSecond, float64(req.GetReq().GetNq()))
 	collector.Rate.Add(metricsinfo.SearchThroughput, float64(proto.Size(req)))
 	metrics.QueryNodeExecuteCounter.WithLabelValues(strconv.FormatInt(node.GetNodeID(), 10), metrics.SearchLabel).

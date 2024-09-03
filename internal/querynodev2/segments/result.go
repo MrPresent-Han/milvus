@@ -45,10 +45,10 @@ var _ typeutil.ResultWithID = &segcorepb.RetrieveResults{}
 
 func ReduceSearchOnQueryNode(ctx context.Context, results []*internalpb.SearchResults, info *reduce.ResultInfo) (*internalpb.SearchResults, error) {
 	if info.GetIsAdvance() {
-		return ReduceAdvancedSearchResults(ctx, results)
+		return ReduceAdvancedSearchResults(ctx, results, info.GetReduceLevel())
 	} else {
 		if info.GetIsAdvanceGroupBy() {
-			return ReduceAdvancedSearchResults(ctx, results)
+			return ReduceAdvancedSearchResults(ctx, results, info.GetReduceLevel())
 		}
 		return ReduceSearchResults(ctx, results, info)
 	}
@@ -127,7 +127,7 @@ func ReduceSearchResults(ctx context.Context, results []*internalpb.SearchResult
 	return searchResults, nil
 }
 
-func ReduceAdvancedSearchResults(ctx context.Context, results []*internalpb.SearchResults) (*internalpb.SearchResults, error) {
+func ReduceAdvancedSearchResults(ctx context.Context, results []*internalpb.SearchResults, level reduce.ReduceLevel) (*internalpb.SearchResults, error) {
 	_, sp := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, "ReduceAdvancedSearchResults")
 	defer sp.End()
 
@@ -141,18 +141,31 @@ func ReduceAdvancedSearchResults(ctx context.Context, results []*internalpb.Sear
 		IsAdvanced: true,
 	}
 
-	for _, result := range results {
+	for index, result := range results {
 		relatedDataSize += result.GetCostAggregation().GetTotalRelatedDataSize()
 		for ch, ts := range result.GetChannelsMvcc() {
 			channelsMvcc[ch] = ts
 		}
-		if !result.GetIsAdvanced() {
+		if !result.GetIsAdvanced() && level == reduce.Delegator {
 			continue
 		}
-		// we just append here, no need to split subResult and reduce
-		// defer this reduce to proxy
-		searchResults.SubResults = append(searchResults.SubResults, result.GetSubResults()...)
 		searchResults.NumQueries = result.GetNumQueries()
+		// we just append here, no need to split subResult and reduce
+		// defer this reduction to proxy
+		if level == reduce.Delegator {
+			searchResults.SubResults = append(searchResults.SubResults, result.GetSubResults()...)
+		} else if level == reduce.SubDelegator {
+			subResult := &internalpb.SubSearchResults{
+				MetricType:     result.GetMetricType(),
+				NumQueries:     result.GetNumQueries(),
+				TopK:           result.GetTopK(),
+				SlicedBlob:     result.GetSlicedBlob(),
+				SlicedNumCount: result.GetSlicedNumCount(),
+				SlicedOffset:   result.GetSlicedOffset(),
+				ReqIndex:       int64(index),
+			}
+			searchResults.SubResults = append(searchResults.SubResults, subResult)
+		}
 	}
 	searchResults.ChannelsMvcc = channelsMvcc
 	requestCosts := lo.FilterMap(results, func(result *internalpb.SearchResults, _ int) (*internalpb.CostAggregation, bool) {
