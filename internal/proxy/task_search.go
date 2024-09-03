@@ -77,8 +77,9 @@ type searchTask struct {
 	queryInfos      []*planpb.QueryInfo
 	relatedDataSize int64
 
-	reScorers  []reScorer
-	rankParams *rankParams
+	reScorers   []reScorer
+	rankParams  *rankParams
+	groupScorer func(group *Group) error
 }
 
 func (t *searchTask) CanSkipAllocTimestamp() bool {
@@ -411,6 +412,17 @@ func (t *searchTask) initAdvancedSearchRequest(ctx context.Context) error {
 		log.Info("generate reScorer failed", zap.Any("params", t.request.GetSearchParams()), zap.Error(err))
 		return err
 	}
+	//hc--- set up groupScorer
+	groupScorerStr, err := funcutil.GetAttrByKeyFromRepeatedKV(GroupScorer, t.request.GetSearchParams())
+	if err != nil {
+		groupScorerStr = MaxScorer
+	}
+	groupScorer, err := GetGroupScorer(groupScorerStr)
+	if err != nil {
+		return err
+	}
+	t.groupScorer = groupScorer
+
 	return nil
 }
 
@@ -586,7 +598,7 @@ func (t *searchTask) reduceResults(ctx context.Context, toReduceResults []*inter
 	var result *milvuspb.SearchResults
 	result, err = reduceSearchResult(ctx, validSearchResults, reduce.NewReduceSearchResultInfo(nq, topK,
 		metricType, primaryFieldSchema.GetDataType(), offset, queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), isAdvance,
-		false, reduce.Proxy))
+		reduce.Proxy))
 	if err != nil {
 		log.Warn("failed to reduce search results", zap.Error(err))
 		return nil, err
@@ -668,7 +680,10 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 		t.result, err = rankSearchResultData(ctx, t.SearchRequest.GetNq(),
 			t.rankParams,
 			primaryFieldSchema.GetDataType(),
-			multipleMilvusResults)
+			multipleMilvusResults,
+			t.SearchRequest.GetGroupByFieldId(),
+			t.SearchRequest.GetGroupSize(),
+			t.groupScorer)
 		if err != nil {
 			log.Warn("rank search result failed", zap.Error(err))
 			return err

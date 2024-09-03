@@ -394,7 +394,6 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 			req.GetReq().GetGroupByFieldId(),
 			req.GetReq().GetGroupSize(),
 			req.GetReq().GetIsAdvanced(),
-			req.GetReq().GetIsAdvanced() && req.GetReq().GetGroupByFieldId() > int64(0),
 			reduce.Delegator,
 		))
 

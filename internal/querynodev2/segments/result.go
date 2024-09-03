@@ -47,9 +47,6 @@ func ReduceSearchOnQueryNode(ctx context.Context, results []*internalpb.SearchRe
 	if info.GetIsAdvance() {
 		return ReduceAdvancedSearchResults(ctx, results, info.GetReduceLevel())
 	} else {
-		if info.GetIsAdvanceGroupBy() {
-			return ReduceAdvancedSearchResults(ctx, results, info.GetReduceLevel())
-		}
 		return ReduceSearchResults(ctx, results, info)
 	}
 }

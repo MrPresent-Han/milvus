@@ -1248,7 +1248,8 @@ func Test_checkSearchResultData(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.description, func(t *testing.T) {
-			err := checkSearchResultData(test.args.data, test.args.nq, test.args.topk)
+			pkLength := typeutil.GetSizeOfIDs(test.args.data.GetIds())
+			err := checkSearchResultData(test.args.data, test.args.nq, test.args.topk, pkLength)
 
 			if test.wantErr {
 				assert.Error(t, err)
@@ -1525,7 +1526,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 			t.Run(test.description, func(t *testing.T) {
 				reduced, err := reduceSearchResult(context.TODO(), results,
 					reduce.NewReduceSearchResultInfo(nq, topk, metric.L2, schemapb.DataType_Int64, test.offset,
-						queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, false, reduce.Proxy))
+						queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, reduce.Proxy))
 				assert.NoError(t, err)
 				assert.Equal(t, test.outData, reduced.GetResults().GetIds().GetIntId().GetData())
 				assert.Equal(t, []int64{test.limit, test.limit}, reduced.GetResults().GetTopks())
@@ -1578,7 +1579,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 			t.Run(test.description, func(t *testing.T) {
 				reduced, err := reduceSearchResult(context.TODO(), results,
 					reduce.NewReduceSearchResultInfo(nq, topk, metric.L2, schemapb.DataType_Int64, test.offset,
-						queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, false, reduce.Proxy))
+						queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, reduce.Proxy))
 				assert.NoError(t, err)
 				assert.Equal(t, test.outData, reduced.GetResults().GetIds().GetIntId().GetData())
 				assert.Equal(t, []int64{test.outLimit, test.outLimit}, reduced.GetResults().GetTopks())
@@ -1608,7 +1609,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 
 		reduced, err := reduceSearchResult(context.TODO(), results,
 			reduce.NewReduceSearchResultInfo(nq, topk, metric.L2, schemapb.DataType_Int64, 0,
-				queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, false, reduce.Proxy))
+				queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, reduce.Proxy))
 
 		assert.NoError(t, err)
 		assert.Equal(t, resultData, reduced.GetResults().GetIds().GetIntId().GetData())
@@ -1639,7 +1640,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 		}
 		reduced, err := reduceSearchResult(context.TODO(), results,
 			reduce.NewReduceSearchResultInfo(nq, topk, metric.L2, schemapb.DataType_VarChar, 0,
-				queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, false, reduce.Proxy))
+				queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, reduce.Proxy))
 
 		assert.NoError(t, err)
 		assert.Equal(t, resultData, reduced.GetResults().GetIds().GetStrId().GetData())
@@ -1714,7 +1715,7 @@ func TestTaskSearch_reduceGroupBySearchResultData(t *testing.T) {
 			}
 			reduced, err := reduceSearchResult(context.TODO(), results,
 				reduce.NewReduceSearchResultInfo(nq, topK, metric.L2, schemapb.DataType_Int64, 0,
-					queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, false, reduce.Proxy))
+					queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, reduce.Proxy))
 			resultIDs := reduced.GetResults().GetIds().GetIntId().Data
 			resultScores := reduced.GetResults().GetScores()
 			resultGroupByValues := reduced.GetResults().GetGroupByFieldValue().GetScalars().GetLongData().GetData()
@@ -1775,7 +1776,7 @@ func TestTaskSearch_reduceGroupBySearchResultDataWithOffset(t *testing.T) {
 	}
 	reduced, err := reduceSearchResult(context.TODO(), results,
 		reduce.NewReduceSearchResultInfo(nq, limit+offset, metric.L2, schemapb.DataType_Int64, offset,
-			queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, false, reduce.Proxy))
+			queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, reduce.Proxy))
 	resultIDs := reduced.GetResults().GetIds().GetIntId().Data
 	resultScores := reduced.GetResults().GetScores()
 	resultGroupByValues := reduced.GetResults().GetGroupByFieldValue().GetScalars().GetLongData().GetData()
@@ -1850,8 +1851,8 @@ func TestTaskSearch_reduceGroupBySearchWithGroupSizeMoreThanOne(t *testing.T) {
 			}
 			reduced, err := reduceSearchResult(context.TODO(), results,
 				reduce.NewReduceSearchResultInfo(nq, topK, metric.L2, schemapb.DataType_Int64, 0,
-					queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, false, reduce.Proxy))
-			
+					queryInfo.GetGroupByFieldId(), queryInfo.GetGroupSize(), false, reduce.Proxy))
+
 			resultIDs := reduced.GetResults().GetIds().GetIntId().Data
 			resultScores := reduced.GetResults().GetScores()
 			resultGroupByValues := reduced.GetResults().GetGroupByFieldValue().GetScalars().GetLongData().GetData()

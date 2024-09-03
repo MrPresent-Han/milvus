@@ -12,7 +12,6 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
-	"github.com/milvus-io/milvus/internal/proto/planpb"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/metric"
@@ -21,50 +20,13 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
-type reduceSearchResultInfo struct {
-	subSearchResultData []*schemapb.SearchResultData
-	nq                  int64
-	topK                int64
-	metricType          string
-	pkType              schemapb.DataType
-	offset              int64
-	queryInfo           *planpb.QueryInfo
-	isAdvance           bool
-}
-
-func (reduceInfo *reduceSearchResultInfo) GetIsAdvance() bool {
-	return reduceInfo.isAdvance
-}
-
-func NewReduceSearchResultInfo(
-	subSearchResultData []*schemapb.SearchResultData,
-	nq int64,
-	topK int64,
-	metricType string,
-	pkType schemapb.DataType,
-	offset int64,
-	queryInfo *planpb.QueryInfo,
-	isAdvance bool,
-) *reduceSearchResultInfo {
-	return &reduceSearchResultInfo{
-		subSearchResultData: subSearchResultData,
-		nq:                  nq,
-		topK:                topK,
-		metricType:          metricType,
-		pkType:              pkType,
-		offset:              offset,
-		queryInfo:           queryInfo,
-		isAdvance:           isAdvance,
-	}
-}
-
 func reduceSearchResult(ctx context.Context, subSearchResultData []*schemapb.SearchResultData, reduceInfo *reduce.ResultInfo) (*milvuspb.SearchResults, error) {
 	if reduceInfo.GetGroupByFieldId() > 0 {
 		if reduceInfo.GetIsAdvance() {
-			//for hybrid search groupby, we cannot reduce result for one subResult, because the final score has not been accumulated
-			//also, offset cannot be applied
+			//for hybrid search groupby, we cannot reduce result for results from one single search path,
+			//because the final score has not been accumulated, also, offset cannot be applied
 			return reduceAdvanceGroupBY(ctx,
-				subSearchResultData)
+				subSearchResultData, reduceInfo.GetNq(), reduceInfo.GetTopK(), reduceInfo.GetPkType(), reduceInfo.GetMetricType())
 		} else {
 			return reduceSearchResultDataWithGroupBy(ctx,
 				subSearchResultData,
@@ -108,7 +70,7 @@ func checkResultDatas(ctx context.Context, subSearchResultData []*schemapb.Searc
 }
 
 func reduceAdvanceGroupBY(ctx context.Context, subSearchResultData []*schemapb.SearchResultData,
-	nq int64, topK int64, pkType MilvusPKType) (*milvuspb.SearchResults, error) {
+	nq int64, topK int64, pkType MilvusPKType, metricType string) (*milvuspb.SearchResults, error) {
 	log.Ctx(ctx).Debug("reduceAdvanceGroupBY", zap.Int("len(subSearchResultData)", len(subSearchResultData)), zap.Int64("nq", nq))
 	// for advance group by, offset is not applied, so just return when there's only one channel
 	if len(subSearchResultData) == 1 {
@@ -156,6 +118,92 @@ func reduceAdvanceGroupBY(ctx context.Context, subSearchResultData []*schemapb.S
 		return nil, errors.New("unsupported pk type")
 	}
 
+	var (
+		subSearchNum = len(subSearchResultData)
+		// for results of each subSearchResultData, storing the start offset of each query of nq queries
+		subSearchNqOffset = make([][]int64, subSearchNum)
+	)
+	for i := 0; i < subSearchNum; i++ {
+		subSearchNqOffset[i] = make([]int64, subSearchResultData[i].GetNumQueries())
+		for j := int64(1); j < nq; j++ {
+			subSearchNqOffset[i][j] = subSearchNqOffset[i][j-1] + subSearchResultData[i].Topks[j-1]
+		}
+	}
+
+	var (
+		skipDupCnt int64
+		realTopK   int64 = -1
+	)
+
+	var retSize int64
+	maxOutputSize := paramtable.Get().QuotaConfig.MaxOutputSize.GetAsInt64()
+
+	// reducing nq * topk results
+	for i := int64(0); i < nq; i++ {
+		var (
+			// cursor of current data of each subSearch for merging the j-th data of TopK.
+			// sum(cursors) == j
+			cursors = make([]int64, subSearchNum)
+
+			j     int64
+			idSet = make(map[interface{}]struct{}, limit)
+		)
+
+		// keep limit results
+		for j = 0; j < limit; {
+			// From all the sub-query result sets of the i-th query vector,
+			//   find the sub-query result set index of the score j-th data,
+			//   and the index of the data in schemapb.SearchResultData
+			subSearchIdx, resultDataIdx := selectHighestScoreIndex(subSearchResultData, subSearchNqOffset, cursors, i)
+			if subSearchIdx == -1 {
+				break
+			}
+			id := typeutil.GetPK(subSearchResultData[subSearchIdx].GetIds(), resultDataIdx)
+			score := subSearchResultData[subSearchIdx].Scores[resultDataIdx]
+			subSearchRes := subSearchResultData[subSearchIdx]
+			groupByVal := typeutil.GetData(subSearchRes.GetGroupByFieldValue(), int(resultDataIdx))
+			// remove duplicatessds
+			if _, ok := idSet[id]; !ok {
+				retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subSearchResultData[subSearchIdx].FieldsData, resultDataIdx)
+				typeutil.AppendPKs(ret.Results.Ids, id)
+				ret.Results.Scores = append(ret.Results.Scores, score)
+				idSet[id] = struct{}{}
+				j++
+				if err := typeutil.AppendGroupByValue(ret.Results, groupByVal, subSearchRes.GetGroupByFieldValue().GetType()); err != nil {
+					log.Ctx(ctx).Error("failed to append groupByValues", zap.Error(err))
+					return ret, err
+				}
+			} else {
+				// skip entity with same id
+				skipDupCnt++
+			}
+			cursors[subSearchIdx]++
+		}
+		if realTopK != -1 && realTopK != j {
+			log.Ctx(ctx).Warn("Proxy Reduce Search Result", zap.Error(errors.New("the length (topk) between all result of query is different")))
+			// return nil, errors.New("the length (topk) between all result of query is different")
+		}
+		realTopK = j
+		ret.Results.Topks = append(ret.Results.Topks, realTopK)
+
+		// limit search result to avoid oom
+		if retSize > maxOutputSize {
+			return nil, fmt.Errorf("search results exceed the maxOutputSize Limit %d", maxOutputSize)
+		}
+	}
+	log.Ctx(ctx).Debug("skip duplicated search result", zap.Int64("count", skipDupCnt))
+
+	if skipDupCnt > 0 {
+		log.Info("skip duplicated search result", zap.Int64("count", skipDupCnt))
+	}
+
+	ret.Results.TopK = realTopK // realTopK is the topK of the nq-th query
+	if !metric.PositivelyRelated(metricType) {
+		for k := range ret.Results.Scores {
+			ret.Results.Scores[k] *= -1
+		}
+	}
+	return ret, nil
 }
 
 type MilvusPKType interface{}
@@ -394,20 +442,12 @@ func reduceSearchResultDataNoGroupBy(ctx context.Context, subSearchResultData []
 	default:
 		return nil, errors.New("unsupported pk type")
 	}
-	for i, sData := range subSearchResultData {
-		pkLength := typeutil.GetSizeOfIDs(sData.GetIds())
-		log.Ctx(ctx).Debug("subSearchResultData",
-			zap.Int("result No.", i),
-			zap.Int64("nq", sData.NumQueries),
-			zap.Int64("topk", sData.TopK),
-			zap.Int("length of pks", pkLength),
-			zap.Int("length of FieldsData", len(sData.FieldsData)))
-		ret.Results.AllSearchCount += sData.GetAllSearchCount()
-		if err := checkSearchResultData(sData, nq, topk); err != nil {
-			log.Ctx(ctx).Warn("invalid search results", zap.Error(err))
-			return ret, err
-		}
-		// printSearchResultData(sData, strconv.FormatInt(int64(i), 10))
+
+	if allSearchCount, _, err := checkResultDatas(ctx, subSearchResultData, nq, topk); err != nil {
+		log.Ctx(ctx).Warn("invalid search results", zap.Error(err))
+		return ret, err
+	} else {
+		ret.GetResults().AllSearchCount = allSearchCount
 	}
 
 	var (
@@ -508,8 +548,240 @@ func rankSearchResultData(ctx context.Context,
 	params *rankParams,
 	pkType schemapb.DataType,
 	searchResults []*milvuspb.SearchResults,
+	groupByFieldID int64,
+	groupSize int64,
+	groupScorer func(group *Group) error,
 ) (*milvuspb.SearchResults, error) {
-	tr := timerecord.NewTimeRecorder("rankSearchResultData")
+	if groupByFieldID > 0 {
+		return rankSearchResultDataByGroup(ctx, nq, params, pkType, searchResults, groupScorer, groupSize)
+	}
+	return rankSearchResultDataByPk(ctx, nq, params, pkType, searchResults)
+}
+
+func GetGroupScorer(scorerType string) (func(group *Group) error, error) {
+	switch scorerType {
+	case MaxScorer:
+		return func(group *Group) error {
+			group.finalScore = group.maxScore
+			return nil
+		}, nil
+	case SumScorer:
+		return func(group *Group) error {
+			group.finalScore = group.sumScore
+			return nil
+		}, nil
+	case AvgScorer:
+		return func(group *Group) error {
+			if len(group.idList) == 0 {
+				return merr.WrapErrParameterInvalid(1, len(group.idList),
+					"input group for score must have at least one id, must be sth wrong within code")
+			}
+			group.finalScore = group.sumScore / float32(len(group.idList))
+			return nil
+		}, nil
+	default:
+		return nil, merr.WrapErrParameterInvalidMsg("input group scorer type: %s is not supported!", scorerType)
+	}
+}
+
+type Group struct {
+	idList     []interface{}
+	scoreList  []float32
+	groupVal   interface{}
+	maxScore   float32
+	minScore   float32
+	sumScore   float32
+	finalScore float32
+}
+
+func rankSearchResultDataByGroup(ctx context.Context,
+	nq int64,
+	params *rankParams,
+	pkType schemapb.DataType,
+	searchResults []*milvuspb.SearchResults,
+	groupScorer func(group *Group) error,
+	groupSize int64,
+) (*milvuspb.SearchResults, error) {
+	tr := timerecord.NewTimeRecorder("rankSearchResultDataByGroup")
+	defer func() {
+		tr.CtxElapse(ctx, "done")
+	}()
+	offset := params.offset
+	limit := params.limit
+	// in the context of groupby, the meaning for offset refers to the offset of group
+	topk := limit + offset
+	roundDecimal := params.roundDecimal
+	log.Ctx(ctx).Debug("rankSearchResultDataByGroup",
+		zap.Int("len(searchResults)", len(searchResults)),
+		zap.Int64("nq", nq),
+		zap.Int64("offset", offset),
+		zap.Int64("limit", limit))
+
+	ret := &milvuspb.SearchResults{
+		Status: merr.Success(),
+		Results: &schemapb.SearchResultData{
+			NumQueries: nq,
+			TopK:       limit,
+			FieldsData: make([]*schemapb.FieldData, 0),
+			Scores:     []float32{},
+			Ids:        &schemapb.IDs{},
+			Topks:      []int64{},
+		},
+	}
+	if len(searchResults) == 0 {
+		return ret, nil
+	}
+
+	switch pkType {
+	case schemapb.DataType_Int64:
+		ret.GetResults().Ids.IdField = &schemapb.IDs_IntId{
+			IntId: &schemapb.LongArray{
+				Data: make([]int64, 0),
+			},
+		}
+	case schemapb.DataType_VarChar:
+		ret.GetResults().Ids.IdField = &schemapb.IDs_StrId{
+			StrId: &schemapb.StringArray{
+				Data: make([]string, 0),
+			},
+		}
+	default:
+		return nil, errors.New("unsupported pk type")
+	}
+
+	// []map[id]score
+	type accumulateIDGroupVal struct {
+		accumulatedScore float32
+		groupVal         interface{}
+	}
+
+	accumulatedScores := make([]map[interface{}]*accumulateIDGroupVal, nq)
+	for i := int64(0); i < nq; i++ {
+		accumulatedScores[i] = make(map[interface{}]*accumulateIDGroupVal)
+	}
+
+	groupByDataType := searchResults[0].GetResults().GetGroupByFieldValue().GetType()
+
+	for _, result := range searchResults {
+		scores := result.GetResults().GetScores()
+		start := int64(0)
+		for i := int64(0); i < nq; i++ {
+			realTopk := result.GetResults().Topks[i]
+			for j := start; j < start+realTopk; j++ {
+				id := typeutil.GetPK(result.GetResults().GetIds(), j)
+				//hc---risky here to convert int64 into int
+				groupByVal := typeutil.GetData(result.GetResults().GetGroupByFieldValue(), int(j))
+				if accumulatedScores[i][id] != nil {
+					accumulatedScores[i][id].accumulatedScore += scores[j]
+				} else {
+					accumulatedScores[i][id] = &accumulateIDGroupVal{accumulatedScore: scores[j], groupVal: groupByVal}
+				}
+			}
+			start += realTopk
+		}
+	}
+
+	for i := int64(0); i < nq; i++ {
+		idSet := accumulatedScores[i]
+		keys := make([]interface{}, 0)
+		for key := range idSet {
+			keys = append(keys, key)
+		}
+
+		compareKeys := func(keyI, keyJ interface{}) bool {
+			switch keyI.(type) {
+			case int64:
+				return keyI.(int64) < keyJ.(int64)
+			case string:
+				return keyI.(string) < keyJ.(string)
+			}
+			return false
+		}
+
+		// sort id by score
+		big := func(i, j int) bool {
+			scoreItemI := idSet[keys[i]]
+			scoreItemJ := idSet[keys[j]]
+			if scoreItemI.accumulatedScore == scoreItemJ.accumulatedScore {
+				return compareKeys(keys[i], keys[j])
+			}
+			return scoreItemI.accumulatedScore > scoreItemJ.accumulatedScore
+		}
+		sort.Slice(keys, big)
+
+		// separate keys into buckets according to groupVal
+		buckets := make(map[interface{}]*Group)
+		for _, key := range keys {
+			scoreItem := idSet[key]
+			groupVal := scoreItem.groupVal
+			if buckets[groupVal] == nil {
+				buckets[groupVal] = &Group{
+					//hc---maybe preallocate here?
+					idList:    make([]interface{}, 0),
+					scoreList: make([]float32, 0),
+					groupVal:  groupVal,
+				}
+			}
+			if int64(len(buckets[groupVal].idList)) >= groupSize {
+				//only consider group size results in each group
+				continue
+			}
+			buckets[groupVal].idList = append(buckets[groupVal].idList, key)
+			buckets[groupVal].scoreList = append(buckets[groupVal].scoreList, scoreItem.accumulatedScore)
+		}
+		if int64(len(buckets)) <= offset {
+			ret.Results.Topks = append(ret.Results.Topks, 0)
+			continue
+		}
+
+		groupList := make([]*Group, len(buckets))
+		for _, group := range buckets {
+			groupScorer(group)
+			groupList = append(groupList, group)
+		}
+		sort.Slice(groupList, func(i, j int) bool {
+			if groupList[i].finalScore == groupList[j].finalScore {
+				if len(groupList[i].idList) == len(groupList[j].idList) {
+					//if final score and size of group are both equal
+					//choose the group with smaller first key
+					//here, it's guaranteed all group having at least one id in the idList
+					return compareKeys(groupList[i].idList[0], groupList[j].idList[0])
+				}
+				// choose the larger group when scores are equal
+				return len(groupList[i].idList) > len(groupList[j].idList)
+			}
+			return groupList[i].finalScore > groupList[j].finalScore
+		})
+
+		if int64(len(groupList)) > topk {
+			groupList = groupList[:topk]
+		}
+		ret.Results.Topks = append(ret.Results.Topks, int64(len(groupList))-offset)
+		for index := offset; index < int64(len(groupList)); index++ {
+			group := groupList[index]
+			typeutil.AppendPKs(ret.Results.Ids, group.idList)
+			for _, score := range group.scoreList {
+				if roundDecimal != -1 {
+					multiplier := math.Pow(10.0, float64(roundDecimal))
+					score = float32(math.Floor(float64(score)*multiplier+0.5) / multiplier)
+				}
+				ret.Results.Scores = append(ret.Results.Scores, score)
+				typeutil.AppendGroupByValue(ret.Results, group.groupVal, groupByDataType)
+			}
+		}
+	}
+
+	return ret, nil
+
+}
+
+func rankSearchResultDataByPk(ctx context.Context,
+	nq int64,
+	params *rankParams,
+	pkType schemapb.DataType,
+	searchResults []*milvuspb.SearchResults,
+) (*milvuspb.SearchResults, error) {
+	tr := timerecord.NewTimeRecorder("rankSearchResultDataByPk")
 	defer func() {
 		tr.CtxElapse(ctx, "done")
 	}()
@@ -518,7 +790,7 @@ func rankSearchResultData(ctx context.Context,
 	limit := params.limit
 	topk := limit + offset
 	roundDecimal := params.roundDecimal
-	log.Ctx(ctx).Debug("rankSearchResultData",
+	log.Ctx(ctx).Debug("rankSearchResultDataByPk",
 		zap.Int("len(searchResults)", len(searchResults)),
 		zap.Int64("nq", nq),
 		zap.Int64("offset", offset),

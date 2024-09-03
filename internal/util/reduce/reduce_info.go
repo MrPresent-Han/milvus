@@ -21,7 +21,6 @@ type ResultInfo struct {
 	groupByFieldId int64
 	groupSize      int64
 	isAdvance      bool
-	advanceGroupBy bool
 	reduceLevel    ReduceLevel
 }
 
@@ -48,7 +47,6 @@ func NewReduceSearchResultInfo(
 	groupByFieldId int64,
 	groupSize int64,
 	isAdvance bool,
-	advanceGroupBy bool,
 	reduceLevel ReduceLevel,
 ) *ResultInfo {
 	return &ResultInfo{
@@ -60,7 +58,6 @@ func NewReduceSearchResultInfo(
 		groupByFieldId: groupByFieldId,
 		groupSize:      groupSize,
 		isAdvance:      isAdvance,
-		advanceGroupBy: advanceGroupBy,
 		reduceLevel:    reduceLevel,
 	}
 }
@@ -95,10 +92,6 @@ func (r *ResultInfo) GetGroupSize() int64 {
 
 func (r *ResultInfo) GetIsAdvance() bool {
 	return r.isAdvance
-}
-
-func (r *ResultInfo) GetIsAdvanceGroupBy() bool {
-	return r.advanceGroupBy
 }
 
 func (r *ResultInfo) GetReduceLevel() ReduceLevel {
