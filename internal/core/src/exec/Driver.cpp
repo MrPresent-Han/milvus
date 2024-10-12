@@ -73,7 +73,7 @@ DriverFactory::CreateDriver(std::unique_ptr<DriverContext> ctx,
             operators.push_back(std::make_unique<PhyVectorSearchNode>(
                 id, ctx.get(), vectorsearchnode));
         } else if (auto groupbynode =
-                       std::dynamic_pointer_cast<const plan::GroupByNode>(
+                       std::dynamic_pointer_cast<const plan::VectorGroupByNode>(
                            plannode)) {
             operators.push_back(
                 std::make_unique<PhyGroupByNode>(id, ctx.get(), groupbynode));

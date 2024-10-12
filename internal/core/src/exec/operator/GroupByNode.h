@@ -31,7 +31,7 @@ class PhyGroupByNode : public Operator {
  public:
     PhyGroupByNode(int32_t operator_id,
                    DriverContext* ctx,
-                   const std::shared_ptr<const plan::GroupByNode>& node);
+                   const std::shared_ptr<const plan::VectorGroupByNode>& node);
 
     bool
     IsFilter() override {
