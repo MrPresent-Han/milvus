@@ -336,13 +336,17 @@ inline GeneratedData DataGen(SchemaPtr schema,
     auto insert_cols =
         [&insert_data](
             auto& data, int64_t count, auto& field_meta, bool random_valid) {
-            FixedVector<bool> valid_data(count);
+            FixedVector<bool> valid_data(count, true);
             if (field_meta.is_nullable()) {
                 for (int i = 0; i < count; ++i) {
                     int x = i;
                     if (random_valid)
                         x = rand();
-                    valid_data[i] = x % 2 == 0 ? true : false;
+                    valid_data[i] = x % 2 == 0;
+                    if (field_meta.get_data_type() == DataType::INT8 || field_meta.get_data_type() == DataType::VARCHAR ||
+                        field_meta.get_data_type() == DataType::FLOAT || field_meta.get_data_type() == DataType::DOUBLE) {
+                        LOG_INFO("hc=== valid_i:{}, valid:{}", i, valid_data[i]);
+                    }
                 }
             }
             auto array = milvus::segcore::CreateDataArrayFrom(
@@ -450,6 +454,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     else
                         x = i / repeat_count;
                     data[i] = x;
+                    LOG_INFO("hc==inserted int32_data_i:{}, x:{}", i, x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -476,6 +481,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     else
                         x = i / repeat_count;
                     data[i] = x;
+                    LOG_INFO("hc==inserted INT8:{}, x:{}", i, x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -484,6 +490,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                 vector<float> data(N);
                 for (auto& x : data) {
                     x = distr(random);
+                    LOG_INFO("hc==inserted FLOAT:{}", x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -492,6 +499,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                 vector<double> data(N);
                 for (auto& x : data) {
                     x = distr(random);
+                    LOG_INFO("hc==inserted DOUBLE:{}", x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -503,6 +511,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     for (int j = 0; j < repeat_count; j++) {
                         data[i * repeat_count + j] = str;
                     }
+                    LOG_INFO("hc==inserted varchar_data_i:{}, x:{}", i, str);
                 }
                 std::sort(data.begin(), data.end());
                 insert_cols(data, N, field_meta, random_valid);

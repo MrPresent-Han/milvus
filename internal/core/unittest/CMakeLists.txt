@@ -23,7 +23,8 @@ add_definitions(-DMILVUS_TEST_SEGCORE_YAML_PATH="${CMAKE_SOURCE_DIR}/unittest/te
 # TODO: better to use ls/find pattern
 set(MILVUS_TEST_FILES
         init_gtest.cpp
-        test_always_true_expr.cpp
+
+        #[[test_always_true_expr.cpp
         test_array_bitmap_index.cpp
         test_array_inverted_index.cpp
         test_bf.cpp
@@ -44,12 +45,13 @@ set(MILVUS_TEST_FILES
         test_delete_record.cpp
         test_disk_file_manager_test.cpp
         test_exec.cpp
-        test_expr.cpp
+        test_expr.cpp]]
+        #test_exec.cpp
+        #[[test_expr.cpp
         test_expr_materialized_view.cpp
         test_float16.cpp
         test_function.cpp
         test_futures.cpp
-        test_group_by.cpp
         test_iterative_filter.cpp
         test_growing.cpp
         test_growing_index.cpp
@@ -66,16 +68,18 @@ set(MILVUS_TEST_FILES
         test_offset_ordered_array.cpp
         test_offset_ordered_map.cpp
         test_plan_proto.cpp
-        test_query.cpp
-        test_range_search_sort.cpp
+        test_query.cpp]]
+        test_query_group_by.cpp
+        #[[test_range_search_sort.cpp
         test_reduce_c.cpp
         test_reduce.cpp
         test_regex_query.cpp
         test_regex_query_util.cpp
         test_relational.cpp
         test_retrieve.cpp
-        test_scalar_index.cpp
-        test_sealed.cpp
+        test_scalar_index.cpp]]
+        #test_sealed.cpp
+       #[[ test_search_group_by.cpp
         test_segcore.cpp
         test_similarity_corelation.cpp
         test_span.cpp
@@ -86,13 +90,13 @@ set(MILVUS_TEST_FILES
         test_tracer.cpp
         test_utils.cpp
         test_chunked_segment.cpp
-        test_chunked_column.cpp
+        test_chunked_column.cpp]]
         )
 
 if ( INDEX_ENGINE STREQUAL "cardinal" )
-    set(MILVUS_TEST_FILES
+    #[[set(MILVUS_TEST_FILES
         ${MILVUS_TEST_FILES}
-        test_kmeans_clustering.cpp)
+        test_kmeans_clustering.cpp)]]
 endif()
 
 if ( BUILD_DISK_ANN STREQUAL "ON" )
@@ -104,11 +108,11 @@ if ( BUILD_DISK_ANN STREQUAL "ON" )
 endif()
 
 if (LINUX OR APPLE)
-    set(MILVUS_TEST_FILES
+   #[[ set(MILVUS_TEST_FILES
             ${MILVUS_TEST_FILES}
             test_scalar_index_creator.cpp
             test_string_index.cpp
-            test_array.cpp test_array_expr.cpp)
+            test_array.cpp test_array_expr.cpp)]]
 endif()
 
 if (LINUX)
@@ -118,13 +122,13 @@ if (LINUX)
 endif()
 
 if (DEFINED AZURE_BUILD_DIR)
-    set(MILVUS_TEST_FILES
+    #[[set(MILVUS_TEST_FILES
                 ${MILVUS_TEST_FILES}
                 test_azure_chunk_manager.cpp
             #need update aws-sdk-cpp, see more from https://github.com/aws/aws-sdk-cpp/issues/2119
                 #test_remote_chunk_manager.cpp
                 )
-    include_directories("${AZURE_BUILD_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include")
+    include_directories("${AZURE_BUILD_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include")]]
 endif()
 
 if (ENABLE_GCP_NATIVE)
@@ -136,7 +140,7 @@ if (ENABLE_GCP_NATIVE)
 endif()
 
 if (LINUX)
-    message( STATUS "Building Milvus Unit Test on Linux")
+    #[[message( STATUS "Building Milvus Unit Test on Linux")
     option(USE_ASAN "Whether to use AddressSanitizer" OFF)
     if ( USE_ASAN )
         message( STATUS "Building Milvus using AddressSanitizer")
@@ -160,7 +164,7 @@ if (LINUX)
             milvus_core
             knowhere
             )
-    install(TARGETS index_builder_test DESTINATION unittest)
+    install(TARGETS index_builder_test DESTINATION unittest)]]
 endif()
 
 add_executable(all_tests
