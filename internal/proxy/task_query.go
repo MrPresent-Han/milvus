@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/agg"
 	"strconv"
 	"strings"
 
@@ -60,6 +61,7 @@ type queryTask struct {
 
 	userOutputFields  []string
 	userDynamicFields []string
+	userAggregates    []agg.AggregateBase
 
 	resultBuf *typeutil.ConcurrentSet[*internalpb.RetrieveResults]
 
@@ -73,16 +75,39 @@ type queryTask struct {
 	allQueryCnt          int64
 	totalRelatedDataSize int64
 	mustUsePartitionKey  bool
+	aggregationFieldMap  *agg.AggregationFieldMap
 }
 
 type queryParams struct {
-	limit      int64
-	offset     int64
-	reduceType reduce.IReduceType
-	isIterator bool
+	limit         int64
+	offset        int64
+	reduceType    reduce.IReduceType
+	isIterator    bool
+	groupByFields []string
 }
 
-// translateToOutputFieldIDs translates output fields name to output fields id.
+func translateGroupByFieldIds(groupByFieldNames []string, schema *schemapb.CollectionSchema) ([]UniqueID, error) {
+	if len(groupByFieldNames) == 0 {
+		return nil, nil
+	}
+	groupByFieldIds := make([]UniqueID, 0, len(groupByFieldNames))
+	for _, groupByField := range groupByFieldNames {
+		found := false
+		for _, field := range schema.Fields {
+			if groupByField == field.Name {
+				groupByFieldIds = append(groupByFieldIds, field.FieldID)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("field %s not exist", groupByField)
+		}
+	}
+	return groupByFieldIds, nil
+}
+
+// translateToFieldIDs translates output fields name to output fields id.
 func translateToOutputFieldIDs(outputFields []string, schema *schemapb.CollectionSchema) ([]UniqueID, error) {
 	outputFieldIDs := make([]UniqueID, 0, len(outputFields)+1)
 	if len(outputFields) == 0 {
@@ -176,19 +201,27 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 		}
 	}
 
+	// parse group by fields
+	groupByFieldsStr, err := funcutil.GetAttrByKeyFromRepeatedKV(QueryGroupByFieldsKey, queryParamsPair)
+	var groupByFields []string
+	if err == nil {
+		groupByFields = strings.Split(groupByFieldsStr, ",")
+	}
+	log.Info("hc==", zap.Strings("groupByFields:", groupByFields))
+
 	limitStr, err := funcutil.GetAttrByKeyFromRepeatedKV(LimitKey, queryParamsPair)
 	// if limit is not provided
 	if err != nil {
-		return &queryParams{limit: typeutil.Unlimited, reduceType: reduceType, isIterator: isIterator}, nil
+		return &queryParams{limit: typeutil.Unlimited, reduceType: reduceType, isIterator: isIterator, groupByFields: groupByFields}, nil
 	}
 	limit, err = strconv.ParseInt(limitStr, 0, 64)
 	if err != nil {
 		return nil, fmt.Errorf("%s [%s] is invalid", LimitKey, limitStr)
 	}
 
+	// parse offset
 	offsetStr, err := funcutil.GetAttrByKeyFromRepeatedKV(OffsetKey, queryParamsPair)
-	// if offset is provided
-	if err == nil {
+	if err == nil { // if offset is provided
 		offset, err = strconv.ParseInt(offsetStr, 0, 64)
 		if err != nil {
 			return nil, fmt.Errorf("%s [%s] is invalid", OffsetKey, offsetStr)
@@ -201,10 +234,11 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 	}
 
 	return &queryParams{
-		limit:      limit,
-		offset:     offset,
-		reduceType: reduceType,
-		isIterator: isIterator,
+		limit:         limit,
+		offset:        offset,
+		reduceType:    reduceType,
+		isIterator:    isIterator,
+		groupByFields: groupByFields,
 	}, nil
 }
 
@@ -251,24 +285,50 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 			return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("failed to create query plan: %v", err))
 		}
 	}
-
-	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, err = translateOutputFields(t.request.OutputFields, t.schema, true)
+	// parse output fields names
+	originalOuputFields := t.request.GetOutputFields()
+	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, t.userAggregates, err = translateOutputFields(t.request.GetOutputFields(), t.schema, true)
 	if err != nil {
 		return err
 	}
 
-	outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
+	// parse aggregates
+	for _, agg := range t.userAggregates {
+		log.Info("hc==", zap.String("agg.Name()", agg.Name()), zap.Int64("agg.FieldId()", agg.FieldID()))
+	}
+	t.plan.GetQuery().Aggregates = agg.AggregatesToPB(t.userAggregates)
+	t.RetrieveRequest.Aggregates = t.plan.GetQuery().GetAggregates()
+
+	// parse group by field ids
+	groupByFieldsIDs, err := translateGroupByFieldIds(t.queryParams.groupByFields, t.schema.CollectionSchema)
 	if err != nil {
 		return err
 	}
-	outputFieldIDs = append(outputFieldIDs, common.TimeStampField)
-	t.RetrieveRequest.OutputFieldsId = outputFieldIDs
-	t.plan.OutputFieldIds = outputFieldIDs
-	t.plan.DynamicFields = t.userDynamicFields
+	t.plan.GetQuery().GroupByFieldIds = groupByFieldsIDs
+	t.RetrieveRequest.GroupByFieldIds = groupByFieldsIDs
+	log.Info("hc==", zap.Int64s("groupBYFieldIds", groupByFieldsIDs))
+	hasAgg := len(t.RetrieveRequest.GroupByFieldIds) > 0 || len(t.RetrieveRequest.Aggregates) > 0
+
+	//parse output field ids
+	if hasAgg {
+		emptyOutputFields := make([]UniqueID, 0)
+		t.RetrieveRequest.OutputFieldsId = emptyOutputFields
+		t.plan.OutputFieldIds = emptyOutputFields
+		t.aggregationFieldMap = agg.NewAggregationFieldMap(originalOuputFields, t.queryParams.groupByFields, t.userAggregates)
+	} else {
+		outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
+		if err != nil {
+			return err
+		}
+		outputFieldIDs = append(outputFieldIDs, common.TimeStampField)
+		t.RetrieveRequest.OutputFieldsId = outputFieldIDs
+		t.plan.OutputFieldIds = outputFieldIDs
+		t.plan.DynamicFields = t.userDynamicFields
+	}
+
 	log.Ctx(ctx).Debug("translate output fields to field ids",
 		zap.Int64s("OutputFieldsID", t.OutputFieldsId),
 		zap.String("requestType", "query"))
-
 	return nil
 }
 
@@ -392,7 +452,7 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	if err := t.createPlan(ctx); err != nil {
 		return err
 	}
-	t.plan.Node.(*planpb.PlanNode_Query).Query.Limit = t.RetrieveRequest.Limit
+	t.plan.GetQuery().Limit = t.RetrieveRequest.Limit
 
 	if planparserv2.IsAlwaysTruePlan(t.plan) && t.RetrieveRequest.Limit == typeutil.Unlimited {
 		return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("empty expression should be used with limit"))
@@ -537,7 +597,7 @@ func (t *queryTask) PostExecute(ctx context.Context) error {
 	metrics.ProxyDecodeResultLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.QueryLabel).Observe(0.0)
 	tr.CtxRecord(ctx, "reduceResultStart")
 
-	reducer := createMilvusReducer(ctx, t.queryParams, t.RetrieveRequest, t.schema.CollectionSchema, t.plan, t.collectionName)
+	reducer := createMilvusReducer(ctx, t.queryParams, t.RetrieveRequest, t.schema.CollectionSchema, t.plan, t.collectionName, t.aggregationFieldMap)
 
 	t.result, err = reducer.Reduce(toReduceResults)
 	if err != nil {

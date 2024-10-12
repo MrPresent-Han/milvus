@@ -199,6 +199,7 @@ Task::Next(ContinueFuture* future) {
             auto result = drivers_[i]->Next(blocking_state);
 
             if (result) {
+                LOG_INFO("hc==Task result, child_size:{}, result_size:{}", result->childrens().size(), result->size());
                 return result;
             }
 

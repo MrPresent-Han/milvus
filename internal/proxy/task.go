@@ -67,6 +67,8 @@ const (
 	OffsetKey            = "offset"
 	LimitKey             = "limit"
 
+	QueryGroupByFieldsKey = "group_by_fields"
+
 	InsertTaskName                = "InsertTask"
 	CreateCollectionTaskName      = "CreateCollectionTask"
 	DropCollectionTaskName        = "DropCollectionTask"
