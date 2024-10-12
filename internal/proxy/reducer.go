@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/agg"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -13,11 +14,20 @@ type milvusReducer interface {
 	Reduce([]*internalpb.RetrieveResults) (*milvuspb.QueryResults, error)
 }
 
-func createMilvusReducer(ctx context.Context, params *queryParams, req *internalpb.RetrieveRequest, schema *schemapb.CollectionSchema, plan *planpb.PlanNode, collectionName string) milvusReducer {
+func createMilvusReducer(ctx context.Context,
+	params *queryParams,
+	req *internalpb.RetrieveRequest,
+	schema *schemapb.CollectionSchema,
+	plan *planpb.PlanNode,
+	collectionName string,
+	outputMap *agg.AggregationFieldMap) milvusReducer {
 	if plan.GetQuery().GetIsCount() {
 		return &cntReducer{
 			collectionName: collectionName,
 		}
+	}
+	if len(req.GetAggregates()) > 0 || len(req.GetGroupByFieldIds()) > 0 {
+		return NewMilvusAggReducer(req.GetGroupByFieldIds(), req.GetAggregates(), schema, outputMap)
 	}
 	return newDefaultLimitReducer(ctx, params, req, schema, collectionName)
 }

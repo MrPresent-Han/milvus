@@ -253,6 +253,7 @@ endif ()
 config_summary()
 
 # **************************** Source files ****************************
+#set(BUILD_UNIT_TEST "ON")
 if ( BUILD_UNIT_TEST STREQUAL "ON" AND BUILD_COVERAGE STREQUAL "ON" )
     append_flags( CMAKE_CXX_FLAGS
                   FLAGS
@@ -295,6 +296,12 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/segcore/
 # Install exec/expression/function
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/exec/expression/function/
         DESTINATION include/exec/expression/function
+        FILES_MATCHING PATTERN "*_c.h"
+)
+
+# Install exec/operator/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/exec/operator/
+        DESTINATION include/exec/operator/
         FILES_MATCHING PATTERN "*_c.h"
 )
 
