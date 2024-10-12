@@ -683,3 +683,14 @@ struct fmt::formatter<milvus::OpType> : formatter<string_view> {
         return formatter<string_view>::format(name, ctx);
     }
 };
+
+class RowType final {
+public:
+    RowType(std::vector<std::string>&& names, std::vector<milvus::DataType>&& types):
+        names_(std::move(names)), columns_types_(std::move(types)){}
+
+private:
+    const std::vector<std::string> names_;
+    const std::vector<milvus::DataType> columns_types_;
+
+};

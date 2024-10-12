@@ -25,7 +25,7 @@ namespace exec {
 PhyGroupByNode::PhyGroupByNode(
     int32_t operator_id,
     DriverContext* driverctx,
-    const std::shared_ptr<const plan::GroupByNode>& node)
+    const std::shared_ptr<const plan::VectorGroupByNode>& node)
     : Operator(driverctx, node->output_type(), operator_id, node->id()) {
     ExecContext* exec_context = operator_context_->get_exec_context();
     query_context_ = exec_context->get_query_context();

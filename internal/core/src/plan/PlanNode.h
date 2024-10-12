@@ -334,10 +334,10 @@ class VectorSearchNode : public PlanNode {
     const std::vector<PlanNodePtr> sources_;
 };
 
-class GroupByNode : public PlanNode {
+class VectorGroupByNode : public PlanNode {
  public:
-    GroupByNode(const PlanNodeId& id,
-                std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
+    VectorGroupByNode(const PlanNodeId& id,
+                      std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
         : PlanNode(id), sources_{std::move(sources)} {
     }
 
@@ -353,12 +353,12 @@ class GroupByNode : public PlanNode {
 
     std::string_view
     name() const override {
-        return "GroupByNode";
+        return "VectorGroupByNode";
     }
 
     std::string
     ToString() const override {
-        return fmt::format("GroupByNode:\n\t[source node:{}]",
+        return fmt::format("VectorGroupByNode:\n\t[source node:{}]",
                            SourceToString());
     }
 
@@ -397,6 +397,36 @@ class CountNode : public PlanNode {
 
  private:
     const std::vector<PlanNodePtr> sources_;
+};
+
+class AggregationNode: public PlanNode {
+public:
+    enum class Step {
+        // raw input in - partial result out
+        kPartial,
+        // partial result in - final result out
+        kFinal,
+        // partial result in - partial result out
+        kIntermediate,
+        // raw input in - final result out
+        kSingle
+    };
+
+    struct Aggregate {
+        /// Function name and input column names.
+        expr::CallTypeExprPtr call;
+
+        /// Raw input types used to properly identify aggregate function. These
+        /// might be different from the input types specified in 'call' when
+        /// aggregation step is kIntermediate or kFinal.
+        std::vector<DataType> rawInputTypes;
+    };
+private:
+    const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
+    const std::vector<std::string> aggregateNames_;
+    const bool ignoreNullKeys_;
+    const std::vector<PlanNodePtr> sources_;
+    //const RowType
 };
 
 enum class ExecutionStrategy {

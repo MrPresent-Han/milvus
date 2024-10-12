@@ -122,7 +122,7 @@ ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
     sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
 
     if (plan_node->search_info_.group_by_field_id_ != std::nullopt) {
-        plannode = std::make_shared<milvus::plan::GroupByNode>(
+        plannode = std::make_shared<milvus::plan::VectorGroupByNode>(
             milvus::plan::GetNextPlanNodeId(), sources);
         sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
     }
