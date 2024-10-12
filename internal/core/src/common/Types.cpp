@@ -14,12 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "Operator.h"
+#pragma once
+#include "Types.h"
 
-namespace milvus {
-namespace exec {
-void Operator::initialize() {
-// TODO check memory and set up memory pool in the future
-}
-}
-}  // namespace milvus
+const RowTypePtr RowType::None = std::make_shared<const RowType>(std::vector<std::string>{}, std::vector<milvus::DataType>{});

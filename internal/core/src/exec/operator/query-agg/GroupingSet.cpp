@@ -14,12 +14,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "Operator.h"
+#include "GroupingSet.h"
 
-namespace milvus {
-namespace exec {
-void Operator::initialize() {
-// TODO check memory and set up memory pool in the future
+namespace milvus{
+namespace exec{
+GroupingSet::~GroupingSet(){}
+
+void GroupingSet::addInput(const milvus::RowVector &input, bool mayPushDown) {
+    auto numRows = input.size();
+    numInputRows_ += numRows;
+}
+
+void GroupingSet::addGlobalAggregationInput(const milvus::RowVector &input, bool mayPushDown) {
+
+}
+
 }
 }
-}  // namespace milvus

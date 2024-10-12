@@ -60,6 +60,8 @@ using bfloat16 = knowhere::bf16;
 using bin1 = knowhere::bin1;
 
 // See also: https://github.com/milvus-io/milvus-proto/blob/master/proto/schema.proto
+using vector_size_t = int32_t;
+
 enum class DataType {
     NONE = 0,
     BOOL = 1,
@@ -684,3 +686,33 @@ struct fmt::formatter<milvus::OpType> : formatter<string_view> {
         return formatter<string_view>::format(name, ctx);
     }
 };
+
+using column_index_t = uint32_t;
+class RowType final {
+public:
+    RowType(std::vector<std::string>&& names, std::vector<milvus::DataType>&& types):
+        names_(std::move(names)), columns_types_(std::move(types)){};
+
+    static const std::shared_ptr<const RowType> None;
+
+    column_index_t GetChildIndex(std::string name) const {
+        std::optional<column_index_t> idx;
+        for(auto i = 0; i < names_.size(); i++) {
+            if (names_[i] == name) {
+                idx = i;
+            }
+        }
+        AssertInfo(idx.has_value(), "Cannot find target column in the rowType list");
+        return idx.value();
+    }
+
+    milvus::DataType column_type(uint32_t idx) const {
+        return columns_types_.at(idx);
+    }
+
+private:
+    const std::vector<std::string> names_;
+    const std::vector<milvus::DataType> columns_types_;
+};
+
+using RowTypePtr = std::shared_ptr<const RowType>;

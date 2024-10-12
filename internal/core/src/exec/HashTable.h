@@ -13,13 +13,29 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <vector>
+#include <memory>
 
-#include "Operator.h"
+#include "VectorHasher.h"
 
-namespace milvus {
-namespace exec {
-void Operator::initialize() {
-// TODO check memory and set up memory pool in the future
+namespace milvus{
+namespace exec{
+class BaseHashTable {
+public:
+#if XSIMD_WITH_SSE2
+        using TagVector = xsimd::batch<uint8_t, xsimd::sse2>;
+#elif XSIMD_WITH_NEON
+        using TagVector = xsimd::batch<uint8_t, xsimd::neon>;
+#endif
+
+};
+
+struct HashLookup {
+  explicit HashLookup(const std::vector<std::unique_ptr<VectorHasher>>& hashers): hashers_(hashers){}
+
+  /// One entry per group-by
+  const std::vector<std::unique_ptr<VectorHasher>>& hashers_;
+};
+
 }
 }
-}  // namespace milvus

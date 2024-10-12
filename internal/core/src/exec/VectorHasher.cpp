@@ -14,12 +14,19 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "Operator.h"
-
-namespace milvus {
+#include "VectorHasher.h"
+namespace milvus{
 namespace exec {
-void Operator::initialize() {
-// TODO check memory and set up memory pool in the future
+std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
+        const RowTypePtr& rowType,
+        const std::vector<expr::FieldAccessTypeExprPtr>& exprs) {
+    std::vector<std::unique_ptr<VectorHasher>> hashers;
+    hashers.reserve(exprs.size());
+    for (const auto& expr: exprs) {
+        auto column_idx = rowType->GetChildIndex(expr->name());
+        hashers.emplace_back(VectorHasher::create(expr->type(), column_idx));
+    }
+    return hashers;
 }
 }
-}  // namespace milvus
+}
