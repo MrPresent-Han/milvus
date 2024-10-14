@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/agg"
 	"strconv"
 	"strings"
 	"time"
@@ -1194,7 +1195,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 	userOutputFields := make([]string, 0)
 	userDynamicFieldsMap := make(map[string]bool)
 	userDynamicFields := make([]string, 0)
-	useAllDyncamicFields := false
+	useAllDynamicFields := false
 	for _, field := range schema.Fields {
 		if field.IsPrimaryKey {
 			primaryFieldName = field.Name
@@ -1215,7 +1216,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 					userOutputFieldsMap[fieldName] = true
 				}
 			}
-			useAllDyncamicFields = true
+			useAllDynamicFields = true
 		} else {
 			if fieldID, ok := allFieldNameMap[outputFieldName]; ok {
 				if schema.IsFieldLoaded(fieldID) {
@@ -1223,6 +1224,16 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 					userOutputFieldsMap[outputFieldName] = true
 				} else {
 					return nil, nil, nil, fmt.Errorf("field %s is not loaded", outputFieldName)
+				}
+			} else if isAgg, aggregateName, aggFieldName := agg.MatchAggregationExpression(outputFieldName); isAgg {
+				if aggFieldID, ok := allFieldNameMap[aggFieldName]; ok {
+					if schema.IsFieldLoaded(aggFieldID) {
+						agg.MatchAggregationExpression()
+					} else {
+						return nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not loaded", aggFieldName, aggregateName)
+					}
+				} else {
+					return nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
 				}
 			} else {
 				if schema.EnableDynamicField {
@@ -1267,7 +1278,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 	for fieldName := range userOutputFieldsMap {
 		userOutputFields = append(userOutputFields, fieldName)
 	}
-	if !useAllDyncamicFields {
+	if !useAllDynamicFields {
 		for fieldName := range userDynamicFieldsMap {
 			userDynamicFields = append(userDynamicFields, fieldName)
 		}
