@@ -421,12 +421,18 @@ public:
         /// aggregation step is kIntermediate or kFinal.
         std::vector<DataType> rawInputTypes;
     };
+
+    std::vector<PlanNodePtr> sources() const override {
+        return sources_;
+    }
+
 private:
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
     const std::vector<std::string> aggregateNames_;
+    const std::vector<Aggregate> aggregates_;
     const bool ignoreNullKeys_;
     const std::vector<PlanNodePtr> sources_;
-    //const RowType
+    const RowType output_type_;
 };
 
 enum class ExecutionStrategy {

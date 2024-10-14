@@ -206,6 +206,7 @@ message QueryPlanNode {
   Expr predicates = 1;
   bool is_count = 2;
   int64 limit = 3;
+  repeated int64 group_by_field_ids = 4;
 };
 
 message PlanNode {
@@ -216,4 +217,5 @@ message PlanNode {
   }
   repeated int64 output_field_ids = 3;
   repeated string dynamic_fields = 5;
+  repeated string output_expr_list = 6;
 }
