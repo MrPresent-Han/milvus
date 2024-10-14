@@ -692,5 +692,6 @@ public:
 private:
     const std::vector<std::string> names_;
     const std::vector<milvus::DataType> columns_types_;
-
 };
+
+using RowTypePtr = std::shared_ptr<const RowType>;
