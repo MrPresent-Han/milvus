@@ -234,7 +234,25 @@ func createCntPlan(expr string, schemaHelper *typeutil.SchemaHelper) (*planpb.Pl
 
 func (t *queryTask) createPlan(ctx context.Context) error {
 	schema := t.schema
+	t.plan = &planpb.PlanNode{
+		Node: &planpb.PlanNode_Query{
+			Query: &planpb.QueryPlanNode{},
+		},
+	}
+	if t.request.GetExpr() != "" {
+		expr, err := planparserv2.ParseExpr(schema.schemaHelper, t.request.Expr)
+		if err != nil {
+			return err
+		}
+		t.plan.GetQuery().Predicates = expr
+	}
+	var err error
+	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, err = translateOutputFields(t.request.OutputFields, t.schema, true)
+	if err != nil {
+		return err
+	}
 
+	/* schema := t.schema
 	cntMatch := matchCountRule(t.request.GetOutputFields())
 	if cntMatch {
 		var err error
@@ -266,7 +284,7 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	t.plan.DynamicFields = t.userDynamicFields
 	log.Ctx(ctx).Debug("translate output fields to field ids",
 		zap.Int64s("OutputFieldsID", t.OutputFieldsId),
-		zap.String("requestType", "query"))
+		zap.String("requestType", "query"))*/
 
 	return nil
 }
