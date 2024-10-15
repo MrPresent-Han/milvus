@@ -2,7 +2,8 @@ package agg
 
 import (
 	"fmt"
-	"github.com/milvus-io/milvus/pkg/util/merr"
+	"github.com/milvus-io/milvus/internal/proto/planpb"
+	"hash/fnv"
 	"regexp"
 	"strings"
 )
@@ -32,88 +33,147 @@ func MatchAggregationExpression(expression string) (bool, string, string) {
 	return false, "", ""
 }
 
+type AggID uint64
+
+type AggregateBase interface {
+	Reduce()
+	Name() string
+	Compute()
+	Decompose() []AggregateBase
+	ID() AggID
+	ToPB() *planpb.Aggregate
+}
+
+type Aggregate struct {
+	fieldID int64
+	aggID   AggID
+}
+
+func (agg *Aggregate) aggFieldID() int64 {
+	return agg.fieldID
+}
+func (agg *Aggregate) Name() string {
+	return ""
+}
+func (agg *Aggregate) Compute() {
+}
+func (agg *Aggregate) Reduce() {
+}
+func (agg *Aggregate) Decompose() []AggregateBase {
+	return nil
+}
+func (agg *Aggregate) ToPB() *planpb.Aggregate {
+	return nil
+}
+
+func (agg *Aggregate) ID() AggID {
+	if agg.aggID == 0 {
+		h := fnv.New64a()
+		h.Write([]byte(fmt.Sprintf("%s-%d", agg.Name(), agg.fieldID)))
+		agg.aggID = AggID(h.Sum64())
+	}
+	return agg.aggID
+}
+
 func NewAggregate(aggregateName string, aggFieldID int64) (AggregateBase, error) {
 	switch aggregateName {
 	case kCount:
-		return &CountAggregate{}, nil
+		return &Aggregate{fieldID: aggFieldID}, nil
 	case kSum:
-		return &SumAggregate{}, nil
+		return &SumAggregate{Aggregate: Aggregate{fieldID: aggFieldID}}, nil
 	case kAvg:
-		return &AverageAggregate{}, nil
+		return &AverageAggregate{Aggregate: Aggregate{fieldID: aggFieldID}}, nil
 	case kMin:
-		return &MinAggregate{}, nil
+		return &MinAggregate{Aggregate: Aggregate{fieldID: aggFieldID}}, nil
 	case kMax:
-		return &MaxAggregate{}, nil
+		return &MaxAggregate{Aggregate: Aggregate{fieldID: aggFieldID}}, nil
 	default:
-		return nil, merr.WrapErrParameterInvalid(aggregationTypes, fmt.Sprintf("invalid Aggregation operator %s", aggregateName))
+		return nil, fmt.Errorf("invalid Aggregation operator %s", aggregateName)
 	}
 }
 
-type AggregateBase struct {
-	fieldID int64
-}
-
-func (aggBase *AggregateBase) aggFieldID() int64 {
-	return aggBase.fieldID
-}
-func (aggBase *AggregateBase) name() string {
-	return ""
-}
-func (aggBase *AggregateBase) compute() {
-}
-
 type SumAggregate struct {
-	AggregateBase
+	Aggregate
 }
 
-func (avg *SumAggregate) name() string {
+func (sum *SumAggregate) Name() string {
 	return kSum
 }
-func (avg *SumAggregate) compute() {
-
+func (sum *SumAggregate) Compute() {
+}
+func (sum *SumAggregate) Reduce() {
+}
+func (sum *SumAggregate) ToPB() *planpb.Aggregate {
+	return &planpb.Aggregate{Op: planpb.AggregateOp_sum, FieldId: sum.aggFieldID()}
 }
 
 type CountAggregate struct {
-	AggregateBase
+	Aggregate
 }
 
-func (avg *CountAggregate) name() string {
+func (count *CountAggregate) Name() string {
 	return kCount
 }
-func (avg *CountAggregate) compute() {
-
+func (count *CountAggregate) Compute() {
+}
+func (count *CountAggregate) Reduce() {
+}
+func (count *CountAggregate) ToPB() *planpb.Aggregate {
+	return &planpb.Aggregate{Op: planpb.AggregateOp_count, FieldId: count.aggFieldID()}
 }
 
 type AverageAggregate struct {
-	AggregateBase
+	Aggregate
+	subAggs []AggregateBase
 }
 
-func (avg *AverageAggregate) name() string {
+func (avg *AverageAggregate) Name() string {
 	return kAvg
 }
-func (avg *AverageAggregate) compute() {
+func (avg *AverageAggregate) Compute() {
+}
+func (avg *AverageAggregate) Reduce() {
+}
 
+func (avg *AverageAggregate) Decompose() []AggregateBase {
+	if avg.subAggs == nil {
+		avg.subAggs = make([]AggregateBase, 2)
+		sumSub, _ := NewAggregate(kSum, avg.aggFieldID())
+		countSub, _ := NewAggregate(kCount, avg.aggFieldID())
+		avg.subAggs[0] = sumSub
+		avg.subAggs[1] = countSub
+	}
+	return avg.subAggs
 }
 
 type MinAggregate struct {
-	AggregateBase
+	Aggregate
 }
 
-func (avg *MinAggregate) name() string {
+func (min *MinAggregate) Name() string {
 	return kMin
 }
-func (avg *MinAggregate) compute() {
+func (min *MinAggregate) Compute() {
+}
+func (min *MinAggregate) Reduce() {
+}
 
+func (min *MinAggregate) ToPB() *planpb.Aggregate {
+	return &planpb.Aggregate{Op: planpb.AggregateOp_min, FieldId: min.aggFieldID()}
 }
 
 type MaxAggregate struct {
-	AggregateBase
+	Aggregate
 }
 
-func (avg *MaxAggregate) name() string {
+func (max *MaxAggregate) Name() string {
 	return kMax
 }
+func (max *MaxAggregate) Compute() {
+}
+func (max *MaxAggregate) Reduce() {
+}
 
-func (avg *MaxAggregate) compute() {
-
+func (max *MaxAggregate) ToPB() *planpb.Aggregate {
+	return &planpb.Aggregate{Op: planpb.AggregateOp_max, FieldId: max.aggFieldID()}
 }
