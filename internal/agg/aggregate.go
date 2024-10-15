@@ -177,3 +177,26 @@ func (max *MaxAggregate) Reduce() {
 func (max *MaxAggregate) ToPB() *planpb.Aggregate {
 	return &planpb.Aggregate{Op: planpb.AggregateOp_max, FieldId: max.aggFieldID()}
 }
+
+func OrganizeAggregates(userAggregates []AggregateBase) map[AggID]AggregateBase {
+	realAggregates := make(map[AggID]AggregateBase, 0)
+	for _, userAgg := range userAggregates {
+		subAggs := userAgg.Decompose()
+		for _, subAgg := range subAggs {
+			if _, exist := realAggregates[subAgg.ID()]; !exist {
+				realAggregates[subAgg.ID()] = subAgg
+			}
+		}
+	}
+	return realAggregates
+}
+
+func AggregatesToPB(aggregates map[AggID]AggregateBase) []*planpb.Aggregate {
+	ret := make([]*planpb.Aggregate, len(aggregates))
+	if aggregates != nil {
+		for idx, agg := range aggregates {
+			ret[idx] = agg.ToPB()
+		}
+	}
+	return ret
+}
