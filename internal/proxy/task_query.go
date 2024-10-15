@@ -3,6 +3,7 @@ package proxy
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/agg"
 	"strconv"
 	"strings"
 
@@ -58,8 +59,10 @@ type queryTask struct {
 	queryParams    *queryParams
 	schema         *schemaInfo
 
-	userOutputFields  []string
-	userDynamicFields []string
+	userOutputFields   []string
+	userDynamicFields  []string
+	userAggregates     []agg.AggregateBase
+	internalAggregates map[agg.AggID]agg.AggregateBase
 
 	resultBuf *typeutil.ConcurrentSet[*internalpb.RetrieveResults]
 
@@ -232,6 +235,19 @@ func createCntPlan(expr string, schemaHelper *typeutil.SchemaHelper) (*planpb.Pl
 	return plan, nil
 }
 
+func (t *queryTask) organizeAggregates(userAggregates []agg.AggregateBase) map[agg.AggID]agg.AggregateBase {
+	realAggregates := make(map[agg.AggID]agg.AggregateBase, 0)
+	for _, userAgg := range userAggregates {
+		subAggs := userAgg.Decompose()
+		for _, subAgg := range subAggs {
+			if _, exist := realAggregates[subAgg.ID()]; !exist {
+				realAggregates[subAgg.ID()] = subAgg
+			}
+		}
+	}
+	return realAggregates
+}
+
 func (t *queryTask) createPlan(ctx context.Context) error {
 	schema := t.schema
 	t.plan = &planpb.PlanNode{
@@ -247,10 +263,13 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 		t.plan.GetQuery().Predicates = expr
 	}
 	var err error
-	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, err = translateOutputFields(t.request.OutputFields, t.schema, true)
+	var userAggregates []agg.AggregateBase
+	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, t.userAggregates, err = translateOutputFields(t.request.OutputFields, t.schema, true)
 	if err != nil {
 		return err
 	}
+	outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
+	t.internalAggregates = t.organizeAggregates(t.userAggregates)
 
 	/* schema := t.schema
 	cntMatch := matchCountRule(t.request.GetOutputFields())

@@ -1184,7 +1184,7 @@ func translatePkOutputFields(schema *schemapb.CollectionSchema) ([]string, []int
 //	output_fields=["*"] 	 ==> [A,B,C,D]
 //	output_fields=["*",A] 	 ==> [A,B,C,D]
 //	output_fields=["*",C]    ==> [A,B,C,D]
-func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary bool) ([]string, []string, []string, error) {
+func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary bool) ([]string, []string, []string, []agg.AggregateBase, error) {
 	var primaryFieldName string
 	var dynamicField *schemapb.FieldSchema
 	allFieldNameMap := make(map[string]int64)
@@ -1195,6 +1195,8 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 	userDynamicFieldsMap := make(map[string]bool)
 	userDynamicFields := make([]string, 0)
 	useAllDynamicFields := false
+	aggregates := make([]agg.AggregateBase, 0)
+
 	for _, field := range schema.Fields {
 		if field.IsPrimaryKey {
 			primaryFieldName = field.Name
@@ -1222,24 +1224,30 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 					resultFieldNameMap[outputFieldName] = true
 					userOutputFieldsMap[outputFieldName] = true
 				} else {
-					return nil, nil, nil, fmt.Errorf("field %s is not loaded", outputFieldName)
+					return nil, nil, nil, nil, fmt.Errorf("field %s is not loaded", outputFieldName)
 				}
 			} else if isAgg, aggregateName, aggFieldName := agg.MatchAggregationExpression(outputFieldName); isAgg {
 				if aggFieldID, ok := allFieldNameMap[aggFieldName]; ok {
 					if schema.IsFieldLoaded(aggFieldID) {
-						agg.MatchAggregationExpression()
+						aggFunc, aggErr := agg.NewAggregate(aggregateName, aggFieldID)
+						if aggErr != nil {
+							return nil, nil, nil, nil, aggErr
+						}
+						aggregates = append(aggregates, aggFunc)
+						resultFieldNameMap[outputFieldName] = true
+						userOutputFieldsMap[outputFieldName] = true
 					} else {
-						return nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not loaded", aggFieldName, aggregateName)
+						return nil, nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not loaded", aggFieldName, aggregateName)
 					}
 				} else {
-					return nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
+					return nil, nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
 				}
 			} else {
 				if schema.EnableDynamicField {
 					if schema.IsFieldLoaded(dynamicField.GetFieldID()) {
 						schemaH, err := typeutil.CreateSchemaHelper(schema.CollectionSchema)
 						if err != nil {
-							return nil, nil, nil, err
+							return nil, nil, nil, nil, err
 						}
 						err = planparserv2.ParseIdentifier(schemaH, outputFieldName, func(expr *planpb.Expr) error {
 							if len(expr.GetColumnExpr().GetInfo().GetNestedPath()) == 1 &&
@@ -1250,17 +1258,17 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 						})
 						if err != nil {
 							log.Info("parse output field name failed", zap.String("field name", outputFieldName))
-							return nil, nil, nil, fmt.Errorf("parse output field name failed: %s", outputFieldName)
+							return nil, nil, nil, nil, fmt.Errorf("parse output field name failed: %s", outputFieldName)
 						}
 						resultFieldNameMap[common.MetaFieldName] = true
 						userOutputFieldsMap[outputFieldName] = true
 						userDynamicFieldsMap[outputFieldName] = true
 					} else {
 						// TODO after cold field be able to fetched with chunk cache, this check shall be removed
-						return nil, nil, nil, fmt.Errorf("field %s cannot be returned since dynamic field not loaded", outputFieldName)
+						return nil, nil, nil, nil, fmt.Errorf("field %s cannot be returned since dynamic field not loaded", outputFieldName)
 					}
 				} else {
-					return nil, nil, nil, fmt.Errorf("field %s not exist", outputFieldName)
+					return nil, nil, nil, nil, fmt.Errorf("field %s not exist", outputFieldName)
 				}
 			}
 		}
@@ -1283,7 +1291,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 		}
 	}
 
-	return resultFieldNames, userOutputFields, userDynamicFields, nil
+	return resultFieldNames, userOutputFields, userDynamicFields, aggregates, nil
 }
 
 func validateIndexName(indexName string) error {
