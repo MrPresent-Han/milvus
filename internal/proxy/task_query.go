@@ -79,15 +79,16 @@ type queryTask struct {
 }
 
 type queryParams struct {
-	limit      int64
-	offset     int64
-	reduceType reduce.IReduceType
+	limit         int64
+	offset        int64
+	reduceType    reduce.IReduceType
+	groupByFields []string
 }
 
-// translateToOutputFieldIDs translates output fields name to output fields id.
-func translateToOutputFieldIDs(outputFields []string, schema *schemapb.CollectionSchema) ([]UniqueID, error) {
-	outputFieldIDs := make([]UniqueID, 0, len(outputFields)+1)
-	if len(outputFields) == 0 {
+// translateToFieldIDs translates output fields name to output fields id.
+func translateToFieldIDs(fieldNames []string, schema *schemapb.CollectionSchema, forQuery bool) ([]UniqueID, error) {
+	outputFieldIDs := make([]UniqueID, 0, len(fieldNames)+1)
+	if len(fieldNames) == 0 && forQuery {
 		for _, field := range schema.Fields {
 			if field.FieldID >= common.StartOfUserFieldID && !typeutil.IsVectorType(field.DataType) {
 				outputFieldIDs = append(outputFieldIDs, field.FieldID)
@@ -95,15 +96,21 @@ func translateToOutputFieldIDs(outputFields []string, schema *schemapb.Collectio
 		}
 	} else {
 		var pkFieldID UniqueID
-		for _, field := range schema.Fields {
-			if field.IsPrimaryKey {
-				pkFieldID = field.FieldID
+		if forQuery {
+			for _, field := range schema.Fields {
+				if field.IsPrimaryKey {
+					pkFieldID = field.FieldID
+				}
 			}
 		}
-		for _, reqField := range outputFields {
+		var pkAdded bool
+		for _, reqField := range fieldNames {
 			var fieldFound bool
 			for _, field := range schema.Fields {
 				if reqField == field.Name {
+					if field.IsPrimaryKey {
+						pkAdded = true
+					}
 					outputFieldIDs = append(outputFieldIDs, field.FieldID)
 					fieldFound = true
 					break
@@ -115,15 +122,7 @@ func translateToOutputFieldIDs(outputFields []string, schema *schemapb.Collectio
 		}
 
 		// pk field needs to be in output field list
-		var pkFound bool
-		for _, outputField := range outputFieldIDs {
-			if outputField == pkFieldID {
-				pkFound = true
-				break
-			}
-		}
-
-		if !pkFound {
+		if !pkAdded && forQuery {
 			outputFieldIDs = append(outputFieldIDs, pkFieldID)
 		}
 	}
@@ -188,9 +187,9 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 		return nil, fmt.Errorf("%s [%s] is invalid", LimitKey, limitStr)
 	}
 
+	// parse offset
 	offsetStr, err := funcutil.GetAttrByKeyFromRepeatedKV(OffsetKey, queryParamsPair)
-	// if offset is provided
-	if err == nil {
+	if err == nil { // if offset is provided
 		offset, err = strconv.ParseInt(offsetStr, 0, 64)
 		if err != nil {
 			return nil, fmt.Errorf("%s [%s] is invalid", OffsetKey, offsetStr)
@@ -202,10 +201,21 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 		return nil, fmt.Errorf("invalid max query result window, %w", err)
 	}
 
+	// parse group by fields
+	groupByFieldsStr, err := funcutil.GetAttrByKeyFromRepeatedKV(QueryGroupByFieldsKey, queryParamsPair)
+	groupByFields := make([]string, 0)
+	if err == nil {
+		fields := strings.Split(groupByFieldsStr, ",")
+		for _, field := range fields {
+			groupByFields = append(groupByFields, field)
+		}
+	}
+
 	return &queryParams{
-		limit:      limit,
-		offset:     offset,
-		reduceType: reduceType,
+		limit:         limit,
+		offset:        offset,
+		reduceType:    reduceType,
+		groupByFields: groupByFields,
 	}, nil
 }
 
@@ -235,19 +245,6 @@ func createCntPlan(expr string, schemaHelper *typeutil.SchemaHelper) (*planpb.Pl
 	return plan, nil
 }
 
-func (t *queryTask) organizeAggregates(userAggregates []agg.AggregateBase) map[agg.AggID]agg.AggregateBase {
-	realAggregates := make(map[agg.AggID]agg.AggregateBase, 0)
-	for _, userAgg := range userAggregates {
-		subAggs := userAgg.Decompose()
-		for _, subAgg := range subAggs {
-			if _, exist := realAggregates[subAgg.ID()]; !exist {
-				realAggregates[subAgg.ID()] = subAgg
-			}
-		}
-	}
-	return realAggregates
-}
-
 func (t *queryTask) createPlan(ctx context.Context) error {
 	schema := t.schema
 	t.plan = &planpb.PlanNode{
@@ -258,42 +255,20 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	if t.request.GetExpr() != "" {
 		expr, err := planparserv2.ParseExpr(schema.schemaHelper, t.request.Expr)
 		if err != nil {
-			return err
+			return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("failed to create query plan: %v", err))
 		}
 		t.plan.GetQuery().Predicates = expr
 	}
 	var err error
-	var userAggregates []agg.AggregateBase
 	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, t.userAggregates, err = translateOutputFields(t.request.OutputFields, t.schema, true)
 	if err != nil {
 		return err
 	}
-	outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
-	t.internalAggregates = t.organizeAggregates(t.userAggregates)
+	t.internalAggregates = agg.OrganizeAggregates(t.userAggregates)
+	t.plan.GetQuery().Aggregates = agg.AggregatesToPB(t.internalAggregates)
+	//t.RetrieveRequest.
 
-	/* schema := t.schema
-	cntMatch := matchCountRule(t.request.GetOutputFields())
-	if cntMatch {
-		var err error
-		t.plan, err = createCntPlan(t.request.GetExpr(), schema.schemaHelper)
-		t.userOutputFields = []string{"count(*)"}
-		return err
-	}
-
-	var err error
-	if t.plan == nil {
-		t.plan, err = planparserv2.CreateRetrievePlan(schema.schemaHelper, t.request.Expr)
-		if err != nil {
-			return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("failed to create query plan: %v", err))
-		}
-	}
-
-	t.request.OutputFields, t.userOutputFields, t.userDynamicFields, err = translateOutputFields(t.request.OutputFields, t.schema, true)
-	if err != nil {
-		return err
-	}
-
-	outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
+	outputFieldIDs, err := translateToFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema, true)
 	if err != nil {
 		return err
 	}
@@ -303,8 +278,7 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	t.plan.DynamicFields = t.userDynamicFields
 	log.Ctx(ctx).Debug("translate output fields to field ids",
 		zap.Int64s("OutputFieldsID", t.OutputFieldsId),
-		zap.String("requestType", "query"))*/
-
+		zap.String("requestType", "query"))
 	return nil
 }
 
@@ -429,7 +403,13 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	if err := t.createPlan(ctx); err != nil {
 		return err
 	}
-	t.plan.Node.(*planpb.PlanNode_Query).Query.Limit = t.RetrieveRequest.Limit
+	t.plan.GetQuery().Limit = t.RetrieveRequest.Limit
+	groupByFieldsIDs, err := translateToFieldIDs(t.queryParams.groupByFields, t.schema.CollectionSchema, false)
+	if err != nil {
+		return err
+	}
+	t.plan.GetQuery().GroupByFieldIds = groupByFieldsIDs
+	t.RetrieveRequest.GroupByFieldIds = groupByFieldsIDs
 
 	if planparserv2.IsAlwaysTruePlan(t.plan) && t.RetrieveRequest.Limit == typeutil.Unlimited {
 		return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("empty expression should be used with limit"))

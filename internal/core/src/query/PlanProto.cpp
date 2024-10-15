@@ -22,9 +22,21 @@
 #include "query/Utils.h"
 #include "knowhere/comp/materialized_view.h"
 #include "plan/PlanNode.h"
+#include "expr/ITypeExpr.h"
 
 namespace milvus::query {
 namespace planpb = milvus::proto::plan;
+
+std::string getAggregateOpName(planpb::AggregateOp op) {
+    switch (op) {
+        case planpb::sum: return "sum";
+        case planpb::count: return "count";
+        case planpb::avg: return "avg";
+        case planpb::min: return "min";
+        case planpb::max: return "max";
+        default: return "unknown";
+    }
+}
 
 std::unique_ptr<VectorPlanNode>
 ProtoParser::PlanNodeFromProto(const planpb::PlanNode& plan_node_proto) {
@@ -156,7 +168,10 @@ ProtoParser::RetrievePlanNodeFromProto(
                 milvus::plan::GetNextPlanNodeId(), sources);
             node->plannodes_ = std::move(plannode);
         } else {
+            // mvccNode--->FilterBitsNode or
+            // aggNode--->mvccNode--->FilterBitsNode
             auto& query = plan_node_proto.query();
+            // 1. FilterBitsNode
             if (query.has_predicates()) {
                 auto& predicate_proto = query.predicates();
                 auto expr_parser = [&]() -> plan::PlanNodePtr {
@@ -168,16 +183,46 @@ ProtoParser::RetrievePlanNodeFromProto(
                 sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
             }
 
+            // 2. mvccNode
             plannode = std::make_shared<milvus::plan::MvccNode>(
                 milvus::plan::GetNextPlanNodeId(), sources);
             sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
 
-            node->is_count_ = query.is_count();
+            // 3. aggNode
+            /*node->is_count_ = query.is_count();
             node->limit_ = query.limit();
             if (node->is_count_) {
                 plannode = std::make_shared<milvus::plan::CountNode>(
                     milvus::plan::GetNextPlanNodeId(), sources);
                 sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+            }*/
+            std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
+            if(query.group_by_field_ids_size() > 0) {
+                groupingKeys.reserve(query.group_by_field_ids_size());
+                for(int i = 0; i < query.group_by_field_ids_size(); i++) {
+                    auto input_field_id = query.group_by_field_ids(i);
+                    AssertInfo(input_field_id > 0, "input field_id to group by must be positive, but is:{}", input_field_id);
+                    auto field_id = FieldId(input_field_id);
+                    auto field_type = schema.FieldType(field_id);
+                    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_id));
+                }
+            }
+            std::vector<plan::AggregationNode::Aggregate> aggregates;
+            if (query.aggregates_size() > 0) {
+                aggregates.reserve(query.aggregates_size());
+                for(int i = 0; i < query.aggregates_size(); i++) {
+                    auto aggregate = query.aggregates(i);
+                    auto input_agg_field_id = aggregate.field_id();
+                    AssertInfo(input_agg_field_id > 0, "input field_id to aggregate must be positive, but is:{}", input_agg_field_id);
+                    auto field_id = FieldId(input_agg_field_id);
+                    auto field_type = schema.FieldType(field_id);
+                    auto field_name = schema.FieldName(field_id);
+                    auto agg_name = getAggregateOpName(aggregate.op());
+                    auto agg_input = std::make_shared<expr::FieldAccessTypeExpr>(field_type, field_name, field_id);
+                    auto call = std::make_shared<const expr::CallTypeExpr>(field_type, std::vector<expr::TypedExprPtr>{agg_input}, agg_name);
+                    aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+                    //check type conversion here
+                }
             }
             node->plannodes_ = plannode;
         }

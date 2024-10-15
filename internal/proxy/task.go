@@ -50,21 +50,22 @@ const (
 )
 
 const (
-	IgnoreGrowingKey     = "ignore_growing"
-	ReduceStopForBestKey = "reduce_stop_for_best"
-	IteratorField        = "iterator"
-	GroupByFieldKey      = "group_by_field"
-	GroupSizeKey         = "group_size"
-	GroupStrictSize      = "group_strict_size"
-	RankGroupScorer      = "rank_group_scorer"
-	AnnsFieldKey         = "anns_field"
-	TopKKey              = "topk"
-	NQKey                = "nq"
-	MetricTypeKey        = common.MetricTypeKey
-	SearchParamsKey      = "params"
-	RoundDecimalKey      = "round_decimal"
-	OffsetKey            = "offset"
-	LimitKey             = "limit"
+	IgnoreGrowingKey      = "ignore_growing"
+	ReduceStopForBestKey  = "reduce_stop_for_best"
+	IteratorField         = "iterator"
+	GroupByFieldKey       = "group_by_field"
+	GroupSizeKey          = "group_size"
+	GroupStrictSize       = "group_strict_size"
+	RankGroupScorer       = "rank_group_scorer"
+	AnnsFieldKey          = "anns_field"
+	TopKKey               = "topk"
+	NQKey                 = "nq"
+	MetricTypeKey         = common.MetricTypeKey
+	SearchParamsKey       = "params"
+	RoundDecimalKey       = "round_decimal"
+	OffsetKey             = "offset"
+	LimitKey              = "limit"
+	QueryGroupByFieldsKey = "group_by_fields"
 
 	InsertTaskName                = "InsertTask"
 	CreateCollectionTaskName      = "CreateCollectionTask"

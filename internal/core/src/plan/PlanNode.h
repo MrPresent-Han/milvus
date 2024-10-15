@@ -26,6 +26,7 @@
 #include "common/EasyAssert.h"
 #include "segcore/SegmentInterface.h"
 #include "plan/PlanNodeIdGenerator.h"
+#include "pb/plan.pb.h"
 
 namespace milvus {
 namespace plan {
@@ -414,17 +415,23 @@ public:
 
     struct Aggregate {
         /// Function name and input column names.
-        expr::CallTypeExprPtr call;
-
-        /// Raw input types used to properly identify aggregate function. These
-        /// might be different from the input types specified in 'call' when
-        /// aggregation step is kIntermediate or kFinal.
-        std::vector<DataType> rawInputTypes;
+        expr::CallTypeExprPtr call_;
+    public:
+        Aggregate(expr::CallTypeExprPtr call):call_(call){}
     };
 
     std::vector<PlanNodePtr> sources() const override {
         return sources_;
     }
+
+    AggregationNode(const PlanNodeId& id,
+                    std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
+                    std::vector<std::string>&& aggNames,
+                    std::vector<Aggregate>&& aggregates,
+                    std::vector<PlanNodePtr>&& sources,
+                    RowType&& output_type)
+                    : PlanNode(id), groupingKeys_(std::move(groupingKeys)), aggregateNames_(std::move(aggNames)), aggregates_(std::move(aggregates)),
+                    sources_(std::move(sources)), output_type_(std::move(output_type)), ignoreNullKeys_(true){}
 
 private:
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
