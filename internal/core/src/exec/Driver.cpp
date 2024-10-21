@@ -26,7 +26,8 @@
 #include "exec/operator/MvccNode.h"
 #include "exec/operator/Operator.h"
 #include "exec/operator/VectorSearchNode.h"
-#include "exec/operator/GroupByNode.h"
+#include "exec/operator/SearchGroupByNode.h"
+#include "exec/operator/QueryGroupByNode.h"
 #include "exec/Task.h"
 
 #include "common/EasyAssert.h"
@@ -72,11 +73,14 @@ DriverFactory::CreateDriver(std::unique_ptr<DriverContext> ctx,
                            plannode)) {
             operators.push_back(std::make_unique<PhyVectorSearchNode>(
                 id, ctx.get(), vectorsearchnode));
-        } else if (auto groupbynode =
-                       std::dynamic_pointer_cast<const plan::VectorGroupByNode>(
+        } else if (auto vectorGroupByNode =
+                       std::dynamic_pointer_cast<const plan::SearchGroupByNode>(
                            plannode)) {
             operators.push_back(
-                std::make_unique<PhyGroupByNode>(id, ctx.get(), groupbynode));
+                std::make_unique<PhySearchGroupByNode>(id, ctx.get(), vectorGroupByNode));
+        } else if (auto queryGroupByNode = std::dynamic_pointer_cast<const plan::AggregationNode>(plannode)) {
+            operators.push_back(
+                    std::make_unique<PhyQueryGroupByNode>(id, ctx.get(), queryGroupByNode));
         }
         // TODO: add more operators
     }

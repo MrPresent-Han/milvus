@@ -233,14 +233,14 @@ class Schema {
     }
 
     DataType
-    FieldType(const FieldId& field_id) const {
+    GetFieldType(const FieldId& field_id) const {
         AssertInfo(fields_.count(field_id), "field_id:{} is not existed in the schema", field_id.get());
         auto& meta = fields_.at(field_id);
         return meta.get_data_type();
     }
 
     const std::string&
-    FieldName(const FieldId& field_id) const {
+    GetFieldName(const FieldId& field_id) const {
         AssertInfo(fields_.count(field_id), "field_id:{} is not existed in the schema", field_id.get());
         auto& meta = fields_.at(field_id);
         return meta.get_name().get();
