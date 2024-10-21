@@ -94,12 +94,12 @@ class OperatorContext {
 class Operator {
  public:
     Operator(DriverContext* ctx,
-             DataType output_type,
+             RowTypePtr output_type,
              int32_t operator_id,
              const std::string& plannode_id,
              const std::string& operator_type = "")
         : operator_context_(std::make_unique<OperatorContext>(
-              ctx, plannode_id, operator_id, operator_type)) {
+              ctx, plannode_id, operator_id, operator_type)), output_type_(output_type) {
     }
 
     virtual ~Operator() = default;
@@ -158,10 +158,15 @@ class Operator {
         return "Base Operator";
     }
 
+    virtual RowTypePtr
+    OutputType() const {
+        return output_type_;
+    }
+
  protected:
     std::unique_ptr<OperatorContext> operator_context_;
 
-    DataType output_type_;
+    RowTypePtr output_type_;
 
     RowVectorPtr input_;
 

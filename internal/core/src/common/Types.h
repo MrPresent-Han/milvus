@@ -684,14 +684,19 @@ struct fmt::formatter<milvus::OpType> : formatter<string_view> {
     }
 };
 
+
 class RowType final {
 public:
     RowType(std::vector<std::string>&& names, std::vector<milvus::DataType>&& types):
-        names_(std::move(names)), columns_types_(std::move(types)){}
+        names_(std::move(names)), columns_types_(std::move(types)){};
 
+    static const std::shared_ptr<const RowType> None;
 private:
     const std::vector<std::string> names_;
     const std::vector<milvus::DataType> columns_types_;
 };
 
 using RowTypePtr = std::shared_ptr<const RowType>;
+
+const RowTypePtr RowType::None = std::make_shared<const RowType>(std::vector<std::string>{}, std::vector<milvus::DataType>{});
+

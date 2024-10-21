@@ -48,7 +48,7 @@ class PlanNode {
         return id_;
     }
 
-    virtual DataType
+    virtual RowTypePtr
     output_type() const = 0;
 
     virtual std::vector<std::shared_ptr<PlanNode>>
@@ -94,9 +94,9 @@ class SegmentNode : public PlanNode {
         : PlanNode(id), segment_(segment) {
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return DataType::ROW;
+        return RowType::None;
     }
 
     std::vector<std::shared_ptr<PlanNode>>
@@ -138,9 +138,9 @@ class ValuesNode : public PlanNode {
         AssertInfo(!values.empty(), "ValueNode must has value");
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return output_type_;
+        return RowType::None;
     }
 
     const std::vector<RowVectorPtr>&
@@ -188,9 +188,9 @@ class FilterNode : public PlanNode {
                         filter_->type()));
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return sources_[0]->output_type();
+        return RowType::None;
     }
 
     std::vector<PlanNodePtr>
@@ -233,9 +233,9 @@ class FilterBitsNode : public PlanNode {
                         filter_->type()));
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return DataType::BOOL;
+        return RowType::None;
     }
 
     std::vector<PlanNodePtr>
@@ -278,9 +278,9 @@ class MvccNode : public PlanNode {
         : PlanNode(id), sources_{std::move(sources)} {
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return DataType::BOOL;
+        return RowType::None;
     }
 
     std::vector<PlanNodePtr>
@@ -310,9 +310,9 @@ class VectorSearchNode : public PlanNode {
         : PlanNode(id), sources_{std::move(sources)} {
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return DataType::BOOL;
+        return RowType::None;
     }
 
     std::vector<PlanNodePtr>
@@ -342,9 +342,9 @@ class SearchGroupByNode : public PlanNode {
         : PlanNode(id), sources_{std::move(sources)} {
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return DataType::BOOL;
+        return RowType::None;
     }
 
     std::vector<PlanNodePtr>
@@ -375,9 +375,9 @@ class CountNode : public PlanNode {
         : PlanNode(id), sources_{std::move(sources)} {
     }
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return DataType::INT64;
+        return RowType::None;
     }
 
     std::vector<PlanNodePtr>
@@ -429,9 +429,9 @@ public:
                     : PlanNode(id), groupingKeys_(std::move(groupingKeys)), aggregateNames_(std::move(aggNames)), aggregates_(std::move(aggregates)),
                     sources_(std::move(sources))/*, output_type_(std::move(output_type))*/, ignoreNullKeys_(true){}
 
-    DataType
+    RowTypePtr
     output_type() const override {
-        return DataType::BOOL;
+        return RowType::None;
     }
 
     std::vector<PlanNodePtr> sources() const override {
