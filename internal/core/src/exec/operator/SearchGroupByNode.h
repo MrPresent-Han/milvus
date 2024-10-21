@@ -27,11 +27,11 @@
 namespace milvus {
 namespace exec {
 
-class PhyGroupByNode : public Operator {
+class PhySearchGroupByNode : public Operator {
  public:
-    PhyGroupByNode(int32_t operator_id,
-                   DriverContext* ctx,
-                   const std::shared_ptr<const plan::VectorGroupByNode>& node);
+    PhySearchGroupByNode(int32_t operator_id,
+                         DriverContext* ctx,
+                         const std::shared_ptr<const plan::SearchGroupByNode>& node);
 
     bool
     IsFilter() override {
@@ -63,7 +63,7 @@ class PhyGroupByNode : public Operator {
 
     virtual std::string
     ToString() const override {
-        return "PhyGroupByNode";
+        return "PhySearchGroupByNode";
     }
 
  private:

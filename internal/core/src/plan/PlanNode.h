@@ -335,9 +335,9 @@ class VectorSearchNode : public PlanNode {
     const std::vector<PlanNodePtr> sources_;
 };
 
-class VectorGroupByNode : public PlanNode {
+class SearchGroupByNode : public PlanNode {
  public:
-    VectorGroupByNode(const PlanNodeId& id,
+    SearchGroupByNode(const PlanNodeId& id,
                       std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
         : PlanNode(id), sources_{std::move(sources)} {
     }
@@ -354,12 +354,12 @@ class VectorGroupByNode : public PlanNode {
 
     std::string_view
     name() const override {
-        return "VectorGroupByNode";
+        return "SearchGroupByNode";
     }
 
     std::string
     ToString() const override {
-        return fmt::format("VectorGroupByNode:\n\t[source node:{}]",
+        return fmt::format("SearchGroupByNode:\n\t[source node:{}]",
                            SourceToString());
     }
 
@@ -420,18 +420,33 @@ public:
         Aggregate(expr::CallTypeExprPtr call):call_(call){}
     };
 
-    std::vector<PlanNodePtr> sources() const override {
-        return sources_;
-    }
-
     AggregationNode(const PlanNodeId& id,
                     std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
                     std::vector<std::string>&& aggNames,
                     std::vector<Aggregate>&& aggregates,
-                    std::vector<PlanNodePtr>&& sources,
-                    RowType&& output_type)
+                    /*RowType&& output_type,*/
+                    std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
                     : PlanNode(id), groupingKeys_(std::move(groupingKeys)), aggregateNames_(std::move(aggNames)), aggregates_(std::move(aggregates)),
-                    sources_(std::move(sources)), output_type_(std::move(output_type)), ignoreNullKeys_(true){}
+                    sources_(std::move(sources))/*, output_type_(std::move(output_type))*/, ignoreNullKeys_(true){}
+
+    DataType
+    output_type() const override {
+        return DataType::BOOL;
+    }
+
+    std::vector<PlanNodePtr> sources() const override {
+        return sources_;
+    }
+
+    std::string
+    ToString() const override{
+         return "";
+    }
+
+    std::string_view
+    name() const override {
+        return "agg";
+    }
 
 private:
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
@@ -439,7 +454,7 @@ private:
     const std::vector<Aggregate> aggregates_;
     const bool ignoreNullKeys_;
     const std::vector<PlanNodePtr> sources_;
-    const RowType output_type_;
+    //const RowType output_type_;
 };
 
 enum class ExecutionStrategy {
