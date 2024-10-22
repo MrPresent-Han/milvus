@@ -14,6 +14,17 @@ PhyQueryGroupByNode::PhyQueryGroupByNode(int32_t operator_id,
 
 }
 
+void PhyQueryGroupByNode::prepareOutput(vector_size_t size){
+    if (output_) {
+        // reuse the output vector
+    } else {
+        // create the output vector
+    }
+}
+
+void PhyQueryGroupByNode::AddInput(milvus::RowVectorPtr &input) {
+
+}
 
 }
 }

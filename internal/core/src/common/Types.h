@@ -59,6 +59,8 @@ using float16 = knowhere::fp16;
 using bfloat16 = knowhere::bf16;
 using bin1 = knowhere::bin1;
 
+using vector_size_t = int32_t;
+
 enum class DataType {
     NONE = 0,
     BOOL = 1,
