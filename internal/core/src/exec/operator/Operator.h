@@ -178,7 +178,7 @@ class Operator {
 class SourceOperator : public Operator {
  public:
     SourceOperator(DriverContext* driver_ctx,
-                   DataType out_type,
+                   RowTypePtr out_type,
                    int32_t operator_id,
                    const std::string& plannode_id,
                    const std::string& operator_type)
