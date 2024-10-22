@@ -16,3 +16,12 @@
 
 #include "GroupingSet.h"
 
+namespace milvus{
+namespace exec{
+GroupingSet::~GroupingSet(){}
+
+void GroupingSet::addInput(const milvus::RowVector &input, bool mayPushDown) {
+
+}
+}
+}

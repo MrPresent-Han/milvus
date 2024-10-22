@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include "exec/operator/Operator.h"
+#include "common/Types.h"
 
 namespace milvus{
 namespace exec{
@@ -28,9 +29,7 @@ public:
         return true;
     }
 
-    void AddInput(RowVectorPtr& input) override {
-
-    }
+    void AddInput(RowVectorPtr& input) override;
 
     RowVectorPtr
     GetOutput() override {
@@ -57,6 +56,11 @@ public:
         input_ = nullptr;
         results_.clear();
     }
+
+private:
+    void prepareOutput(vector_size_t size);
+
+    RowVectorPtr output_;
 };
 }
 }

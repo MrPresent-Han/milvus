@@ -27,12 +27,24 @@ class GroupingSet {
     GroupingSet(const RowTypePtr& input_type,
                 std::vector<std::unique_ptr<VectorHasher>>&& hashers,
                 std::vector<AggregateInfo>&& aggregates,
-                bool ignoreNullKeys)
+                bool ignoreNullKeys,
+                bool isRawInput):
+                hashers_(std::move(hashers)),
+                isGlobal_(hashers_.empty()),
+                isRawInput_(isRawInput),
+                aggregates_(std::move(aggregates)),
+                ignoreNullKeys_(ignoreNullKeys){}
+
+    ~GroupingSet();
+
+    void addInput(const RowVector& input, bool mayPushDown);
 
 private:
     const bool isGlobal_;
     const bool isRawInput_;
     const bool ignoreNullKeys_;
+    std::vector<std::unique_ptr<VectorHasher>> hashers_;
+    std::vector<AggregateInfo> aggregates_;
 };
 
 }
