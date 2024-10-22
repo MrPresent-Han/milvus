@@ -16,7 +16,7 @@
 
 #include "SearchGroupByNode.h"
 
-#include "exec/operator/groupby/SearchGroupByOperator.h"
+#include "exec/operator/search-groupby/SearchGroupByOperator.h"
 #include "monitor/prometheus_client.h"
 
 namespace milvus {
