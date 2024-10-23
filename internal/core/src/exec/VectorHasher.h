@@ -18,15 +18,19 @@
 
 #include "common/Vector.h"
 #include "common/Types.h"
+#include "expr/ITypeExpr.h"
 
 namespace milvus {
 namespace exec {
-
-
 class VectorHasher{
 public:
     VectorHasher(DataType data_type, column_index_t column_idx)
         :channel_type_(data_type), channel_idx_(column_idx){}
+
+
+    static std::unique_ptr<VectorHasher> create(DataType data_type, column_index_t col_idx){
+        return std::make_unique<VectorHasher>(data_type, col_idx);
+    }
 
     column_index_t ChannelIndex() const {
         return channel_idx_;
@@ -40,6 +44,11 @@ private:
     const column_index_t channel_idx_;
     const DataType channel_type_;
 };
+
+std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
+        const RowTypePtr& rowType,
+        const std::vector<expr::FieldAccessTypeExprPtr>& exprs);
+
 }
 }
 

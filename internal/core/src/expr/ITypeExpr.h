@@ -283,6 +283,11 @@ class FieldAccessTypeExpr : public ITypeExpr {
         return is_input_column_;
     }
 
+    const std::string&
+    name() const{
+        return name_;
+    }
+
     std::string
     ToString() const override {
         if (inputs_.empty()) {

@@ -65,8 +65,7 @@ add_library(milvus_core SHARED
     $<TARGET_OBJECTS:milvus_clustering>
     $<TARGET_OBJECTS:milvus_exec>
     $<TARGET_OBJECTS:milvus_bitset>
-    $<TARGET_OBJECTS:milvus_futures>
-)
+    $<TARGET_OBJECTS:milvus_futures>)
 
 set(LINK_TARGETS 
     boost_bitset_ext
