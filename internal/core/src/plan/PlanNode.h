@@ -424,10 +424,9 @@ public:
                     std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
                     std::vector<std::string>&& aggNames,
                     std::vector<Aggregate>&& aggregates,
-                    /*RowType&& output_type,*/
-                    std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
-                    : PlanNode(id), groupingKeys_(std::move(groupingKeys)), aggregateNames_(std::move(aggNames)), aggregates_(std::move(aggregates)),
-                    sources_(std::move(sources))/*, output_type_(std::move(output_type))*/, ignoreNullKeys_(true){}
+                    RowType&& output_type,
+                    std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{});
+
 
     RowTypePtr
     output_type() const override {
@@ -448,13 +447,17 @@ public:
         return "agg";
     }
 
+    const std::vector<expr::FieldAccessTypeExprPtr>& GroupingKeys() const {
+        return groupingKeys_;
+    }
+
 private:
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
     const std::vector<std::string> aggregateNames_;
     const std::vector<Aggregate> aggregates_;
     const bool ignoreNullKeys_;
     const std::vector<PlanNodePtr> sources_;
-    //const RowType output_type_;
+    const RowTypePtr output_type_;
 };
 
 enum class ExecutionStrategy {

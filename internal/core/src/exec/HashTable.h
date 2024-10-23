@@ -13,19 +13,29 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
+#include <vector>
+#include <memory>
 
 #include "VectorHasher.h"
+
 namespace milvus{
-namespace exec {
-std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
-        const RowTypePtr& rowType,
-        const std::vector<expr::FieldAccessTypeExprPtr>& exprs) {
-    std::vector<std::unique_ptr<VectorHasher>> hashers;
-    hashers.reserve(exprs.size());
-    for (const auto& expr: exprs) {
-        auto column_idx = rowType->GetChildIndex(expr->name());
-        hashers.emplace_back();
-    }
-}
+namespace exec{
+class BaseHashTable {
+public:
+#if XSIMD_WITH_SSE2
+        using TagVector = xsimd::batch<uint8_t, xsimd::sse2>;
+#elif XSIMD_WITH_NEON
+        using TagVector = xsimd::batch<uint8_t, xsimd::neon>;
+#endif
+
+};
+
+struct HashLookup {
+  explicit HashLookup(const std::vector<std::unique_ptr<VectorHasher>>& hashers): hashers_(hashers){}
+
+  /// One entry per group-by
+  const std::vector<std::unique_ptr<VectorHasher>>& hashers_;
+};
+
 }
 }

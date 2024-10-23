@@ -14,18 +14,4 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "VectorHasher.h"
-namespace milvus{
-namespace exec {
-std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
-        const RowTypePtr& rowType,
-        const std::vector<expr::FieldAccessTypeExprPtr>& exprs) {
-    std::vector<std::unique_ptr<VectorHasher>> hashers;
-    hashers.reserve(exprs.size());
-    for (const auto& expr: exprs) {
-        auto column_idx = rowType->GetChildIndex(expr->name());
-        hashers.emplace_back();
-    }
-}
-}
-}
+#include "HashTable.h"

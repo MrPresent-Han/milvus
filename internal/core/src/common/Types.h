@@ -47,6 +47,7 @@
 #include "Json.h"
 
 #include "CustomBitset.h"
+#include "Vector.h"
 
 namespace milvus {
 
@@ -693,6 +694,18 @@ public:
         names_(std::move(names)), columns_types_(std::move(types)){};
 
     static const std::shared_ptr<const RowType> None;
+
+    milvus::column_index_t GetChildIndex(std::string name) {
+        std::optional<milvus::column_index_t> idx;
+        for(milvus::column_index_t i = 0; i < names_.size(); i++) {
+            if (names_[i] == name) {
+                idx = i;
+            }
+        }
+        AssertInfo(idx.has_value(), "Cannot find target column in the rowType list");
+        return idx.value();
+    }
+
 private:
     const std::vector<std::string> names_;
     const std::vector<milvus::DataType> columns_types_;
