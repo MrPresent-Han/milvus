@@ -10,7 +10,7 @@ namespace exec {
 PhyQueryGroupByNode::PhyQueryGroupByNode(int32_t operator_id,
                                                    DriverContext* ctx,
                                                    const std::shared_ptr<const plan::AggregationNode>& node):
-        Operator(ctx, node->output_type(), operator_id, node->id()){
+        Operator(ctx, node->output_type(), operator_id, node->id()), aggregationNode_(node){
 
 }
 
@@ -22,8 +22,13 @@ void PhyQueryGroupByNode::prepareOutput(vector_size_t size){
     }
 }
 
-void PhyQueryGroupByNode::AddInput(milvus::RowVectorPtr &input) {
+void PhyQueryGroupByNode::initialize() {
+    Operator::initialize();
+    const auto& input_type =
+}
 
+void PhyQueryGroupByNode::AddInput(milvus::RowVectorPtr &input) {
+    grouping_set_->addInput(input, false);
 }
 
 }

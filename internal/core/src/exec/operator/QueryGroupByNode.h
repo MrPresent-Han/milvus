@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include "exec/operator/Operator.h"
+#include "exec/operator/query-agg/GroupingSet.h"
 #include "common/Types.h"
 
 namespace milvus{
@@ -51,16 +52,20 @@ public:
         return BlockingReason::kNotBlocked;
     }
 
-    virtual void
-    Close() {
+    void
+    Close() override {
         input_ = nullptr;
         results_.clear();
     }
 
+    void
+    initialize() override;
 private:
     void prepareOutput(vector_size_t size);
 
     RowVectorPtr output_;
+    std::unique_ptr<GroupingSet> grouping_set_;
+    std::shared_ptr<const plan::AggregationNode> aggregationNode_;
 };
 }
 }
