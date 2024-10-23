@@ -16,8 +16,10 @@
 
 #pragma once
 #include "common/Types.h"
-#include "VectorHasher.h"
+#include "exec/VectorHasher.h"
 #include "AggregateInfo.h"
+#include "exec/HashTable.h"
+#include "plan/PlanNode.h"
 
 namespace milvus {
 namespace exec {
@@ -45,6 +47,11 @@ private:
     const bool ignoreNullKeys_;
     std::vector<std::unique_ptr<VectorHasher>> hashers_;
     std::vector<AggregateInfo> aggregates_;
+
+    // Place for the arguments of the aggregate being updated.
+    std::vector<VectorPtr> tempVectors_;
+    std::unique_ptr<BaseHashTable> hash_table_;
+    std::unique_ptr<HashLookup> lookup_;
 };
 
 }
