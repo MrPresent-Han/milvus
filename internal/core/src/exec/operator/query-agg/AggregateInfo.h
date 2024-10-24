@@ -14,6 +14,8 @@
 
 #include "common/Vector.h"
 #include "Aggregate.h"
+#include "plan/PlanNode.h"
+#include "exec/operator/Operator.h"
 
 namespace milvus{
 namespace exec{
@@ -26,7 +28,12 @@ struct AggregateInfo{
 
     /// Indices of the input columns in the input RowVector.
     std::vector<column_index_t> input_column_idxes;
-
 };
+
+std::vector<AggregateInfo> toAggregateInfo(
+        const plan::AggregationNode& aggregationNode,
+        const milvus::exec::OperatorContext& operatorCtx,
+        uint32_t numKeys);
+
 }
 }

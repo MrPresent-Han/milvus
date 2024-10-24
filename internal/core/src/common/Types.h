@@ -706,6 +706,10 @@ public:
         return idx.value();
     }
 
+    milvus::DataType column_type(uint32_t idx) const {
+        return columns_types_.at(idx);
+    }
+
 private:
     const std::vector<std::string> names_;
     const std::vector<milvus::DataType> columns_types_;
