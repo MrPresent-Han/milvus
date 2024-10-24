@@ -12,7 +12,7 @@
 #include <memory>
 #include <vector>
 
-#include "common/Vector.h"
+#include "common/Types.h"
 #include "Aggregate.h"
 #include "plan/PlanNode.h"
 #include "exec/operator/Operator.h"
@@ -24,7 +24,7 @@ namespace exec{
 struct AggregateInfo{
 
     /// Instance of the Aggregate class.
-    std::unique_ptr<Aggregate> function_;//hc----agg function here
+    std::unique_ptr<Aggregate> function_;
 
     /// Indices of the input columns in the input RowVector.
     std::vector<column_index_t> input_column_idxes_;

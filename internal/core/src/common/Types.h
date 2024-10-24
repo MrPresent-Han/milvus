@@ -47,7 +47,6 @@
 #include "Json.h"
 
 #include "CustomBitset.h"
-#include "Vector.h"
 
 namespace milvus {
 
@@ -687,7 +686,7 @@ struct fmt::formatter<milvus::OpType> : formatter<string_view> {
     }
 };
 
-
+using column_index_t = uint32_t;
 class RowType final {
 public:
     RowType(std::vector<std::string>&& names, std::vector<milvus::DataType>&& types):
@@ -695,9 +694,9 @@ public:
 
     static const std::shared_ptr<const RowType> None;
 
-    milvus::column_index_t GetChildIndex(std::string name) {
-        std::optional<milvus::column_index_t> idx;
-        for(milvus::column_index_t i = 0; i < names_.size(); i++) {
+    column_index_t GetChildIndex(std::string name) const {
+        std::optional<column_index_t> idx;
+        for(auto i = 0; i < names_.size(); i++) {
             if (names_[i] == name) {
                 idx = i;
             }

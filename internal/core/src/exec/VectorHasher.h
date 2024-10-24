@@ -49,6 +49,11 @@ std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
         const RowTypePtr& rowType,
         const std::vector<expr::FieldAccessTypeExprPtr>& exprs);
 
+
+static std::unique_ptr<VectorHasher> create(DataType dataType, column_index_t column_idx) {
+    return std::make_unique<VectorHasher>(dataType, column_idx);
+}
+
 }
 }
 

@@ -52,6 +52,8 @@ private:
     std::vector<VectorPtr> tempVectors_;
     std::unique_ptr<BaseHashTable> hash_table_;
     std::unique_ptr<HashLookup> lookup_;
+
+    uint64_t numInputRows_ = 0;
 };
 
 }

@@ -24,8 +24,9 @@ std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
     hashers.reserve(exprs.size());
     for (const auto& expr: exprs) {
         auto column_idx = rowType->GetChildIndex(expr->name());
-        hashers.emplace_back();
+        hashers.emplace_back(VectorHasher::create(expr->type(), column_idx));
     }
+    return hashers;
 }
 }
 }

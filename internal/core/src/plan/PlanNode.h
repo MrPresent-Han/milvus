@@ -271,6 +271,17 @@ class FilterBitsNode : public PlanNode {
     const expr::TypedExprPtr filter_;
 };
 
+class ProjectNode : public PlanNode {
+public:
+    ProjectNode(const PlanNodeId& id,
+                std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
+                : PlanNode(id), sources_(std::move(sources)){
+    }
+private:
+    const std::vector<PlanNodePtr> sources_;
+    const std::vector<FieldId> field_ids;
+};
+
 class MvccNode : public PlanNode {
  public:
     MvccNode(const PlanNodeId& id,

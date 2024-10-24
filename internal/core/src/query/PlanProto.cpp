@@ -227,8 +227,13 @@ ProtoParser::RetrievePlanNodeFromProto(
                 }
             }
 
-            plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(), std::move(groupingKeys),
-                                                               std::move(agg_names), std::move(aggregates), std::move(sources));
+            plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
+                                                               milvus::plan::AggregationNode::Step::kSingle,
+                                                               std::move(groupingKeys),
+                                                               std::move(agg_names),
+                                                               std::move(aggregates),
+                                                               std::move(nullptr),
+                                                               std::move(sources));
             sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
             node->plannodes_ = plannode;
         }
