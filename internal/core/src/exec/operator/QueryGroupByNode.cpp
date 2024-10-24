@@ -53,7 +53,7 @@ void PhyQueryGroupByNode::initialize() {
 
 void PhyQueryGroupByNode::AddInput(milvus::RowVectorPtr &input) {
     grouping_set_->addInput(*input, false);
-    numInputRows_ += input.size();
+    numInputRows_ += input->size();
 }
 
 };

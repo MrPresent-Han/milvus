@@ -21,6 +21,8 @@ namespace exec{
 GroupingSet::~GroupingSet(){}
 
 void GroupingSet::addInput(const milvus::RowVector &input, bool mayPushDown) {
+    auto numRows = input.size();
+    numInputRows_ += numRows;
 
 }
 }

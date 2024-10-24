@@ -38,12 +38,12 @@ class BaseVector {
     virtual ~BaseVector() = default;
 
     int64_t
-    size() {
+    size() const {
         return length_;
     }
 
     DataType
-    type() {
+    type() const{
         return type_kind_;
     }
 
@@ -103,7 +103,6 @@ class ColumnVector final : public BaseVector {
 
 using ColumnVectorPtr = std::shared_ptr<ColumnVector>;
 
-using column_index_t = uint32_t;
 /**
  * @brief Multi vectors for scalar types
  * mainly using it to pass internal result in segcore scalar engine system
