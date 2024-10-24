@@ -24,10 +24,13 @@ namespace exec{
 struct AggregateInfo{
 
     /// Instance of the Aggregate class.
-    std::unique_ptr<Aggregate> function;//hc----agg function here
+    std::unique_ptr<Aggregate> function_;//hc----agg function here
 
     /// Indices of the input columns in the input RowVector.
-    std::vector<column_index_t> input_column_idxes;
+    std::vector<column_index_t> input_column_idxes_;
+
+    /// Index of the result column in the output RowVector.
+    column_index_t output_;
 };
 
 std::vector<AggregateInfo> toAggregateInfo(

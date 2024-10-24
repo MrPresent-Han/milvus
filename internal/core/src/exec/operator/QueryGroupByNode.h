@@ -66,6 +66,10 @@ private:
     RowVectorPtr output_;
     std::unique_ptr<GroupingSet> grouping_set_;
     std::shared_ptr<const plan::AggregationNode> aggregationNode_;
+
+    // Count the number of input rows. It is reset on partial aggregation output
+    // flush.
+    int64_t numInputRows_ = 0;
 };
 }
 }

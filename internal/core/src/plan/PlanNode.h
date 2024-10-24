@@ -402,14 +402,33 @@ class CountNode : public PlanNode {
 
 class AggregationNode: public PlanNode {
 public:
+    enum class Step {//hc--- agg step?
+        // raw input in - partial result out
+        kPartial,
+        // partial result in - final result out
+        kFinal,
+        // partial result in - partial result out
+        kIntermediate,
+        // raw input in - final result out
+        kSingle
+    };
+
+    static const char* stepName(Step step);
+
     struct Aggregate {
         /// Function name and input column names.
         expr::CallTypeExprPtr call_;
+
+        /// Raw input types used to properly identify aggregate function. These
+        /// might be different from the input types specified in 'call' when
+        /// aggregation step is kIntermediate or kFinal.
+        std::vector<DataType> rawInputTypes_;
     public:
         Aggregate(expr::CallTypeExprPtr call):call_(call){}
     };
 
     AggregationNode(const PlanNodeId& id,
+                    Step step,
                     std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
                     std::vector<std::string>&& aggNames,
                     std::vector<Aggregate>&& aggregates,
@@ -444,7 +463,24 @@ public:
         return aggregates_;
     }
 
+    Step step() const {
+        return step_;
+    }
+
+    bool isFinal() const {
+        return step_ == Step::kFinal;
+    }
+
+    bool isSingle() const {
+        return step_ == Step::kSingle;
+    }
+
+    bool ignoreNullKeys() const {
+        return ignoreNullKeys_;
+    }
+
 private:
+    const Step step_;
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
     const std::vector<std::string> aggregateNames_;
     const std::vector<Aggregate> aggregates_;
