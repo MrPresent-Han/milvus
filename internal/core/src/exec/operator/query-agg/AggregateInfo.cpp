@@ -16,11 +16,12 @@ std::vector<AggregateInfo> toAggregateInfo(
     aggregates.reserve(numAggregates);
     const auto& inputType = aggregationNode.sources()[0]->output_type();
     const auto& outputType = aggregationNode.output_type();
+    const auto step = aggregationNode.step();
 
     for (auto i = 0; i < numAggregates; i++) {
         const auto& aggregate = aggregationNode.aggregates()[i];
         AggregateInfo info;
-        auto& inputColumnIdxes = info.input_column_idxes;
+        auto& inputColumnIdxes = info.input_column_idxes_;
         for (const auto& inputExpr: aggregate.call_->inputs()) {
             if (auto fieldExpr = dynamic_cast<const expr::CallTypeExpr*>(inputExpr.get())) {
                 inputColumnIdxes.emplace_back(inputType->GetChildIndex(fieldExpr->name()));
@@ -28,9 +29,15 @@ std::vector<AggregateInfo> toAggregateInfo(
         }
         auto index = numKeys + i;
         const auto& aggResultType = outputType->column_type(index);
-        info.function = Aggregate::create
+        info.function_ = Aggregate::create(
+                aggregate.call_->name(),
+                isPartialOutput(step)? plan::AggregationNode::Step::kPartial:plan::AggregationNode::Step::kSingle,
+                aggregate.rawInputTypes_,
+                aggResultType);
+        info.output_ = index;
+        aggregates.emplace_back(std::move(info));
     }
-
+    return aggregates;
 }
 
 }

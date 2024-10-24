@@ -31,10 +31,29 @@ void PhyQueryGroupByNode::initialize() {
                                                                 *operator_context_,
                                                                 numHashers);
 
+    // Check that aggregate result type match the output type.
+    for (auto i = 0; i < aggregateInfos.size(); i++) {
+        const auto aggResultType = aggregateInfos[i].function_->resultType();
+        const auto expectedType = output_type_->column_type(numHashers + i);
+        AssertInfo(aggResultType==expectedType,
+                   "Unexpected result type for an aggregation: {}, expected {}, step {}",
+                   aggResultType,
+                   expectedType,
+                   plan::AggregationNode::stepName(aggregationNode_->step()));
+    }
+
+    grouping_set_ = std::make_unique<GroupingSet>(
+            input_type,
+            std::move(hashers),
+            std::move(aggregateInfos),
+            aggregationNode_->ignoreNullKeys(),
+            isRawInput(aggregationNode_->step()));
+    aggregationNode_.reset();
 }
 
 void PhyQueryGroupByNode::AddInput(milvus::RowVectorPtr &input) {
-    grouping_set_->addInput(input, false);
+    grouping_set_->addInput(*input, false);
+    numInputRows_ += input.size();
 }
 
 };

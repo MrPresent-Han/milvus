@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include "common/Types.h"
+#include "plan/PlanNode.h"
 
 namespace milvus{
 namespace exec{
@@ -20,10 +21,26 @@ private:
     const DataType result_type_;
 
 public:
+    DataType resultType() const {
+        return result_type_;
+    }
+
     static std::unique_ptr<Aggregate> create(
             const std::string& name,
+            plan::AggregationNode::Step step,
             const std::vector<DataType>& argTypes,
             DataType resultType);
 };
+
+bool isRawInput(milvus::plan::AggregationNode::Step step) {
+    return step == milvus::plan::AggregationNode::Step::kPartial ||
+           step == milvus::plan::AggregationNode::Step::kSingle;
+}
+
+bool isPartialOutput(milvus::plan::AggregationNode::Step step) {
+    return step == milvus::plan::AggregationNode::Step::kPartial ||
+           step == milvus::plan::AggregationNode::Step::kIntermediate;
+}
+
 }
 }
