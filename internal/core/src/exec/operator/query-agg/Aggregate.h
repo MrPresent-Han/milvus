@@ -18,6 +18,12 @@ protected:
     explicit Aggregate(DataType result_type): result_type_(result_type){}
 private:
     const DataType result_type_;
+
+public:
+    static std::unique_ptr<Aggregate> create(
+            const std::string& name,
+            const std::vector<DataType>& argTypes,
+            DataType resultType);
 };
 }
 }

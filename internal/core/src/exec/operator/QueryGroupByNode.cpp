@@ -25,7 +25,11 @@ void PhyQueryGroupByNode::prepareOutput(vector_size_t size){
 void PhyQueryGroupByNode::initialize() {
     Operator::initialize();
     const auto& input_type = aggregationNode_->sources()[0]->output_type();
-    auto hashers = createVectorHashers(input_type, aggregationNode_->)
+    auto hashers = createVectorHashers(input_type, aggregationNode_->GroupingKeys());
+    auto numHashers = hashers.size();
+    std::vector<AggregateInfo> aggregateInfos = toAggregateInfo(*aggregationNode_,
+                                                                *operator_context_,
+                                                                numHashers);
 
 }
 
@@ -33,6 +37,6 @@ void PhyQueryGroupByNode::AddInput(milvus::RowVectorPtr &input) {
     grouping_set_->addInput(input, false);
 }
 
-}
-}
+};
+};
 

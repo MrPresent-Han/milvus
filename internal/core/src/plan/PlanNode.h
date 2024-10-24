@@ -402,17 +402,6 @@ class CountNode : public PlanNode {
 
 class AggregationNode: public PlanNode {
 public:
-    enum class Step {
-        // raw input in - partial result out
-        kPartial,
-        // partial result in - final result out
-        kFinal,
-        // partial result in - partial result out
-        kIntermediate,
-        // raw input in - final result out
-        kSingle
-    };
-
     struct Aggregate {
         /// Function name and input column names.
         expr::CallTypeExprPtr call_;
@@ -449,6 +438,10 @@ public:
 
     const std::vector<expr::FieldAccessTypeExprPtr>& GroupingKeys() const {
         return groupingKeys_;
+    }
+
+    const std::vector<Aggregate>& aggregates() const {
+        return aggregates_;
     }
 
 private:
