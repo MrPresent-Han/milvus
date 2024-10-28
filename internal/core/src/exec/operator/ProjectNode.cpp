@@ -22,9 +22,8 @@ namespace milvus{
 namespace exec {
 PhyProjectNode::PhyProjectNode(int32_t operator_id,
                                milvus::exec::DriverContext *ctx,
-                               RowTypePtr row_type,
                                const std::shared_ptr<const plan::ProjectNode> &projectNode):
-        Operator(ctx, row_type, operator_id, projectNode->id(), "Project"),
+        Operator(ctx, projectNode->output_type(), operator_id, projectNode->id(), "Project"),
         fields_to_project_(projectNode->FieldsToProject()){
     auto exec_context = operator_context_->get_exec_context();
     segment_ = exec_context->get_query_context()->get_segment();
@@ -43,9 +42,23 @@ PhyProjectNode::GetOutput() {
     TargetBitmapView bitset_view(col_input->GetRawData(), col_input->size());
     auto result_pair = segment_->find_first(0, bitset_view);
     auto selected_offsets = result_pair.first;
+    auto selected_count = selected_offsets.size();
     is_finished_ = true;
-    for (auto field_id: )
+
+    auto row_type = OutputType();
+    std::vector<VectorPtr> column_vectors;
+    for (int i = 0; i < fields_to_project_.size(); i++) {
+        auto column_type = row_type->column_type(i);
+        auto field_id = fields_to_project_.at(i);
+        auto field_data = segment_->bulk_subscript(field_id, selected_offsets.data(), selected_count);
+        auto column_vector = std::make_shared<ColumnVector>(column_type, selected_count);
+        column_vectors.emplace_back(column_vector);
+    }
+    auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));
+    return row_vector;
 }
+
+
 
 };
 };

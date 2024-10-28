@@ -25,7 +25,6 @@ class PhyProjectNode: public Operator{
       PhyProjectNode(
               int32_t operator_id,
               DriverContext* ctx,
-              RowTypePtr row_type,
               const std::shared_ptr<const plan::ProjectNode>& projectNode);
 
       bool
@@ -43,6 +42,16 @@ class PhyProjectNode: public Operator{
 
       RowVectorPtr
       GetOutput() override;
+
+      bool
+      IsFinished() override {
+          return is_finished_;
+      }
+
+      BlockingReason
+      IsBlocked(ContinueFuture* /* unused */) override{
+          return BlockingReason::kNotBlocked;
+      }
 
 private:
     const segcore::SegmentInternalInterface* segment_;

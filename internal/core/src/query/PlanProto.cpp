@@ -170,7 +170,7 @@ ProtoParser::RetrievePlanNodeFromProto(
             node->plannodes_ = std::move(plannode);
         } else {
             // mvccNode--->FilterBitsNode or
-            // aggNode--->mvccNode--->FilterBitsNode
+            // aggNode---> projectNode --->mvccNode--->FilterBitsNode
             auto& query = plan_node_proto.query();
             // 1. FilterBitsNode
             if (query.has_predicates()) {
@@ -222,10 +222,13 @@ ProtoParser::RetrievePlanNodeFromProto(
                     aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
                     fields_to_project.insert(field_id);
                 }
+                // add projectNode
                 auto project_field_list = std::vector<FieldId>(fields_to_project.begin(), fields_to_project.end());
                 plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
                                                                project_field_list,
                                                                sources);
+
+                // add agg node
                 sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
                 plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
                                                                    milvus::plan::AggregationNode::Step::kSingle,

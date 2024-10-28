@@ -716,5 +716,5 @@ private:
 
 using RowTypePtr = std::shared_ptr<const RowType>;
 
-const RowTypePtr RowType::None = std::make_shared<const RowType>(std::vector<std::string>{}, std::vector<milvus::DataType>{});
+
 

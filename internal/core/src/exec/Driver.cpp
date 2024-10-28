@@ -28,9 +28,11 @@
 #include "exec/operator/VectorSearchNode.h"
 #include "exec/operator/SearchGroupByNode.h"
 #include "exec/operator/QueryGroupByNode.h"
+#include "exec/operator/ProjectNode.h"
 #include "exec/Task.h"
 
 #include "common/EasyAssert.h"
+
 
 namespace milvus {
 namespace exec {
@@ -82,7 +84,7 @@ DriverFactory::CreateDriver(std::unique_ptr<DriverContext> ctx,
             operators.push_back(
                     std::make_unique<PhyQueryGroupByNode>(id, ctx.get(), queryGroupByNode));
         } else if (auto projectNode = std::dynamic_pointer_cast<const plan::ProjectNode>(plannode)) {
-            //operators.push_back(std::make_unique<>())
+            operators.push_back(std::make_unique<PhyProjectNode>(id, ctx.get(), projectNode));
         }
         // TODO: add more operators
     }

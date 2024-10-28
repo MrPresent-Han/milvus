@@ -166,7 +166,7 @@ class Operator {
         return "Base Operator";
     }
 
-    virtual RowTypePtr
+    virtual const RowTypePtr&
     OutputType() const {
         return output_type_;
     }
