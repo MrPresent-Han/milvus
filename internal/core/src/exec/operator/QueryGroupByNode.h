@@ -43,7 +43,7 @@ public:
     }
 
     bool
-    IsFilter() override {
+    IsFilter() const override {
         return false;
     }
 

@@ -236,7 +236,6 @@ ProtoParser::RetrievePlanNodeFromProto(
                                                                    sources);
                 sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
             }
-
             node->plannodes_ = plannode;
         }
         return node;

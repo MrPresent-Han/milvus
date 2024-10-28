@@ -52,7 +52,7 @@ class CallbackSink : public Operator {
     }
 
     bool
-    IsFilter() override {
+    IsFilter() const override {
         return false;
     }
 

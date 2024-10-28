@@ -34,7 +34,7 @@ class PhySearchGroupByNode : public Operator {
                          const std::shared_ptr<const plan::SearchGroupByNode>& node);
 
     bool
-    IsFilter() override {
+    IsFilter() const override {
         return false;
     }
 

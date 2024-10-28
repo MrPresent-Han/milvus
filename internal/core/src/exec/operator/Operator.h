@@ -130,7 +130,7 @@ class Operator {
     IsFinished() = 0;
 
     virtual bool
-    IsFilter() = 0;
+    IsFilter() const = 0;
 
     virtual BlockingReason
     IsBlocked(ContinueFuture* future) = 0;

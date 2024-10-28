@@ -81,6 +81,8 @@ DriverFactory::CreateDriver(std::unique_ptr<DriverContext> ctx,
         } else if (auto queryGroupByNode = std::dynamic_pointer_cast<const plan::AggregationNode>(plannode)) {
             operators.push_back(
                     std::make_unique<PhyQueryGroupByNode>(id, ctx.get(), queryGroupByNode));
+        } else if (auto projectNode = std::dynamic_pointer_cast<const plan::ProjectNode>(plannode)) {
+            //operators.push_back(std::make_unique<>())
         }
         // TODO: add more operators
     }

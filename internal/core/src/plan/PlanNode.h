@@ -299,6 +299,11 @@ public:
         return fmt::format("ProjectNode:\n\t[source node:{}]", SourceToString());
     }
 
+    const std::vector<FieldId>&
+    FieldsToProject() const {
+        return field_ids_;
+    }
+
 private:
     const std::vector<PlanNodePtr> sources_;
     const std::vector<FieldId> field_ids_;
