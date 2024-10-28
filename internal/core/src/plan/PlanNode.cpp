@@ -41,7 +41,7 @@ AggregationNode::AggregationNode(const milvus::plan::PlanNodeId &id,
                                  std::vector<expr::FieldAccessTypeExprPtr> &&groupingKeys,
                                  std::vector<std::string> &&aggNames,
                                  std::vector<Aggregate> &&aggregates,
-                                 RowType &&output_type,
+                                 std::shared_ptr<const RowType> output_type,
                                  std::vector<PlanNodePtr> sources):
                                  PlanNode(id),
                                  step_(step),

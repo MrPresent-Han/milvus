@@ -274,12 +274,34 @@ class FilterBitsNode : public PlanNode {
 class ProjectNode : public PlanNode {
 public:
     ProjectNode(const PlanNodeId& id,
+                std::vector<FieldId>& field_ids,
                 std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
-                : PlanNode(id), sources_(std::move(sources)){
+                : PlanNode(id), sources_(std::move(sources)), field_ids_(std::move(field_ids)){
     }
+
+    std::vector<PlanNodePtr>
+    sources() const override {
+        return sources_;
+    }
+
+    RowTypePtr
+    output_type() const override {
+        return RowType::None;
+    }
+
+    std::string_view
+    name() const override {
+        return "ProjectNode";
+    }
+
+    std::string
+    ToString() const override {
+        return fmt::format("ProjectNode:\n\t[source node:{}]", SourceToString());
+    }
+
 private:
     const std::vector<PlanNodePtr> sources_;
-    const std::vector<FieldId> field_ids;
+    const std::vector<FieldId> field_ids_;
 };
 
 class MvccNode : public PlanNode {
@@ -443,7 +465,7 @@ public:
                     std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
                     std::vector<std::string>&& aggNames,
                     std::vector<Aggregate>&& aggregates,
-                    RowType&& output_type,
+                    std::shared_ptr<const RowType> output_type,
                     std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{});
 
 

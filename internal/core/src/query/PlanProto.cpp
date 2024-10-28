@@ -189,28 +189,24 @@ ProtoParser::RetrievePlanNodeFromProto(
                 milvus::plan::GetNextPlanNodeId(), sources);
             sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
 
-            // 3. aggNode
-            /*node->is_count_ = query.is_count();
-            node->limit_ = query.limit();
-            if (node->is_count_) {
-                plannode = std::make_shared<milvus::plan::CountNode>(
-                    milvus::plan::GetNextPlanNodeId(), sources);
-                sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
-            }*/
-            std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
-            if(query.group_by_field_ids_size() > 0) {
-                groupingKeys.reserve(query.group_by_field_ids_size());
-                for(int i = 0; i < query.group_by_field_ids_size(); i++) {
+            // 3. projectNode and aggNode
+            auto group_by_field_count = query.group_by_field_ids_size();
+            auto agg_functions_count = query.aggregates_size();
+            if (group_by_field_count > 0 || agg_functions_count > 0) {
+                std::set<FieldId> fields_to_project;
+                std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
+                groupingKeys.reserve(group_by_field_count);
+                for(int i = 0; i < group_by_field_count; i++) {
                     auto input_field_id = query.group_by_field_ids(i);
                     AssertInfo(input_field_id > 0, "input field_id to group by must be positive, but is:{}", input_field_id);
                     auto field_id = FieldId(input_field_id);
                     auto field_type = schema.GetFieldType(field_id);
                     groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_id));
+                    fields_to_project.insert(field_id);
                 }
-            }
-            std::vector<plan::AggregationNode::Aggregate> aggregates;
-            std::vector<std::string> agg_names;
-            if (query.aggregates_size() > 0) {
+
+                std::vector<plan::AggregationNode::Aggregate> aggregates;
+                std::vector<std::string> agg_names;
                 aggregates.reserve(query.aggregates_size());
                 for(int i = 0; i < query.aggregates_size(); i++) {
                     auto aggregate = query.aggregates(i);
@@ -224,17 +220,23 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto agg_input = std::make_shared<expr::FieldAccessTypeExpr>(field_type, field_name, field_id);
                     auto call = std::make_shared<const expr::CallTypeExpr>(field_type, std::vector<expr::TypedExprPtr>{agg_input}, agg_name);
                     aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+                    fields_to_project.insert(field_id);
                 }
+                auto project_field_list = std::vector<FieldId>(fields_to_project.begin(), fields_to_project.end());
+                plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
+                                                               project_field_list,
+                                                               sources);
+                sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+                plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
+                                                                   milvus::plan::AggregationNode::Step::kSingle,
+                                                                   std::move(groupingKeys),
+                                                                   std::move(agg_names),
+                                                                   std::move(aggregates),
+                                                                   RowType::None,
+                                                                   sources);
+                sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
             }
 
-            plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
-                                                               milvus::plan::AggregationNode::Step::kSingle,
-                                                               std::move(groupingKeys),
-                                                               std::move(agg_names),
-                                                               std::move(aggregates),
-                                                               std::move(nullptr),
-                                                               std::move(sources));
-            sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
             node->plannodes_ = plannode;
         }
         return node;
