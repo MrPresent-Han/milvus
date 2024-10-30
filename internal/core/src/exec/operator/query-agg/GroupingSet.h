@@ -43,6 +43,10 @@ class GroupingSet {
 
     void addGlobalAggregationInput(const RowVector& input, bool mayPushDown);
 
+    void addInputForActiveRows(const RowVectorPtr& input, bool mayPushdown);
+
+    void createHashTable();
+
 private:
     const bool isGlobal_;
     const bool isRawInput_;

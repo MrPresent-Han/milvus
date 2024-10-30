@@ -29,5 +29,16 @@ void GroupingSet::addGlobalAggregationInput(const milvus::RowVector &input, bool
 
 }
 
+void GroupingSet::addInputForActiveRows(const RowVectorPtr& input, bool mayPushdown) {
+    AssertInfo(!isGlobal_, "Global aggregations should not reach add input for acitve rows");
+    if (hash_table_) {
+
+    }
+}
+
+void GroupingSet::createHashTable(){
+    if (ignoreNullKeys_)
+}
+
 }
 }

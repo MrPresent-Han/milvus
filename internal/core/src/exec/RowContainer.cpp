@@ -13,37 +13,23 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-#include <vector>
-#include <memory>
 
-#include "VectorHasher.h"
+#include "RowContainer.h"
 
-namespace milvus{
-namespace exec{
-class BaseHashTable {
-public:
-#if XSIMD_WITH_SSE2
-        using TagVector = xsimd::batch<uint8_t, xsimd::sse2>;
-#elif XSIMD_WITH_NEON
-        using TagVector = xsimd::batch<uint8_t, xsimd::neon>;
-#endif
-
-};
-
-template <bool ignoreNullKeys>
-class HashTable : public BaseHashTable {
-    /*HashTable(
-        std::vector<std::unique_ptr<VectorHasher>>&& hashers,
-
-            )*/
-};
-
-struct HashLookup {
-  explicit HashLookup(const std::vector<std::unique_ptr<VectorHasher>>& hashers): hashers_(hashers){}
-
-  /// One entry per group-by
-  const std::vector<std::unique_ptr<VectorHasher>>& hashers_;
-};
-
+namespace milvus {
+namespace exec {
+RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
+                           bool nullableKeys,
+                           bool hasNormalizedKeys):
+                           keyTypes_(keyTypes),
+                           nullableKeys_(nullableKeys),
+                           hasNormalizedKeys_(hasNormalizedKeys){
+    int32_t offset = 0;
+    int32_t nullOffset = 0;
+    bool isVariableWidth = false;
+    for(auto& type: keyTypes_){
+        offset +=
+    }
+}
 }
 }
