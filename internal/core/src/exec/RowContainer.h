@@ -60,7 +60,11 @@ private:
     const bool hasNormalizedKeys_;
     std::vector<int32_t> offsets_;
     std::vector<int32_t> nullOffsets_;
+    int32_t freeFlagOffset_ = 0;
     std::vector<RowColumn> rowColumns_;
+
+    // How many bytes do the flags (null, free) occupy.
+    int32_t flagBytes_;
 };
 }
 }

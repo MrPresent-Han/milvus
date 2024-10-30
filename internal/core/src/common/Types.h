@@ -565,6 +565,43 @@ struct TypeTraits<DataType::VECTOR_FLOAT> {
     static constexpr const char* Name = "VECTOR_FLOAT";
 };
 
+bool IsFixedSizeType(DataType type) {
+    switch (type) {
+        case DataType::NONE:
+            return false;
+        case DataType::BOOL:
+            return TypeTraits<DataType::BOOL>::IsFixedWidth;
+        case DataType::INT8:
+            return TypeTraits<DataType::INT8>::IsFixedWidth;
+        case DataType::INT16:
+            return TypeTraits<DataType::INT16>::IsFixedWidth;
+        case DataType::INT32:
+            return TypeTraits<DataType::INT32>::IsFixedWidth;
+        case DataType::INT64:
+            return TypeTraits<DataType::INT64>::IsFixedWidth;
+        case DataType::FLOAT:
+            return TypeTraits<DataType::FLOAT>::IsFixedWidth;
+        case DataType::DOUBLE:
+            return TypeTraits<DataType::DOUBLE>::IsFixedWidth;
+        case DataType::STRING:
+            return TypeTraits<DataType::STRING>::IsFixedWidth;
+        case DataType::VARCHAR:
+            return TypeTraits<DataType::VARCHAR>::IsFixedWidth;
+        case DataType::ARRAY:
+            return TypeTraits<DataType::ARRAY>::IsFixedWidth;
+        case DataType::JSON:
+            return TypeTraits<DataType::JSON>::IsFixedWidth;
+        case DataType::ROW:
+            return TypeTraits<DataType::ROW>::IsFixedWidth;
+        case DataType::VECTOR_BINARY:
+            return TypeTraits<DataType::VECTOR_BINARY>::IsFixedWidth;
+        case DataType::VECTOR_FLOAT:
+            return TypeTraits<DataType::VECTOR_FLOAT>::IsFixedWidth;
+        default:
+            PanicInfo(DataTypeInvalid, "unknown data type: {}", type);
+    }
+}
+
 }  // namespace milvus
 template <>
 struct fmt::formatter<milvus::DataType> : formatter<string_view> {

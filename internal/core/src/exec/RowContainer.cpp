@@ -28,8 +28,25 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     int32_t nullOffset = 0;
     bool isVariableWidth = false;
     for(auto& type: keyTypes_){
-        offset +=
+        offsets_.push_back(offset);
+        offset += GetDataTypeSize(type, 1);
+        nullOffsets_.push_back(nullOffset);
+        if(nullableKeys_) {
+            ++nullOffset;
+        }
+        isVariableWidth |= IsFixedSizeType(type);
     }
+    // Make offset at least sizeof pointer so that there is space for a
+    // free list next pointer below the bit at 'freeFlagOffset_'.
+    offset = std::max<int32_t>(offset, sizeof(void*));
+    const int32_t firstAggregateOffset = offset;
+
+    // Free flag.
+    nullOffsets_.push_back(nullOffset);
+    freeFlagOffset_ = nullOffset + firstAggregateOffset * 8;
+    ++nullOffset;
+    // Add 1 to the last null offset to get the number of bits.
+    flagBytes_ = bits::nbytes(nullOffsets_.back() + 1);
 }
 }
 }
