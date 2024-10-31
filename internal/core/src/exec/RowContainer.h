@@ -48,6 +48,8 @@ private:
    const uint64_t packedOffsets_;
 };
 
+using normalized_key_t = uint64_t;
+
 class RowContainer {
 public:
     RowContainer(const std::vector<DataType>& keyTypes,
@@ -60,11 +62,26 @@ private:
     const bool hasNormalizedKeys_;
     std::vector<int32_t> offsets_;
     std::vector<int32_t> nullOffsets_;
-    int32_t freeFlagOffset_ = 0;
+    
     std::vector<RowColumn> rowColumns_;
 
     // How many bytes do the flags (null, free) occupy.
+    int32_t fixedRowSize_;
     int32_t flagBytes_;
+
+    // Bit position of free bit. 
+    int32_t freeFlagOffset_ = 0;
+    int32_t rowSizeOffset_ = 0;
+
+    int alignment_ = 1;
+
+    // Copied over the null bits of each row on initialization. Keys are
+    // not null, aggregates are null.
+    std::vector<uint8_t> initialNulls_;
+    // Extra bytes to reserve before  each added row for a normalized key. Set to
+    // 0 after deciding not to use normalized keys.    
+    int originalNormalizedKeySize_;
+    int normalizedKeySize_;
 };
 }
 }
