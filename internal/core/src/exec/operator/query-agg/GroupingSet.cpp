@@ -29,16 +29,43 @@ void GroupingSet::addGlobalAggregationInput(const milvus::RowVector &input, bool
 
 }
 
+std::vector<Accumulator> GroupingSet::accumulators(bool /*excludeToIntermediate*/) {
+    std::vector<Accumulator> accumulators;
+    accumulators.reserve(aggregates_.size());
+    for(auto& aggregate: aggregates_) {
+        // add accumalator for each aggregate
+        // accumulators.emplace_back(Accumulator{aggregate-});
+    }
+    return accumulators;
+}
+
+
 void GroupingSet::addInputForActiveRows(const RowVectorPtr& input, bool mayPushdown) {
     AssertInfo(!isGlobal_, "Global aggregations should not reach add input for acitve rows");
-    if (hash_table_) {
+    if (!hash_table_) {
 
     }
 }
 
-void GroupingSet::createHashTable(){
-    if (ignoreNullKeys_)
+void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowContainer& rows) {
+    const auto numKeys = rows.KeyTypes().size();
+    int i = 0;
+    for (auto& aggregate : aggregates) {
+        auto& function = aggregate.function_;
+        const auto& rowColumn = rows.columnAt(numKeys + i);
+    }
 }
+
+void GroupingSet::createHashTable(){
+    if (ignoreNullKeys_) {
+        hash_table_ = std::make_unique<HashTable<true>>(std::move(hashers_));
+    } else {
+        hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_));
+    }
+
+    auto& rows_container = *(hash_table_->rows());
+
+}  
 
 }
 }

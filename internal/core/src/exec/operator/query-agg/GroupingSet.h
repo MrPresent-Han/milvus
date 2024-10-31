@@ -47,6 +47,8 @@ class GroupingSet {
 
     void createHashTable();
 
+    std::vector<Accumulator> accumulators(bool excludeToIntermediate);
+
 private:
     const bool isGlobal_;
     const bool isRawInput_;

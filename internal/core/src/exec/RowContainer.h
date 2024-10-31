@@ -14,10 +14,36 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <vector>
+#include <folly/Range.h>
 #include "common/Types.h"
 
 namespace milvus {
 namespace exec {
+
+class Accumulator {
+public:
+    Accumulator(
+        bool isFixedSize,
+        int32_t fixedSize,
+        bool useExternalMemory,
+        int32_t alignment,
+        DataType spillType,
+        std::function<void(folly::Range<char**> groups, VectorPtr& result)>
+            spillExtractFunction,
+        std::function<void(folly::Range<char**> groups)> destroyFunction);
+
+    explicit Accumulator(Aggregate* aggregate, DataType spillType);        
+
+private:
+    const bool isFixedSize_;
+    const int32_t fixedSize_;
+    const bool usesExternalMemory_;
+    const int32_t alignment_;
+    const DataType spillType_;
+    std::function<void(folly::Range<char**> groups, VectorPtr& result)> spillExtractFunction_;
+    std::function<void(folly::Range<char**> groups)> destroyFunction_;
+};
+
 
 /// Packed representation of offset, null byte offset and null mask for
 /// a column inside a RowContainer.
@@ -53,8 +79,17 @@ using normalized_key_t = uint64_t;
 class RowContainer {
 public:
     RowContainer(const std::vector<DataType>& keyTypes,
+                 const std::vector<Accumulator>& accumulators,
                  bool nullableKeys,
                  bool hasNormalizedKeys);
+
+    const std::vector<DataType>& KeyTypes() const {
+        return keyTypes_;
+    }
+
+    const RowColumn& columnAt(int32_t column_idx) const {
+        return rowColumns_[column_idx];
+    }
 
 private:
     const std::vector<DataType> keyTypes_;
@@ -82,6 +117,8 @@ private:
     // 0 after deciding not to use normalized keys.    
     int originalNormalizedKeySize_;
     int normalizedKeySize_;
+
+    std::vector<Accumulator> accumulators_;
 };
 }
 }

@@ -16,13 +16,17 @@
 
 #include "RowContainer.h"
 #include "common/BitUtil.h"
+#include "common/Vector.h"
 
 namespace milvus {
 namespace exec {
+
 RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
+                           const std::vector<Accumulator>& accumulators,
                            bool nullableKeys,
                            bool hasNormalizedKeys):
                            keyTypes_(keyTypes),
+                           accumulators_(accumulators),
                            nullableKeys_(nullableKeys),
                            hasNormalizedKeys_(hasNormalizedKeys){
     int32_t offset = 0;
@@ -75,5 +79,24 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         rowColumns_.emplace_back(offsets_[i], nullableKeys_?nullOffsets_[i]:RowColumn::kNotNullOffset);
     }
 }
+
+Accumulator::Accumulator(
+        bool isFixedSize,
+        int32_t fixedSize,
+        bool useExternalMemory,
+        int32_t alignment,
+        DataType spillType,
+        std::function<void(folly::Range<char**> groups, milvus::VectorPtr& result)>
+            spillExtractFunction,
+        std::function<void(folly::Range<char**> groups)> destroyFunction):
+        isFixedSize_{isFixedSize},
+        fixedSize_{fixedSize},
+        usesExternalMemory_{useExternalMemory},
+        alignment_{alignment},
+        spillType_{spillType},
+        spillExtractFunction_{std::move(spillExtractFunction)},
+        destroyFunction_{std::move(destroyFunction)}{
+            
+        }
 }
 }

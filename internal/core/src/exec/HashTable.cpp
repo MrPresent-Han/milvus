@@ -18,7 +18,9 @@
 namespace milvus{
 namespace exec {
 template<bool nullableKeys>
-HashTable<nullableKeys>::HashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers)
+HashTable<nullableKeys>::HashTable(
+    std::vector<std::unique_ptr<VectorHasher>>&& hashers,
+    const std::vector<Accumulator>& accumulators)
     : BaseHashTable(std::move(hashers)){
         std::vector<DataType> keyTypes;
         for (auto& hasher : hashers_) {
@@ -27,7 +29,7 @@ HashTable<nullableKeys>::HashTable(std::vector<std::unique_ptr<VectorHasher>>&& 
                 hashMode_ = HashMode::kHash;
             }
         }
-        rows_ = std::make_unique<RowContainer>(keyTypes, nullableKeys, hashMode_ != HashMode::kHash);
+        rows_ = std::make_unique<RowContainer>(keyTypes, accumulators, nullableKeys, hashMode_ != HashMode::kHash);
     }
 }
 }

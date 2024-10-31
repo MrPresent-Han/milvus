@@ -34,16 +34,21 @@ enum class HashMode {kHash, kArray, kNormalizedKey};
 explicit BaseHashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers)
         :hashers_(std::move(hashers)){}
 
+    RowContainer* rows() const {
+        return rows_.get();
+    }
+
 private:
   std::vector<std::unique_ptr<VectorHasher>> hashers_;
   std::unique_ptr<RowContainer> rows_;
 };
 
-template <bool ignoreNullKeys>
+template <bool nullableKeys>
 class HashTable : public BaseHashTable {
 public:
     HashTable(
-        std::vector<std::unique_ptr<VectorHasher>>&& hashers);
+        std::vector<std::unique_ptr<VectorHasher>>&& hashers,
+        const std::vector<Accumulator>& accumulators);
 
 private:
   HashMode hashMode_ = HashMode::kArray;
