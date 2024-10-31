@@ -17,6 +17,7 @@
 #include <memory>
 
 #include "VectorHasher.h"
+#include "RowContainer.h"
 
 namespace milvus{
 namespace exec{
@@ -28,14 +29,25 @@ public:
         using TagVector = xsimd::batch<uint8_t, xsimd::neon>;
 #endif
 
+enum class HashMode {kHash, kArray, kNormalizedKey};
+
+explicit BaseHashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers)
+        :hashers_(std::move(hashers)){}
+
+private:
+  std::vector<std::unique_ptr<VectorHasher>> hashers_;
+  std::unique_ptr<RowContainer> rows_;
 };
 
 template <bool ignoreNullKeys>
 class HashTable : public BaseHashTable {
-    /*HashTable(
-        std::vector<std::unique_ptr<VectorHasher>>&& hashers,
+public:
+    HashTable(
+        std::vector<std::unique_ptr<VectorHasher>>&& hashers);
 
-            )*/
+private:
+  HashMode hashMode_ = HashMode::kArray;
+
 };
 
 struct HashLookup {

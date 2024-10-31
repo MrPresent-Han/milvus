@@ -40,6 +40,21 @@ public:
         return channel_type_;
     }
 
+static bool typeSupportValueIds(DataType type) {
+    switch(type) {
+        case DataType::BOOL:
+        case DataType::INT8:
+        case DataType::INT16:
+        case DataType::INT32:
+        case DataType::INT64:
+        case DataType::VARCHAR:
+        case DataType::STRING:
+          return true;
+        default:
+          return false;
+    }
+}
+
 private:
     const column_index_t channel_idx_;
     const DataType channel_type_;

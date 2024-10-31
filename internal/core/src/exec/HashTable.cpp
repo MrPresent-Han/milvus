@@ -15,3 +15,19 @@
 // limitations under the License.
 
 #include "HashTable.h"
+namespace milvus{
+namespace exec {
+template<bool nullableKeys>
+HashTable<nullableKeys>::HashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers)
+    : BaseHashTable(std::move(hashers)){
+        std::vector<DataType> keyTypes;
+        for (auto& hasher : hashers_) {
+            keyTypes.push_back(hasher->ChannelDataType());
+            if (!VectorHasher::typeSupportValueIds(hasher->ChannelDataType())) {
+                hashMode_ = HashMode::kHash;
+            }
+        }
+        rows_ = std::make_unique<RowContainer>(keyTypes, nullableKeys, hashMode_ != HashMode::kHash);
+    }
+}
+}
