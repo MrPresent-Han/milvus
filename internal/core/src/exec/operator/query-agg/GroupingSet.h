@@ -35,7 +35,8 @@ class GroupingSet {
                 isGlobal_(hashers_.empty()),
                 isRawInput_(isRawInput),
                 aggregates_(std::move(aggregates)),
-                ignoreNullKeys_(ignoreNullKeys){}
+                ignoreNullKeys_(ignoreNullKeys),
+                isAdaptive_(true){}
 
     ~GroupingSet();
 
@@ -53,6 +54,7 @@ private:
     const bool isGlobal_;
     const bool isRawInput_;
     const bool ignoreNullKeys_;
+    
     std::vector<std::unique_ptr<VectorHasher>> hashers_;
     std::vector<AggregateInfo> aggregates_;
 
@@ -62,6 +64,9 @@ private:
     std::unique_ptr<HashLookup> lookup_;
 
     uint64_t numInputRows_ = 0;
+
+
+    const bool isAdaptive_;
 };
 
 }

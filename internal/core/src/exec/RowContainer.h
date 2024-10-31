@@ -32,7 +32,19 @@ public:
             spillExtractFunction,
         std::function<void(folly::Range<char**> groups)> destroyFunction);
 
-    explicit Accumulator(Aggregate* aggregate, DataType spillType);        
+    explicit Accumulator(Aggregate* aggregate, DataType spillType);
+
+    bool isFixedSize() const {
+        return isFixedSize_;
+    }
+
+    bool usesExternalMemory() const {
+        return usesExternalMemory_;
+    }        
+
+    int32_t alignment() const {
+        return alignment_;
+    }
 
 private:
     const bool isFixedSize_;
@@ -57,6 +69,23 @@ public:
   int32_t offset() const {
       return packedOffsets_ >> 32;
   }
+
+  int32_t nullByte() const {
+    return static_cast<uint32_t>(packedOffsets_) >> 8;
+  }
+
+  uint8_t nullMask() const {
+    return packedOffsets_ & 0xff;
+  }
+
+  int32_t initializedByte() const {
+    return nullByte();
+  }
+
+  int32_t initializedMask() const {
+    return nullMask() << 1;
+  }
+
 
 private:
 
@@ -91,6 +120,16 @@ public:
         return rowColumns_[column_idx];
     }
 
+    static int32_t combineAlignments(int32_t a, int32_t b){
+        AssertInfo(__builtin_popcount(a) == 1, "Alignment can only be power of 2, but got{}", a);
+        AssertInfo(__builtin_popcount(b) == 1, "Alignment can only be power of 2, but got{}", b);
+        return std::max(a, b);
+    }
+
+    int32_t rowSizeOffset() const {
+        return rowSizeOffset_;
+    }
+
 private:
     const std::vector<DataType> keyTypes_;
     const bool nullableKeys_;
@@ -119,6 +158,8 @@ private:
     int normalizedKeySize_;
 
     std::vector<Accumulator> accumulators_;
+
+    bool usesExternalMemory_{false};
 };
 }
 }

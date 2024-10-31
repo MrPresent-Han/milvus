@@ -38,6 +38,10 @@ explicit BaseHashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers)
         return rows_.get();
     }
 
+const std::vector<std::unique_ptr<VectorHasher>>& hashers() const {
+    return hashers_;    
+}
+
 private:
   std::vector<std::unique_ptr<VectorHasher>> hashers_;
   std::unique_ptr<RowContainer> rows_;
@@ -52,7 +56,6 @@ public:
 
 private:
   HashMode hashMode_ = HashMode::kArray;
-
 };
 
 struct HashLookup {

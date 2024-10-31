@@ -45,6 +45,24 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     // free list next pointer below the bit at 'freeFlagOffset_'.
     offset = std::max<int32_t>(offset, sizeof(void*));
     const int32_t firstAggregateOffset = offset;
+    if (!accumulators.empty()) {
+        // This moves nullOffset to the start of the next byte.
+        // This is to guarantee the null and initialized bits for an aggregate
+        // always appear in the same byte.
+        nullOffset = (nullOffset + 7) & -8;
+    }
+    for (const auto& accumulator: accumulators) {
+         // Initialized bit.  Set when the accumulator is initialized.
+        nullOffsets_.push_back(nullOffset);
+        ++nullOffset;
+        // Null bit.
+        nullOffsets_.push_back(nullOffset);
+        ++nullOffset;
+        isVariableWidth |= !accumulator.isFixedSize();
+        usesExternalMemory_ |= accumulator.usesExternalMemory();
+        alignment_ = combineAlignments(accumulator.alignment(), alignment_);
+    }
+
 
     // Free flag.
     nullOffsets_.push_back(nullOffset);

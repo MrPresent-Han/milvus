@@ -5,6 +5,21 @@
 
 namespace milvus{
 namespace exec{
+
+void Aggregate::setOffsetsInternal(int32_t offset,
+    int32_t nullByte,
+    uint8_t nullMask,
+    int32_t initializedByte,
+    uint8_t initializedMask,
+    int32_t rowSizeOffset) {
+    offset_ = offset;
+    nullByte_ = nullByte;
+    nullMask_ = nullMask;
+    initializedByte_ = initializedByte;
+    initializedMask_ = initializedMask;
+    rowSizeOffset_ = rowSizeOffset;
+}   
+
 std::unique_ptr<Aggregate> Aggregate::create(const std::string& name,
                                              plan::AggregationNode::Step step,
                                              const std::vector<DataType>& argTypes,

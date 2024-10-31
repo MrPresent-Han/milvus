@@ -21,6 +21,22 @@ protected:
 private:
     const DataType result_type_;
 
+    // Byte position of null flag in group row.
+    int32_t nullByte_;
+    uint8_t nullMask_;
+    // Byte position of the initialized flag in group row.
+    int32_t initializedByte_;
+    uint8_t initializedMask_;
+    // Offset of fixed length accumulator state in group row.
+    int32_t offset_;
+    // Offset of uint32_t row byte size of row. 0 if there are no
+    // variable width fields or accumulators on the row.  The size is
+    // capped at 4G and will stay at 4G and not wrap around if growing
+    // past this. This serves to track the batch size when extracting
+    // rows. A size in excess of 4G would finish the batch in any case,
+    // so larger values need not be represented.
+    int32_t rowSizeOffset_ = 0;
+
 public:
     DataType resultType() const {
         return result_type_;
@@ -31,6 +47,25 @@ public:
             plan::AggregationNode::Step step,
             const std::vector<DataType>& argTypes,
             DataType resultType);
+
+    void setOffsets(
+        int32_t offset,
+        int32_t nullByte,
+        uint8_t nullMask,
+        int32_t initializedByte,
+        int8_t initializedMask,
+        int32_t rowSizeOffset) {
+        setOffsetsInternal(offset, nullByte, nullMask, initializedByte, initializedMask, rowSizeOffset);        
+    }  
+
+protected:
+    virtual void setOffsetsInternal(
+      int32_t offset,
+      int32_t nullByte,
+      uint8_t nullMask,
+      int32_t initializedByte,
+      uint8_t initializedMask,
+      int32_t rowSizeOffset);          
 };
 
 bool isRawInput(milvus::plan::AggregationNode::Step step);
