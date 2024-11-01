@@ -25,6 +25,8 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/tsoutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
+
+	"github.com/milvus-io/milvus/pkg/log"
 )
 
 // showPartitionTask show partition request task
@@ -47,11 +49,13 @@ func (t *showPartitionTask) Execute(ctx context.Context) error {
 	var coll *model.Collection
 	var err error
 	t.Rsp.Status = merr.Success()
+	log.Ctx(ctx).Debug("hc===Start executing showPartitionTask")
 	if t.Req.GetCollectionName() == "" {
 		coll, err = t.core.meta.GetCollectionByID(ctx, t.Req.GetDbName(), t.Req.GetCollectionID(), typeutil.MaxTimestamp, t.allowUnavailable)
 	} else {
 		coll, err = t.core.meta.GetCollectionByName(ctx, t.Req.GetDbName(), t.Req.GetCollectionName(), typeutil.MaxTimestamp)
 	}
+	log.Ctx(ctx).Debug("hc===Finish getting collection for show paritions")
 	if err != nil {
 		t.Rsp.Status = merr.Status(err)
 		return err

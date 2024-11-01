@@ -80,12 +80,15 @@ func (s *scheduler) Stop() {
 
 func (s *scheduler) execute(task task) {
 	defer s.setMinDdlTs(task.GetTs()) // we should update ts, whatever task succeeds or not.
+	log.Ctx(task.GetCtx()).Debug("hc===RC-Scheduler has retrieve the task to do", zap.Int("queue_length", len(s.taskChan)))
 	task.SetInQueueDuration()
 	if err := task.Prepare(task.GetCtx()); err != nil {
 		task.NotifyDone(err)
 		return
 	}
+	log.Ctx(task.GetCtx()).Debug("hc===RC-Scheduler has prepared for the task")
 	err := task.Execute(task.GetCtx())
+	log.Ctx(task.GetCtx()).Debug("hc===RC-Scheduler has executed the task")
 	task.NotifyDone(err)
 }
 
@@ -150,13 +153,14 @@ func (s *scheduler) AddTask(task task) error {
 	// make sure that setting ts and enqueue is atomic.
 	s.lock.Lock()
 	defer s.lock.Unlock()
-
+	log.Ctx(task.GetCtx()).Debug("hc===RC-Scheduler acquired lock for task")
 	if err := s.setID(task); err != nil {
 		return err
 	}
 	if err := s.setTs(task); err != nil {
 		return err
 	}
+	log.Ctx(task.GetCtx()).Debug("hc===RC-Scheduler has set id and ts for task", zap.Int("queue_length", len(s.taskChan)))
 	s.enqueue(task)
 	return nil
 }

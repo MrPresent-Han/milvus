@@ -21,6 +21,7 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
+	"github.com/milvus-io/milvus/pkg/log"
 )
 
 // describeCollectionTask describe collection request task
@@ -40,13 +41,17 @@ func (t *describeCollectionTask) Prepare(ctx context.Context) error {
 
 // Execute task execution
 func (t *describeCollectionTask) Execute(ctx context.Context) (err error) {
+	log.Ctx(ctx).Debug("hc===Start Execute describeCollectionTask")
 	coll, err := t.core.describeCollection(ctx, t.Req, t.allowUnavailable)
+	log.Ctx(ctx).Debug("hc===finish describeCollection")
 	if err != nil {
 		return err
 	}
 
 	aliases := t.core.meta.ListAliasesByID(coll.CollectionID)
+	log.Ctx(ctx).Debug("hc===finish ListAliasesByID")
 	db, err := t.core.meta.GetDatabaseByID(ctx, coll.DBID, t.GetTs())
+	log.Ctx(ctx).Debug("hc===finish GetDatabaseByID")
 	if err != nil {
 		return err
 	}
