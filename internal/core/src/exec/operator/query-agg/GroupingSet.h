@@ -50,6 +50,11 @@ class GroupingSet {
 
     std::vector<Accumulator> accumulators(bool excludeToIntermediate);
 
+    // Checks if input will fit in the existing memory and increases reservation
+    // if not. If reservation cannot be increased, spills enough to make 'input'
+    // fit.
+    void ensureInputFits(const RowVectorPtr& input);
+
 private:
     const bool isGlobal_;
     const bool isRawInput_;

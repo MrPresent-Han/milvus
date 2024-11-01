@@ -40,6 +40,9 @@ public:
         return channel_type_;
     }
 
+    //void
+    //hash(bool mix, )
+
 static bool typeSupportValueIds(DataType type) {
     switch(type) {
         case DataType::BOOL:

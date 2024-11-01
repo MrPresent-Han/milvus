@@ -39,12 +39,18 @@ std::vector<Accumulator> GroupingSet::accumulators(bool /*excludeToIntermediate*
     return accumulators;
 }
 
+void GroupingSet::ensureInputFits(const RowVectorPtr& input){
 
-void GroupingSet::addInputForActiveRows(const RowVectorPtr& input, bool mayPushdown) {
+}
+
+
+void GroupingSet::addInputForActiveRows(const RowVectorPtr& input, 
+    bool mayPushdown) {
     AssertInfo(!isGlobal_, "Global aggregations should not reach add input for acitve rows");
     if (!hash_table_) {
-
+        createHashTable();
     }
+    ensureInputFits(input);
 }
 
 void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowContainer& rows) {
@@ -76,8 +82,9 @@ void GroupingSet::createHashTable(){
     initializeAggregates(aggregates_, rows);
     auto numColumns = rows.KeyTypes().size() + aggregates_.size();
     lookup_ = std::make_unique<HashLookup>(hash_table_->hashers());
-    
-
+    if (!isAdaptive_ && hash_table_->hashMode() != BaseHashTable::HashMode::kHash) {
+        hash_table_->forceGenericHashMode();
+    }
 }  
 
 }

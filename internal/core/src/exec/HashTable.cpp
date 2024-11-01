@@ -31,5 +31,40 @@ HashTable<nullableKeys>::HashTable(
         }
         rows_ = std::make_unique<RowContainer>(keyTypes, accumulators, nullableKeys, hashMode_ != HashMode::kHash);
     }
+
+template<bool nullableKeys>
+void HashTable<nullableKeys>::setHashMode(HashMode mode, int32_t numNew) {
+    if (mode == HashMode::kArray) {
+        
+    } else if (mode == HashMode::kHash) {
+
+    } else if (mode == HashMode::kNormalizedKey) {
+
+    }
+}
+
+void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
+    const RowVectorPtr& input,
+    bool nullableKeys) {
+    auto& hashers = lookup.hashers_;
+
+    if (!nullableKeys) {
+        // A null in any of the keys disables the row.
+        // deselectRowsWithNulls(hashers, rows);
+    }
+    //lookup.reset(rows.end());
+
+    const auto mode = hashMode();
+    for (auto i = 0; i < hashers.size(); i++) {
+        auto& hasher = hashers[i];
+        if (mode == BaseHashTable::HashMode::kHash) {
+            //if (!hasher->computeValueIds(rows, lookup.hashes)) {//hc---computing hash code here?
+            //    rehash = true;
+            //}
+        } else {
+            //hasher->
+        }
+    }      
+}
 }
 }

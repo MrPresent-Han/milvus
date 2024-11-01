@@ -42,6 +42,29 @@ const std::vector<std::unique_ptr<VectorHasher>>& hashers() const {
     return hashers_;    
 }
 
+/// Returns the hash mode. This is needed for the caller to calculate
+/// the hash numbers using the appropriate method of the
+/// VectorHashers of 'this'.
+virtual HashMode hashMode() const = 0;
+
+virtual void setHashMode(HashMode mode, int32_t numNew) = 0;
+
+/// Disables use of array or normalized key hash modes.
+void forceGenericHashMode() {
+  setHashMode(HashMode::kHash, 0);
+}
+
+/// Populates 'hashes' and 'rows' fields in 'lookup' in preparation for
+/// 'groupProbe' call. Rehashes the table if necessary. Uses lookup.hashes to
+/// decode grouping keys from 'input'. If 'ignoreNullKeys' is true, updates
+/// 'rows' to remove entries with null grouping keys. After this call, 'rows'
+/// may have no entries selected.
+void prepareForGroupProbe(
+    HashLookup& lookup,
+    const RowVectorPtr& input,
+    bool nullableKeys
+  );
+
 private:
   std::vector<std::unique_ptr<VectorHasher>> hashers_;
   std::unique_ptr<RowContainer> rows_;
@@ -54,8 +77,13 @@ public:
         std::vector<std::unique_ptr<VectorHasher>>&& hashers,
         const std::vector<Accumulator>& accumulators);
 
+    void setHashMode(HashMode mode, int32_t numNew) override;
 private:
   HashMode hashMode_ = HashMode::kArray;
+
+  HashMode hashMode() const override {
+    return hashMode_;
+  }
 };
 
 struct HashLookup {
