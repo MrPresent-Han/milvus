@@ -480,7 +480,7 @@ struct TypeTraits<DataType::INT32> {
 
 template <>
 struct TypeTraits<DataType::INT64> {
-    using NativeType = int32_t;
+    using NativeType = int64_t;
     static constexpr DataType TypeKind = DataType::INT64;
     static constexpr bool IsPrimitiveType = true;
     static constexpr bool IsFixedWidth = true;
@@ -753,3 +753,32 @@ private:
 };
 
 using RowTypePtr = std::shared_ptr<const RowType>;
+
+#define MILVUS_DYNAMIC_TYPE_DISPATCH(TEMPLATE_FUNC, DATETYPE, ...) \
+    MILVUS_DYNAMIC_TYPE_DISPATCH_IMPL(TEMPLATE_FUNC,,DATETYPE, __VA_ARGS__)
+
+#define MILVUS_DYNAMIC_TYPE_DISPATCH_IMPL(PREFIX, SUFFIX, DATATYPE, ...) \
+  [&]() {                                                                \ 
+    switch (DATATYPE) {                                                  \   
+      case milvus::DataType::BOOL:                                       \
+        return PREFIX<milvus::DataType::BOOL> SUFFIX(__VA_ARGS__);                         \
+      case milvus::DataType::INT8:                                       \
+        return PREFIX<milvus::DataType::INT8> SUFFIX(__VA_ARGS__);                       \
+      case milvus::DataType::INT16:                                      \
+        return PREFIX<milvus::DataType::INT16> SUFFIX(__VA_ARGS__);                      \                                              
+      case milvus::DataType::INT32:                                      \
+        return PREFIX<milvus::DataType::INT32> SUFFIX(__VA_ARGS__);                      \
+      case milvus::DataType::INT64:                                      \
+        return PREFIX<milvus::DataType::INT64> SUFFIX(__VA_ARGS__);                      \
+      case milvus::DataType::FLOAT:                                      \
+        return PREFIX<milvus::DataType::FLOAT> SUFFIX(__VA_ARGS__);                        \
+      case milvus::DataType::DOUBLE:                                     \
+        return PREFIX<milvus::DataType::DOUBLE> SUFFIX(__VA_ARGS__);                       \
+      case milvus::DataType::VARCHAR:                                    \
+        return PREFIX<milvus::DataType::VARCHAR> SUFFIX(__VA_ARGS__);                  \ 
+      case milvus::DataType::STRING:                                     \
+        return PREFIX<milvus::DataType::STRING> SUFFIX(__VA_ARGS__);                  \
+      default:                                                           \
+        PanicInfo("Unsupported data type for dispatch");                 \
+    }                                                                    \
+  }()                                                                    \                                                                    

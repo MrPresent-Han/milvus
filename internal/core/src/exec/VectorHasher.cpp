@@ -28,5 +28,36 @@ std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
     }
     return hashers;
 }
+
+template<DataType Type>
+void VectorHasher::hashValues(const ColumnVectorPtr& column_data, bool mix, uint64_t* result) {
+    using T = typename TypeTraits<Type>::NativeType;
+    auto element_data_type = ChannelDataType();
+    auto element_size = GetDataTypeSize(element_data_type);
+    auto element_count = column_data->size();
+    for(auto i = 0; i < element_count; i++) {
+        void* raw_value = column_data->RawValueAt(i, element_size);
+        
+    }
+
+}
+
+
+
+void
+VectorHasher::hash(const ColumnVectorPtr& column_data, bool mix, std::vector<uint64_t>& result) {
+    
+    // auto element_size = GetDataTypeSize(element_data_type);
+    // auto element_count = column_data->size();
+
+    // for(auto i = 0; i < element_count; i++) {
+    //     void* raw_value = column_data->RawValueAt(i, element_size);  
+    // }
+    auto element_data_type = ChannelDataType();
+    MILVUS_DYNAMIC_TYPE_DISPATCH(hashValues, element_data_type, column_data, mix, result.data());
+}
+
+
+
 }
 }

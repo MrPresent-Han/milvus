@@ -40,8 +40,8 @@ public:
         return channel_type_;
     }
 
-    //void
-    //hash(bool mix, )
+    void
+    hash(const ColumnVectorPtr& column_data, bool mix, std::vector<uint64_t>& result);
 
 static bool typeSupportValueIds(DataType type) {
     switch(type) {
@@ -58,6 +58,9 @@ static bool typeSupportValueIds(DataType type) {
     }
 }
 
+template<DataType type>
+void hashValues(const ColumnVectorPtr& column_data, bool mix, uint64_t* result);
+
 private:
     const column_index_t channel_idx_;
     const DataType channel_type_;
@@ -71,6 +74,7 @@ std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
 static std::unique_ptr<VectorHasher> create(DataType dataType, column_index_t column_idx) {
     return std::make_unique<VectorHasher>(dataType, column_idx);
 }
+
 
 }
 }

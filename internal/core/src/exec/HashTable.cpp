@@ -62,7 +62,7 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
             //    rehash = true;
             //}
         } else {
-            //hasher->
+            hasher->hash(i > 0, loopup.hashes_);
         }
     }      
 }
