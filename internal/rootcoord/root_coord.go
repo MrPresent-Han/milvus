@@ -1523,6 +1523,7 @@ func (c *Core) HasPartition(ctx context.Context, in *milvuspb.HasPartitionReques
 }
 
 func (c *Core) showPartitionsImpl(ctx context.Context, in *milvuspb.ShowPartitionsRequest, allowUnavailable bool) (*milvuspb.ShowPartitionsResponse, error) {
+	log.Ctx(ctx).Debug("hc===RC-Core received show partitions order", zap.Bool("allowAvaiable", allowUnavailable))
 	if err := merr.CheckHealthy(c.GetStateCode()); err != nil {
 		return &milvuspb.ShowPartitionsResponse{
 			Status: merr.Status(err),

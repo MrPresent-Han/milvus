@@ -131,8 +131,10 @@ func (job *LoadCollectionJob) PreExecute() error {
 func (job *LoadCollectionJob) Execute() error {
 	req := job.req
 	log := log.Ctx(job.ctx).With(zap.Int64("collectionID", req.GetCollectionID()))
+	log.Debug("hc===LoadCollectionJob start to FailedLoadCache")
 	meta.GlobalFailedLoadCache.Remove(req.GetCollectionID())
 
+	log.Debug("hc===LoadCollectionJob start to Get Partitions")
 	// 1. Fetch target partitions
 	partitionIDs, err := job.broker.GetPartitions(job.ctx, req.GetCollectionID())
 	if err != nil {

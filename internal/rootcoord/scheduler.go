@@ -151,6 +151,7 @@ func (s *scheduler) enqueue(task task) {
 
 func (s *scheduler) AddTask(task task) error {
 	// make sure that setting ts and enqueue is atomic.
+	log.Ctx(task.GetCtx()).Debug("hc===RC-Scheduler try to get lock for task")
 	s.lock.Lock()
 	defer s.lock.Unlock()
 	log.Ctx(task.GetCtx()).Debug("hc===RC-Scheduler acquired lock for task")
