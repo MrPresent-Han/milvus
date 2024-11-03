@@ -20,12 +20,20 @@ namespace milvus{
 namespace exec{
 GroupingSet::~GroupingSet(){}
 
-void GroupingSet::addInput(const milvus::RowVector &input, bool mayPushDown) {
-    auto numRows = input.size();
+void GroupingSet::addInput(const RowVectorPtr& input, bool mayPushDown) {
+    if (isGlobal_) {
+        addGlobalAggregationInput(input, mayPushDown);
+        return;
+    }
+    auto numRows = input->size();
     numInputRows_ += numRows;
+
+    active_rows_.resize(numRows);
+    active_rows_.set();
+    addInputForActiveRows(input, mayPushDown);
 }
 
-void GroupingSet::addGlobalAggregationInput(const milvus::RowVector &input, bool mayPushDown) {
+void GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input, bool mayPushDown) {
 
 }
 
@@ -51,6 +59,15 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input,
         createHashTable();
     }
     ensureInputFits(input);
+
+    hash_table_->prepareForGroupProbe(*lookup_, input, active_rows_, !ignoreNullKeys_);
+    if (lookup_->rows_.empty()) {
+        // No rows to probe. Can happen when ignoreNullKeys_ is true and all rows
+        // have null keys.
+        return;
+    }
+
+
 }
 
 void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowContainer& rows) {

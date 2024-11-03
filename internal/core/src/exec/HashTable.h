@@ -17,10 +17,46 @@
 #include <memory>
 
 #include "VectorHasher.h"
-#include "RowContainer.h"
+#include "exec/operator/query-agg/RowContainer.h"
 
 namespace milvus{
 namespace exec{
+
+struct HashLookup {
+    explicit HashLookup(const std::vector<std::unique_ptr<VectorHasher>>& hashers): hashers_(hashers){}
+
+    void reset(vector_size_t size){
+        rows_.resize(size);
+        hashes_.resize(size);
+        hits_.resize(size);
+        newGroups_.clear();
+    }
+
+    /// One entry per group-by
+    const std::vector<std::unique_ptr<VectorHasher>>& hashers_;
+
+    /// Set of row numbers of row to probe.
+    std::vector<vector_size_t> rows_;
+
+    /// Hashes or value IDs for rows in 'rows'. Not aligned with 'rows'. Index is
+    /// the row number.
+    std::vector<uint64_t> hashes_;
+
+    /// Contains one entry for each row in 'rows'. Index is the row number.
+    /// For groupProbe, a pointer to an existing or new row with matching grouping
+    /// keys. For joinProbe, a pointer to the first row with matching keys or null
+    /// if no match.
+    std::vector<char*> hits_;
+
+    /// For groupProbe, row numbers for which a new entry was inserted (didn't
+    /// exist before the groupProbe). Empty for joinProbe.
+    std::vector<vector_size_t> newGroups_;
+
+    /// If using valueIds, list of concatenated valueIds. 1:1 with 'hashes'.
+    /// Populated by groupProbe and joinProbe.
+    std::vector<uint64_t> normalizedKeys_;
+};
+
 class BaseHashTable {
 public:
 #if XSIMD_WITH_SSE2
@@ -62,10 +98,16 @@ void forceGenericHashMode() {
 void prepareForGroupProbe(
     HashLookup& lookup,
     const RowVectorPtr& input,
+    TargetBitmap &activeRows,
     bool nullableKeys
   );
 
-private:
+/// Finds or creates a group for each key in 'lookup'. The keys are
+/// returned in 'lookup.hits'.
+virtual void
+groupProbe(HashLookup& lookup) = 0;
+
+protected:
   std::vector<std::unique_ptr<VectorHasher>> hashers_;
   std::unique_ptr<RowContainer> rows_;
 };
@@ -78,47 +120,14 @@ public:
         const std::vector<Accumulator>& accumulators);
 
     void setHashMode(HashMode mode, int32_t numNew) override;
+
+    void groupProbe(HashLookup& lookup) override;
 private:
   HashMode hashMode_ = HashMode::kArray;
 
   HashMode hashMode() const override {
     return hashMode_;
   }
-};
-
-struct HashLookup {
-  explicit HashLookup(const std::vector<std::unique_ptr<VectorHasher>>& hashers): hashers_(hashers){}
-
-  void reset(vector_size_t size){
-    rows_.resize(size);
-    hashes_.resize(size);
-    hits_.resize(size);
-    newGroups_.clear();
-  }
-
-  /// One entry per group-by
-  const std::vector<std::unique_ptr<VectorHasher>>& hashers_;
-
-  /// Set of row numbers of row to probe.
-  std::vector<vector_size_t> rows_;
-
-  /// Hashes or value IDs for rows in 'rows'. Not aligned with 'rows'. Index is
-  /// the row number.
-  std::vector<uint64_t> hashes_;
-
-  /// Contains one entry for each row in 'rows'. Index is the row number.
-  /// For groupProbe, a pointer to an existing or new row with matching grouping
-  /// keys. For joinProbe, a pointer to the first row with matching keys or null
-  /// if no match.
-  std::vector<char*> hits_;
-
-  /// For groupProbe, row numbers for which a new entry was inserted (didn't
-  /// exist before the groupProbe). Empty for joinProbe.
-  std::vector<vector_size_t> newGroups_;
-
-  /// If using valueIds, list of concatenated valueIds. 1:1 with 'hashes'.
-  /// Populated by groupProbe and joinProbe.
-  std::vector<uint64_t> normalizedKeys_;
 };
 
 }

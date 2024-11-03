@@ -40,9 +40,9 @@ class GroupingSet {
 
     ~GroupingSet();
 
-    void addInput(const RowVector& input, bool mayPushDown);
+    void addInput(const RowVectorPtr& input, bool mayPushDown);
 
-    void addGlobalAggregationInput(const RowVector& input, bool mayPushDown);
+    void addGlobalAggregationInput(const RowVectorPtr& input, bool mayPushDown);
 
     void addInputForActiveRows(const RowVectorPtr& input, bool mayPushdown);
 
@@ -67,6 +67,7 @@ private:
     std::vector<VectorPtr> tempVectors_;
     std::unique_ptr<BaseHashTable> hash_table_;
     std::unique_ptr<HashLookup> lookup_;
+    TargetBitmap active_rows_;
 
     uint64_t numInputRows_ = 0;
 

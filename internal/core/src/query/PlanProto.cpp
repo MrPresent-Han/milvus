@@ -220,7 +220,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto agg_name = getAggregateOpName(aggregate.op());
                     agg_names.emplace_back(agg_name);
                     auto agg_input = std::make_shared<expr::FieldAccessTypeExpr>(field_type, field_name, field_id);
-                    auto call = std::make_shared<const expr::CallTypeExpr>(field_type, std::vector<expr::TypedExprPtr>{agg_input}, agg_name);
+                    auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{agg_input}, nullptr);
                     aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
                     fields_to_project.insert(field_id);
                 }

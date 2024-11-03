@@ -23,14 +23,14 @@ std::vector<AggregateInfo> toAggregateInfo(
         AggregateInfo info;
         auto& inputColumnIdxes = info.input_column_idxes_;
         for (const auto& inputExpr: aggregate.call_->inputs()) {
-            if (auto fieldExpr = dynamic_cast<const expr::CallTypeExpr*>(inputExpr.get())) {
-                inputColumnIdxes.emplace_back(inputType->GetChildIndex(fieldExpr->name()));
+            if (auto fieldExpr = dynamic_cast<const expr::CallExpr*>(inputExpr.get())) {
+                //inputColumnIdxes.emplace_back(inputType->GetChildIndex(fieldExpr->fun_name()));
             }
         }
         auto index = numKeys + i;
         const auto& aggResultType = outputType->column_type(index);
         info.function_ = Aggregate::create(
-                aggregate.call_->name(),
+                aggregate.call_->fun_name(),
                 isPartialOutput(step)? plan::AggregationNode::Step::kPartial:plan::AggregationNode::Step::kSingle,
                 aggregate.rawInputTypes_,
                 aggResultType);

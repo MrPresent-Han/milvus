@@ -455,14 +455,14 @@ public:
 
     struct Aggregate {
         /// Function name and input column names.
-        expr::CallTypeExprPtr call_;
+        expr::CallExprPtr call_;
 
         /// Raw input types used to properly identify aggregate function. These
         /// might be different from the input types specified in 'call' when
         /// aggregation step is kIntermediate or kFinal.
         std::vector<DataType> rawInputTypes_;
     public:
-        Aggregate(expr::CallTypeExprPtr call):call_(call){}
+        Aggregate(expr::CallExprPtr call):call_(call){}
     };
 
     AggregationNode(const PlanNodeId& id,

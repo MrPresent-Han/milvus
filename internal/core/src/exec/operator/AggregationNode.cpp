@@ -52,7 +52,7 @@ void PhyAggregationNode::initialize() {
 }
 
 void PhyAggregationNode::AddInput(milvus::RowVectorPtr &input) {
-    grouping_set_->addInput(*input, false);
+    grouping_set_->addInput(input, false);
     numInputRows_ += input->size();
 }
 

@@ -16,6 +16,8 @@
 #include <vector>
 #include <folly/Range.h>
 #include "common/Types.h"
+#include "common/Vector.h"
+#include "Aggregate.h"
 
 namespace milvus {
 namespace exec {

@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include "HashTable.h"
+#include <memory>
 namespace milvus{
 namespace exec {
 template<bool nullableKeys>
@@ -33,6 +34,19 @@ HashTable<nullableKeys>::HashTable(
     }
 
 template<bool nullableKeys>
+void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
+    if (hashMode_ == HashMode::kArray) {
+        //arrayGroupProbe(lookup);
+        return;
+    }
+    //checkSize(lookup.rows.size(), false);
+    if (hashMode_ == HashMode::kNormalizedKey) {
+        return;
+    }
+
+}
+
+template<bool nullableKeys>
 void HashTable<nullableKeys>::setHashMode(HashMode mode, int32_t numNew) {
     if (mode == HashMode::kArray) {
         
@@ -45,6 +59,7 @@ void HashTable<nullableKeys>::setHashMode(HashMode mode, int32_t numNew) {
 
 void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
     const RowVectorPtr& input,
+    TargetBitmap& activeRows,
     bool nullableKeys) {
     auto& hashers = lookup.hashers_;
 
@@ -57,14 +72,17 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
     const auto mode = hashMode();
     for (auto i = 0; i < hashers.size(); i++) {
         auto& hasher = hashers[i];
+        auto column_idx = hasher->ChannelIndex();
+        ColumnVectorPtr column_ptr = std::static_pointer_cast<ColumnVector>(input->child(column_idx));
         if (mode == BaseHashTable::HashMode::kHash) {
-            //if (!hasher->computeValueIds(rows, lookup.hashes)) {//hc---computing hash code here?
+            hasher->hash(column_ptr, i > 0, lookup.hashes_);
+        } else {
+           //if (!hasher->computeValueIds(rows, lookup.hashes)) {//hc---computing hash code here?
             //    rehash = true;
             //}
-        } else {
-            hasher->hash(i > 0, loopup.hashes_);
         }
     }      
 }
+
 }
 }
