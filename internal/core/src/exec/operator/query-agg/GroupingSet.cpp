@@ -40,7 +40,7 @@ std::vector<Accumulator> GroupingSet::accumulators(bool /*excludeToIntermediate*
 }
 
 void GroupingSet::ensureInputFits(const RowVectorPtr& input){
-
+    
 }
 
 

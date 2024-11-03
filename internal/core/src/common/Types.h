@@ -779,6 +779,6 @@ using RowTypePtr = std::shared_ptr<const RowType>;
       case milvus::DataType::STRING:                                     \
         return PREFIX<milvus::DataType::STRING> SUFFIX(__VA_ARGS__);                  \
       default:                                                           \
-        PanicInfo("Unsupported data type for dispatch");                 \
+        return;                                                          \
     }                                                                    \
-  }()                                                                    \                                                                    
+  }()                                                                                                                                       

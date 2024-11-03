@@ -15,6 +15,8 @@
 // limitations under the License.
 
 #include "VectorHasher.h"
+#include "common/float_util_c.h"
+
 namespace milvus{
 namespace exec {
 std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
@@ -37,9 +39,13 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, bool mix, uint
     auto element_count = column_data->size();
     for(auto i = 0; i < element_count; i++) {
         void* raw_value = column_data->RawValueAt(i, element_size);
-        
+        AssertInfo(raw_value!=nullptr, "Failed to get raw value pointer from column data");
+        auto value = static_cast<T*>(raw_value);
+        if constexpr (std::is_floating_point_v<T>) {
+            auto hash_value = milvus::NaNAwareHash<T>()(*value);
+            result[i] = hash_value;
+        }
     }
-
 }
 
 
@@ -55,6 +61,7 @@ VectorHasher::hash(const ColumnVectorPtr& column_data, bool mix, std::vector<uin
     // }
     auto element_data_type = ChannelDataType();
     MILVUS_DYNAMIC_TYPE_DISPATCH(hashValues, element_data_type, column_data, mix, result.data());
+    //PanicInfo(DataTypeInvalid, "Unsupported data type for dispatch");
 }
 
 
