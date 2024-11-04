@@ -66,7 +66,7 @@ public:
 #elif XSIMD_WITH_NEON
         using TagVector = xsimd::batch<uint8_t, xsimd::neon>;
 #endif
-  using MaskType = uint64_t;
+  using MaskType = uint16_t;
 
 enum class HashMode {kHash, kArray, kNormalizedKey};
 
@@ -161,6 +161,25 @@ public:
     void groupProbe(HashLookup& lookup) override;
 
     class Bucket {
+      public:
+         uint8_t tagAt(int32_t slotIndex) {
+             return reinterpret_cast<uint8_t*>(&tags_)[slotIndex];
+         }
+
+         char* pointerAt(int32_t slotIndex) {
+             return reinterpret_cast<char*>(
+                     *reinterpret_cast<uintptr_t*>(&pointers_[kPointerSize * slotIndex]) & kPointerMask);
+         }
+
+        void setTag(int32_t slotIndex, uint8_t tag) {
+             reinterpret_cast<uint8_t*>(&tags_)[slotIndex] = tag;
+        }
+
+        void setPointer(int32_t slotIndex, void* pointer) {
+            auto* const slot = reinterpret_cast<uintptr_t*>(&pointers_[slotIndex * kPointerSize]);
+            *slot = (*slot & ~kPointerMask) | reinterpret_cast<uintptr_t>(pointer);
+         }
+
       private:
         static constexpr uint8_t kPointerSignificantBits = 48;
         static constexpr uint64_t kPointerMask = milvus::lowMask(kPointerSignificantBits);
@@ -170,10 +189,24 @@ public:
         char pointers_[sizeof(TagVector) * kPointerSize];
         char padding_[16];
     };
+    static_assert(sizeof(Bucket) == 128);
+    static constexpr uint64_t kBucketSize = sizeof(Bucket);
+
+    Bucket* bucketAt(int64_t offset) const {
+        AssertInfo(0 == offset&(kBucketSize-1), "Invalid offset:{} and kBucketSize:{}", offset, kBucketSize);
+        return reinterpret_cast<Bucket*>(reinterpret_cast<char*>(table_) + offset);
+    }
 
     int64_t bucketOffset(uint64_t hash ) const {
         return hash & bucketOffsetMask_;
     }
+
+    char* row(int64_t bucketOffset, int32_t slotIndex) const {
+        return bucketAt(bucketOffset)->pointerAt(slotIndex);
+    }
+
+    template<bool isJoin, bool isNormalizedKey = false>
+    void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
 
 private:
   HashMode hashMode_ = HashMode::kArray;

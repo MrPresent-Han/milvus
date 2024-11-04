@@ -112,17 +112,28 @@ class ProbeState {
         tagsInTable_ = BaseHashTable::loadTags(reinterpret_cast<uint8_t*>(table.table_), bucketOffset_);
         hits_ = milvus::toBitMask(tagsInTable_ == wantedTags_);
         if (hits_) {
-
+            loadNextHit<op>(table, firstKey);
         }
     }
 
+    template<bool nullableKeys>
+    template<bool isJoin = false, bool isNormalizedKey>
+    FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
+                                                                ProbeState &state, bool extraCheck) {
+
+    }
 
 
   private:
     static constexpr uint8_t kNotSet = 0xff;
     template <Operation op, typename Table>
-    inline void loadNextHigt(Table& table, int32_t firstKey) {
-
+    inline void loadNextHit(Table& table, int32_t firstKey) {
+        const int32_t hit = milvus::getAndClearLastSetBit(hits_);
+        if (op == Operation::kErase) {
+            indexInTags_ = hit;
+        }
+        group_ = table.row(bucketOffset_, hit);
+        __builtin_prefetch(group_ + firstKey);
     }
 
 

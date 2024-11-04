@@ -31,6 +31,12 @@ constexpr inline uint64_t lowMask(int32_t bits){
     return (1UL << bits) - 1;
 }
 
+inline int32_t getAndClearLastSetBit(uint16_t& bits) {
+    int32_t trailingZeros = __builtin_ctz(bits);
+    bits &= bits - 1;
+    return trailingZeros;
+}
+
 /// Extract bits from integer 'a' at the corresponding bit locations specified
 /// by 'mask' to contiguous low bits in return value; the remaining upper bits
 /// in return value are set to zero.
