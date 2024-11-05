@@ -201,9 +201,25 @@ public:
         return hash & bucketOffsetMask_;
     }
 
+    int64_t nextBucketOffset(int64_t bucketOffset) const {
+        AssertInfo(bucketOffset&(kBucketSize - 1) == 0, "Invalid bucketOffset:{} for nextBucketOffset", bucketOffset);
+        AssertInfo(bucketOffset < sizeMask_, "BucketOffset:{} must be less than sizeMask_:{} for nextBucketOffset",
+                   bucketOffset, sizeMask_);
+        return sizeMask_ & (bucketOffset + kBucketSize);
+    }
+
     char* row(int64_t bucketOffset, int32_t slotIndex) const {
         return bucketAt(bucketOffset)->pointerAt(slotIndex);
     }
+
+    int64_t numBuckets() const {
+        return numBuckets_;
+    }
+
+    TagVector loadTags(int64_t bucketOffset) const {
+        return BaseHashTable::loadTags(reinterpret_cast<uint8_t*>(table_), bucketOffset);
+    }
+
 
     template<bool isJoin, bool isNormalizedKey = false>
     void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
@@ -212,6 +228,10 @@ private:
   HashMode hashMode_ = HashMode::kArray;
   int64_t bucketOffsetMask_{0};
   int64_t numBuckets_{0};
+
+  // Mask for extracting low bits of hash number for use as byte offsets into
+  // the table. This is set to 'capacity_ * sizeof(void*) - 1'.
+  int64_t sizeMask_{0};
 
   HashMode hashMode() const override {
     return hashMode_;

@@ -109,18 +109,64 @@ class ProbeState {
 
     template <Operation op = Operation::kInsert, typename Table>
     inline void firstProbe(const Table& table, int32_t firstKey) {
-        tagsInTable_ = BaseHashTable::loadTags(reinterpret_cast<uint8_t*>(table.table_), bucketOffset_);
+        tagsInTable_ = BaseHashTable::loadTags(reinterpret_cast<uint8_t *>(table.table_), bucketOffset_);
         hits_ = milvus::toBitMask(tagsInTable_ == wantedTags_);
         if (hits_) {
             loadNextHit<op>(table, firstKey);
         }
     }
 
-    template<bool nullableKeys>
-    template<bool isJoin = false, bool isNormalizedKey>
-    FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
-                                                                ProbeState &state, bool extraCheck) {
+    template<Operation op, typename Compare, typename Insert, typename Table>
+    inline char* fullProbe(Table& table, int32_t firstKey,
+                           Compare compare, Insert insert,
+                           int64_t& numTombstones,
+                           bool extraCheck) {
+        AssertInfo(op == Operation::kInsert, "Only support insert operation for group cases");
+        auto* alreadyChecked = group_;
+        if (extraCheck) {
+            tagsInTable_ = table.loadTags(bucketOffset_);
+            hits_ = milvus::toBitMask(tagsInTable_ == wantedTags_);
+        }
 
+        const int64_t startBucketOffset = bucketOffset_;
+        int64_t insertBucketOffset = -1;
+        const auto kEmptyGroup = BaseHashTable::TagVector::broadcast(0);
+        const auto kTombstoneGroup = BaseHashTable::TagVector::broadcast(kTombstoneTag);
+        for(int64_t numProbedBuckets = 0; numProbedBuckets < table.numBucket(); ++numProbedBuckets) {
+            while(hits_ > 0) {
+                loadNextHit<op>(table, firstKey);
+                if (!(extraCheck && group_ == alreadyChecked) && compare(group_, row_)) {
+                    return group_;
+                }
+            }
+        }
+
+        uint16_t empty = milvus::toBitMask(tagsInTable_ == kEmptyGroup) & kFullMask;
+        if (empty > 0) {
+            if (op == ProbeState::Operation::kProbe) {
+                return nullptr;
+            }
+            if (indexInTags_ != kNotSet) {
+                // We came to the end of the probe without a hit. We replace the first
+                // tombstone on the way.
+                --numTombstones;
+                return insert(row_, insertBucketOffset + indexInTags_);
+            }
+            auto pos = milvus::getAndClearLastSetBit(empty);
+            return insert(row_, bucketOffset_ + pos);
+        }
+        if (op == Operation::kInsert && indexInTags_ == kNotSet) {
+            // We passed through a full group.
+            uint16_t tombstones =
+                    milvus::toBitMask(tagsInTable_ == kTombstoneGroup) & kFullMask;
+            if (tombstones > 0) {
+                insertBucketOffset = bucketOffset_;
+                indexInTags_ = milvus::getAndClearLastSetBit(tombstones);
+            }
+        }
+        bucketOffset_ = table.nextBucketOffset(bucketOffset_);
+        tagsInTable_ = table.loadTags(bucketOffset_);
+        hits_ = milvus::toBitMask(tagsInTable_ == wantedTags_);
     }
 
 
@@ -147,6 +193,17 @@ class ProbeState {
     uint8_t indexInTags_ = kNotSet;
 
 };
+
+template<bool nullableKeys>
+template<bool isJoin, bool isNormalizedKey>
+FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
+                                                            ProbeState &state, bool extraCheck) {
+    constexpr ProbeState::Operation op = isJoin? ProbeState::Operation::kProbe:ProbeState::Operation::kInsert;
+    if constexpr (isNormalizedKey) {
+
+    }
+    lookup.hits_[state.row()] = state.fu
+}
 
 }
 }
