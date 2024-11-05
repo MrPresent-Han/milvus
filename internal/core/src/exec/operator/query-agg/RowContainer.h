@@ -107,6 +107,16 @@ private:
 
 using normalized_key_t = uint64_t;
 
+struct RowContainerIterator {
+    int32_t allocationIndex = 0;
+    int32_t rowOffset = 0;
+
+    char* rowBegin_{nullptr};
+    inline char* currentRow() const {
+        return rowBegin_;
+    }
+};
+
 class RowContainer {
 public:
     RowContainer(const std::vector<DataType>& keyTypes,
@@ -134,6 +144,15 @@ public:
     int32_t rowSizeOffset() const {
         return rowSizeOffset_;
     }
+
+    int32_t listRows(RowContainerIterator* iter,
+                     int32_t maxRows,
+                     uint64_t maxBytes,
+                     char** rows) {
+        return 0;
+    }
+
+
 
 private:
     const std::vector<DataType> keyTypes_;
@@ -166,6 +185,7 @@ private:
 
     bool usesExternalMemory_{false};
 };
+
 }
 }
 

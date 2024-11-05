@@ -131,6 +131,8 @@ void prepareForGroupProbe(
 virtual void
 groupProbe(HashLookup& lookup) = 0;
 
+virtual void clear(bool freeTable = false) = 0;
+
 protected:
   std::vector<std::unique_ptr<VectorHasher>> hashers_;
   std::unique_ptr<RowContainer> rows_;
@@ -230,6 +232,8 @@ public:
 
     template<bool isJoin, bool isNormalizedKey = false>
     void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
+
+    void clear(bool freeTable = false) override;
 
 private:
   HashMode hashMode_ = HashMode::kArray;

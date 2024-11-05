@@ -33,9 +33,7 @@ public:
     void AddInput(RowVectorPtr& input) override;
 
     RowVectorPtr
-    GetOutput() override {
-        return nullptr;
-    }
+    GetOutput() override;
 
     bool
     IsFinished() override {
@@ -60,16 +58,23 @@ public:
 
     void
     initialize() override;
+
+
 private:
     void prepareOutput(vector_size_t size);
 
     RowVectorPtr output_;
     std::unique_ptr<GroupingSet> grouping_set_;
     std::shared_ptr<const plan::AggregationNode> aggregationNode_;
+    const bool isGlobal_;
 
     // Count the number of input rows. It is reset on partial aggregation output
     // flush.
     int64_t numInputRows_ = 0;
+    // Count the number of output rows. It is reset on partial aggregation output
+    // flush.
+    int64_t numOutputRows_ = 0;
+    bool finished_ = false;
 };
 }
 }

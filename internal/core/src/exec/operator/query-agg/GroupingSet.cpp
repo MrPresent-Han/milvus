@@ -37,6 +37,24 @@ void GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input, b
 
 }
 
+bool GroupingSet::getOutput(int32_t maxOutputRows, int32_t maxOutputBytes, milvus::exec::RowContainerIterator &iterator,
+                            milvus::RowVectorPtr &result) {
+    if (isGlobal_) {
+        //return getGlobalAggregationOutput(iterator, result);
+    }
+    char* groups[maxOutputRows];
+    const int32_t numGroups = hash_table_?hash_table_->rows()
+            ->listRows(&iterator, maxOutputRows, maxOutputBytes, groups):0;
+    if(numGroups == 0) {
+        if (hash_table_ != nullptr) {
+            hash_table_->clear();
+        }
+        return false;
+    }
+    extractGroups(folly::Range<char**>(groups, numGroups), result);
+    return true;
+}
+
 std::vector<Accumulator> GroupingSet::accumulators(bool /*excludeToIntermediate*/) {
     std::vector<Accumulator> accumulators;
     accumulators.reserve(aggregates_.size());
@@ -49,6 +67,10 @@ std::vector<Accumulator> GroupingSet::accumulators(bool /*excludeToIntermediate*
 
 void GroupingSet::ensureInputFits(const RowVectorPtr& input){
     
+}
+
+void GroupingSet::extractGroups(folly::Range<char **> groups, const milvus::RowVectorPtr &result) {
+
 }
 
 
@@ -66,8 +88,23 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input,
         // have null keys.
         return;
     }
-
-
+    hash_table_->groupProbe(*lookup_);
+    auto* groups = lookup_->hits_.data();
+    const auto& newGroups = lookup_->newGroups_;
+    for(auto i = 0; i < aggregates_.size(); i++) {
+        auto& function = aggregates_[i].function_;
+        if (!newGroups.empty()) {
+            //function->initializeNewGroups(groups, newGroups);
+        }
+        if (active_rows_.any()) {
+            continue;
+        }
+        //populateTempVectors(i, input);
+        //const bool canPushdown = (&rows == &activeRows_) && mayPushdown &&
+        //                         mayPushdown_[i] && areAllLazyNotLoaded(tempVectors_);
+        //function->addRawInput(groups, rows, tempVectors_, canPushdown);
+    }
+    tempVectors_.clear();
 }
 
 void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowContainer& rows) {

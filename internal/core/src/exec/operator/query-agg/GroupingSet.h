@@ -20,6 +20,7 @@
 #include "AggregateInfo.h"
 #include "exec/HashTable.h"
 #include "plan/PlanNode.h"
+#include "RowContainer.h"
 
 namespace milvus {
 namespace exec {
@@ -55,6 +56,13 @@ class GroupingSet {
     // fit.
     void ensureInputFits(const RowVectorPtr& input);
 
+    bool getOutput(int32_t maxOutputRows,
+                   int32_t maxOutputBytes,
+                   RowContainerIterator& iterator,
+                   RowVectorPtr& result);
+
+    void extractGroups(folly::Range<char**> groups, const RowVectorPtr& result);
+
 private:
     const bool isGlobal_;
     const bool isRawInput_;
@@ -73,6 +81,8 @@ private:
 
 
     const bool isAdaptive_;
+
+    bool noMoreInput_{false};
 };
 
 }

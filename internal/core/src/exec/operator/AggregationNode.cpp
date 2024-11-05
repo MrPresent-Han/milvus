@@ -10,7 +10,9 @@ namespace exec {
 PhyAggregationNode::PhyAggregationNode(int32_t operator_id,
                                        milvus::exec::DriverContext *ctx,
                                        const std::shared_ptr<const plan::AggregationNode> &node):
-                                       Operator(ctx, node->output_type(), operator_id, node->id()), aggregationNode_(node){
+                                       Operator(ctx, node->output_type(), operator_id, node->id()),
+                                       aggregationNode_(node),
+                                       isGlobal_(node->GroupingKeys().empty()){
 
 }
 
@@ -20,6 +22,20 @@ void PhyAggregationNode::prepareOutput(vector_size_t size){
     } else {
         // create the output vector
     }
+}
+
+RowVectorPtr PhyAggregationNode::GetOutput() {
+  if (finished_||!no_more_input_) {
+      input_ = nullptr;
+      return nullptr;
+  }
+  const auto& queryConfig = operator_context_->get_driver_context()->GetQueryConfig();
+  auto batch_size = queryConfig->get_expr_batch_size();
+  const auto outputRowCount = isGlobal_?1:batch_size;
+  prepareOutput(outputRowCount);
+  //grouping_set_-
+  numOutputRows_ += output_->size();
+  return output_;
 }
 
 void PhyAggregationNode::initialize() {
@@ -56,6 +72,9 @@ void PhyAggregationNode::AddInput(milvus::RowVectorPtr &input) {
     numInputRows_ += input->size();
 }
 
+void PhyAggregationNode::prepareOutput(milvus::vector_size_t size) {
+
+}
 
 };
 };

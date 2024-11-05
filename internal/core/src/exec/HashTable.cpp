@@ -292,6 +292,11 @@ void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     }
 }
 
+template <bool nullable>
+void HashTable<nullable>::clear(bool freeTable) {
+
+}
+
 template class HashTable<true>;
 template class HashTable<false>;
 }
