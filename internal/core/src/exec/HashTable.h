@@ -224,6 +224,10 @@ public:
 
     char* insertEntry(HashLookup& lookup, uint64_t index, vector_size_t row);
 
+    void storeKeys(HashLookup& lookup, vector_size_t row);
+
+    void storeRowPointer(uint64_t index, uint64_t hash, char* row);
+
     template<bool isJoin, bool isNormalizedKey = false>
     void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
 
@@ -231,6 +235,7 @@ private:
   HashMode hashMode_ = HashMode::kArray;
   int64_t bucketOffsetMask_{0};
   int64_t numBuckets_{0};
+  int64_t numDistinct_{0};
   // Counts the number of tombstone table slots.
   int64_t numTombstones_{0};
 
@@ -241,6 +246,7 @@ private:
   HashMode hashMode() const override {
     return hashMode_;
   }
+  friend class ProbeState;
 };
 
 }

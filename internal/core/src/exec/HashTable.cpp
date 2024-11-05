@@ -22,19 +22,6 @@ namespace milvus{
 namespace exec {
 
 template<bool nullableKeys>
-void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
-    if (hashMode_ == HashMode::kArray) {
-        //arrayGroupProbe(lookup);
-        return;
-    }
-    //checkSize(lookup.rows.size(), false);
-    if (hashMode_ == HashMode::kNormalizedKey) {
-        return;
-    }
-
-}
-
-template<bool nullableKeys>
 void HashTable<nullableKeys>::setHashMode(HashMode mode, int32_t numNew) {
     if (mode == HashMode::kArray) {
         
@@ -71,9 +58,6 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
         }
     }      
 }
-
-template class HashTable<true>;
-template class HashTable<false>;
 
 class ProbeState {
   public:
@@ -132,7 +116,7 @@ class ProbeState {
         int64_t insertBucketOffset = -1;
         const auto kEmptyGroup = BaseHashTable::TagVector::broadcast(0);
         const auto kTombstoneGroup = BaseHashTable::TagVector::broadcast(kTombstoneTag);
-        for(int64_t numProbedBuckets = 0; numProbedBuckets < table.numBucket(); ++numProbedBuckets) {
+        for(int64_t numProbedBuckets = 0; numProbedBuckets < table.numBuckets(); ++numProbedBuckets) {
             while(hits_ > 0) {
                 loadNextHit<op>(table, firstKey);
                 if (!(extraCheck && group_ == alreadyChecked) && compare(group_, row_)) {
@@ -202,21 +186,52 @@ bool HashTable<nullableKeys>::compareKeys(const char *group,
     int32_t i = 0;
     do {
         auto& hasher = lookup.hashers_[i];
-        if (!rows_->)
+        //if (!rows_->)
     } while(++i < numKeys);
     return true;
 }
 
 template <bool nullableKeys>
+void HashTable<nullableKeys>::storeKeys(milvus::exec::HashLookup &lookup, milvus::vector_size_t row) {
+    for (int32_t i = 0; i < hashers_.size(); i++) {
+        auto& hasher = hashers_[i];
+        //rows_->store(hasher->decodedVector(), row, lookup.hits[row], i); // NOLINT
+    }
+}
+
+template<bool nullableKeys>
+void HashTable<nullableKeys>::storeRowPointer(uint64_t index, uint64_t hash, char *row) {
+    if (hashMode_==HashMode::kArray) {
+        reinterpret_cast<char**>(table_)[index] = row;
+        return;
+    }
+    const int64_t bktOffset = bucketOffset(index);
+    auto* bucket = bucketAt(bktOffset);
+    const auto slotIndex = index & (sizeof(TagVector) - 1);
+    bucket->setTag(slotIndex, hashTag(hash));
+    bucket->setPointer(slotIndex, row);
+}
+
+template <bool nullableKeys>
 char* HashTable<nullableKeys>::insertEntry(milvus::exec::HashLookup &lookup, uint64_t index,
                                            milvus::vector_size_t row) {
+    char* group = rows_->newRow();
+    lookup.hits_[row] = group;
+    storeKeys(lookup, row);
+    storeRowPointer(index, lookup.hashes_[row], group);
+    if (hashMode_ == HashMode::kNormalizedKey) {
 
+    }
+    numDistinct_++;
+    lookup.newGroups_.push_back(row);
+    return group;
 }
 
 template<bool nullableKeys>
 template<bool isJoin, bool isNormalizedKey>
 FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
-                                                            ProbeState &state, bool extraCheck) {
+                                                            ProbeState &state,
+                                                            bool extraCheck) {
     constexpr ProbeState::Operation op = isJoin ? ProbeState::Operation::kProbe : ProbeState::Operation::kInsert;
     if constexpr (isNormalizedKey) {
 
@@ -230,10 +245,54 @@ FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
                                                     numTombstones_,
                                                     !isJoin && extraCheck);
 
-    }
+}
 
+template<bool nullableKeys>
+void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
+    if (hashMode_ == HashMode::kArray) {
+        //arrayGroupProbe(lookup);
+        return;
+    }
+    //checkSize(lookup.rows.size(), false);
+    if (hashMode_ == HashMode::kNormalizedKey) {
+        return;
+    }
+    ProbeState state1;
+    ProbeState state2;
+    ProbeState state3;
+    ProbeState state4;
+    int32_t probeIdx = 0;
+    int32_t numProbes = lookup.rows_.size();
+    auto rows = lookup.rows_.data();
+    for(; probeIdx + 4 <= numProbes; probeIdx+=4) {
+        int32_t row = rows[probeIdx];
+        state1.preProbe(*this, lookup.hashes_[row], row);
+        row = rows[probeIdx + 1];
+        state2.preProbe(*this, lookup.hashes_[row], row);
+        row = rows[probeIdx + 2];
+        state3.preProbe(*this, lookup.hashes_[row], row);
+        row = rows[probeIdx + 3];
+        state4.preProbe(*this, lookup.hashes_[row], row);
+
+        state1.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
+        state2.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
+        state3.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
+        state4.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
+
+        fullProbe<false>(lookup, state1, false);
+        fullProbe<false>(lookup, state2, false);
+        fullProbe<false>(lookup, state3, false);
+        fullProbe<false>(lookup, state4, false);
+    }
+    for(; probeIdx < numProbes; probeIdx++) {
+        int32_t row = rows[probeIdx];
+        state1.preProbe(*this, lookup.hashes_[row], row);
+        state1.firstProbe(*this, 0);
+        fullProbe<false>(lookup, state1, false);
     }
 }
 
+template class HashTable<true>;
+template class HashTable<false>;
 }
 }

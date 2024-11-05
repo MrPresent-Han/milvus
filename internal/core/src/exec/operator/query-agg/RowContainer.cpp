@@ -98,6 +98,10 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     }
 }
 
+char *RowContainer::newRow() {
+    return nullptr;
+}
+
 Accumulator::Accumulator(
         bool isFixedSize,
         int32_t fixedSize,

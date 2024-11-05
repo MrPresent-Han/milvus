@@ -114,6 +114,9 @@ public:
                  bool nullableKeys,
                  bool hasNormalizedKeys);
 
+    /// Allocates a new row and initializes possible aggregates to null.
+    char* newRow();
+
     const std::vector<DataType>& KeyTypes() const {
         return keyTypes_;
     }
