@@ -208,6 +208,8 @@ public:
         return sizeMask_ & (bucketOffset + kBucketSize);
     }
 
+    bool compareKeys(const char* group, HashLookup& lookup, vector_size_t row);
+
     char* row(int64_t bucketOffset, int32_t slotIndex) const {
         return bucketAt(bucketOffset)->pointerAt(slotIndex);
     }
@@ -220,6 +222,7 @@ public:
         return BaseHashTable::loadTags(reinterpret_cast<uint8_t*>(table_), bucketOffset);
     }
 
+    char* insertEntry(HashLookup& lookup, uint64_t index, vector_size_t row);
 
     template<bool isJoin, bool isNormalizedKey = false>
     void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
@@ -228,6 +231,8 @@ private:
   HashMode hashMode_ = HashMode::kArray;
   int64_t bucketOffsetMask_{0};
   int64_t numBuckets_{0};
+  // Counts the number of tombstone table slots.
+  int64_t numTombstones_{0};
 
   // Mask for extracting low bits of hash number for use as byte offsets into
   // the table. This is set to 'capacity_ * sizeof(void*) - 1'.

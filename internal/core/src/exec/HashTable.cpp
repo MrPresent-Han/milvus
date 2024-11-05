@@ -195,14 +195,44 @@ class ProbeState {
 };
 
 template<bool nullableKeys>
+bool HashTable<nullableKeys>::compareKeys(const char *group,
+                                          milvus::exec::HashLookup &lookup,
+                                          milvus::vector_size_t row) {
+    int32_t numKeys = lookup.hashers_.size();
+    int32_t i = 0;
+    do {
+        auto& hasher = lookup.hashers_[i];
+        if (!rows_->)
+    } while(++i < numKeys);
+    return true;
+}
+
+template <bool nullableKeys>
+char* HashTable<nullableKeys>::insertEntry(milvus::exec::HashLookup &lookup, uint64_t index,
+                                           milvus::vector_size_t row) {
+
+}
+
+template<bool nullableKeys>
 template<bool isJoin, bool isNormalizedKey>
 FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
                                                             ProbeState &state, bool extraCheck) {
-    constexpr ProbeState::Operation op = isJoin? ProbeState::Operation::kProbe:ProbeState::Operation::kInsert;
+    constexpr ProbeState::Operation op = isJoin ? ProbeState::Operation::kProbe : ProbeState::Operation::kInsert;
     if constexpr (isNormalizedKey) {
 
     }
-    lookup.hits_[state.row()] = state.fu
+    lookup.hits_[state.row()] = state.fullProbe<op>(*this,
+                                                    0,
+                                                    [&](char *group, int32_t row){ return compareKeys(group, lookup, row);},
+                                                    [&](int32_t row, uint64_t index) {
+                                                        return !isJoin? nullptr: insertEntry(lookup, index, row);
+                                                    },
+                                                    numTombstones_,
+                                                    !isJoin && extraCheck);
+
+    }
+
+    }
 }
 
 }
