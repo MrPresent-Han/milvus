@@ -165,6 +165,11 @@ public:
 
     void groupProbe(HashLookup& lookup) override;
 
+    // The table in non-kArray mode has a power of two number of buckets each with
+    // 16 slots. Each slot has a 1 byte tag (a field of hash number) and a 48 bit
+    // pointer. All the tags are in a 16 byte SIMD word followed by the 6 byte
+    // pointers. There are 16 bytes of padding at the end to make the bucket
+    // occupy exactly two (64 bytes) cache lines.
     class Bucket {
       public:
          uint8_t tagAt(int32_t slotIndex) {
@@ -183,7 +188,7 @@ public:
         void setPointer(int32_t slotIndex, void* pointer) {
             auto* const slot = reinterpret_cast<uintptr_t*>(&pointers_[slotIndex * kPointerSize]);
             *slot = (*slot & ~kPointerMask) | reinterpret_cast<uintptr_t>(pointer);
-         }
+        }
 
       private:
         static constexpr uint8_t kPointerSignificantBits = 48;

@@ -106,6 +106,10 @@ class ProbeState {
                            int64_t& numTombstones,
                            bool extraCheck) {
         AssertInfo(op == Operation::kInsert, "Only support insert operation for group cases");
+        if (group_ && compare(group_, row_)) {
+            return group_;
+        }
+
         auto* alreadyChecked = group_;
         if (extraCheck) {
             tagsInTable_ = table.loadTags(bucketOffset_);
@@ -255,9 +259,6 @@ char* HashTable<nullableKeys>::insertEntry(milvus::exec::HashLookup &lookup, uin
     lookup.hits_[row] = group;
     storeKeys(lookup, row);
     storeRowPointer(index, lookup.hashes_[row], group);
-    if (hashMode_ == HashMode::kNormalizedKey) {
-
-    }
     numDistinct_++;
     lookup.newGroups_.push_back(row);
     return group;
@@ -268,15 +269,12 @@ template<bool isJoin, bool isNormalizedKey>
 FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
                                                             ProbeState &state,
                                                             bool extraCheck) {
-    constexpr ProbeState::Operation op = isJoin ? ProbeState::Operation::kProbe : ProbeState::Operation::kInsert;
-    if constexpr (isNormalizedKey) {
-
-    }
+    constexpr ProbeState::Operation op = ProbeState::Operation::kInsert;
     lookup.hits_[state.row()] = state.fullProbe<op>(*this,
                                                     0,
                                                     [&](char *group, int32_t row){ return compareKeys(group, lookup, row);},
                                                     [&](int32_t row, uint64_t index) {
-                                                        return !isJoin? nullptr: insertEntry(lookup, index, row);
+                                                        return isJoin? nullptr: insertEntry(lookup, index, row);
                                                     },
                                                     numTombstones_,
                                                     !isJoin && extraCheck);
@@ -286,7 +284,7 @@ FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
 template<bool nullableKeys>
 void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     AssertInfo(hashMode_ == HashMode::kHash, "Only support kHash mode for now");
-    //checkSize(lookup.rows.size(), false);
+    checkSize(lookup.rows_.size(), false); // hc---
     ProbeState state1;
     ProbeState state2;
     ProbeState state3;
@@ -294,7 +292,7 @@ void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     int32_t probeIdx = 0;
     int32_t numProbes = lookup.rows_.size();
     auto rows = lookup.rows_.data();
-    for(; probeIdx + 4 <= numProbes; probeIdx+=4) {
+    for(; probeIdx + 4 <= numProbes; probeIdx += 4) {
         int32_t row = rows[probeIdx];
         state1.preProbe(*this, lookup.hashes_[row], row);
         row = rows[probeIdx + 1];
