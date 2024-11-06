@@ -87,6 +87,11 @@ static uint8_t hashTag(uint64_t hash) {
     return static_cast<uint8_t>(hash >> 38) | 0x80;
 }
 
+static FOLLY_ALWAYS_INLINE size_t tableSlotSize() {
+    // Each slot is 8 bytes.
+    return sizeof(void*);
+}
+
 static TagVector
 loadTags(uint8_t* tags, int64_t tagIndex) {
     auto src = tags + tagIndex;
@@ -151,10 +156,8 @@ public:
         std::vector<DataType> keyTypes;
         for (auto& hasher : hashers_) {
             keyTypes.push_back(hasher->ChannelDataType());
-            if (!VectorHasher::typeSupportValueIds(hasher->ChannelDataType())) {
-                hashMode_ = HashMode::kHash;
-            }
         }
+        hashMode_ = HashMode::kHash;
         rows_ = std::make_unique<RowContainer>(keyTypes, accumulators, nullableKeys, hashMode_ != HashMode::kHash);
     };
 
@@ -230,10 +233,40 @@ public:
 
     void storeRowPointer(uint64_t index, uint64_t hash, char* row);
 
+    // Allocates new tables for tags and payload pointers. The size must
+    // a power of 2.
+    void allocateTables(uint64_t size);
+
     template<bool isJoin, bool isNormalizedKey = false>
     void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
 
     void clear(bool freeTable = false) override;
+
+    // 'initNormalizedKeys' is passed to 'rehash' --> 'rehash' --> 'insertBatch'.
+    // If it's false and the table is in normalized keys mode,
+    // the keys are retrieved from the row and the hash is made
+    // from this, without recomputing the normalized key.
+    void checkSize(int32_t numNew, bool initNormalizedKeys);
+
+
+    // Returns the number of entries after which the table gets rehashed.
+    static uint64_t rehashSize(int64_t size) {
+        // This implements the F14 load factor: Resize if less than 1/8 unoccupied.
+        return size - (size / 8);
+    }
+
+    uint64_t rehashSize() const {
+        return rehashSize(capacity_ - numTombstones_);
+    }
+
+    static uint64_t newHashTableEntriesNumber(uint64_t numDistinct, uint64_t numNew) {
+        auto numNewEntries = std::max((uint64_t)2048, milvus::bits::nextPowerOfTwo(numNew * 2 + numDistinct));
+        const auto newNumDistinct = numDistinct + numNew;
+        if (newNumDistinct > rehashSize(numNewEntries)) {
+            numNewEntries *= 2;
+        }
+        return numNewEntries;
+    }
 
 private:
   HashMode hashMode_ = HashMode::kArray;
@@ -243,9 +276,14 @@ private:
   // Counts the number of tombstone table slots.
   int64_t numTombstones_{0};
 
+  // Number of slots across all buckets.
+  int64_t capacity_{0};
   // Mask for extracting low bits of hash number for use as byte offsets into
   // the table. This is set to 'capacity_ * sizeof(void*) - 1'.
   int64_t sizeMask_{0};
+  int8_t sizeBits_;
+
+  int64_t numRehashes_{0};
 
   HashMode hashMode() const override {
     return hashMode_;

@@ -43,7 +43,7 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
         // A null in any of the keys disables the row.
         deselectRowsWithNulls(hashers, input, activeRows);
     }
-    //lookup.reset(rows.end());
+    lookup.reset(activeRows.size()); //hc---set for next round
 
     const auto mode = hashMode();
     for (auto i = 0; i < hashers.size(); i++) {
@@ -54,9 +54,7 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
         if (mode == BaseHashTable::HashMode::kHash) {
             hasher->hash(column_ptr, i > 0, lookup.hashes_);
         } else {
-           //if (!hasher->computeValueIds(rows, lookup.hashes)) {//hc---computing hash code here?
-            //    rehash = true;
-            //}
+            PanicInfo(milvus::OpTypeInvalid, "Not support target hashMode, only support kHash for now");
         }
     }      
 }
@@ -168,8 +166,6 @@ class ProbeState {
         __builtin_prefetch(group_ + firstKey);
     }
 
-
-
     char* group_;
     BaseHashTable::TagVector wantedTags_;
     BaseHashTable::TagVector tagsInTable_;
@@ -177,8 +173,46 @@ class ProbeState {
     int64_t bucketOffset_;
     BaseHashTable::MaskType hits_;
     uint8_t indexInTags_ = kNotSet;
-
 };
+
+template<bool nullableKeys>
+void HashTable<nullableKeys>::allocateTables(uint64_t size) {
+    AssertInfo(milvus::bits::isPowerOfTwo(size), "Size:{} for allocating tables must be a power of two", size);
+    AssertInfo(size > 0, "Size:{} for allocating tables must be larger than zero", size);
+    capacity_ = size;
+    const uint64_t byteSize = capacity_ * tableSlotSize();
+    AssertInfo(byteSize % kBucketSize == 0, "byteSize:{} for hashTable must be a multiple of kBucketSize:{}",
+               byteSize, kBucketSize);
+    numTombstones_ = 0;
+    sizeMask_ = byteSize - 1;
+    numBuckets_ = byteSize / kBucketSize;
+    sizeBits_ = __builtin_popcountll(sizeMask_);
+    bucketOffsetMask_ = sizeMask_ & ~(kBucketSize - 1);
+    // The total size is 8 bytes per slot, in groups of 16 slots with 16 bytes of
+    // tags and 16 * 6 bytes of pointers and a padding of 16 bytes to round up the
+    // cache line.
+    // TODO must support memory pool here to avoid OOM
+    table_ = new char*[capacity_];
+    memset(table_, 0, capacity_ * sizeof(char*));
+}
+
+template<bool nullableKeys>
+void HashTable<nullableKeys>::checkSize(int32_t numNew, bool initNormalizedKeys) {
+    AssertInfo(capacity_ == 0 || capacity_ > (numDistinct_ + numTombstones_),
+               "size {}, numDistinct {}, numTombstoneRows {}",
+               capacity_,
+               numDistinct_,
+               numTombstones_);
+    const int64_t newNumDistinct = numNew + numDistinct_;
+    if (table_ == nullptr || capacity_ == 0) {
+        const auto newSize = newHashTableEntriesNumber(numDistinct_, numNew);
+        allocateTables(newSize);
+    } else if (newNumDistinct > rehashSize()) {
+        const auto newCapacity =
+                milvus::bits::nextPowerOfTwo(std::max(newNumDistinct, capacity_ - numTombstones_) + 1);
+        allocateTables(newCapacity);
+    }
+}
 
 template<bool nullableKeys>
 bool HashTable<nullableKeys>::compareKeys(const char *group,
@@ -251,14 +285,8 @@ FOLLY_ALWAYS_INLINE void HashTable<nullableKeys>::fullProbe(HashLookup &lookup,
 
 template<bool nullableKeys>
 void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
-    if (hashMode_ == HashMode::kArray) {
-        //arrayGroupProbe(lookup);
-        return;
-    }
+    AssertInfo(hashMode_ == HashMode::kHash, "Only support kHash mode for now");
     //checkSize(lookup.rows.size(), false);
-    if (hashMode_ == HashMode::kNormalizedKey) {
-        return;
-    }
     ProbeState state1;
     ProbeState state2;
     ProbeState state3;
