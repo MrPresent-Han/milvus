@@ -14,6 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#pragma once
 #include "exec/operator/Operator.h"
 #include "exec/operator/query-agg/GroupingSet.h"
 #include "common/Types.h"

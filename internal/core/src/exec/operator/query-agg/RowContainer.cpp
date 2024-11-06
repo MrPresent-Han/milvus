@@ -69,7 +69,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     freeFlagOffset_ = nullOffset + firstAggregateOffset * 8;
     ++nullOffset;
     // Add 1 to the last null offset to get the number of bits.
-    flagBytes_ = milvus::nBytes(nullOffsets_.back() + 1);
+    flagBytes_ = milvus::bits::nBytes(nullOffsets_.back() + 1);
     for (int32_t i = 0; i < nullOffsets_.size(); i++) {
         nullOffsets_[i] += firstAggregateOffset;
     }
@@ -79,7 +79,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         rowSizeOffset_ = offset;
         offset += sizeof(uint32_t);
     }
-    fixedRowSize_ = milvus::roundUp(offset, alignment_);
+    fixedRowSize_ = milvus::bits::roundUp(offset, alignment_);
 
     // A distinct hash table has no aggregates and if the hash table has
     // no nulls, it may be that there are no null flags.
@@ -90,7 +90,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         initialNulls_.resize(flagBytes_, 0x0);
     }
     originalNormalizedKeySize_ = hasNormalizedKeys_? 
-        milvus::roundUp(sizeof(normalized_key_t), alignment_):0;
+        milvus::bits::roundUp(sizeof(normalized_key_t), alignment_):0;
     normalizedKeySize_ = originalNormalizedKeySize_;
 
     for (auto i = 0; i < offsets_.size(); i++){

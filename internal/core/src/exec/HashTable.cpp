@@ -17,6 +17,7 @@
 #include "HashTable.h"
 #include <memory>
 #include "common/SimdUtil.h"
+#include "exec/operator/OperatorUtils.h"
 
 namespace milvus{
 namespace exec {
@@ -40,7 +41,7 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
 
     if (!nullableKeys) {
         // A null in any of the keys disables the row.
-        // deselectRowsWithNulls(hashers, rows);
+        deselectRowsWithNulls(hashers, input, activeRows);
     }
     //lookup.reset(rows.end());
 
@@ -48,7 +49,8 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
     for (auto i = 0; i < hashers.size(); i++) {
         auto& hasher = hashers[i];
         auto column_idx = hasher->ChannelIndex();
-        ColumnVectorPtr column_ptr = std::static_pointer_cast<ColumnVector>(input->child(column_idx));
+        ColumnVectorPtr column_ptr = std::dynamic_pointer_cast<ColumnVector>(input->child(column_idx));
+        AssertInfo(column_ptr!=nullptr, "Failed to get column vector from row vector input");
         if (mode == BaseHashTable::HashMode::kHash) {
             hasher->hash(column_ptr, i > 0, lookup.hashes_);
         } else {
@@ -136,7 +138,7 @@ class ProbeState {
                 --numTombstones;
                 return insert(row_, insertBucketOffset + indexInTags_);
             }
-            auto pos = milvus::getAndClearLastSetBit(empty);
+            auto pos = milvus::bits::getAndClearLastSetBit(empty);
             return insert(row_, bucketOffset_ + pos);
         }
         if (op == Operation::kInsert && indexInTags_ == kNotSet) {
@@ -145,7 +147,7 @@ class ProbeState {
                     milvus::toBitMask(tagsInTable_ == kTombstoneGroup) & kFullMask;
             if (tombstones > 0) {
                 insertBucketOffset = bucketOffset_;
-                indexInTags_ = milvus::getAndClearLastSetBit(tombstones);
+                indexInTags_ = milvus::bits::getAndClearLastSetBit(tombstones);
             }
         }
         bucketOffset_ = table.nextBucketOffset(bucketOffset_);
@@ -158,7 +160,7 @@ class ProbeState {
     static constexpr uint8_t kNotSet = 0xff;
     template <Operation op, typename Table>
     inline void loadNextHit(Table& table, int32_t firstKey) {
-        const int32_t hit = milvus::getAndClearLastSetBit(hits_);
+        const int32_t hit = milvus::bits::getAndClearLastSetBit(hits_);
         if (op == Operation::kErase) {
             indexInTags_ = hit;
         }

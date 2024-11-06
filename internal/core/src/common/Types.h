@@ -743,7 +743,13 @@ using RowTypePtr = std::shared_ptr<const RowType>;
         return PREFIX<milvus::DataType::VARCHAR> SUFFIX(__VA_ARGS__);    \
       case milvus::DataType::STRING:                                     \
         return PREFIX<milvus::DataType::STRING> SUFFIX(__VA_ARGS__);     \
+      case milvus::DataType::JSON:                                       \
+        return PREFIX<milvus::DataType::JSON> SUFFIX(__VA_ARGS__);       \
+      case milvus::DataType::ARRAY:                                      \
+        return PREFIX<milvus::DataType::ARRAY> SUFFIX(__VA_ARGS__);      \
+      case milvus::DataType::ROW:                                        \
+        return PREFIX<milvus::DataType::ROW> SUFFIX(__VA_ARGS__);        \
       default:                                                           \
-        return;                                                          \
+        PanicInfo(milvus::DataTypeInvalid, "UnsupportedDataType for MILVUS_DYNAMIC_TYPE_DISPATCH_IMPL"); \
     }                                                                    \
   }()

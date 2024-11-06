@@ -82,7 +82,7 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input,
     }
     ensureInputFits(input);
 
-    hash_table_->prepareForGroupProbe(*lookup_, input, active_rows_, !ignoreNullKeys_);
+    hash_table_->prepareForGroupProbe(*lookup_, input, active_rows_, nullableKeys_);
     if (lookup_->rows_.empty()) {
         // No rows to probe. Can happen when ignoreNullKeys_ is true and all rows
         // have null keys.
@@ -126,7 +126,7 @@ void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowConta
 }
 
 void GroupingSet::createHashTable(){
-    if (ignoreNullKeys_) {
+    if (nullableKeys_) {
         hash_table_ = std::make_unique<HashTable<true>>(std::move(hashers_), accumulators(false));
     } else {
         hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_), accumulators(false));

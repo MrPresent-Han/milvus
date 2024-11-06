@@ -16,6 +16,8 @@
 
 #include "VectorHasher.h"
 #include "common/float_util_c.h"
+#include <folly/Hash.h>
+#include "common/BitUtil.h"
 
 namespace milvus{
 namespace exec {
@@ -33,17 +35,28 @@ std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
 
 template<DataType Type>
 void VectorHasher::hashValues(const ColumnVectorPtr& column_data, bool mix, uint64_t* result) {
-    using T = typename TypeTraits<Type>::NativeType;
-    auto element_data_type = ChannelDataType();
-    auto element_size = GetDataTypeSize(element_data_type);
-    auto element_count = column_data->size();
-    for(auto i = 0; i < element_count; i++) {
-        void* raw_value = column_data->RawValueAt(i, element_size);
-        AssertInfo(raw_value!=nullptr, "Failed to get raw value pointer from column data");
-        auto value = static_cast<T*>(raw_value);
-        if constexpr (std::is_floating_point_v<T>) {
-            auto hash_value = milvus::NaNAwareHash<T>()(*value);
-            result[i] = hash_value;
+    if constexpr (Type==DataType::ROW || Type==DataType::ARRAY || Type==DataType::JSON) {
+        PanicInfo(milvus::DataTypeInvalid, "NotSupport hash for complext type row/array/json:{}", Type);
+    } else {
+        using T = typename TypeTraits<Type>::NativeType;
+        auto element_data_type = ChannelDataType();
+        auto element_size = GetDataTypeSize(element_data_type);
+        auto element_count = column_data->size();
+        for(auto i = 0; i < element_count; i++) {
+            void *raw_value = column_data->RawValueAt(i, element_size);
+            AssertInfo(raw_value != nullptr, "Failed to get raw value pointer from column data");
+            if (!column_data->ValidAt(i)) {
+                result[i] = kNullHash;
+                continue;
+            }
+            auto value = static_cast<T *>(raw_value);
+            uint64_t hash_value = kNullHash;
+            if constexpr (std::is_floating_point_v<T>) {
+                hash_value = milvus::NaNAwareHash<T>()(*value);
+            } else {
+                hash_value = folly::hasher<T>()(*value);
+            }
+            result[i] = mix? milvus::bits::hashMix(result[i], hash_value) : hash_value;
         }
     }
 }

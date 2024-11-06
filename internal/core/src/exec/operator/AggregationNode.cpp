@@ -72,10 +72,6 @@ void PhyAggregationNode::AddInput(milvus::RowVectorPtr &input) {
     numInputRows_ += input->size();
 }
 
-void PhyAggregationNode::prepareOutput(milvus::vector_size_t size) {
-
-}
-
 };
 };
 

@@ -43,6 +43,8 @@ public:
     void
     hash(const ColumnVectorPtr& column_data, bool mix, std::vector<uint64_t>& result);
 
+    static constexpr uint64_t kNullHash = 1;
+
 static bool typeSupportValueIds(DataType type) {
     switch(type) {
         case DataType::BOOL:

@@ -23,7 +23,7 @@ struct BitMask;
 
 template <typename T, typename A>
 struct BitMask<T, A, 1> {
-    static constexpr int kAllSet = milvus::lowMask(xsimd::batch_bool<T, A>::size);
+    static constexpr int kAllSet = milvus::bits::lowMask(xsimd::batch_bool<T, A>::size);
 
 #if XSIMD_WITH_AVX2
         static int toBitMask(xsimd::batch_bool<T, A> mask, const xsimd::avx2&) {
@@ -50,7 +50,7 @@ struct BitMask<T, A, 1> {
 
 template <typename T, typename A>
 struct BitMask<T, A, 2> {
-    static constexpr int kAllSet = milvus::lowMask(xsimd::batch_bool<T, A>::size);
+    static constexpr int kAllSet = milvus::bits::lowMask(xsimd::batch_bool<T, A>::size);
 
 #if XSIMD_WITH_AVX2
     static int toBitMask(xsimd::batch_bool<T, A> mask, const xsimd::avx2&) {
@@ -65,7 +65,7 @@ struct BitMask<T, A, 2> {
 
 #if XSIMD_WITH_SSE2
     static int toBitMask(xsimd::batch_bool<T, A> mask, const xsimd::sse2&) {
-        return milvus::extractBits<uint32_t>(_mm_movemask_epi8(mask), 0xAAAA);
+        return milvus::bits::extractBits<uint32_t>(_mm_movemask_epi8(mask), 0xAAAA);
     }
 #endif
 
@@ -101,7 +101,7 @@ extern const FromBitMask<int64_t, xsimd::default_arch> fromBitMask64;
 
 template <typename T, typename A>
 struct BitMask<T, A, 4> {
-    static constexpr int kAllSet = milvus::lowMask(xsimd::batch_bool<T, A>::size);
+    static constexpr int kAllSet = milvus::bits::lowMask(xsimd::batch_bool<T, A>::size);
 
 #if XSIMD_WITH_AVX
     static int toBitMask(xsimd::batch_bool<T, A> mask, const xsimd::avx&) {
@@ -128,7 +128,7 @@ struct BitMask<T, A, 4> {
 
 template <typename T, typename A>
 struct BitMask<T, A, 8> {
-    static constexpr int kAllSet = milvus::lowMask(xsimd::batch_bool<T, A>::size);
+    static constexpr int kAllSet = milvus::bits::lowMask(xsimd::batch_bool<T, A>::size);
 
 #if XSIMD_WITH_AVX
     static int toBitMask(xsimd::batch_bool<T, A> mask, const xsimd::avx&) {

@@ -184,7 +184,7 @@ public:
 
       private:
         static constexpr uint8_t kPointerSignificantBits = 48;
-        static constexpr uint64_t kPointerMask = milvus::lowMask(kPointerSignificantBits);
+        static constexpr uint64_t kPointerMask = milvus::bits::lowMask(kPointerSignificantBits);
         static constexpr int32_t kPointerSize = kPointerSignificantBits / 8;
 
         TagVector tags_;
