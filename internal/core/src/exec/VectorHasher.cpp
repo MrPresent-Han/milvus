@@ -61,8 +61,6 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, bool mix, uint
     }
 }
 
-
-
 void
 VectorHasher::hash(bool mix, std::vector<uint64_t>& result) {
     

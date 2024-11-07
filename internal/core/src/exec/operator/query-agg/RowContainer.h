@@ -172,6 +172,9 @@ public:
         return *reinterpret_cast<const T*>(group + offset);
     }
 
+    char*& nextFree(char* row) {
+        return *reinterpret_cast<char**>(row + kNextFreeOffset_);
+    }
 
     template <DataType Type>
     inline bool equalsNoNulls(
@@ -219,21 +222,24 @@ public:
     }
 
 private:
+     // Offset of the pointer to the next free row on a free row.
+    static constexpr uint32_t kNextFreeOffset_ = 0;
+
     const std::vector<DataType> keyTypes_;
     const bool nullableKeys_;
     const bool hasNormalizedKeys_;
-    std::vector<int32_t> offsets_;
-    std::vector<int32_t> nullOffsets_;
+    std::vector<uint32_t> offsets_;
+    std::vector<uint32_t> nullOffsets_;
     
     std::vector<RowColumn> rowColumns_;
 
     // How many bytes do the flags (null, free) occupy.
     uint32_t fixedRowSize_;
-    int32_t flagBytes_;
+    uint32_t flagBytes_;
 
     // Bit position of free bit. 
-    int32_t freeFlagOffset_ = 0;
-    int32_t rowSizeOffset_ = 0;
+    uint32_t freeFlagOffset_ = 0;
+    uint32_t rowSizeOffset_ = 0;
 
     int alignment_ = 1;
 

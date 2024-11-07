@@ -19,6 +19,13 @@
 
 namespace milvus {
 namespace bits {
+
+template <typename T>
+inline bool isBitSet(const T* bits, uint32_t idx){
+    return bits[idx/(sizeof(bits[0])*8)] & 
+        (static_cast<T>(1) << (idx & ((sizeof(bits[0]) * 8) - 1)));
+}
+
 template <typename T, typename U>
 constexpr T roundUp(T value, U factor) {
     return (value + (factor - 1)) / factor * factor;

@@ -29,8 +29,8 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
                            accumulators_(accumulators),
                            nullableKeys_(nullableKeys),
                            hasNormalizedKeys_(hasNormalizedKeys){
-    int32_t offset = 0;
-    int32_t nullOffset = 0;
+    uint32_t offset = 0;
+    uint32_t nullOffset = 0;
     bool isVariableWidth = false;
     for(auto& type: keyTypes_){
         offsets_.push_back(offset);
@@ -43,8 +43,8 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     }
     // Make offset at least sizeof pointer so that there is space for a
     // free list next pointer below the bit at 'freeFlagOffset_'.
-    offset = std::max<int32_t>(offset, sizeof(void*));
-    const int32_t firstAggregateOffset = offset;
+    offset = std::max<uint32_t>(offset, sizeof(void*));
+    const uint32_t firstAggregateOffset = offset;
     if (!accumulators.empty()) {
         // This moves nullOffset to the start of the next byte.
         // This is to guarantee the null and initialized bits for an aggregate
@@ -69,7 +69,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     ++nullOffset;
     // Add 1 to the last null offset to get the number of bits.
     flagBytes_ = milvus::bits::nBytes(nullOffsets_.back() + 1);
-    for (int32_t i = 0; i < nullOffsets_.size(); i++) {
+    for (auto i = 0; i < nullOffsets_.size(); i++) {
         nullOffsets_[i] += firstAggregateOffset * 8;
     }
     offset += flagBytes_;
@@ -114,9 +114,11 @@ char* RowContainer::newRow() {
     char* row;
     if (firstFreeRow_) {
         row = firstFreeRow_;
+        AssertInfo(milvus::bits::isBitSet(row, freeFlagOffset_), "freeRow must be freed before inserted into the linked list");
+        firstFreeRow_ = nextFree(row);
         --numFreeRows_;
     } else {
-        //row = new char*
+        row = new char[fixedRowSize_ + alignment_];
     }
     return nullptr;
 }
