@@ -19,6 +19,7 @@
 #include <folly/Range.h>
 #include "common/Types.h"
 #include "common/Vector.h"
+#include "common/Utils.h"
 #include "Aggregate.h"
 
 namespace milvus {
@@ -48,6 +49,10 @@ public:
 
     int32_t alignment() const {
         return alignment_;
+    }
+
+    int32_t fixedWidthSize() const {
+        return fixedSize_;
     }
 
 private:
@@ -126,6 +131,10 @@ public:
                  bool nullableKeys,
                  bool hasNormalizedKeys);
 
+    // The number of flags (bits) per accumulator, one for null and one for
+    // initialized.
+    static constexpr size_t kNumAccumulatorFlags = 2;
+
     /// Allocates a new row and initializes possible aggregates to null.
     char* newRow();
 
@@ -154,7 +163,60 @@ public:
         return 0;
     }
 
+    static inline bool isNullAt(const char* row, int32_t nullByte, uint8_t nullMask) {
+        return (row[nullByte] & nullMask) != 0;
+    }
 
+    template <typename T>
+    static inline T valueAt(const char* group, int32_t offset) {
+        return *reinterpret_cast<const T*>(group + offset);
+    }
+
+
+    template <DataType Type>
+    inline bool equalsNoNulls(
+            const char* row,
+            int32_t offset,
+            const ColumnVectorPtr& column,
+            vector_size_t index) {
+        if constexpr (Type == DataType::NONE || Type == DataType::ROW || Type == DataType::JSON || Type == DataType::ARRAY) {
+            PanicInfo(DataTypeInvalid, "Cannot support complex data type:[ROW/JSON/ARRAY] in rows container for now");
+        } else if constexpr (Type == DataType::VARCHAR || Type == DataType::STRING) {
+            PanicInfo(DataTypeInvalid, "Cannot support varchar/string types in rows container for now");
+        } else {
+            using T = typename TypeTraits<Type>::NativeType;
+            T* raw_value = static_cast<T*>(column->RawValueAt(index, sizeof(T)));
+            return milvus::comparePrimitiveAsc(*raw_value, valueAt<T>(row, offset));
+        }
+    }
+
+    template <DataType Type>
+    inline bool equalsWithNulls(
+            const char* row,
+            int32_t offset,
+            int32_t nullByte,
+            uint8_t nullMask,
+            const ColumnVectorPtr& column,
+            vector_size_t index) {
+        bool rowIsNull = isNullAt(row, nullByte, nullMask);
+        bool columnIsNull = column->ValidAt(index);
+        if (rowIsNull || columnIsNull) {
+            return rowIsNull==columnIsNull;
+        }
+        return equalsNoNulls<Type>(row, offset, column, index);
+    }
+
+    template <bool nullableKeys>
+    inline bool equals(const char* row, RowColumn column, const ColumnVectorPtr& column_data, vector_size_t index) {
+        auto type = column_data->type();
+        if constexpr (nullableKeys) {
+            return MILVUS_DYNAMIC_TYPE_DISPATCH(
+                    equalsWithNulls, type, row, column.offset(), column.nullByte(), column.nullMask(), column_data, index);
+        } else {
+            return MILVUS_DYNAMIC_TYPE_DISPATCH(
+                    equalsNoNulls, type, row, column.offset(), column_data, index);
+        }
+    }
 
 private:
     const std::vector<DataType> keyTypes_;
@@ -166,7 +228,7 @@ private:
     std::vector<RowColumn> rowColumns_;
 
     // How many bytes do the flags (null, free) occupy.
-    int32_t fixedRowSize_;
+    uint32_t fixedRowSize_;
     int32_t flagBytes_;
 
     // Bit position of free bit. 
@@ -178,14 +240,15 @@ private:
     // Copied over the null bits of each row on initialization. Keys are
     // not null, aggregates are null.
     std::vector<uint8_t> initialNulls_;
-    // Extra bytes to reserve before  each added row for a normalized key. Set to
-    // 0 after deciding not to use normalized keys.    
-    int originalNormalizedKeySize_;
-    int normalizedKeySize_;
 
     std::vector<Accumulator> accumulators_;
 
     bool usesExternalMemory_{false};
+
+    // Head of linked list of free rows.
+    char* firstFreeRow_ = nullptr;
+    uint64_t numRows_ = 0;
+    uint64_t numFreeRows_ = 0;
 };
 
 }

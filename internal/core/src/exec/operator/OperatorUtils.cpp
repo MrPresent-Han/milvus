@@ -18,17 +18,5 @@
 
 namespace milvus{
 namespace exec {
-void deselectRowsWithNulls(const std::vector<std::unique_ptr<VectorHasher>>& hashers,
-                           const RowVectorPtr& input,
-                           TargetBitmap& activeRows){
-    for(auto i = 0; i < hashers.size(); i++){
-        auto column_idx = hashers[i]->ChannelIndex();
-        ColumnVectorPtr column_ptr = std::dynamic_pointer_cast<ColumnVector>(input->child(column_idx));
-        AssertInfo(column_ptr!=nullptr, "Failed to get column vector from row vector input");
-        int64_t length = column_ptr->size();
-        TargetBitmapView valid_bits_view(column_ptr->GetValidRawData(), length);
-        activeRows&=valid_bits_view;
-    }
-}
 }
 }

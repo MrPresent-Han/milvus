@@ -39,7 +39,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         if(nullableKeys_) {
             ++nullOffset;
         }
-        isVariableWidth |= IsFixedSizeType(type);
+        isVariableWidth |= !IsFixedSizeType(type);
     }
     // Make offset at least sizeof pointer so that there is space for a
     // free list next pointer below the bit at 'freeFlagOffset_'.
@@ -63,7 +63,6 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         alignment_ = combineAlignments(accumulator.alignment(), alignment_);
     }
 
-
     // Free flag.
     nullOffsets_.push_back(nullOffset);
     freeFlagOffset_ = nullOffset + firstAggregateOffset * 8;
@@ -71,10 +70,15 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     // Add 1 to the last null offset to get the number of bits.
     flagBytes_ = milvus::bits::nBytes(nullOffsets_.back() + 1);
     for (int32_t i = 0; i < nullOffsets_.size(); i++) {
-        nullOffsets_[i] += firstAggregateOffset;
+        nullOffsets_[i] += firstAggregateOffset * 8;
     }
     offset += flagBytes_;
 
+    for(const auto& accumulator : accumulators) {
+        offset = milvus::bits::roundUp(offset, accumulator.alignment());
+        offsets_.push_back(offset);
+        offset += accumulator.fixedWidthSize();
+    }
     if (isVariableWidth) {
         rowSizeOffset_ = offset;
         offset += sizeof(uint32_t);
@@ -89,16 +93,31 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         // creation.
         initialNulls_.resize(flagBytes_, 0x0);
     }
-    originalNormalizedKeySize_ = hasNormalizedKeys_? 
-        milvus::bits::roundUp(sizeof(normalized_key_t), alignment_):0;
-    normalizedKeySize_ = originalNormalizedKeySize_;
-
+    size_t nullOffsetsPos = 0;
+    uint16_t column_sum = keyTypes_.size() + accumulators.size();
     for (auto i = 0; i < offsets_.size(); i++){
-        rowColumns_.emplace_back(offsets_[i], nullableKeys_?nullOffsets_[i]:RowColumn::kNotNullOffset);
+        rowColumns_.emplace_back(offsets_[i],
+                                 (nullableKeys_ || i >= keyTypes_.size())? nullOffsets_[nullOffsetsPos]
+                                 :RowColumn::kNotNullOffset);
+        // offsets_ contains the offsets for keys, then accumulators
+        // This captures the case where i is the index of an accumulator.
+        if(!accumulators.empty() && i >= keyTypes_.size() && i < column_sum) {
+            nullOffsetsPos += kNumAccumulatorFlags;
+        } else {
+            ++nullOffsetsPos;
+        }
     }
 }
 
-char *RowContainer::newRow() {
+char* RowContainer::newRow() {
+    ++numRows_;
+    char* row;
+    if (firstFreeRow_) {
+        row = firstFreeRow_;
+        --numFreeRows_;
+    } else {
+        //row = new char*
+    }
     return nullptr;
 }
 

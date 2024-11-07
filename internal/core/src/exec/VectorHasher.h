@@ -41,7 +41,7 @@ public:
     }
 
     void
-    hash(const ColumnVectorPtr& column_data, bool mix, std::vector<uint64_t>& result);
+    hash(bool mix, std::vector<uint64_t>& result);
 
     static constexpr uint64_t kNullHash = 1;
 
@@ -63,9 +63,19 @@ static bool typeSupportValueIds(DataType type) {
 template<DataType type>
 void hashValues(const ColumnVectorPtr& column_data, bool mix, uint64_t* result);
 
+void setColumnData(const ColumnVectorPtr& column_data) {
+    column_data_ = column_data;
+}
+
+const ColumnVectorPtr&
+columnData() const {
+    return column_data_;
+}
+
 private:
     const column_index_t channel_idx_;
     const DataType channel_type_;
+    ColumnVectorPtr column_data_;
 };
 
 std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(

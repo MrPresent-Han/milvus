@@ -22,37 +22,32 @@
 namespace milvus{
 namespace exec {
 
-template<bool nullableKeys>
-void HashTable<nullableKeys>::setHashMode(HashMode mode, int32_t numNew) {
-    if (mode == HashMode::kArray) {
-        
-    } else if (mode == HashMode::kHash) {
-
-    } else if (mode == HashMode::kNormalizedKey) {
-
-    }
-}
-
 void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
     const RowVectorPtr& input,
     TargetBitmap& activeRows,
     bool nullableKeys) {
     auto& hashers = lookup.hashers_;
-
-    if (!nullableKeys) {
-        // A null in any of the keys disables the row.
-        deselectRowsWithNulls(hashers, input, activeRows);
+    int numKeys = hashers.size();
+    // set up column vector to each column
+    for (auto i = 0; i < numKeys; i++) {
+        auto& hasher = hashers[i];
+        auto column_idx = hasher->ChannelIndex();
+        ColumnVectorPtr column_ptr = std::dynamic_pointer_cast<ColumnVector>(input->child(column_idx));
+        AssertInfo(column_ptr!=nullptr, "Failed to get column vector from row vector input");
+        hashers[i]->setColumnData(column_ptr);
+        // deselect null values
+        if (!nullableKeys) {
+            int64_t length = column_ptr->size();
+            TargetBitmapView valid_bits_view(column_ptr->GetValidRawData(), length);
+            activeRows&=valid_bits_view;
+        }
     }
     lookup.reset(activeRows.size()); //hc---set for next round
 
     const auto mode = hashMode();
     for (auto i = 0; i < hashers.size(); i++) {
-        auto& hasher = hashers[i];
-        auto column_idx = hasher->ChannelIndex();
-        ColumnVectorPtr column_ptr = std::dynamic_pointer_cast<ColumnVector>(input->child(column_idx));
-        AssertInfo(column_ptr!=nullptr, "Failed to get column vector from row vector input");
         if (mode == BaseHashTable::HashMode::kHash) {
-            hasher->hash(column_ptr, i > 0, lookup.hashes_);
+            hashers[i]->hash(i > 0, lookup.hashes_);
         } else {
             PanicInfo(milvus::OpTypeInvalid, "Not support target hashMode, only support kHash for now");
         }
@@ -130,6 +125,7 @@ class ProbeState {
         }
 
         uint16_t empty = milvus::toBitMask(tagsInTable_ == kEmptyGroup) & kFullMask;
+        // if there are still empty slot available, try to insert into existing empty slot or tombstone slot
         if (empty > 0) {
             if (op == ProbeState::Operation::kProbe) {
                 return nullptr;
@@ -226,7 +222,9 @@ bool HashTable<nullableKeys>::compareKeys(const char *group,
     int32_t i = 0;
     do {
         auto& hasher = lookup.hashers_[i];
-        //if (!rows_->)
+        if (!rows_->equals<nullableKeys>(group, rows()->columnAt(i), hasher->columnData(), row)) {
+            return false;
+        }
     } while(++i < numKeys);
     return true;
 }
@@ -317,6 +315,17 @@ void HashTable<nullableKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
         state1.preProbe(*this, lookup.hashes_[row], row);
         state1.firstProbe(*this, 0);
         fullProbe<false>(lookup, state1, false);
+    }
+}
+
+template<bool nullableKeys>
+void HashTable<nullableKeys>::setHashMode(HashMode mode, int32_t numNew) {
+    if (mode == HashMode::kArray) {
+
+    } else if (mode == HashMode::kHash) {
+
+    } else if (mode == HashMode::kNormalizedKey) {
+
     }
 }
 

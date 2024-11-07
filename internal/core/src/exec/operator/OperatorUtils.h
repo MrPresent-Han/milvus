@@ -18,12 +18,7 @@
 #include "exec/VectorHasher.h"
 #include "common/Types.h"
 
-namespace milvus{
+namespace milvus {
 namespace exec {
-void deselectRowsWithNulls(
-        const std::vector<std::unique_ptr<VectorHasher>>& hashers,
-        const RowVectorPtr& input,
-        TargetBitmap& activeRows);
 }
 }
-
