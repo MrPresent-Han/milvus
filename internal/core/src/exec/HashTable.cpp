@@ -233,7 +233,7 @@ template <bool nullableKeys>
 void HashTable<nullableKeys>::storeKeys(milvus::exec::HashLookup &lookup, milvus::vector_size_t row) {
     for (int32_t i = 0; i < hashers_.size(); i++) {
         auto& hasher = hashers_[i];
-        //rows_->store(hasher->decodedVector(), row, lookup.hits[row], i); // NOLINT
+        rows_->store(hasher->columnData(), row, lookup.hits_[row], i);
     }
 }
 

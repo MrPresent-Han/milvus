@@ -221,6 +221,50 @@ public:
         }
     }
 
+    /// Stores the 'index'th value in 'columnVector' into 'row' at 'columnIndex'.
+    void store(const ColumnVectorPtr& column_data,
+               vector_size_t index,
+               char* row,
+               int32_t column_index);
+
+    template <DataType Type>
+    inline void storeWithNull(const ColumnVectorPtr& column,
+                              vector_size_t index,
+                              char* row,
+                              int32_t offset,
+                              int32_t nullByte,
+                              uint8_t nullMask) {
+        if constexpr (Type == DataType::NONE || Type == DataType::ROW || Type == DataType::JSON || Type == DataType::ARRAY) {
+            PanicInfo(DataTypeInvalid, "Cannot support complex data type:[ROW/JSON/ARRAY] in rows container for now");
+        } else if constexpr (Type == DataType::VARCHAR || Type == DataType::STRING) {
+            PanicInfo(DataTypeInvalid, "Cannot support varchar/string types in rows container for now");
+        } else {
+            using T = typename milvus::TypeTraits<Type>::NativeType;
+            if (!column->ValidAt(index)) {
+                row[nullByte]|=nullMask;
+                *reinterpret_cast<T*>(row+offset) = T();
+                return;
+            }
+            storeNoNulls<Type>(column, index, row, offset);
+        }
+    }
+
+    template <DataType Type>
+    inline void storeNoNulls(const ColumnVectorPtr& column,
+                             vector_size_t index,
+                             char* group,
+                             int32_t offset) {
+        using T = typename milvus::TypeTraits<Type>::NativeType;
+        if constexpr (Type == DataType::NONE || Type == DataType::ROW || Type == DataType::JSON || Type == DataType::ARRAY) {
+            PanicInfo(DataTypeInvalid, "Cannot support complex data type:[ROW/JSON/ARRAY] in rows container for now");
+        } else if constexpr (Type == DataType::VARCHAR || Type == DataType::STRING) {
+            PanicInfo(DataTypeInvalid, "Cannot support varchar/string types in rows container for now");
+        } else {
+            auto raw_val_ptr = column->RawValueAt(index, sizeof(T));
+            *reinterpret_cast<T*>(group + offset) = *(static_cast<T*>(raw_val_ptr));
+        }
+    }
+
 private:
      // Offset of the pointer to the next free row on a free row.
     static constexpr uint32_t kNextFreeOffset_ = 0;

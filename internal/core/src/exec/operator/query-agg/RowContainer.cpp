@@ -123,6 +123,20 @@ char* RowContainer::newRow() {
     return nullptr;
 }
 
+void RowContainer::store(const milvus::ColumnVectorPtr &column_data, milvus::vector_size_t index, char *row,
+                         int32_t column_index) {
+    auto numKeys = keyTypes_.size();
+    bool isKey = column_index < numKeys;
+    if (isKey && !nullableKeys_) {
+        MILVUS_DYNAMIC_TYPE_DISPATCH(storeNoNulls, keyTypes_[column_index], column_data, index, row, offsets_[column_index]);
+    } else {
+        AssertInfo(isKey||accumulators_.empty(), "Should only store into rows for key");
+        auto rowColumn = rowColumns_[column_index];
+        MILVUS_DYNAMIC_TYPE_DISPATCH(storeWithNull, keyTypes_[column_index], column_data,
+                                     index, row, rowColumn.offset(), rowColumn.nullByte(), rowColumn.nullMask());
+    }
+}
+
 Accumulator::Accumulator(
         bool isFixedSize,
         int32_t fixedSize,
