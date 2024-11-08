@@ -33,6 +33,54 @@ void GroupingSet::addInput(const RowVectorPtr& input, bool mayPushDown) {
     addInputForActiveRows(input, mayPushDown);
 }
 
+void GroupingSet::initializeGlobalAggregation() {
+    if (globalAggregationInitialized_) {
+        return;
+    }
+    lookup_ = std::make_unique<HashLookup>(hashers_);
+    lookup_->reset(1);
+
+    // Row layout is:
+    //  - alternating null flag, intialized flag - one bit per flag, one pair per
+    //                                             aggregation,
+    //  - uint32_t row size,
+    //  - fixed-width accumulators - one per aggregate
+    //
+    // Here we always make space for a row size since we only have one row and no
+    // RowContainer.  The whole row is allocated to guarantee that alignment
+    // requirements of all aggregate functions are satisfied.
+
+    // Allocate space for the null and initialized flags.
+    size_t numAggregates = aggregates_.size();
+    int32_t rowSizeOffset = milvus::bits::nBytes(numAggregates * RowContainer::kNumAccumulatorFlags);
+    int32_t offset = rowSizeOffset + sizeof(int32_t);
+    int32_t accumulatorFlagsOffset = 0;
+    int32_t alignment = 1;
+
+    for(auto& aggregate: aggregates_) {
+        auto& function = aggregate.function_;
+        Accumulator accumulator(function.get());
+        // Accumulator offset must be aligned by their alignment size.
+        offset = milvus::bits::roundUp(offset, accumulator.alignment());
+        function->setOffsets(offset,
+                             RowContainer::nullByte(accumulatorFlagsOffset),
+                             RowContainer::nullMask(accumulatorFlagsOffset),
+                             RowContainer::initializedByte(accumulatorFlagsOffset),
+                             RowContainer::initializedMask(accumulatorFlagsOffset),
+                             rowSizeOffset);
+        offset += accumulator.fixedWidthSize();
+        accumulatorFlagsOffset += RowContainer::kNumAccumulatorFlags;
+        alignment = RowContainer::combineAlignments(accumulator.alignment(), alignment);
+    }
+    lookup_->hits_[0] = new char[offset + alignment];//TODO memory allocation control
+    const auto singleGroup = std::vector<vector_size_t>{0};
+    for(auto& aggregate: aggregates_) {
+        aggregate.function_->initializeNewGroups(lookup_->hits_.data(), singleGroup);
+    }
+
+    globalAggregationInitialized_ = true;
+}
+
 void GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input, bool mayPushDown) {
 
 }
@@ -66,7 +114,7 @@ std::vector<Accumulator> GroupingSet::accumulators(bool /*excludeToIntermediate*
 }
 
 void GroupingSet::ensureInputFits(const RowVectorPtr& input){
-    
+    //TODO memory check
 }
 
 void GroupingSet::extractGroups(folly::Range<char **> groups, const milvus::RowVectorPtr &result) {
@@ -94,17 +142,23 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input,
     for(auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
         if (!newGroups.empty()) {
-            //function->initializeNewGroups(groups, newGroups);
+            function->initializeNewGroups(groups, newGroups);
         }
-        if (active_rows_.any()) {
+        if (!active_rows_.any()) {
             continue;
         }
-        //populateTempVectors(i, input);
-        //const bool canPushdown = (&rows == &activeRows_) && mayPushdown &&
-        //                         mayPushdown_[i] && areAllLazyNotLoaded(tempVectors_);
-        //function->addRawInput(groups, rows, tempVectors_, canPushdown);
+        populateTempVectors(i, input);
+        function->addRawInput(groups, active_rows_, tempVectors_, false);
     }
     tempVectors_.clear();
+}
+
+void GroupingSet::populateTempVectors(int32_t aggregateIndex, const milvus::RowVectorPtr &input) {
+    const auto& channel_idxes = aggregates_[aggregateIndex].input_column_idxes_;
+    tempVectors_.resize(channel_idxes.size());
+    for(auto i = 0; i < channel_idxes.size(); i++) {
+        tempVectors_[i] = input->child(channel_idxes[i]);
+    }
 }
 
 void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowContainer& rows) {

@@ -56,7 +56,19 @@ public:
         int8_t initializedMask,
         int32_t rowSizeOffset) {
         setOffsetsInternal(offset, nullByte, nullMask, initializedByte, initializedMask, rowSizeOffset);        
-    }  
+    }
+
+    virtual void initializeNewGroups(char** groups, folly::Range<const vector_size_t*> indices) {
+        for(auto index : indices) {
+            groups[index][initializedByte_] |= initializedMask_;
+        }
+    }
+
+    virtual void addSingleGroupRawInput(char* group, const TargetBitmapView& activeRows,
+                                        const std::vector<VectorPtr>& input, bool mayPushDown) {};
+
+    virtual void addRawInput(char** groups, const TargetBitmapView& activeRows,
+                             const std::vector<VectorPtr>& input, bool mayPushDown) {} ;
 
 protected:
     virtual void setOffsetsInternal(
@@ -65,7 +77,9 @@ protected:
       uint8_t nullMask,
       int32_t initializedByte,
       uint8_t initializedMask,
-      int32_t rowSizeOffset);          
+      int32_t rowSizeOffset);
+
+    virtual void initializeNewGroupsInternal(char** groups, folly::Range<const vector_size_t*> indices) = 0;
 };
 
 bool isRawInput(milvus::plan::AggregationNode::Step step);

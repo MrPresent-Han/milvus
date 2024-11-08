@@ -37,7 +37,7 @@ public:
             spillExtractFunction,
         std::function<void(folly::Range<char**> groups)> destroyFunction);
 
-    explicit Accumulator(Aggregate* aggregate, DataType spillType);
+    explicit Accumulator(Aggregate* aggregate);
 
     bool isFixedSize() const {
         return isFixedSize_;
@@ -264,6 +264,31 @@ public:
             *reinterpret_cast<T*>(group + offset) = *(static_cast<T*>(raw_val_ptr));
         }
     }
+
+    static inline int32_t nullByte(int32_t nullOffset) {
+        return nullOffset / 8;
+    }
+
+    static inline uint8_t nullMask(int32_t nullOffset) {
+        return 1 << (nullOffset & 7);
+    }
+    // Only accumulators have initialized flags. accumulatorFlagsOffset is the
+    // offset at which the flags for an accumulator begin. Currently this is the
+    // null flag, followed by the initialized flag.  So it's equivalent to the
+    // nullOffset.
+
+    // It's guaranteed that the flags for an accumulator appear in the same byte.
+    static inline int32_t initializedByte(int32_t accumulatorFlagsOffset) {
+        return nullByte(accumulatorFlagsOffset);
+    }
+
+    // accumulatorFlagsOffset is the offset at which the flags for an accumulator
+    // begin.
+    static inline int32_t initializedMask(int32_t accumulatorFlagsOffset) {
+        return nullMask(accumulatorFlagsOffset) << 1;
+    }
+
+
 
 private:
      // Offset of the pointer to the next free row on a free row.

@@ -43,6 +43,8 @@ class GroupingSet {
 
     void addInput(const RowVectorPtr& input, bool mayPushDown);
 
+    void initializeGlobalAggregation();
+
     void addGlobalAggregationInput(const RowVectorPtr& input, bool mayPushDown);
 
     void addInputForActiveRows(const RowVectorPtr& input, bool mayPushdown);
@@ -62,6 +64,8 @@ class GroupingSet {
                    RowVectorPtr& result);
 
     void extractGroups(folly::Range<char**> groups, const RowVectorPtr& result);
+
+    void populateTempVectors(int32_t aggregateIndex, const RowVectorPtr& input);
 
 private:
     const bool isGlobal_;
@@ -83,6 +87,10 @@ private:
     const bool isAdaptive_;
 
     bool noMoreInput_{false};
+
+    // Boolean indicating whether accumulators for a global aggregation (i.e.
+    // aggregation with no grouping keys) have been initialized.
+    bool globalAggregationInitialized_{false};
 };
 
 }
