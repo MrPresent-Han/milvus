@@ -67,6 +67,8 @@ class GroupingSet {
 
     void populateTempVectors(int32_t aggregateIndex, const RowVectorPtr& input);
 
+    bool getGlobalAggregationOutput(RowContainerIterator& iterator, RowVectorPtr& result);
+
 private:
     const bool isGlobal_;
     const bool isRawInput_;

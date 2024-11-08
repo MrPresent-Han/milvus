@@ -70,6 +70,8 @@ public:
     virtual void addRawInput(char** groups, const TargetBitmapView& activeRows,
                              const std::vector<VectorPtr>& input, bool mayPushDown) {} ;
 
+    virtual void extractValues(char** groups, int32_t numGroups, VectorPtr* result) {};
+
 protected:
     virtual void setOffsetsInternal(
       int32_t offset,
