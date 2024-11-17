@@ -111,7 +111,7 @@ class ColumnVector final : public SimpleVector {
         : SimpleVector(data_type, length, null_count),
           is_bitmap_(false),
           valid_values_(length,
-                        !null_count.has_value() || null_count.value() == 0) {
+                        !null_count.has_value() || null_count.value() == 0){
         values_ = InitScalarFieldData(data_type, false, length);
     }
 
@@ -186,6 +186,17 @@ class ColumnVector final : public SimpleVector {
     bool
     IsBitmap() const {
         return is_bitmap_;
+    }
+
+    void resize(vector_size_t new_size, bool setNotNull=true) override {
+        AssertInfo(!is_bitmap_, "Cannot resize bitmap column vector");
+        BaseVector::resize(new_size, setNotNull);
+        ResizeScalarFieldData(type(), new_size, values_);
+        valid_values_.resize(new_size);
+    }
+
+    void append(const ColumnVector& other) {
+        values_->FillFieldData(other.GetRawData(), other.size());
     }
 
  private:

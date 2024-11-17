@@ -106,6 +106,42 @@ ExecPlanNodeVisitor::ExecuteTask(
     return bitset_holder;
 }
 
+RowVectorPtr
+ExecPlanNodeVisitor::ExecuteTask2(plan::PlanFragment &plan, std::shared_ptr<milvus::exec::QueryContext> query_context) {
+    LOG_DEBUG("plannode: {}, active_count: {}, timestamp: {}",
+              plan.plan_node_->ToString(),
+              query_context->get_active_count(),
+              query_context->get_query_timestamp());
+
+    auto task = milvus::exec::Task::Create(DEFAULT_TASK_ID, plan, 0, query_context);
+    RowVectorPtr ret = nullptr;
+    for (;;) {
+        auto result = task->Next();
+        if (!result) {
+            break;
+        }
+        if (ret) {
+            auto childrens = result->childrens();
+            AssertInfo(childrens.size() == ret->childrens().size(), "column count of row vectors in different rounds"
+                                                                    "should be consistent, ret_column_count:{}, "
+                                                                    "new_result_column_count:{}",
+                                                                    childrens.size(),
+                                                                    ret->childrens().size());
+            for(auto i = 0; i < childrens.size(); i++) {
+                if (auto column_vec = std::dynamic_pointer_cast<ColumnVector>(childrens[i])) {
+                    auto ret_column_vector = std::dynamic_pointer_cast<ColumnVector>(ret->child(i));
+                    ret_column_vector->append(*column_vec);
+                } else {
+                    PanicInfo(UnexpectedError, "expr return type not matched");
+                }
+            }
+        } else {
+            ret = result;
+        }
+    }
+    return ret;
+}
+
 template <typename VectorType>
 void
 ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
@@ -133,7 +169,7 @@ ExecPlanNodeVisitor::VectorVisitorImpl(VectorPlanNode& node) {
     query_context->set_placeholder_group(placeholder_group_);
 
     // Do plan fragment task work
-    auto result = ExecuteTask(plan, query_context);
+    ExecuteTask(plan, query_context);
 
     // Store result
     search_result_opt_ = std::move(query_context->get_search_result());
@@ -182,18 +218,36 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
         DEAFULT_QUERY_ID, segment, active_count, timestamp_);
 
     // Do task execution
-    auto bitset_holder = ExecuteTask(plan, query_context);
+    auto result = ExecuteTask2(plan, query_context);
+    setupRetrieveResult(result,
+                        query_context,
+                        node,
+                        retrieve_result,
+                        segment);
+}
 
-    // Store result
+void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result,
+                                              const std::shared_ptr<milvus::exec::QueryContext> query_context,
+                                              const RetrievePlanNode& node,
+                                              RetrieveResult& tmp_retrieve_result,
+                                              const segcore::SegmentInternalInterface* segment) {
     if (node.is_count_) {
         retrieve_result_opt_ = std::move(query_context->get_retrieve_result());
     } else {
-        retrieve_result.total_data_cnt_ = bitset_holder.size();
-        tracer::AutoSpan _("Find Limit Pk", tracer::GetRootSpan());
-        auto results_pair = segment->find_first(node.limit_, bitset_holder);
-        retrieve_result.result_offsets_ = std::move(results_pair.first);
-        retrieve_result.has_more_result = results_pair.second;
-        retrieve_result_opt_ = std::move(retrieve_result);
+        AssertInfo(result->childrens().empty(), "Result row vector must have at least one column");
+        auto column_vec = std::dynamic_pointer_cast<ColumnVector>(result->child(0));
+        AssertInfo(column_vec, "children inside row vector must be of column vector for now");
+        if (column_vec->IsBitmap()){
+            BitsetTypeView view(column_vec->GetRawData(), column_vec->size());
+            tmp_retrieve_result.total_data_cnt_ = column_vec->size();
+            tracer::AutoSpan _("Find Limit Pk", tracer::GetRootSpan());
+            auto results_pair = segment->find_first(node.limit_, view);
+            tmp_retrieve_result.result_offsets_ = std::move(results_pair.first);
+            tmp_retrieve_result.has_more_result = results_pair.second;
+            retrieve_result_opt_ = std::move(tmp_retrieve_result);
+        } else {
+            // load data in the result vector into retrieve_result
+        }
     }
 }
 
