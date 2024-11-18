@@ -244,6 +244,11 @@ ProtoParser::RetrievePlanNodeFromProto(
         return node;
     }();
 
+    plan_node->output_fields_.resize(plan_node_proto.output_field_ids_size());
+    for(auto i = 0; plan_node_proto.output_field_ids().size(); i++) {
+        plan_node->output_fields_[i] = plan_node_proto.output_field_ids()[i];
+    }
+
     return plan_node;
 }
 

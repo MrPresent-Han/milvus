@@ -187,6 +187,77 @@ wrap_num_entities(int64_t cnt) {
     return retrieve_result;
 }
 
+template <typename S, typename T>
+void fillTypedDataArray(void* src_raw_data, int64_t count, T* dst) {
+    static_assert(IsScalar<T>);
+    const S* src_data = static_cast<const S*>(src_raw_data);
+    for(auto i = 0; i < count; i++) {
+        dst[i] = src_data[i];
+    }
+}
+
+template <typename S, typename T>
+void fillTypedDataPtrArray(void* src_raw_data, int64_t count, google::protobuf::RepeatedPtrField<T>* dst) {
+    static_assert(IsScalar<T>);
+    const S* src_data = static_cast<const S*>(src_raw_data);
+    for(int i = 0; i < count; i++) {
+        dst->at(i) = std::move(T(src_data[i]));
+    }
+}
+
+void fillDataArrayFromColumnVector(const ColumnVectorPtr& column_vector, DataArray& data_array) {
+    auto column_raw_data = column_vector->GetRawData();
+    auto column_data_size = column_vector->size();
+    switch(column_vector->type()) {
+        case DataType::BOOL: {
+            auto bool_data = data_array.mutable_scalars()->mutable_bool_data();
+            fillTypedDataArray<bool>(column_raw_data, column_data_size, bool_data->mutable_data()->mutable_data());
+            break;
+        }
+        case DataType::INT8: {
+            auto int_data = data_array.mutable_scalars()->mutable_int_data();
+            fillTypedDataArray<int8_t>(column_raw_data, column_data_size, int_data->mutable_data()->mutable_data());
+            break;
+        }
+        case DataType::INT16: {
+            auto int_data = data_array.mutable_scalars()->mutable_int_data();
+            fillTypedDataArray<int16_t>(column_raw_data, column_data_size, int_data->mutable_data()->mutable_data());
+            break;
+        }
+        case DataType::INT32:{
+            auto int_data = data_array.mutable_scalars()->mutable_int_data();
+            fillTypedDataArray<int32_t>(column_raw_data, column_data_size, int_data->mutable_data()->mutable_data());
+            break;
+        }
+        case DataType::INT64:{
+            auto int_data = data_array.mutable_scalars()->mutable_long_data();
+            fillTypedDataArray<int64_t>(column_raw_data, column_data_size, int_data->mutable_data()->mutable_data());
+            break;
+        }
+        case DataType::FLOAT: {
+            auto float_data = data_array.mutable_scalars()->mutable_float_data();
+            fillTypedDataArray<float>(column_raw_data, column_data_size, float_data->mutable_data()->mutable_data());
+            break;
+        }
+        case DataType::DOUBLE: {
+            auto double_data = data_array.mutable_scalars()->mutable_double_data();
+            fillTypedDataArray<float>(column_raw_data, column_data_size, double_data->mutable_data()->mutable_data());
+            break;
+        }
+        case DataType::VARCHAR:
+        case DataType::STRING: {
+            auto string_data = data_array.mutable_scalars()->mutable_string_data();
+            fillTypedDataPtrArray<std::string>(column_raw_data, column_data_size, string_data->mutable_data());
+            break;
+        }
+        default: {
+            PanicInfo(DataTypeInvalid,
+                      fmt::format("unsupported data type {}",
+                                  column_vector.type()));
+        }
+    }
+}
+
 void
 ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
     assert(!retrieve_result_opt_.has_value());
@@ -246,7 +317,32 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
             tmp_retrieve_result.has_more_result = results_pair.second;
             retrieve_result_opt_ = std::move(tmp_retrieve_result);
         } else {
+            AssertInfo(node.output_fields_.size() == result->childrens().size(), "output rowVector's children size:{} "
+                                                                                 "is not equal to outputFields size:{}",
+                       result->childrens().size(),node.output_fields_.size());
+            const auto& fields_map = segment->get_schema().get_fields();
             // load data in the result vector into retrieve_result
+            auto column_count = result->childrens().size();
+            tmp_retrieve_result.field_data_.resize(column_count);
+            for(auto i = 0; i < column_count; i++) {
+                auto field_id = FieldId(node.output_fields_[i]);
+                auto field_meta = fields_map.at(field_id);
+                auto field_type = field_meta.get_data_type();
+                if (field_type != column_vec->type()) {
+                    PanicInfo(DataTypeInvalid,
+                              fmt::format("target output field data type:{} must be the same as"
+                                          "column vector data type:{}", field_type, column_vec->type()));
+                }
+
+                DataArray data_array;
+                data_array.set_type(GetProtoDataType(field_type));
+                data_array.set_field_id(field_id.get());
+                auto columnVec = std::dynamic_pointer_cast<ColumnVector>(result->child(i));
+                AssertInfo(column_vec, "children inside row vector must be of column vector for now");
+                fillDataArrayFromColumnVector(columnVec, data_array);
+                tmp_retrieve_result.field_data_[i] = std::move(data_array);
+            }
+            retrieve_result_opt_ = std::move(tmp_retrieve_result);
         }
     }
 }

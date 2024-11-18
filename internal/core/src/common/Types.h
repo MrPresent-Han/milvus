@@ -102,6 +102,54 @@ using IdArray = proto::schema::IDs;
 using InsertRecordProto = proto::segcore::InsertRecord;
 using PkType = std::variant<std::monostate, int64_t, std::string>;
 
+inline milvus::proto::schema::DataType
+GetProtoDataType(DataType internal_data_type) {
+    switch(internal_data_type) {
+        case DataType::BOOL:
+            return milvus::proto::schema::Bool;
+        case DataType::INT8:
+            return milvus::proto::schema::Int8;
+        case DataType::INT16:
+            return milvus::proto::schema::Int16;
+        case DataType::INT32:
+            return milvus::proto::schema::Int32;
+        case DataType::INT64:
+            return milvus::proto::schema::Int64;
+        case DataType::FLOAT:
+            return milvus::proto::schema::Float;
+        case DataType::DOUBLE:
+            return milvus::proto::schema::Double;
+        case DataType::STRING:
+            return milvus::proto::schema::String;
+        case DataType::VARCHAR:
+            return milvus::proto::schema::VarChar;
+        case DataType::ARRAY:
+            return milvus::proto::schema::Array;
+        case DataType::JSON:
+            return milvus::proto::schema::JSON;
+        case DataType::VECTOR_FLOAT:
+            return milvus::proto::schema::FloatVector;
+        case DataType::VECTOR_BINARY: {
+            return milvus::proto::schema::BinaryVector;
+        }
+        case DataType::VECTOR_FLOAT16: {
+            return milvus::proto::schema::Float16Vector;
+        }
+        case DataType::VECTOR_BFLOAT16: {
+            return milvus::proto::schema::BFloat16Vector;
+        }
+        case DataType::VECTOR_SPARSE_FLOAT: {
+            return milvus::proto::schema::SparseFloatVector;
+        }
+        default: {
+            PanicInfo(
+                    DataTypeInvalid,
+                    fmt::format("failed to get data type size, invalid type {}",
+                                internal_data_type));
+        }
+    }
+}
+
 inline size_t
 GetDataTypeSize(DataType data_type, int dim = 1) {
     switch (data_type) {

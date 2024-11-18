@@ -57,7 +57,5 @@ PhyProjectNode::GetOutput() {
     return row_vector;
 }
 
-
-
 };
 };
