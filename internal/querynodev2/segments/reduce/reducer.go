@@ -1,8 +1,9 @@
-package segments
+package reduce
 
 import (
 	"context"
-
+	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	common2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"github.com/samber/lo"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -26,10 +27,10 @@ func CreateInternalReducer(req *querypb.QueryRequest, schema *schemapb.Collectio
 }
 
 type segCoreReducer interface {
-	Reduce(context.Context, []*segcorepb.RetrieveResults, []Segment, *RetrievePlan) (*segcorepb.RetrieveResults, error)
+	Reduce(context.Context, []*segcorepb.RetrieveResults, []common2.Segment, *common2.RetrievePlan) (*segcorepb.RetrieveResults, error)
 }
 
-func CreateSegCoreReducer(req *querypb.QueryRequest, schema *schemapb.CollectionSchema, manager *Manager) segCoreReducer {
+func CreateSegCoreReducer(req *querypb.QueryRequest, schema *schemapb.CollectionSchema, manager *segments.Manager) segCoreReducer {
 	if req.GetReq().GetIsCount() {
 		return &cntReducerSegCore{}
 	}

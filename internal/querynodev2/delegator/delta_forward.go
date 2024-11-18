@@ -19,6 +19,7 @@ package delegator
 import (
 	"context"
 	"fmt"
+	common2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"runtime"
 	"time"
 
@@ -173,7 +174,7 @@ func (sd *shardDelegator) getLevel0Deltalogs(partitionID int64) []*datapb.FieldB
 
 func (sd *shardDelegator) forwardStreamingByBF(ctx context.Context, deleteData []*DeleteData) {
 	start := time.Now()
-	retMap := sd.applyBFInParallel(deleteData, segments.GetBFApplyPool())
+	retMap := sd.applyBFInParallel(deleteData, common2.GetBFApplyPool())
 	// segment => delete data
 	delRecords := make(map[int64]DeleteData)
 	retMap.Range(func(key int, value *BatchApplyRet) bool {

@@ -17,6 +17,7 @@
 package pipeline
 
 import (
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"testing"
 
 	"github.com/samber/lo"
@@ -72,7 +73,7 @@ func (suite *FilterNodeSuite) TestWithLoadCollection() {
 	suite.validSegmentIDs = []int64{2, 3, 4, 5, 6}
 
 	// mock
-	collection := segments.NewCollectionWithoutSchema(suite.collectionID, querypb.LoadType_LoadCollection)
+	collection := segbase.NewCollectionWithoutSchema(suite.collectionID, querypb.LoadType_LoadCollection)
 	for _, partitionID := range suite.partitionIDs {
 		collection.AddPartition(partitionID)
 	}
@@ -111,7 +112,7 @@ func (suite *FilterNodeSuite) TestWithLoadPartation() {
 	suite.validSegmentIDs = []int64{2, 3, 4, 5, 6}
 
 	// mock
-	collection := segments.NewCollectionWithoutSchema(suite.collectionID, querypb.LoadType_LoadPartition)
+	collection := segbase.NewCollectionWithoutSchema(suite.collectionID, querypb.LoadType_LoadPartition)
 	collection.AddPartition(suite.partitionIDs[0])
 
 	mockCollectionManager := segments.NewMockCollectionManager(suite.T())

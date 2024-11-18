@@ -17,6 +17,7 @@
 package pipeline
 
 import (
+	base2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"time"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
@@ -47,9 +48,9 @@ type (
 	InsertMsg = msgstream.InsertMsg
 	DeleteMsg = msgstream.DeleteMsg
 
-	Collection  = segments.Collection
+	Collection  = base2.Collection
 	DataManager = segments.Manager
-	Segment     = segments.Segment
+	Segment     = base2.Segment
 
 	TSafeManager = tsafe.Manager
 

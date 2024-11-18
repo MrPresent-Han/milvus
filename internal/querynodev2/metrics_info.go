@@ -20,7 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"github.com/samber/lo"
 	"go.uber.org/zap"
 
@@ -69,24 +69,24 @@ func getQuotaMetrics(node *QueryNode) (*metricsinfo.QueryNodeQuotaMetrics, error
 
 	var totalGrowingSize int64
 	growingSegments := node.manager.Segment.GetBy(segments.WithType(segments.SegmentTypeGrowing))
-	growingGroupByCollection := lo.GroupBy(growingSegments, func(seg segments.Segment) int64 {
+	growingGroupByCollection := lo.GroupBy(growingSegments, func(seg segbase.Segment) int64 {
 		return seg.Collection()
 	})
 	for collection := range collections {
 		segs := growingGroupByCollection[collection]
-		size := lo.SumBy(segs, func(seg segments.Segment) int64 {
+		size := lo.SumBy(segs, func(seg segbase.Segment) int64 {
 			return seg.MemSize()
 		})
 		totalGrowingSize += size
 		metrics.QueryNodeEntitiesSize.WithLabelValues(nodeID, fmt.Sprint(collection),
 			segments.SegmentTypeGrowing.String()).Set(float64(size))
 	}
-	growingGroupByPartition := lo.GroupBy(growingSegments, func(seg segments.Segment) int64 {
+	growingGroupByPartition := lo.GroupBy(growingSegments, func(seg segbase.Segment) int64 {
 		return seg.Partition()
 	})
 
 	for _, segs := range growingGroupByPartition {
-		numEntities := lo.SumBy(segs, func(seg segments.Segment) int64 {
+		numEntities := lo.SumBy(segs, func(seg segbase.Segment) int64 {
 			return seg.RowNum()
 		})
 		segment := segs[0]
@@ -101,22 +101,22 @@ func getQuotaMetrics(node *QueryNode) (*metricsinfo.QueryNodeQuotaMetrics, error
 	}
 
 	sealedSegments := node.manager.Segment.GetBy(segments.WithType(segments.SegmentTypeSealed))
-	sealedGroupByCollection := lo.GroupBy(sealedSegments, func(seg segments.Segment) int64 {
+	sealedGroupByCollection := lo.GroupBy(sealedSegments, func(seg segbase.Segment) int64 {
 		return seg.Collection()
 	})
 	for collection := range collections {
 		segs := sealedGroupByCollection[collection]
-		size := lo.SumBy(segs, func(seg segments.Segment) int64 {
+		size := lo.SumBy(segs, func(seg segbase.Segment) int64 {
 			return seg.MemSize()
 		})
 		metrics.QueryNodeEntitiesSize.WithLabelValues(fmt.Sprint(node.GetNodeID()),
 			fmt.Sprint(collection), segments.SegmentTypeSealed.String()).Set(float64(size))
 	}
-	sealedGroupByPartition := lo.GroupBy(sealedSegments, func(seg segments.Segment) int64 {
+	sealedGroupByPartition := lo.GroupBy(sealedSegments, func(seg segbase.Segment) int64 {
 		return seg.Partition()
 	})
 	for _, segs := range sealedGroupByPartition {
-		numEntities := lo.SumBy(segs, func(seg segments.Segment) int64 {
+		numEntities := lo.SumBy(segs, func(seg segbase.Segment) int64 {
 			return seg.RowNum()
 		})
 		segment := segs[0]

@@ -18,6 +18,7 @@ package pipeline
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -78,7 +79,7 @@ func (suite *PipelineManagerTestSuite) SetupTest() {
 func (suite *PipelineManagerTestSuite) TestBasic() {
 	// init mock
 	//  mock collection manager
-	suite.collectionManager.EXPECT().Get(suite.collectionID).Return(&segments.Collection{})
+	suite.collectionManager.EXPECT().Get(suite.collectionID).Return(&segbase.Collection{})
 	//  mock mq factory
 	suite.msgDispatcher.EXPECT().Register(mock.Anything, suite.channel, mock.Anything, common.SubscriptionPositionUnknown).Return(suite.msgChan, nil)
 	suite.msgDispatcher.EXPECT().Deregister(suite.channel)

@@ -26,6 +26,8 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/utils"
 	"io"
 	"path"
 	"runtime/debug"
@@ -70,11 +72,11 @@ var errRetryTimerNotified = errors.New("retry timer notified")
 type Loader interface {
 	// Load loads binlogs, and spawn segments,
 	// NOTE: make sure the ref count of the corresponding collection will never go down to 0 during this
-	Load(ctx context.Context, collectionID int64, segmentType SegmentType, version int64, segments ...*querypb.SegmentLoadInfo) ([]Segment, error)
+	Load(ctx context.Context, collectionID int64, segmentType SegmentType, version int64, segments ...*querypb.SegmentLoadInfo) ([]segbase.Segment, error)
 
 	// LoadDeltaLogs load deltalog and write delta data into provided segment.
 	// it also executes resource protection logic in case of OOM.
-	LoadDeltaLogs(ctx context.Context, segment Segment, deltaLogs []*datapb.FieldBinlog) error
+	LoadDeltaLogs(ctx context.Context, segment segbase.Segment, deltaLogs []*datapb.FieldBinlog) error
 
 	// LoadBloomFilterSet loads needed statslog for RemoteSegment.
 	LoadBloomFilterSet(ctx context.Context, collectionID int64, version int64, infos ...*querypb.SegmentLoadInfo) ([]*pkoracle.BloomFilterSet, error)
@@ -84,12 +86,12 @@ type Loader interface {
 
 	// LoadIndex append index for segment and remove vector binlogs.
 	LoadIndex(ctx context.Context,
-		segment Segment,
+		segment segbase.Segment,
 		info *querypb.SegmentLoadInfo,
 		version int64) error
 
 	LoadLazySegment(ctx context.Context,
-		segment Segment,
+		segment segbase.Segment,
 		loadInfo *querypb.SegmentLoadInfo,
 	) error
 }
@@ -220,7 +222,7 @@ func (loader *segmentLoader) Load(ctx context.Context,
 	segmentType SegmentType,
 	version int64,
 	segments ...*querypb.SegmentLoadInfo,
-) ([]Segment, error) {
+) ([]segbase.Segment, error) {
 	log := log.Ctx(ctx).With(
 		zap.Int64("collectionID", collectionID),
 		zap.String("segmentType", segmentType.String()),
@@ -234,7 +236,7 @@ func (loader *segmentLoader) Load(ctx context.Context,
 	// filter field schema which need to be loaded
 	for _, info := range segments {
 		info.BinlogPaths = lo.Filter(info.GetBinlogPaths(), func(fbl *datapb.FieldBinlog, _ int) bool {
-			return coll.loadFields.Contain(fbl.GetFieldID()) || common.IsSystemField(fbl.GetFieldID())
+			return coll.GetLoadFields().Contain(fbl.GetFieldID()) || common.IsSystemField(fbl.GetFieldID())
 		})
 	}
 
@@ -263,10 +265,10 @@ func (loader *segmentLoader) Load(ctx context.Context,
 		}
 		defer loader.freeRequest(requestResourceResult.Resource)
 	}
-	newSegments := typeutil.NewConcurrentMap[int64, Segment]()
-	loaded := typeutil.NewConcurrentMap[int64, Segment]()
+	newSegments := typeutil.NewConcurrentMap[int64, segbase.Segment]()
+	loaded := typeutil.NewConcurrentMap[int64, segbase.Segment]()
 	defer func() {
-		newSegments.Range(func(segmentID int64, s Segment) bool {
+		newSegments.Range(func(segmentID int64, s segbase.Segment) bool {
 			log.Warn("release new segment created due to load failure",
 				zap.Int64("segmentID", segmentID),
 				zap.Error(err),
@@ -370,8 +372,8 @@ func (loader *segmentLoader) Load(ctx context.Context,
 	}
 
 	log.Info("all segment load done")
-	var result []Segment
-	loaded.Range(func(_ int64, s Segment) bool {
+	var result []segbase.Segment
+	loaded.Range(func(_ int64, s segbase.Segment) bool {
 		result = append(result, s)
 		return true
 	})
@@ -609,7 +611,7 @@ func (loader *segmentLoader) LoadBloomFilterSet(ctx context.Context, collectionI
 		log.Warn("failed to get collection while loading segment", zap.Error(err))
 		return nil, err
 	}
-	pkField := GetPkField(collection.Schema())
+	pkField := utils.GetPkField(collection.Schema())
 
 	log.Info("start loading remote...", zap.Int("segmentNum", segmentNum))
 
@@ -825,7 +827,7 @@ func (loader *segmentLoader) loadSealedSegment(ctx context.Context, loadInfo *qu
 }
 
 func (loader *segmentLoader) LoadSegment(ctx context.Context,
-	seg Segment,
+	seg segbase.Segment,
 	loadInfo *querypb.SegmentLoadInfo,
 ) (err error) {
 	segment, ok := seg.(*LocalSegment)
@@ -848,7 +850,7 @@ func (loader *segmentLoader) LoadSegment(ctx context.Context,
 		log.Warn("failed to get collection while loading segment", zap.Error(err))
 		return err
 	}
-	pkField := GetPkField(collection.Schema())
+	pkField := utils.GetPkField(collection.Schema())
 
 	// TODO(xige-16): Optimize the data loading process and reduce data copying
 	// for now, there will be multiple copies in the process of data loading into segCore
@@ -887,7 +889,7 @@ func (loader *segmentLoader) LoadSegment(ctx context.Context,
 }
 
 func (loader *segmentLoader) LoadLazySegment(ctx context.Context,
-	segment Segment,
+	segment segbase.Segment,
 	loadInfo *querypb.SegmentLoadInfo,
 ) (err error) {
 	resource, err := loader.requestResourceWithTimeout(ctx, loadInfo)
@@ -974,7 +976,7 @@ func (loader *segmentLoader) filterBM25Stats(fieldBinlogs []*datapb.FieldBinlog)
 	return result
 }
 
-func loadSealedSegmentFields(ctx context.Context, collection *Collection, segment *LocalSegment, fields []*datapb.FieldBinlog, rowCount int64) error {
+func loadSealedSegmentFields(ctx context.Context, collection *segbase.Collection, segment *LocalSegment, fields []*datapb.FieldBinlog, rowCount int64) error {
 	runningGroup, _ := errgroup.WithContext(ctx)
 	for _, field := range fields {
 		fieldBinLog := field
@@ -1162,7 +1164,7 @@ func (loader *segmentLoader) loadBloomFilter(ctx context.Context, segmentID int6
 
 // loadDeltalogs performs the internal actions of `LoadDeltaLogs`
 // this function does not perform resource check and is meant be used among other load APIs.
-func (loader *segmentLoader) loadDeltalogs(ctx context.Context, segment Segment, deltaLogs []*datapb.FieldBinlog) error {
+func (loader *segmentLoader) loadDeltalogs(ctx context.Context, segment segbase.Segment, deltaLogs []*datapb.FieldBinlog) error {
 	ctx, sp := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, fmt.Sprintf("LoadDeltalogs-%d", segment.ID()))
 	defer sp.End()
 	log := log.Ctx(ctx).With(
@@ -1181,7 +1183,7 @@ func (loader *segmentLoader) loadDeltalogs(ctx context.Context, segment Segment,
 				bLog.GetTimestampTo() < segment.LastDeltaTimestamp() {
 				continue
 			}
-			future := GetLoadPool().Submit(func() (any, error) {
+			future := segbase.GetLoadPool().Submit(func() (any, error) {
 				value, err := loader.cm.Read(ctx, bLog.GetLogPath())
 				if err != nil {
 					return nil, err
@@ -1252,7 +1254,7 @@ func (loader *segmentLoader) loadDeltalogs(ctx context.Context, segment Segment,
 
 // LoadDeltaLogs load deltalog and write delta data into provided segment.
 // it also executes resource protection logic in case of OOM.
-func (loader *segmentLoader) LoadDeltaLogs(ctx context.Context, segment Segment, deltaLogs []*datapb.FieldBinlog) error {
+func (loader *segmentLoader) LoadDeltaLogs(ctx context.Context, segment segbase.Segment, deltaLogs []*datapb.FieldBinlog) error {
 	loadInfo := &querypb.SegmentLoadInfo{
 		SegmentID:    segment.ID(),
 		CollectionID: segment.Collection(),
@@ -1443,7 +1445,7 @@ func (loader *segmentLoader) checkSegmentSize(ctx context.Context, segmentLoadIn
 }
 
 // getResourceUsageEstimateOfSegment estimates the resource usage of the segment
-func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadInfo *querypb.SegmentLoadInfo, multiplyFactor resourceEstimateFactor) (usage *ResourceUsage, err error) {
+func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadInfo *querypb.SegmentLoadInfo, multiplyFactor resourceEstimateFactor) (usage *segbase.ResourceUsage, err error) {
 	var segmentMemorySize, segmentDiskSize uint64
 	var indexMemorySize uint64
 	var mmapFieldCount int
@@ -1508,7 +1510,7 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 
 		if shouldCalculateDataSize {
 			calculateDataSizeCount += 1
-			mmapEnabled = isDataMmapEnable(fieldSchema)
+			mmapEnabled = utils.IsDataMmapEnable(fieldSchema)
 
 			if !mmapEnabled || common.IsSystemField(fieldSchema.GetFieldID()) {
 				segmentMemorySize += binlogSize
@@ -1519,7 +1521,7 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 				segmentDiskSize += uint64(getBinlogDataDiskSize(fieldBinlog))
 			}
 			// querynode will generate a (memory type) intermin index for vector type
-			interimIndexEnable := multiplyFactor.enableTempSegmentIndex && !isGrowingMmapEnable() && SupportInterimIndexDataType(fieldSchema.GetDataType())
+			interimIndexEnable := multiplyFactor.enableTempSegmentIndex && !utils.IsGrowingMmapEnable() && SupportInterimIndexDataType(fieldSchema.GetDataType())
 			if interimIndexEnable {
 				segmentMemorySize += uint64(float64(binlogSize) * multiplyFactor.tempSegmentIndexFactor)
 			}
@@ -1550,7 +1552,7 @@ func getResourceUsageEstimateOfSegment(schema *schemapb.CollectionSchema, loadIn
 		}
 		segmentMemorySize += uint64(float64(memSize) * expansionFactor)
 	}
-	return &ResourceUsage{
+	return &segbase.ResourceUsage{
 		MemorySize:     segmentMemorySize + indexMemorySize,
 		DiskSize:       segmentDiskSize,
 		MmapFieldCount: mmapFieldCount,
@@ -1587,7 +1589,7 @@ func (loader *segmentLoader) getFieldType(collectionID, fieldID int64) (schemapb
 }
 
 func (loader *segmentLoader) LoadIndex(ctx context.Context,
-	seg Segment,
+	seg segbase.Segment,
 	loadInfo *querypb.SegmentLoadInfo,
 	version int64,
 ) error {

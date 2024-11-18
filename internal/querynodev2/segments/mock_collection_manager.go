@@ -5,6 +5,7 @@ package segments
 import (
 	schemapb "github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	querypb "github.com/milvus-io/milvus/internal/proto/querypb"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	mock "github.com/stretchr/testify/mock"
 
 	segcorepb "github.com/milvus-io/milvus/internal/proto/segcorepb"
@@ -24,19 +25,19 @@ func (_m *MockCollectionManager) EXPECT() *MockCollectionManager_Expecter {
 }
 
 // Get provides a mock function with given fields: collectionID
-func (_m *MockCollectionManager) Get(collectionID int64) *Collection {
+func (_m *MockCollectionManager) Get(collectionID int64) *segbase.Collection {
 	ret := _m.Called(collectionID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Get")
 	}
 
-	var r0 *Collection
-	if rf, ok := ret.Get(0).(func(int64) *Collection); ok {
+	var r0 *segbase.Collection
+	if rf, ok := ret.Get(0).(func(int64) *segbase.Collection); ok {
 		r0 = rf(collectionID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*Collection)
+			r0 = ret.Get(0).(*segbase.Collection)
 		}
 	}
 
@@ -61,12 +62,12 @@ func (_c *MockCollectionManager_Get_Call) Run(run func(collectionID int64)) *Moc
 	return _c
 }
 
-func (_c *MockCollectionManager_Get_Call) Return(_a0 *Collection) *MockCollectionManager_Get_Call {
+func (_c *MockCollectionManager_Get_Call) Return(_a0 *segbase.Collection) *MockCollectionManager_Get_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockCollectionManager_Get_Call) RunAndReturn(run func(int64) *Collection) *MockCollectionManager_Get_Call {
+func (_c *MockCollectionManager_Get_Call) RunAndReturn(run func(int64) *segbase.Collection) *MockCollectionManager_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }

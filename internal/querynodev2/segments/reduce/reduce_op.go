@@ -1,47 +1,27 @@
-// Licensed to the LF AI & Data foundation under one
-// or more contributor license agreements. See the NOTICE file
-// distributed with this work for additional information
-// regarding copyright ownership. The ASF licenses this file
-// to you under the Apache License, Version 2.0 (the
-// "License"); you may not use this file except in compliance
-// with the License. You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and
-// limitations under the License.
-
-package segments
+package reduce
 
 import (
 	"context"
 	"fmt"
-	"math"
-
-	"github.com/samber/lo"
-	"go.opentelemetry.io/otel"
-	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
-
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/utils"
 	"github.com/milvus-io/milvus/internal/util/reduce"
 	typeutil2 "github.com/milvus-io/milvus/internal/util/typeutil"
-	"github.com/milvus-io/milvus/pkg/common"
 	"github.com/milvus-io/milvus/pkg/log"
 	"github.com/milvus-io/milvus/pkg/util/conc"
 	"github.com/milvus-io/milvus/pkg/util/merr"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/samber/lo"
+	"go.opentelemetry.io/otel"
+	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
+	"math"
 )
-
-var _ typeutil.ResultWithID = &internalpb.RetrieveResults{}
-
-var _ typeutil.ResultWithID = &segcorepb.RetrieveResults{}
 
 func ReduceSearchOnQueryNode(ctx context.Context, results []*internalpb.SearchResults, info *reduce.ResultInfo) (*internalpb.SearchResults, error) {
 	if info.GetIsAdvance() {
@@ -115,7 +95,7 @@ func ReduceSearchResults(ctx context.Context, results []*internalpb.SearchResult
 
 		return nil, false
 	})
-	searchResults.CostAggregation = mergeRequestCost(requestCosts)
+	searchResults.CostAggregation = utils.MergeRequestCost(requestCosts)
 	if searchResults.CostAggregation == nil {
 		searchResults.CostAggregation = &internalpb.CostAggregation{}
 	}
@@ -173,7 +153,7 @@ func ReduceAdvancedSearchResults(ctx context.Context, results []*internalpb.Sear
 
 		return nil, false
 	})
-	searchResults.CostAggregation = mergeRequestCost(requestCosts)
+	searchResults.CostAggregation = utils.MergeRequestCost(requestCosts)
 	if searchResults.CostAggregation == nil {
 		searchResults.CostAggregation = &internalpb.CostAggregation{}
 	}
@@ -359,7 +339,7 @@ func MergeInternalRetrieveResult(ctx context.Context, retrieveResults []*interna
 
 		return nil, false
 	})
-	ret.CostAggregation = mergeRequestCost(requestCosts)
+	ret.CostAggregation = utils.MergeRequestCost(requestCosts)
 	if ret.CostAggregation == nil {
 		ret.CostAggregation = &internalpb.CostAggregation{}
 	}
@@ -367,21 +347,7 @@ func MergeInternalRetrieveResult(ctx context.Context, retrieveResults []*interna
 	return ret, nil
 }
 
-func getTS(i *internalpb.RetrieveResults, idx int64) uint64 {
-	if i.FieldsData == nil {
-		return 0
-	}
-	for _, fieldData := range i.FieldsData {
-		fieldID := fieldData.FieldId
-		if fieldID == common.TimeStampField {
-			res := fieldData.GetScalars().GetLongData().Data
-			return uint64(res[idx])
-		}
-	}
-	return 0
-}
-
-func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcorepb.RetrieveResults, param *mergeParam, segments []Segment, plan *RetrievePlan, manager *Manager) (*segcorepb.RetrieveResults, error) {
+func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcorepb.RetrieveResults, param *mergeParam, segments []segbase.Segment, plan *segbase.RetrievePlan, manager *segments.Manager) (*segcorepb.RetrieveResults, error) {
 	ctx, span := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, "MergeSegcoreResults")
 	defer span.End()
 
@@ -398,8 +364,8 @@ func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 		loopEnd    int
 	)
 
-	validRetrieveResults := []*TimestampedRetrieveResult[*segcorepb.RetrieveResults]{}
-	validSegments := make([]Segment, 0, len(segments))
+	var validRetrieveResults []*TimestampedRetrieveResult[*segcorepb.RetrieveResults]
+	validSegments := make([]segbase.Segment, 0, len(segments))
 	hasMoreResult := false
 	for i, r := range retrieveResults {
 		size := typeutil.GetSizeOfIDs(r.GetIds())
@@ -413,7 +379,7 @@ func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 			return nil, err
 		}
 		validRetrieveResults = append(validRetrieveResults, tr)
-		if plan.ignoreNonPk {
+		if plan.IgnoreNonPk() {
 			validSegments = append(validSegments, segments[i])
 		}
 		loopEnd += size
@@ -493,7 +459,7 @@ func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 		log.Debug("skip duplicated query result while reducing segcore.RetrieveResults", zap.Int64("dupCount", skipDupCnt))
 	}
 
-	if !plan.ignoreNonPk {
+	if !plan.IgnoreNonPk() {
 		// target entry already retrieved, don't do this after AppendPKs for better performance. Save the cost everytime
 		// judge the `!plan.ignoreNonPk` condition.
 		_, span2 := otel.Tracer(typeutil.QueryNodeRole).Start(ctx, "MergeSegcoreResults-AppendFieldData")
@@ -518,12 +484,12 @@ func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 			return sel.batchIndex
 		})
 		futures := make([]*conc.Future[any], 0, len(groups))
-		for i, selections := range groups {
+		/*for i, selections := range groups {
 			idx, theOffsets := i, lo.Map(selections, func(sel selection, _ int) int64 { return sel.offset })
-			future := GetSQPool().Submit(func() (any, error) {
+			future := segbase.GetSQPool().Submit(func() (any, error) {
 				var r *segcorepb.RetrieveResults
 				var err error
-				if err := doOnSegment(ctx, manager, validSegments[idx], func(ctx context.Context, segment Segment) error {
+				if err := segments.doOnSegment(ctx, manager, validSegments[idx], func(ctx context.Context, segment segbase.Segment) error {
 					r, err = segment.RetrieveByOffsets(ctx, plan, theOffsets)
 					return err
 				}); err != nil {
@@ -533,7 +499,7 @@ func MergeSegcoreRetrieveResults(ctx context.Context, retrieveResults []*segcore
 				return nil, nil
 			})
 			futures = append(futures, future)
-		}
+		}*/
 		if err := conc.AwaitAll(futures...); err != nil {
 			return nil, err
 		}
@@ -583,9 +549,9 @@ func mergeSegcoreRetrieveResultsAndFillIfEmpty(
 	ctx context.Context,
 	retrieveResults []*segcorepb.RetrieveResults,
 	param *mergeParam,
-	segments []Segment,
-	plan *RetrievePlan,
-	manager *Manager,
+	segments []segbase.Segment,
+	plan *segbase.RetrievePlan,
+	manager *segments.Manager,
 ) (*segcorepb.RetrieveResults, error) {
 	mergedResult, err := MergeSegcoreRetrieveResults(ctx, retrieveResults, param, segments, plan, manager)
 	if err != nil {

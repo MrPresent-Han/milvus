@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
@@ -13,7 +14,7 @@ import (
 var _ scheduler.Task = &QueryStreamTask{}
 
 func NewQueryStreamTask(ctx context.Context,
-	collection *segments.Collection,
+	collection *segbase.Collection,
 	manager *segments.Manager,
 	req *querypb.QueryRequest,
 	srv streamrpc.QueryStreamServer,
@@ -34,7 +35,7 @@ func NewQueryStreamTask(ctx context.Context,
 
 type QueryStreamTask struct {
 	ctx            context.Context
-	collection     *segments.Collection
+	collection     *segbase.Collection
 	segmentManager *segments.Manager
 	req            *querypb.QueryRequest
 	srv            streamrpc.QueryStreamServer
@@ -59,12 +60,13 @@ func (t *QueryStreamTask) PreExecute() error {
 }
 
 func (t *QueryStreamTask) Execute() error {
-	retrievePlan, err := segments.NewRetrievePlan(
+	retrievePlan, err := segbase.NewRetrievePlan(
 		t.ctx,
 		t.collection,
 		t.req.Req.GetSerializedExprPlan(),
 		t.req.Req.GetMvccTimestamp(),
 		t.req.Req.Base.GetMsgID(),
+		false,
 	)
 	if err != nil {
 		return err

@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package segments
+package segbase
 
 import (
 	"context"
@@ -61,7 +61,7 @@ func (suite *PlanSuite) TestPlanCreateByExpr() {
 	expr, err := proto.Marshal(planNode)
 	suite.NoError(err)
 
-	_, err = createSearchPlanByExpr(context.Background(), suite.collection, expr)
+	_, err = CreateSearchPlanByExpr(context.Background(), suite.collection, expr)
 	suite.Error(err)
 }
 
@@ -70,13 +70,13 @@ func (suite *PlanSuite) TestPlanFail() {
 		id: -1,
 	}
 
-	_, err := createSearchPlanByExpr(context.Background(), collection, nil)
+	_, err := CreateSearchPlanByExpr(context.Background(), collection, nil)
 	suite.Error(err)
 }
 
 func (suite *PlanSuite) TestQueryPlanCollectionReleased() {
 	collection := &Collection{id: suite.collectionID}
-	_, err := NewRetrievePlan(context.Background(), collection, nil, 0, 0)
+	_, err := NewRetrievePlan(context.Background(), collection, nil, 0, 0, false)
 	suite.Error(err)
 }
 

@@ -20,6 +20,8 @@ package delegator
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/result"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"path"
 	"strconv"
 	"sync"
@@ -107,7 +109,7 @@ type shardDelegator struct {
 	vchannelName string
 	version      int64
 	// collection schema
-	collection *segments.Collection
+	collection *segbase.Collection
 
 	workerManager cluster.Manager
 
@@ -404,7 +406,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 					return nil, err
 				}
 
-				return segments.ReduceSearchOnQueryNode(ctx,
+				return result.ReduceSearchOnQueryNode(ctx,
 					results,
 					reduce.NewReduceSearchResultInfo(searchReq.GetReq().GetNq(),
 						searchReq.GetReq().GetTopk()).WithMetricType(searchReq.GetReq().GetMetricType()).

@@ -10,11 +10,6 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
-const (
-	rowIDFieldID     FieldID = 0
-	timestampFieldID FieldID = 1
-)
-
 type (
 	// UniqueID is an identifier that is guaranteed to be unique among all the collections, partitions and segments
 	UniqueID = typeutil.UniqueID

@@ -2,6 +2,7 @@ package segments
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"path/filepath"
 	"testing"
 
@@ -26,7 +27,7 @@ type ManagerSuite struct {
 	partitionIDs  []int64
 	channels      []string
 	types         []SegmentType
-	segments      []Segment
+	segments      []segbase.Segment
 	levels        []datapb.SegmentLevel
 
 	mgr *segmentManager
@@ -50,10 +51,10 @@ func (s *ManagerSuite) SetupTest() {
 	s.segments = nil
 
 	for i, id := range s.segmentIDs {
-		schema := GenTestCollectionSchema("manager-suite", schemapb.DataType_Int64, true)
+		schema := segbase.GenTestCollectionSchema("manager-suite", schemapb.DataType_Int64, true)
 		segment, err := NewSegment(
 			context.Background(),
-			NewCollection(s.collectionIDs[i], schema, GenTestIndexMeta(s.collectionIDs[i], schema), &querypb.LoadMetaInfo{
+			segbase.NewCollection(s.collectionIDs[i], schema, segbase.GenTestIndexMeta(s.collectionIDs[i], schema), &querypb.LoadMetaInfo{
 				LoadType: querypb.LoadType_LoadCollection,
 			}),
 			s.types[i],
@@ -90,17 +91,17 @@ func (s *ManagerSuite) TestGetBy() {
 	for i, partitionID := range s.partitionIDs {
 		segments := s.mgr.GetBy(WithPartition(partitionID))
 		s.Contains(
-			lo.Map(segments, func(segment Segment, _ int) int64 { return segment.ID() }), s.segmentIDs[i])
+			lo.Map(segments, func(segment segbase.Segment, _ int) int64 { return segment.ID() }), s.segmentIDs[i])
 	}
 
 	for i, channel := range s.channels {
 		segments := s.mgr.GetBy(WithChannel(channel))
-		s.Contains(lo.Map(segments, func(segment Segment, _ int) int64 { return segment.ID() }), s.segmentIDs[i])
+		s.Contains(lo.Map(segments, func(segment segbase.Segment, _ int) int64 { return segment.ID() }), s.segmentIDs[i])
 	}
 
 	for i, typ := range s.types {
 		segments := s.mgr.GetBy(WithType(typ))
-		s.Contains(lo.Map(segments, func(segment Segment, _ int) int64 { return segment.ID() }), s.segmentIDs[i])
+		s.Contains(lo.Map(segments, func(segment segbase.Segment, _ int) int64 { return segment.ID() }), s.segmentIDs[i])
 	}
 	s.mgr.Clear(context.Background())
 

@@ -14,11 +14,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package segments
+package reduce
 
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"log"
 	"math"
 	"testing"
@@ -49,8 +51,8 @@ type ReduceSuite struct {
 	collectionID int64
 	partitionID  int64
 	segmentID    int64
-	collection   *Collection
-	segment      Segment
+	collection   *segbase.Collection
+	segment      segbase.Segment
 }
 
 func (suite *ReduceSuite) SetupSuite() {
@@ -70,16 +72,16 @@ func (suite *ReduceSuite) SetupTest() {
 	suite.collectionID = 100
 	suite.partitionID = 10
 	suite.segmentID = 1
-	schema := GenTestCollectionSchema("test-reduce", schemapb.DataType_Int64, true)
-	suite.collection = NewCollection(suite.collectionID,
+	schema := segbase.GenTestCollectionSchema("test-reduce", schemapb.DataType_Int64, true)
+	suite.collection = segbase.NewCollection(suite.collectionID,
 		schema,
-		GenTestIndexMeta(suite.collectionID, schema),
+		segbase.GenTestIndexMeta(suite.collectionID, schema),
 		&querypb.LoadMetaInfo{
 			LoadType: querypb.LoadType_LoadCollection,
 		})
-	suite.segment, err = NewSegment(ctx,
+	suite.segment, err = segments.NewSegment(ctx,
 		suite.collection,
-		SegmentTypeSealed,
+		segments.SegmentTypeSealed,
 		0,
 		&querypb.SegmentLoadInfo{
 			SegmentID:     suite.segmentID,
@@ -92,7 +94,7 @@ func (suite *ReduceSuite) SetupTest() {
 	)
 	suite.Require().NoError(err)
 
-	binlogs, _, err := SaveBinLog(ctx,
+	binlogs, _, err := segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID,
@@ -102,14 +104,14 @@ func (suite *ReduceSuite) SetupTest() {
 	)
 	suite.Require().NoError(err)
 	for _, binlog := range binlogs {
-		err = suite.segment.(*LocalSegment).LoadFieldData(ctx, binlog.FieldID, int64(msgLength), binlog)
+		err = suite.segment.(*segments.LocalSegment).LoadFieldData(ctx, binlog.FieldID, int64(msgLength), binlog)
 		suite.Require().NoError(err)
 	}
 }
 
 func (suite *ReduceSuite) TearDownTest() {
 	suite.segment.Release(context.Background())
-	DeleteCollection(suite.collection)
+	segbase.DeleteCollection(suite.collection)
 	ctx := context.Background()
 	suite.chunkManager.RemoveWithPrefix(ctx, suite.rootPath)
 }
@@ -130,7 +132,7 @@ func (suite *ReduceSuite) TestReduceAllFunc() {
 	nq := int64(10)
 
 	// TODO: replace below by genPlaceholderGroup(nq)
-	vec := testutils.GenerateFloatVectors(1, defaultDim)
+	vec := testutils.GenerateFloatVectors(1, segbase.DefaultDim)
 	var searchRawData []byte
 	for i, ele := range vec {
 		buf := make([]byte, 4)
@@ -172,30 +174,30 @@ func (suite *ReduceSuite) TestReduceAllFunc() {
 	prototext.Unmarshal([]byte(planStr), &planpb)
 	serializedPlan, err := proto.Marshal(&planpb)
 	suite.NoError(err)
-	plan, err := createSearchPlanByExpr(context.Background(), suite.collection, serializedPlan)
+	plan, err := segbase.CreateSearchPlanByExpr(context.Background(), suite.collection, serializedPlan)
 	suite.NoError(err)
-	searchReq, err := parseSearchRequest(context.Background(), plan, placeGroupByte)
-	searchReq.mvccTimestamp = typeutil.MaxTimestamp
+	searchReq, err := segbase.ParseSearchRequest(context.Background(), plan, placeGroupByte)
+	searchReq.SetMvccTimestamp(typeutil.MaxTimestamp)
 	suite.NoError(err)
 	defer searchReq.Delete()
 
 	searchResult, err := suite.segment.Search(context.Background(), searchReq)
 	suite.NoError(err)
 
-	err = checkSearchResult(context.Background(), nq, plan, searchResult)
+	err = segbase.CheckSearchResult(context.Background(), nq, plan, searchResult)
 	suite.NoError(err)
 }
 
 func (suite *ReduceSuite) TestReduceInvalid() {
-	plan := &SearchPlan{}
+	plan := &segbase.SearchPlan{}
 	_, err := ReduceSearchResultsAndFillData(context.Background(), plan, nil, 1, nil, nil)
 	suite.Error(err)
 
-	searchReq, err := genSearchPlanAndRequests(suite.collection, []int64{suite.segmentID}, IndexHNSW, 10)
+	searchReq, err := segbase.GenSearchPlanAndRequests(suite.collection, []int64{suite.segmentID}, segbase.IndexHNSW, 10)
 	suite.NoError(err)
-	searchResults := make([]*SearchResult, 0)
+	searchResults := make([]*segbase.SearchResult, 0)
 	searchResults = append(searchResults, nil)
-	_, err = ReduceSearchResultsAndFillData(context.Background(), searchReq.plan, searchResults, 1, []int64{10}, []int64{10})
+	_, err = ReduceSearchResultsAndFillData(context.Background(), searchReq.Plan(), searchResults, 1, []int64{10}, []int64{10})
 	suite.Error(err)
 }
 

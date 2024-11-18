@@ -19,6 +19,8 @@ package querynodev2
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/reduce"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"strconv"
 	"sync"
 	"time"
@@ -493,7 +495,7 @@ func (node *QueryNode) LoadSegments(ctx context.Context, req *querypb.LoadSegmen
 	node.manager.Collection.Ref(req.GetCollectionID(), uint32(len(loaded)))
 
 	log.Info("load segments done...",
-		zap.Int64s("segments", lo.Map(loaded, func(s segments.Segment, _ int) int64 { return s.ID() })))
+		zap.Int64s("segments", lo.Map(loaded, func(s segbase.Segment, _ int) int64 { return s.ID() })))
 
 	return merr.Success(), nil
 }
@@ -921,7 +923,7 @@ func (node *QueryNode) Query(ctx context.Context, req *querypb.QueryRequest) (*i
 	}
 
 	tr.RecordSpan()
-	reducer := segments.CreateInternalReducer(req, node.manager.Collection.Get(req.GetReq().GetCollectionID()).Schema())
+	reducer := reduce.CreateInternalReducer(req, node.manager.Collection.Get(req.GetReq().GetCollectionID()).Schema())
 	ret, err := reducer.Reduce(ctx, toMergeResults)
 	if err != nil {
 		return &internalpb.RetrieveResults{
@@ -1410,7 +1412,7 @@ func (node *QueryNode) DeleteBatch(ctx context.Context, req *querypb.DeleteBatch
 
 	segs := node.manager.Segment.GetBy(filters...)
 
-	hitIDs := lo.Map(segs, func(segment segments.Segment, _ int) int64 {
+	hitIDs := lo.Map(segs, func(segment segbase.Segment, _ int) int64 {
 		return segment.ID()
 	})
 	// calculate missing ids, continue to delete existing ones.
@@ -1423,7 +1425,7 @@ func (node *QueryNode) DeleteBatch(ctx context.Context, req *querypb.DeleteBatch
 
 	// control the execution batch parallel with P number
 	// maybe it shall be lower in case of heavy CPU usage may impacting search/query
-	pool := segments.GetDeletePool()
+	pool := segbase.GetDeletePool()
 	futures := make([]*conc.Future[struct{}], 0, len(segs))
 	errSet := typeutil.NewConcurrentSet[int64]()
 

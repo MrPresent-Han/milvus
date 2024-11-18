@@ -19,6 +19,7 @@ package segments
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"io"
 	"testing"
 
@@ -47,9 +48,9 @@ type RetrieveSuite struct {
 	collectionID int64
 	partitionID  int64
 	segmentID    int64
-	collection   *Collection
-	sealed       Segment
-	growing      Segment
+	collection   *segbase.Collection
+	sealed       segbase.Segment
+	growing      segbase.Segment
 }
 
 func (suite *RetrieveSuite) SetupSuite() {
@@ -71,8 +72,8 @@ func (suite *RetrieveSuite) SetupTest() {
 	suite.segmentID = 1
 
 	suite.manager = NewManager()
-	schema := GenTestCollectionSchema("test-reduce", schemapb.DataType_Int64, true)
-	indexMeta := GenTestIndexMeta(suite.collectionID, schema)
+	schema := segbase.GenTestCollectionSchema("test-reduce", schemapb.DataType_Int64, true)
+	indexMeta := segbase.GenTestIndexMeta(suite.collectionID, schema)
 	suite.manager.Collection.PutOrRef(suite.collectionID,
 		schema,
 		indexMeta,
@@ -99,7 +100,7 @@ func (suite *RetrieveSuite) SetupTest() {
 	)
 	suite.Require().NoError(err)
 
-	binlogs, _, err := SaveBinLog(ctx,
+	binlogs, _, err := segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID,
@@ -127,7 +128,7 @@ func (suite *RetrieveSuite) SetupTest() {
 	)
 	suite.Require().NoError(err)
 
-	insertMsg, err := genInsertMsg(suite.collection, suite.partitionID, suite.growing.ID(), msgLength)
+	insertMsg, err := segbase.GenInsertMsg(suite.collection, suite.partitionID, suite.growing.ID(), msgLength)
 	suite.Require().NoError(err)
 	insertRecord, err := storage.TransferInsertMsgToInsertRecord(suite.collection.Schema(), insertMsg)
 	suite.Require().NoError(err)
@@ -141,13 +142,13 @@ func (suite *RetrieveSuite) SetupTest() {
 func (suite *RetrieveSuite) TearDownTest() {
 	suite.sealed.Release(context.Background())
 	suite.growing.Release(context.Background())
-	DeleteCollection(suite.collection)
+	segbase.DeleteCollection(suite.collection)
 	ctx := context.Background()
 	suite.chunkManager.RemoveWithPrefix(ctx, suite.rootPath)
 }
 
 func (suite *RetrieveSuite) TestRetrieveSealed() {
-	plan, err := genSimpleRetrievePlan(suite.collection)
+	plan, err := segbase.GenSimpleRetrievePlan(suite.collection)
 	suite.NoError(err)
 
 	req := &querypb.QueryRequest{
@@ -170,7 +171,7 @@ func (suite *RetrieveSuite) TestRetrieveSealed() {
 }
 
 func (suite *RetrieveSuite) TestRetrieveGrowing() {
-	plan, err := genSimpleRetrievePlan(suite.collection)
+	plan, err := segbase.GenSimpleRetrievePlan(suite.collection)
 	suite.NoError(err)
 
 	req := &querypb.QueryRequest{
@@ -193,7 +194,7 @@ func (suite *RetrieveSuite) TestRetrieveGrowing() {
 }
 
 func (suite *RetrieveSuite) TestRetrieveStreamSealed() {
-	plan, err := genSimpleRetrievePlan(suite.collection)
+	plan, err := segbase.GenSimpleRetrievePlan(suite.collection)
 	suite.NoError(err)
 
 	req := &querypb.QueryRequest{
@@ -237,7 +238,7 @@ func (suite *RetrieveSuite) TestRetrieveStreamSealed() {
 }
 
 func (suite *RetrieveSuite) TestRetrieveNonExistSegment() {
-	plan, err := genSimpleRetrievePlan(suite.collection)
+	plan, err := segbase.GenSimpleRetrievePlan(suite.collection)
 	suite.NoError(err)
 
 	req := &querypb.QueryRequest{
@@ -256,7 +257,7 @@ func (suite *RetrieveSuite) TestRetrieveNonExistSegment() {
 }
 
 func (suite *RetrieveSuite) TestRetrieveNilSegment() {
-	plan, err := genSimpleRetrievePlan(suite.collection)
+	plan, err := segbase.GenSimpleRetrievePlan(suite.collection)
 	suite.NoError(err)
 
 	suite.sealed.Release(context.Background())

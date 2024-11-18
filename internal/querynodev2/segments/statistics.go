@@ -18,6 +18,7 @@ package segments
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"sync"
 )
 
@@ -29,7 +30,7 @@ type SegmentStats struct {
 
 // statisticOnSegments performs statistic on listed segments
 // all segment ids are validated before calling this function
-func statisticOnSegments(ctx context.Context, segments []Segment, segType SegmentType) ([]SegmentStats, error) {
+func statisticOnSegments(ctx context.Context, segments []segbase.Segment, segType SegmentType) ([]SegmentStats, error) {
 	// results variables
 	results := make([]SegmentStats, 0, len(segments))
 	resultCh := make(chan SegmentStats, len(segments))
@@ -38,7 +39,7 @@ func statisticOnSegments(ctx context.Context, segments []Segment, segType Segmen
 	var wg sync.WaitGroup
 	for i, segment := range segments {
 		wg.Add(1)
-		go func(segment Segment, i int) {
+		go func(segment segbase.Segment, i int) {
 			defer wg.Done()
 			resultCh <- SegmentStats{
 				SegmentID: segment.ID(),
@@ -59,7 +60,7 @@ func statisticOnSegments(ctx context.Context, segments []Segment, segType Segmen
 // if segIDs is not specified, it will search on all the historical segments specified by partIDs.
 // if segIDs is specified, it will only search on the segments specified by the segIDs.
 // if partIDs is empty, it means all the partitions of the loaded collection or all the partitions loaded.
-func StatisticsHistorical(ctx context.Context, manager *Manager, collID int64, partIDs []int64, segIDs []int64) ([]SegmentStats, []Segment, error) {
+func StatisticsHistorical(ctx context.Context, manager *Manager, collID int64, partIDs []int64, segIDs []int64) ([]SegmentStats, []segbase.Segment, error) {
 	segments, err := validateOnHistorical(ctx, manager, collID, partIDs, segIDs)
 	if err != nil {
 		return nil, nil, err
@@ -70,7 +71,7 @@ func StatisticsHistorical(ctx context.Context, manager *Manager, collID int64, p
 
 // StatisticStreaming will do statistics all the target segments in streaming
 // if partIDs is empty, it means all the partitions of the loaded collection or all the partitions loaded.
-func StatisticStreaming(ctx context.Context, manager *Manager, collID int64, partIDs []int64, segIDs []int64) ([]SegmentStats, []Segment, error) {
+func StatisticStreaming(ctx context.Context, manager *Manager, collID int64, partIDs []int64, segIDs []int64) ([]SegmentStats, []segbase.Segment, error) {
 	segments, err := validateOnStream(ctx, manager, collID, partIDs, segIDs)
 	if err != nil {
 		return nil, nil, err

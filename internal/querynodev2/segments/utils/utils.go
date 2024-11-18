@@ -1,4 +1,4 @@
-package segments
+package utils
 
 /*
 #cgo pkg-config: milvus_core
@@ -16,6 +16,9 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments"
+	common2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
+	"github.com/milvus-io/milvus/pkg/util/testutils"
 	"io"
 	"strconv"
 	"time"
@@ -169,9 +172,9 @@ func getPKsFromColumnBasedInsertMsg(msg *msgstream.InsertMsg, schema *schemapb.C
 	return pks, nil
 }
 
-// mergeRequestCost merge the costs of request, the cost may came from different worker in same channel
+// MergeRequestCost merge the costs of request, the cost may came from different worker in same channel
 // or different channel in same collection, for now we just choose the part with the highest response time
-func mergeRequestCost(requestCosts []*internalpb.CostAggregation) *internalpb.CostAggregation {
+func MergeRequestCost(requestCosts []*internalpb.CostAggregation) *internalpb.CostAggregation {
 	var result *internalpb.CostAggregation
 	for _, cost := range requestCosts {
 		if result == nil || result.ResponseTime < cost.ResponseTime {
@@ -182,13 +185,13 @@ func mergeRequestCost(requestCosts []*internalpb.CostAggregation) *internalpb.Co
 	return result
 }
 
-func getIndexEngineVersion() (minimal, current int32) {
+func GetIndexEngineVersion() (minimal, current int32) {
 	cMinimal, cCurrent := C.GetMinimalIndexVersion(), C.GetCurrentIndexVersion()
 	return int32(cMinimal), int32(cCurrent)
 }
 
-// getSegmentMetricLabel returns the label for segment metrics.
-func getSegmentMetricLabel(segment Segment) metricsutil.SegmentLabel {
+// GetSegmentMetricLabel returns the label for segment metrics.
+func GetSegmentMetricLabel(segment common2.Segment) metricsutil.SegmentLabel {
 	return metricsutil.SegmentLabel{
 		DatabaseName:  segment.DatabaseName(),
 		ResourceGroup: segment.ResourceGroup(),
@@ -205,15 +208,15 @@ func FilterZeroValuesFromSlice(intVals []int64) []int64 {
 	return result
 }
 
-// withLazyLoadTimeoutContext returns a new context with lazy load timeout.
-func withLazyLoadTimeoutContext(ctx context.Context) (context.Context, context.CancelFunc) {
+// WithLazyLoadTimeoutContext returns a new context with lazy load timeout.
+func WithLazyLoadTimeoutContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	lazyLoadTimeout := paramtable.Get().QueryNodeCfg.LazyLoadWaitTimeout.GetAsDuration(time.Millisecond)
 	// TODO: use context.WithTimeoutCause instead of contextutil.WithTimeoutCause in go1.21
 	return contextutil.WithTimeoutCause(ctx, lazyLoadTimeout, errLazyLoadTimeout)
 }
 
-func GetSegmentRelatedDataSize(segment Segment) int64 {
-	if segment.Type() == SegmentTypeSealed {
+func GetSegmentRelatedDataSize(segment common2.Segment) int64 {
+	if segment.Type() == segments.SegmentTypeSealed {
 		return calculateSegmentLogSize(segment.LoadInfo())
 	}
 	return segment.MemSize()
@@ -248,7 +251,7 @@ func getFieldSizeFromFieldBinlog(fieldBinlog *datapb.FieldBinlog) int64 {
 	return fieldSize
 }
 
-func getFieldSchema(schema *schemapb.CollectionSchema, fieldID int64) (*schemapb.FieldSchema, error) {
+func GetFieldSchema(schema *schemapb.CollectionSchema, fieldID int64) (*schemapb.FieldSchema, error) {
 	for _, field := range schema.Fields {
 		if field.FieldID == fieldID {
 			return field, nil
@@ -257,7 +260,7 @@ func getFieldSchema(schema *schemapb.CollectionSchema, fieldID int64) (*schemapb
 	return nil, fmt.Errorf("field %d not found in schema", fieldID)
 }
 
-func isIndexMmapEnable(fieldSchema *schemapb.FieldSchema, indexInfo *querypb.FieldIndexInfo) bool {
+func IsIndexMmapEnable(fieldSchema *schemapb.FieldSchema, indexInfo *querypb.FieldIndexInfo) bool {
 	enableMmap, exist := common.IsMmapIndexEnabled(indexInfo.IndexParams...)
 	if exist {
 		return enableMmap
@@ -275,7 +278,7 @@ func isIndexMmapEnable(fieldSchema *schemapb.FieldSchema, indexInfo *querypb.Fie
 	return indexSupportMmap && defaultEnableMmap
 }
 
-func isDataMmapEnable(fieldSchema *schemapb.FieldSchema) bool {
+func IsDataMmapEnable(fieldSchema *schemapb.FieldSchema) bool {
 	enableMmap, exist := common.IsMmapDataEnabled(fieldSchema.GetTypeParams()...)
 	if exist {
 		return enableMmap
@@ -286,6 +289,13 @@ func isDataMmapEnable(fieldSchema *schemapb.FieldSchema) bool {
 	return params.Params.QueryNodeCfg.MmapScalarField.GetAsBool()
 }
 
-func isGrowingMmapEnable() bool {
+func IsGrowingMmapEnable() bool {
 	return params.Params.QueryNodeCfg.GrowingMmapEnabled.GetAsBool()
+}
+
+func GenFieldData(fieldName string, fieldID int64, fieldType schemapb.DataType, fieldValue interface{}, dim int64) *schemapb.FieldData {
+	if fieldType < 100 {
+		return testutils.GenerateScalarFieldDataWithValue(fieldType, fieldName, fieldID, fieldValue)
+	}
+	return testutils.GenerateVectorFieldDataWithValue(fieldType, fieldName, fieldID, fieldValue, int(dim))
 }

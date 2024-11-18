@@ -18,6 +18,7 @@ package delegator
 
 import (
 	"context"
+	common2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"io"
 	"sync"
 	"testing"
@@ -89,8 +90,8 @@ func (s *DelegatorSuite) SetupTest() {
 	s.loader = &segments.MockLoader{}
 	s.loader.EXPECT().
 		Load(mock.Anything, s.collectionID, segments.SegmentTypeGrowing, int64(0), mock.Anything).
-		Call.Return(func(ctx context.Context, collectionID int64, segmentType segments.SegmentType, version int64, infos ...*querypb.SegmentLoadInfo) []segments.Segment {
-		return lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) segments.Segment {
+		Call.Return(func(ctx context.Context, collectionID int64, segmentType segments.SegmentType, version int64, infos ...*querypb.SegmentLoadInfo) []common2.Segment {
+		return lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) common2.Segment {
 			ms := &segments.MockSegment{}
 			ms.EXPECT().ID().Return(info.GetSegmentID())
 			ms.EXPECT().Type().Return(segments.SegmentTypeGrowing)

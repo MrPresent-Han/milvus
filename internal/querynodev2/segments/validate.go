@@ -19,8 +19,8 @@ package segments
 import (
 	"context"
 	"fmt"
-
 	"github.com/cockroachdb/errors"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/proto/querypb"
@@ -29,7 +29,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/merr"
 )
 
-func validate(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64, segmentFilter SegmentFilter) ([]Segment, error) {
+func validate(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64, segmentFilter SegmentFilter) ([]segbase.Segment, error) {
 	var searchPartIDs []int64
 
 	collection := manager.Collection.Get(collectionID)
@@ -55,11 +55,11 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 	}
 
 	if len(searchPartIDs) == 0 && collection.GetLoadType() == querypb.LoadType_LoadCollection {
-		return []Segment{}, nil
+		return []segbase.Segment{}, nil
 	}
 
 	// validate segment
-	segments := make([]Segment, 0, len(segmentIDs))
+	segments := make([]segbase.Segment, 0, len(segmentIDs))
 	var err error
 	defer func() {
 		if err != nil {
@@ -88,10 +88,10 @@ func validate(ctx context.Context, manager *Manager, collectionID int64, partiti
 	return segments, nil
 }
 
-func validateOnHistorical(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64) ([]Segment, error) {
+func validateOnHistorical(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64) ([]segbase.Segment, error) {
 	return validate(ctx, manager, collectionID, partitionIDs, segmentIDs, WithType(SegmentTypeSealed))
 }
 
-func validateOnStream(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64) ([]Segment, error) {
+func validateOnStream(ctx context.Context, manager *Manager, collectionID int64, partitionIDs []int64, segmentIDs []int64) ([]segbase.Segment, error) {
 	return validate(ctx, manager, collectionID, partitionIDs, segmentIDs, WithType(SegmentTypeGrowing))
 }

@@ -1,4 +1,4 @@
-package segments
+package segbase
 
 import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -6,11 +6,15 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
-type byPK struct {
+type ByPK struct {
 	r *segcorepb.RetrieveResults
 }
 
-func (s *byPK) Len() int {
+func NewByPK(res *segcorepb.RetrieveResults) *ByPK {
+	return &ByPK{r: res}
+}
+
+func (s *ByPK) Len() int {
 	if s.r == nil {
 		return 0
 	}
@@ -25,7 +29,7 @@ func (s *byPK) Len() int {
 	return 0
 }
 
-func (s *byPK) Swap(i, j int) {
+func (s *ByPK) Swap(i, j int) {
 	s.r.Offset[i], s.r.Offset[j] = s.r.Offset[j], s.r.Offset[i]
 
 	typeutil.SwapPK(s.r.GetIds(), i, j)
@@ -35,7 +39,7 @@ func (s *byPK) Swap(i, j int) {
 	}
 }
 
-func (s *byPK) Less(i, j int) bool {
+func (s *ByPK) Less(i, j int) bool {
 	return typeutil.ComparePKInSlice(s.r.GetIds(), i, j)
 }
 

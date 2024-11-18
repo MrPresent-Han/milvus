@@ -19,6 +19,7 @@ package delegator
 import (
 	"context"
 	"fmt"
+	common2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -307,8 +308,8 @@ func (s *DelegatorDataSuite) TestProcessInsert() {
 func (s *DelegatorDataSuite) TestProcessDelete() {
 	s.loader.EXPECT().
 		Load(mock.Anything, s.collectionID, segments.SegmentTypeGrowing, int64(0), mock.Anything).
-		Call.Return(func(ctx context.Context, collectionID int64, segmentType segments.SegmentType, version int64, infos ...*querypb.SegmentLoadInfo) []segments.Segment {
-		return lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) segments.Segment {
+		Call.Return(func(ctx context.Context, collectionID int64, segmentType segments.SegmentType, version int64, infos ...*querypb.SegmentLoadInfo) []common2.Segment {
+		return lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) common2.Segment {
 			ms := &segments.MockSegment{}
 			ms.EXPECT().ID().Return(info.GetSegmentID())
 			ms.EXPECT().Type().Return(segments.SegmentTypeGrowing)
@@ -527,7 +528,7 @@ func (s *DelegatorDataSuite) TestProcessDelete() {
 func (s *DelegatorDataSuite) TestLoadGrowingWithBM25() {
 	s.genCollectionWithFunction()
 	mockSegment := segments.NewMockSegment(s.T())
-	s.loader.EXPECT().Load(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]segments.Segment{mockSegment}, nil)
+	s.loader.EXPECT().Load(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return([]common2.Segment{mockSegment}, nil)
 
 	mockSegment.EXPECT().Partition().Return(111)
 	mockSegment.EXPECT().ID().Return(111)
@@ -861,7 +862,7 @@ func (s *DelegatorDataSuite) TestLoadSegments() {
 			mock.Anything,
 			mock.Anything,
 			mock.Anything,
-		).Return([]segments.Segment{growing0, growing1}, nil)
+		).Return([]common2.Segment{growing0, growing1}, nil)
 
 		err = delegator.LoadGrowing(context.Background(), []*querypb.SegmentLoadInfo{{}, {}}, 100)
 		s.ErrorIs(err, mockErr)
@@ -1268,8 +1269,8 @@ func (s *DelegatorDataSuite) TestBuildBM25IDF() {
 func (s *DelegatorDataSuite) TestReleaseSegment() {
 	s.loader.EXPECT().
 		Load(mock.Anything, s.collectionID, segments.SegmentTypeGrowing, int64(0), mock.Anything).
-		Call.Return(func(ctx context.Context, collectionID int64, segmentType segments.SegmentType, version int64, infos ...*querypb.SegmentLoadInfo) []segments.Segment {
-		return lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) segments.Segment {
+		Call.Return(func(ctx context.Context, collectionID int64, segmentType segments.SegmentType, version int64, infos ...*querypb.SegmentLoadInfo) []common2.Segment {
+		return lo.Map(infos, func(info *querypb.SegmentLoadInfo, _ int) common2.Segment {
 			ms := &segments.MockSegment{}
 			ms.EXPECT().ID().Return(info.GetSegmentID())
 			ms.EXPECT().Type().Return(segments.SegmentTypeGrowing)
@@ -1519,8 +1520,8 @@ func (s *DelegatorDataSuite) TestLevel0Deletions() {
 	err = allPartitionDeleteData.Append(storage.NewInt64PrimaryKey(2), 101)
 	s.Require().NoError(err)
 
-	schema := segments.GenTestCollectionSchema("test_stop", schemapb.DataType_Int64, true)
-	collection := segments.NewCollection(1, schema, nil, &querypb.LoadMetaInfo{
+	schema := common2.GenTestCollectionSchema("test_stop", schemapb.DataType_Int64, true)
+	collection := common2.NewCollection(1, schema, nil, &querypb.LoadMetaInfo{
 		LoadType: querypb.LoadType_LoadCollection,
 	})
 

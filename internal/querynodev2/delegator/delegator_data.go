@@ -19,6 +19,7 @@ package delegator
 import (
 	"context"
 	"fmt"
+	common2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"math/rand"
 	"runtime"
 	"time"
@@ -382,7 +383,7 @@ func (sd *shardDelegator) LoadGrowing(ctx context.Context, infos []*querypb.Segm
 		}
 	}
 
-	segmentIDs = lo.Map(loaded, func(segment segments.Segment, _ int) int64 { return segment.ID() })
+	segmentIDs = lo.Map(loaded, func(segment common2.Segment, _ int) int64 { return segment.ID() })
 	log.Info("load growing segments done", zap.Int64s("segmentIDs", segmentIDs))
 
 	for _, segment := range loaded {
@@ -391,7 +392,7 @@ func (sd *shardDelegator) LoadGrowing(ctx context.Context, infos []*querypb.Segm
 			sd.idfOracle.Register(segment.ID(), segment.GetBM25Stats(), segments.SegmentTypeGrowing)
 		}
 	}
-	sd.addGrowing(lo.Map(loaded, func(segment segments.Segment, _ int) SegmentEntry {
+	sd.addGrowing(lo.Map(loaded, func(segment common2.Segment, _ int) SegmentEntry {
 		return SegmentEntry{
 			NodeID:        paramtable.GetNodeID(),
 			SegmentID:     segment.ID(),
@@ -851,7 +852,7 @@ func (sd *shardDelegator) ReleaseSegments(ctx context.Context, req *querypb.Rele
 	log := sd.getLogger(ctx)
 
 	targetNodeID := req.GetNodeID()
-	level0Segments := typeutil.NewSet(lo.Map(sd.segmentManager.GetBy(segments.WithLevel(datapb.SegmentLevel_L0), segments.WithChannel(sd.vchannelName)), func(segment segments.Segment, _ int) int64 {
+	level0Segments := typeutil.NewSet(lo.Map(sd.segmentManager.GetBy(segments.WithLevel(datapb.SegmentLevel_L0), segments.WithChannel(sd.vchannelName)), func(segment common2.Segment, _ int) int64 {
 		return segment.ID()
 	})...)
 	hasLevel0 := false

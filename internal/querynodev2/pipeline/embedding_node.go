@@ -18,13 +18,13 @@ package pipeline
 
 import (
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/utils"
 
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/querynodev2/delegator"
-	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/function"
 	base "github.com/milvus-io/milvus/internal/util/pipeline"
@@ -116,7 +116,7 @@ func (eNode *embeddingNode) addInsertData(insertDatas map[UniqueID]*delegator.In
 		iData.InsertRecord.NumRows += insertRecord.NumRows
 	}
 
-	pks, err := segments.GetPrimaryKeys(msg, collection.Schema())
+	pks, err := utils.GetPrimaryKeys(msg, collection.Schema())
 	if err != nil {
 		log.Warn("failed to get primary keys from insert message", zap.String("channel", eNode.channel), zap.Error(err))
 		return err

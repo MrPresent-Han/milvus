@@ -27,6 +27,8 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/utils"
 	"sync"
 
 	"go.uber.org/zap"
@@ -52,15 +54,15 @@ var channelMapper = metautil.NewDynChannelMapper()
 
 // SegmentFilter is the interface for segment selection criteria.
 type SegmentFilter interface {
-	Filter(segment Segment) bool
+	Filter(segment segbase.Segment) bool
 	SegmentType() (SegmentType, bool)
 	SegmentIDs() ([]int64, bool)
 }
 
 // SegmentFilterFunc is a type wrapper for `func(Segment) bool` to SegmentFilter.
-type SegmentFilterFunc func(segment Segment) bool
+type SegmentFilterFunc func(segment segbase.Segment) bool
 
-func (f SegmentFilterFunc) Filter(segment Segment) bool {
+func (f SegmentFilterFunc) Filter(segment segbase.Segment) bool {
 	return f(segment)
 }
 
@@ -75,7 +77,7 @@ func (s SegmentFilterFunc) SegmentIDs() ([]int64, bool) {
 // SegmentIDFilter is the specific segment filter for SegmentID only.
 type SegmentIDFilter int64
 
-func (f SegmentIDFilter) Filter(segment Segment) bool {
+func (f SegmentIDFilter) Filter(segment segbase.Segment) bool {
 	return segment.ID() == int64(f)
 }
 
@@ -91,7 +93,7 @@ type SegmentIDsFilter struct {
 	segmentIDs typeutil.Set[int64]
 }
 
-func (f SegmentIDsFilter) Filter(segment Segment) bool {
+func (f SegmentIDsFilter) Filter(segment segbase.Segment) bool {
 	return f.segmentIDs.Contain(segment.ID())
 }
 
@@ -105,7 +107,7 @@ func (f SegmentIDsFilter) SegmentIDs() ([]int64, bool) {
 
 type SegmentTypeFilter SegmentType
 
-func (f SegmentTypeFilter) Filter(segment Segment) bool {
+func (f SegmentTypeFilter) Filter(segment segbase.Segment) bool {
 	return segment.Type() == SegmentType(f)
 }
 
@@ -118,13 +120,13 @@ func (f SegmentTypeFilter) SegmentIDs() ([]int64, bool) {
 }
 
 func WithSkipEmpty() SegmentFilter {
-	return SegmentFilterFunc(func(segment Segment) bool {
+	return SegmentFilterFunc(func(segment segbase.Segment) bool {
 		return segment.InsertCount() > 0
 	})
 }
 
 func WithPartition(partitionID typeutil.UniqueID) SegmentFilter {
-	return SegmentFilterFunc(func(segment Segment) bool {
+	return SegmentFilterFunc(func(segment segbase.Segment) bool {
 		return segment.Partition() == partitionID
 	})
 }
@@ -132,11 +134,11 @@ func WithPartition(partitionID typeutil.UniqueID) SegmentFilter {
 func WithChannel(channel string) SegmentFilter {
 	ac, err := metautil.ParseChannel(channel, channelMapper)
 	if err != nil {
-		return SegmentFilterFunc(func(segment Segment) bool {
+		return SegmentFilterFunc(func(segment segbase.Segment) bool {
 			return false
 		})
 	}
-	return SegmentFilterFunc(func(segment Segment) bool {
+	return SegmentFilterFunc(func(segment segbase.Segment) bool {
 		return segment.Shard().Equal(ac)
 	})
 }
@@ -156,15 +158,15 @@ func WithIDs(ids ...int64) SegmentFilter {
 }
 
 func WithLevel(level datapb.SegmentLevel) SegmentFilter {
-	return SegmentFilterFunc(func(segment Segment) bool {
+	return SegmentFilterFunc(func(segment segbase.Segment) bool {
 		return segment.Level() == level
 	})
 }
 
-type SegmentAction func(segment Segment) bool
+type SegmentAction func(segment segbase.Segment) bool
 
 func IncreaseVersion(version int64) SegmentAction {
-	return func(segment Segment) bool {
+	return func(segment segbase.Segment) bool {
 		log := log.Ctx(context.Background()).With(
 			zap.Int64("segmentID", segment.ID()),
 			zap.String("type", segment.Type().String()),
@@ -182,9 +184,9 @@ func IncreaseVersion(version int64) SegmentAction {
 }
 
 type Manager struct {
-	Collection CollectionManager
+	Collection segbase.CollectionManager
 	Segment    SegmentManager
-	DiskCache  cache.Cache[int64, Segment]
+	DiskCache  cache.Cache[int64, segbase.Segment]
 	Loader     Loader
 }
 
@@ -194,17 +196,17 @@ func NewManager() *Manager {
 	segMgr := NewSegmentManager()
 	sf := singleflight.Group{}
 	manager := &Manager{
-		Collection: NewCollectionManager(),
+		Collection: segbase.NewCollectionManager(),
 		Segment:    segMgr,
 	}
 
-	manager.DiskCache = cache.NewCacheBuilder[int64, Segment]().WithLazyScavenger(func(key int64) int64 {
+	manager.DiskCache = cache.NewCacheBuilder[int64, segbase.Segment]().WithLazyScavenger(func(key int64) int64 {
 		segment := segMgr.GetWithType(key, SegmentTypeSealed)
 		if segment == nil {
 			return 0
 		}
 		return int64(segment.ResourceUsageEstimate().DiskSize)
-	}, diskCap).WithLoader(func(ctx context.Context, key int64) (Segment, error) {
+	}, diskCap).WithLoader(func(ctx context.Context, key int64) (segbase.Segment, error) {
 		log := log.Ctx(ctx)
 		log.Debug("cache missed segment", zap.Int64("segmentID", key))
 		segment := segMgr.GetWithType(key, SegmentTypeSealed)
@@ -215,7 +217,7 @@ func NewManager() *Manager {
 		}
 		info := segment.LoadInfo()
 		_, err, _ := sf.Do(fmt.Sprint(segment.ID()), func() (nop interface{}, err error) {
-			cacheLoadRecord := metricsutil.NewCacheLoadRecord(getSegmentMetricLabel(segment))
+			cacheLoadRecord := metricsutil.NewCacheLoadRecord(utils.GetSegmentMetricLabel(segment))
 			cacheLoadRecord.WithBytes(segment.ResourceUsageEstimate().DiskSize)
 			defer func() {
 				cacheLoadRecord.Finish(err)
@@ -234,15 +236,15 @@ func NewManager() *Manager {
 			return nil, err
 		}
 		return segment, nil
-	}).WithFinalizer(func(ctx context.Context, key int64, segment Segment) error {
+	}).WithFinalizer(func(ctx context.Context, key int64, segment segbase.Segment) error {
 		log := log.Ctx(ctx)
 		log.Debug("evict segment from cache", zap.Int64("segmentID", key))
-		cacheEvictRecord := metricsutil.NewCacheEvictRecord(getSegmentMetricLabel(segment))
+		cacheEvictRecord := metricsutil.NewCacheEvictRecord(utils.GetSegmentMetricLabel(segment))
 		cacheEvictRecord.WithBytes(segment.ResourceUsageEstimate().DiskSize)
 		defer cacheEvictRecord.Finish(nil)
-		segment.Release(ctx, WithReleaseScope(ReleaseScopeData))
+		segment.Release(ctx, segbase.WithReleaseScope(segbase.ReleaseScopeData))
 		return nil
-	}).WithReloader(func(ctx context.Context, key int64) (Segment, error) {
+	}).WithReloader(func(ctx context.Context, key int64) (segbase.Segment, error) {
 		log := log.Ctx(ctx)
 		segment := segMgr.GetWithType(key, SegmentTypeSealed)
 		if segment == nil {
@@ -265,7 +267,7 @@ func NewManager() *Manager {
 		return segment, nil
 	}).Build()
 
-	segMgr.registerReleaseCallback(func(s Segment) {
+	segMgr.registerReleaseCallback(func(s segbase.Segment) {
 		if s.Type() == SegmentTypeSealed {
 			// !!! We cannot use ctx of request to call Remove,
 			// Once context canceled, the segment will be leak in cache forever.
@@ -285,18 +287,18 @@ type SegmentManager interface {
 	// Put puts the given segments in,
 	// and increases the ref count of the corresponding collection,
 	// dup segments will not increase the ref count
-	Put(ctx context.Context, segmentType SegmentType, segments ...Segment)
+	Put(ctx context.Context, segmentType SegmentType, segments ...segbase.Segment)
 	UpdateBy(action SegmentAction, filters ...SegmentFilter) int
-	Get(segmentID typeutil.UniqueID) Segment
-	GetWithType(segmentID typeutil.UniqueID, typ SegmentType) Segment
-	GetBy(filters ...SegmentFilter) []Segment
+	Get(segmentID typeutil.UniqueID) segbase.Segment
+	GetWithType(segmentID typeutil.UniqueID, typ SegmentType) segbase.Segment
+	GetBy(filters ...SegmentFilter) []segbase.Segment
 	// Get segments and acquire the read locks
-	GetAndPinBy(filters ...SegmentFilter) ([]Segment, error)
-	GetAndPin(segments []int64, filters ...SegmentFilter) ([]Segment, error)
-	Unpin(segments []Segment)
+	GetAndPinBy(filters ...SegmentFilter) ([]segbase.Segment, error)
+	GetAndPin(segments []int64, filters ...SegmentFilter) ([]segbase.Segment, error)
+	Unpin(segments []segbase.Segment)
 
-	GetSealed(segmentID typeutil.UniqueID) Segment
-	GetGrowing(segmentID typeutil.UniqueID) Segment
+	GetSealed(segmentID typeutil.UniqueID) segbase.Segment
+	GetGrowing(segmentID typeutil.UniqueID) segbase.Segment
 	Empty() bool
 
 	// Remove removes the given segment,
@@ -317,11 +319,11 @@ var _ SegmentManager = (*segmentManager)(nil)
 type segmentManager struct {
 	mu sync.RWMutex // guards all
 
-	growingSegments map[typeutil.UniqueID]Segment
-	sealedSegments  map[typeutil.UniqueID]Segment
+	growingSegments map[typeutil.UniqueID]segbase.Segment
+	sealedSegments  map[typeutil.UniqueID]segbase.Segment
 
 	// releaseCallback is the callback function when a segment is released.
-	releaseCallback func(s Segment)
+	releaseCallback func(s segbase.Segment)
 
 	growingOnReleasingSegments typeutil.UniqueSet
 	sealedOnReleasingSegments  typeutil.UniqueSet
@@ -329,18 +331,18 @@ type segmentManager struct {
 
 func NewSegmentManager() *segmentManager {
 	return &segmentManager{
-		growingSegments:            make(map[int64]Segment),
-		sealedSegments:             make(map[int64]Segment),
+		growingSegments:            make(map[int64]segbase.Segment),
+		sealedSegments:             make(map[int64]segbase.Segment),
 		growingOnReleasingSegments: typeutil.NewUniqueSet(),
 		sealedOnReleasingSegments:  typeutil.NewUniqueSet(),
 	}
 }
 
-func (mgr *segmentManager) Put(ctx context.Context, segmentType SegmentType, segments ...Segment) {
-	var replacedSegment []Segment
+func (mgr *segmentManager) Put(ctx context.Context, segmentType SegmentType, segments ...segbase.Segment) {
+	var replacedSegment []segbase.Segment
 	mgr.mu.Lock()
 	defer mgr.mu.Unlock()
-	var targetMap map[int64]Segment
+	var targetMap map[int64]segbase.Segment
 	switch segmentType {
 	case SegmentTypeGrowing:
 		targetMap = mgr.growingSegments
@@ -395,7 +397,7 @@ func (mgr *segmentManager) UpdateBy(action SegmentAction, filters ...SegmentFilt
 	defer mgr.mu.RUnlock()
 
 	updated := 0
-	mgr.rangeWithFilter(func(_ int64, _ SegmentType, segment Segment) bool {
+	mgr.rangeWithFilter(func(_ int64, _ SegmentType, segment segbase.Segment) bool {
 		if action(segment) {
 			updated++
 		}
@@ -427,7 +429,7 @@ func (mgr *segmentManager) Exist(segmentID typeutil.UniqueID, typ SegmentType) b
 	return false
 }
 
-func (mgr *segmentManager) Get(segmentID typeutil.UniqueID) Segment {
+func (mgr *segmentManager) Get(segmentID typeutil.UniqueID) segbase.Segment {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
@@ -440,7 +442,7 @@ func (mgr *segmentManager) Get(segmentID typeutil.UniqueID) Segment {
 	return nil
 }
 
-func (mgr *segmentManager) GetWithType(segmentID typeutil.UniqueID, typ SegmentType) Segment {
+func (mgr *segmentManager) GetWithType(segmentID typeutil.UniqueID, typ SegmentType) segbase.Segment {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
@@ -454,23 +456,23 @@ func (mgr *segmentManager) GetWithType(segmentID typeutil.UniqueID, typ SegmentT
 	}
 }
 
-func (mgr *segmentManager) GetBy(filters ...SegmentFilter) []Segment {
+func (mgr *segmentManager) GetBy(filters ...SegmentFilter) []segbase.Segment {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
-	var ret []Segment
-	mgr.rangeWithFilter(func(id int64, _ SegmentType, segment Segment) bool {
+	var ret []segbase.Segment
+	mgr.rangeWithFilter(func(id int64, _ SegmentType, segment segbase.Segment) bool {
 		ret = append(ret, segment)
 		return true
 	}, filters...)
 	return ret
 }
 
-func (mgr *segmentManager) GetAndPinBy(filters ...SegmentFilter) ([]Segment, error) {
+func (mgr *segmentManager) GetAndPinBy(filters ...SegmentFilter) ([]segbase.Segment, error) {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
-	var ret []Segment
+	var ret []segbase.Segment
 	var err error
 	defer func() {
 		if err != nil {
@@ -481,7 +483,7 @@ func (mgr *segmentManager) GetAndPinBy(filters ...SegmentFilter) ([]Segment, err
 		}
 	}()
 
-	mgr.rangeWithFilter(func(id int64, _ SegmentType, segment Segment) bool {
+	mgr.rangeWithFilter(func(id int64, _ SegmentType, segment segbase.Segment) bool {
 		if segment.Level() == datapb.SegmentLevel_L0 {
 			return true
 		}
@@ -496,11 +498,11 @@ func (mgr *segmentManager) GetAndPinBy(filters ...SegmentFilter) ([]Segment, err
 	return ret, err
 }
 
-func (mgr *segmentManager) GetAndPin(segments []int64, filters ...SegmentFilter) ([]Segment, error) {
+func (mgr *segmentManager) GetAndPin(segments []int64, filters ...SegmentFilter) ([]segbase.Segment, error) {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
-	lockedSegments := make([]Segment, 0, len(segments))
+	lockedSegments := make([]segbase.Segment, 0, len(segments))
 	var err error
 	defer func() {
 		if err != nil {
@@ -547,13 +549,13 @@ func (mgr *segmentManager) GetAndPin(segments []int64, filters ...SegmentFilter)
 	return lockedSegments, nil
 }
 
-func (mgr *segmentManager) Unpin(segments []Segment) {
+func (mgr *segmentManager) Unpin(segments []segbase.Segment) {
 	for _, segment := range segments {
 		segment.Unpin()
 	}
 }
 
-func (mgr *segmentManager) rangeWithFilter(process func(id int64, segType SegmentType, segment Segment) bool, filters ...SegmentFilter) {
+func (mgr *segmentManager) rangeWithFilter(process func(id int64, segType SegmentType, segment segbase.Segment) bool, filters ...SegmentFilter) {
 	var segType SegmentType
 	var hasSegType, hasSegIDs bool
 	segmentIDs := typeutil.NewSet[int64]()
@@ -573,7 +575,7 @@ func (mgr *segmentManager) rangeWithFilter(process func(id int64, segType Segmen
 		otherFilters = append(otherFilters, filter)
 	}
 
-	mergedFilter := func(info Segment) bool {
+	mergedFilter := func(info segbase.Segment) bool {
 		for _, filter := range otherFilters {
 			if !filter.Filter(info) {
 				return false
@@ -582,15 +584,15 @@ func (mgr *segmentManager) rangeWithFilter(process func(id int64, segType Segmen
 		return true
 	}
 
-	var candidates map[SegmentType]map[int64]Segment
+	var candidates map[SegmentType]map[int64]segbase.Segment
 	switch segType {
 	case SegmentTypeSealed:
-		candidates = map[SegmentType]map[int64]Segment{SegmentTypeSealed: mgr.sealedSegments}
+		candidates = map[SegmentType]map[int64]segbase.Segment{SegmentTypeSealed: mgr.sealedSegments}
 	case SegmentTypeGrowing:
-		candidates = map[SegmentType]map[int64]Segment{SegmentTypeGrowing: mgr.growingSegments}
+		candidates = map[SegmentType]map[int64]segbase.Segment{SegmentTypeGrowing: mgr.growingSegments}
 	default:
 		if !hasSegType {
-			candidates = map[SegmentType]map[int64]Segment{
+			candidates = map[SegmentType]map[int64]segbase.Segment{
 				SegmentTypeSealed:  mgr.sealedSegments,
 				SegmentTypeGrowing: mgr.growingSegments,
 			}
@@ -619,7 +621,7 @@ func (mgr *segmentManager) rangeWithFilter(process func(id int64, segType Segmen
 	}
 }
 
-func filter(segment Segment, filters ...SegmentFilter) bool {
+func filter(segment segbase.Segment, filters ...SegmentFilter) bool {
 	for _, filter := range filters {
 		if !filter.Filter(segment) {
 			return false
@@ -628,7 +630,7 @@ func filter(segment Segment, filters ...SegmentFilter) bool {
 	return true
 }
 
-func (mgr *segmentManager) GetSealed(segmentID typeutil.UniqueID) Segment {
+func (mgr *segmentManager) GetSealed(segmentID typeutil.UniqueID) segbase.Segment {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
@@ -639,7 +641,7 @@ func (mgr *segmentManager) GetSealed(segmentID typeutil.UniqueID) Segment {
 	return nil
 }
 
-func (mgr *segmentManager) GetGrowing(segmentID typeutil.UniqueID) Segment {
+func (mgr *segmentManager) GetGrowing(segmentID typeutil.UniqueID) segbase.Segment {
 	mgr.mu.RLock()
 	defer mgr.mu.RUnlock()
 
@@ -663,7 +665,7 @@ func (mgr *segmentManager) Remove(ctx context.Context, segmentID typeutil.Unique
 	mgr.mu.Lock()
 
 	var removeGrowing, removeSealed int
-	var growing, sealed Segment
+	var growing, sealed segbase.Segment
 	switch scope {
 	case querypb.DataScope_Streaming:
 		growing = mgr.removeSegmentWithType(SegmentTypeGrowing, segmentID)
@@ -702,7 +704,7 @@ func (mgr *segmentManager) Remove(ctx context.Context, segmentID typeutil.Unique
 	return removeGrowing, removeSealed
 }
 
-func (mgr *segmentManager) removeSegmentWithType(typ SegmentType, segmentID typeutil.UniqueID) Segment {
+func (mgr *segmentManager) removeSegmentWithType(typ SegmentType, segmentID typeutil.UniqueID) segbase.Segment {
 	switch typ {
 	case SegmentTypeGrowing:
 		s, ok := mgr.growingSegments[segmentID]
@@ -729,10 +731,10 @@ func (mgr *segmentManager) removeSegmentWithType(typ SegmentType, segmentID type
 func (mgr *segmentManager) RemoveBy(ctx context.Context, filters ...SegmentFilter) (int, int) {
 	mgr.mu.Lock()
 
-	var removeSegments []Segment
+	var removeSegments []segbase.Segment
 	var removeGrowing, removeSealed int
 
-	mgr.rangeWithFilter(func(id int64, segType SegmentType, segment Segment) bool {
+	mgr.rangeWithFilter(func(id int64, segType SegmentType, segment segbase.Segment) bool {
 		s := mgr.removeSegmentWithType(segType, id)
 		if s != nil {
 			removeSegments = append(removeSegments, s)
@@ -761,13 +763,13 @@ func (mgr *segmentManager) Clear(ctx context.Context) {
 		mgr.growingOnReleasingSegments.Insert(id)
 	}
 	growingWaitForRelease := mgr.growingSegments
-	mgr.growingSegments = make(map[int64]Segment)
+	mgr.growingSegments = make(map[int64]segbase.Segment)
 
 	for id := range mgr.sealedSegments {
 		mgr.sealedOnReleasingSegments.Insert(id)
 	}
 	sealedWaitForRelease := mgr.sealedSegments
-	mgr.sealedSegments = make(map[int64]Segment)
+	mgr.sealedSegments = make(map[int64]segbase.Segment)
 	mgr.updateMetric()
 	mgr.mu.Unlock()
 
@@ -781,7 +783,7 @@ func (mgr *segmentManager) Clear(ctx context.Context) {
 
 // registerReleaseCallback registers the callback function when a segment is released.
 // TODO: bad implementation for keep consistency with DiskCache, need to be refactor.
-func (mgr *segmentManager) registerReleaseCallback(callback func(s Segment)) {
+func (mgr *segmentManager) registerReleaseCallback(callback func(s segbase.Segment)) {
 	mgr.releaseCallback = callback
 }
 
@@ -804,7 +806,7 @@ func (mgr *segmentManager) updateMetric() {
 	metrics.QueryNodeNumPartitions.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Set(float64(partiations.Len()))
 }
 
-func (mgr *segmentManager) release(ctx context.Context, segment Segment) {
+func (mgr *segmentManager) release(ctx context.Context, segment segbase.Segment) {
 	if mgr.releaseCallback != nil {
 		mgr.releaseCallback(segment)
 		log.Ctx(ctx).Info("remove segment from cache", zap.Int64("segmentID", segment.ID()))

@@ -19,6 +19,8 @@ package querynodev2
 import (
 	"context"
 	"fmt"
+	segReduce "github.com/milvus-io/milvus/internal/querynodev2/segments/reduce"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"strconv"
 
 	"github.com/samber/lo"
@@ -242,7 +244,7 @@ func (node *QueryNode) queryChannel(ctx context.Context, req *querypb.QueryReque
 		return nil, err
 	}
 
-	reducer := segments.CreateInternalReducer(req, collection.Schema())
+	reducer := segReduce.CreateInternalReducer(req, collection.Schema())
 
 	resp, err := reducer.Reduce(ctx, results)
 	if err != nil {
@@ -393,7 +395,7 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		req.GetSegmentIDs(),
 	))
 
-	resp, err := segments.ReduceSearchOnQueryNode(ctx, results,
+	resp, err := segReduce.ReduceSearchOnQueryNode(ctx, results,
 		reduce.NewReduceSearchResultInfo(req.GetReq().GetNq(),
 			req.GetReq().GetTopk()).WithMetricType(req.GetReq().GetMetricType()).WithGroupByField(req.GetReq().GetGroupByFieldId()).
 			WithGroupSize(req.GetReq().GetGroupByFieldId()).WithAdvance(req.GetReq().GetIsAdvanced()))
@@ -427,7 +429,7 @@ func (node *QueryNode) getChannelStatistics(ctx context.Context, req *querypb.Ge
 	if req.GetFromShardLeader() {
 		var (
 			results      []segments.SegmentStats
-			readSegments []segments.Segment
+			readSegments []segbase.Segment
 			err          error
 		)
 

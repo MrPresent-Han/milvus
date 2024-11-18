@@ -18,6 +18,7 @@ package pipeline
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"testing"
 
 	"github.com/samber/lo"
@@ -108,8 +109,8 @@ func (suite *PipelineTestSuite) SetupTest() {
 func (suite *PipelineTestSuite) TestBasic() {
 	// init mock
 	//	mock collection manager
-	schema := segments.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
-	collection := segments.NewCollection(suite.collectionID, schema, segments.GenTestIndexMeta(suite.collectionID, schema), &querypb.LoadMetaInfo{
+	schema := segbase.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
+	collection := segbase.NewCollection(suite.collectionID, schema, segbase.GenTestIndexMeta(suite.collectionID, schema), &querypb.LoadMetaInfo{
 		LoadType: querypb.LoadType_LoadCollection,
 	})
 	suite.collectionManager.EXPECT().Get(suite.collectionID).Return(collection)

@@ -24,6 +24,7 @@ import "C"
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"unsafe"
 
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -36,7 +37,7 @@ type LoadFieldDataInfo struct {
 func newLoadFieldDataInfo(ctx context.Context) (*LoadFieldDataInfo, error) {
 	var status C.CStatus
 	var cLoadFieldDataInfo C.CLoadFieldDataInfo
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		status = C.NewLoadFieldDataInfo(&cLoadFieldDataInfo)
 		return nil, nil
 	}).Await()
@@ -47,7 +48,7 @@ func newLoadFieldDataInfo(ctx context.Context) (*LoadFieldDataInfo, error) {
 }
 
 func deleteFieldDataInfo(info *LoadFieldDataInfo) {
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		C.DeleteLoadFieldDataInfo(info.cLoadFieldDataInfo)
 		return nil, nil
 	}).Await()
@@ -55,7 +56,7 @@ func deleteFieldDataInfo(info *LoadFieldDataInfo) {
 
 func (ld *LoadFieldDataInfo) appendLoadFieldInfo(ctx context.Context, fieldID int64, rowCount int64) error {
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cFieldID := C.int64_t(fieldID)
 		cRowCount := C.int64_t(rowCount)
 
@@ -68,7 +69,7 @@ func (ld *LoadFieldDataInfo) appendLoadFieldInfo(ctx context.Context, fieldID in
 
 func (ld *LoadFieldDataInfo) appendLoadFieldDataPath(ctx context.Context, fieldID int64, binlog *datapb.Binlog) error {
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cFieldID := C.int64_t(fieldID)
 		cEntriesNum := C.int64_t(binlog.GetEntriesNum())
 		cFile := C.CString(binlog.GetLogPath())
@@ -82,7 +83,7 @@ func (ld *LoadFieldDataInfo) appendLoadFieldDataPath(ctx context.Context, fieldI
 }
 
 func (ld *LoadFieldDataInfo) enableMmap(fieldID int64, enabled bool) {
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cFieldID := C.int64_t(fieldID)
 		cEnabled := C.bool(enabled)
 
@@ -92,7 +93,7 @@ func (ld *LoadFieldDataInfo) enableMmap(fieldID int64, enabled bool) {
 }
 
 func (ld *LoadFieldDataInfo) appendMMapDirPath(dir string) {
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cDir := C.CString(dir)
 		defer C.free(unsafe.Pointer(cDir))
 
@@ -102,7 +103,7 @@ func (ld *LoadFieldDataInfo) appendMMapDirPath(dir string) {
 }
 
 func (ld *LoadFieldDataInfo) appendURI(uri string) {
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cURI := C.CString(uri)
 		defer C.free(unsafe.Pointer(cURI))
 		C.SetUri(ld.cLoadFieldDataInfo, cURI)
@@ -112,7 +113,7 @@ func (ld *LoadFieldDataInfo) appendURI(uri string) {
 }
 
 func (ld *LoadFieldDataInfo) appendStorageVersion(version int64) {
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cVersion := C.int64_t(version)
 		C.SetStorageVersion(ld.cLoadFieldDataInfo, cVersion)
 

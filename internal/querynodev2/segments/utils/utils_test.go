@@ -1,6 +1,7 @@
-package segments
+package utils
 
 import (
+	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -28,8 +29,8 @@ func TestFilterZeroValuesFromSlice(t *testing.T) {
 
 func TestGetSegmentRelatedDataSize(t *testing.T) {
 	t.Run("seal segment", func(t *testing.T) {
-		segment := NewMockSegment(t)
-		segment.EXPECT().Type().Return(SegmentTypeSealed)
+		segment := segments.NewMockSegment(t)
+		segment.EXPECT().Type().Return(segments.SegmentTypeSealed)
 		segment.EXPECT().LoadInfo().Return(&querypb.SegmentLoadInfo{
 			BinlogPaths: []*datapb.FieldBinlog{
 				{
@@ -73,8 +74,8 @@ func TestGetSegmentRelatedDataSize(t *testing.T) {
 	})
 
 	t.Run("growing segment", func(t *testing.T) {
-		segment := NewMockSegment(t)
-		segment.EXPECT().Type().Return(SegmentTypeGrowing)
+		segment := segments.NewMockSegment(t)
+		segment.EXPECT().Type().Return(segments.SegmentTypeGrowing)
 		segment.EXPECT().MemSize().Return(int64(100))
 		assert.EqualValues(t, 100, GetSegmentRelatedDataSize(segment))
 	})
@@ -82,7 +83,7 @@ func TestGetSegmentRelatedDataSize(t *testing.T) {
 
 func TestGetFieldSchema(t *testing.T) {
 	t.Run("no error", func(t *testing.T) {
-		filedSchema, err := getFieldSchema(&schemapb.CollectionSchema{
+		filedSchema, err := GetFieldSchema(&schemapb.CollectionSchema{
 			Fields: []*schemapb.FieldSchema{
 				{
 					FieldID: 1,
@@ -94,7 +95,7 @@ func TestGetFieldSchema(t *testing.T) {
 	})
 
 	t.Run("error", func(t *testing.T) {
-		filedSchema, err := getFieldSchema(&schemapb.CollectionSchema{
+		filedSchema, err := GetFieldSchema(&schemapb.CollectionSchema{
 			Fields: []*schemapb.FieldSchema{
 				{
 					FieldID: 2,
@@ -110,7 +111,7 @@ func TestIsIndexMmapEnable(t *testing.T) {
 	paramtable.Init()
 
 	t.Run("mmap index param exist", func(t *testing.T) {
-		enable := isIndexMmapEnable(&schemapb.FieldSchema{}, &querypb.FieldIndexInfo{
+		enable := IsIndexMmapEnable(&schemapb.FieldSchema{}, &querypb.FieldIndexInfo{
 			IndexParams: []*commonpb.KeyValuePair{
 				{
 					Key:   common.MmapEnabledKey,
@@ -124,7 +125,7 @@ func TestIsIndexMmapEnable(t *testing.T) {
 	t.Run("mmap vector index param not exist", func(t *testing.T) {
 		paramtable.Get().Save(paramtable.Get().QueryNodeCfg.MmapVectorIndex.Key, "true")
 		defer paramtable.Get().Reset(paramtable.Get().QueryNodeCfg.MmapVectorIndex.Key)
-		enable := isIndexMmapEnable(&schemapb.FieldSchema{
+		enable := IsIndexMmapEnable(&schemapb.FieldSchema{
 			DataType: schemapb.DataType_FloatVector,
 		}, &querypb.FieldIndexInfo{
 			IndexParams: []*commonpb.KeyValuePair{
@@ -140,7 +141,7 @@ func TestIsIndexMmapEnable(t *testing.T) {
 	t.Run("mmap scalar index param not exist", func(t *testing.T) {
 		paramtable.Get().Save(paramtable.Get().QueryNodeCfg.MmapScalarIndex.Key, "true")
 		defer paramtable.Get().Reset(paramtable.Get().QueryNodeCfg.MmapScalarIndex.Key)
-		enable := isIndexMmapEnable(&schemapb.FieldSchema{
+		enable := IsIndexMmapEnable(&schemapb.FieldSchema{
 			DataType: schemapb.DataType_String,
 		}, &querypb.FieldIndexInfo{
 			IndexParams: []*commonpb.KeyValuePair{
@@ -158,7 +159,7 @@ func TestIsDataMmmapEnable(t *testing.T) {
 	paramtable.Init()
 
 	t.Run("mmap data param exist", func(t *testing.T) {
-		enable := isDataMmapEnable(&schemapb.FieldSchema{
+		enable := IsDataMmapEnable(&schemapb.FieldSchema{
 			TypeParams: []*commonpb.KeyValuePair{
 				{
 					Key:   common.MmapEnabledKey,
@@ -172,7 +173,7 @@ func TestIsDataMmmapEnable(t *testing.T) {
 	t.Run("mmap scalar data param not exist", func(t *testing.T) {
 		paramtable.Get().Save(paramtable.Get().QueryNodeCfg.MmapScalarField.Key, "true")
 		defer paramtable.Get().Reset(paramtable.Get().QueryNodeCfg.MmapScalarField.Key)
-		enable := isDataMmapEnable(&schemapb.FieldSchema{
+		enable := IsDataMmapEnable(&schemapb.FieldSchema{
 			DataType: schemapb.DataType_String,
 		})
 		assert.True(t, enable)
@@ -181,7 +182,7 @@ func TestIsDataMmmapEnable(t *testing.T) {
 	t.Run("mmap vector data param not exist", func(t *testing.T) {
 		paramtable.Get().Save(paramtable.Get().QueryNodeCfg.MmapVectorField.Key, "true")
 		defer paramtable.Get().Reset(paramtable.Get().QueryNodeCfg.MmapVectorField.Key)
-		enable := isDataMmapEnable(&schemapb.FieldSchema{
+		enable := IsDataMmapEnable(&schemapb.FieldSchema{
 			DataType: schemapb.DataType_FloatVector,
 		})
 		assert.True(t, enable)

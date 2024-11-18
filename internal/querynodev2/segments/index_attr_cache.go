@@ -25,6 +25,7 @@ import "C"
 
 import (
 	"fmt"
+	common2 "github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"unsafe"
 
 	"github.com/milvus-io/milvus/internal/proto/datapb"
@@ -78,7 +79,7 @@ func (c *IndexAttrCache) GetIndexResourceUsage(indexInfo *querypb.FieldIndexInfo
 	if !has {
 		isLoadWithDisk, _, _ = c.sf.Do(fmt.Sprintf("%s_%d", indexType, engineVersion), func() (bool, error) {
 			var result bool
-			GetDynamicPool().Submit(func() (any, error) {
+			common2.GetDynamicPool().Submit(func() (any, error) {
 				cIndexType := C.CString(indexType)
 				defer C.free(unsafe.Pointer(cIndexType))
 				cEngineVersion := C.int32_t(indexInfo.GetCurrentIndexVersion())

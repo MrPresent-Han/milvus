@@ -17,6 +17,7 @@
 package pipeline
 
 import (
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"testing"
 
 	"github.com/samber/lo"
@@ -58,10 +59,10 @@ func (suite *InsertNodeSuite) SetupSuite() {
 
 func (suite *InsertNodeSuite) TestBasic() {
 	// data
-	schema := segments.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
+	schema := segbase.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
 	in := suite.buildInsertNodeMsg(schema)
 
-	collection := segments.NewCollection(suite.collectionID, schema, segments.GenTestIndexMeta(suite.collectionID, schema), &querypb.LoadMetaInfo{
+	collection := segbase.NewCollection(suite.collectionID, schema, segbase.GenTestIndexMeta(suite.collectionID, schema), &querypb.LoadMetaInfo{
 		LoadType: querypb.LoadType_LoadCollection,
 	})
 	collection.AddPartition(suite.partitionID)
@@ -94,10 +95,10 @@ func (suite *InsertNodeSuite) TestBasic() {
 }
 
 func (suite *InsertNodeSuite) TestDataTypeNotSupported() {
-	schema := segments.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
+	schema := segbase.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
 	in := suite.buildInsertNodeMsg(schema)
 
-	collection := segments.NewCollection(suite.collectionID, schema, segments.GenTestIndexMeta(suite.collectionID, schema), &querypb.LoadMetaInfo{
+	collection := segbase.NewCollection(suite.collectionID, schema, segbase.GenTestIndexMeta(suite.collectionID, schema), &querypb.LoadMetaInfo{
 		LoadType: querypb.LoadType_LoadCollection,
 	})
 	collection.AddPartition(suite.partitionID)

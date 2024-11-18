@@ -18,6 +18,7 @@ package pipeline
 
 import (
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -129,7 +130,7 @@ func (suite *EmbeddingNodeSuite) TestCreateEmbeddingNode() {
 
 	suite.Run("function invalid", func() {
 		collSchema := proto.Clone(suite.collectionSchema).(*schemapb.CollectionSchema)
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, collSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, collSchema)
 		collection.Schema().Functions = []*schemapb.FunctionSchema{{}}
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Once()
 		_, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
@@ -138,7 +139,7 @@ func (suite *EmbeddingNodeSuite) TestCreateEmbeddingNode() {
 
 	suite.Run("normal case", func() {
 		collSchema := proto.Clone(suite.collectionSchema).(*schemapb.CollectionSchema)
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, collSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, collSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Once()
 		_, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)
@@ -147,7 +148,7 @@ func (suite *EmbeddingNodeSuite) TestCreateEmbeddingNode() {
 
 func (suite *EmbeddingNodeSuite) TestOperator() {
 	suite.Run("collection not found", func() {
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Once()
 		node, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)
@@ -159,7 +160,7 @@ func (suite *EmbeddingNodeSuite) TestOperator() {
 	})
 
 	suite.Run("add InsertData Failed", func() {
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Times(2)
 		node, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)
@@ -188,7 +189,7 @@ func (suite *EmbeddingNodeSuite) TestOperator() {
 	})
 
 	suite.Run("normal case", func() {
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Times(2)
 		node, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)
@@ -209,7 +210,7 @@ func (suite *EmbeddingNodeSuite) TestOperator() {
 
 func (suite *EmbeddingNodeSuite) TestAddInsertData() {
 	suite.Run("transfer insert msg failed", func() {
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Once()
 		node, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)
@@ -233,7 +234,7 @@ func (suite *EmbeddingNodeSuite) TestAddInsertData() {
 			suite.collectionSchema.Fields[1].IsPrimaryKey = true
 		}()
 
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Once()
 		node, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)
@@ -246,7 +247,7 @@ func (suite *EmbeddingNodeSuite) TestAddInsertData() {
 
 func (suite *EmbeddingNodeSuite) TestBM25Embedding() {
 	suite.Run("function run failed", func() {
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Once()
 		node, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)
@@ -261,7 +262,7 @@ func (suite *EmbeddingNodeSuite) TestBM25Embedding() {
 	})
 
 	suite.Run("output with unknown type failed", func() {
-		collection := segments.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
+		collection := segbase.NewCollectionWithoutSegcoreForTest(suite.collectionID, suite.collectionSchema)
 		suite.colManager.EXPECT().Get(suite.collectionID).Return(collection).Once()
 		node, err := newEmbeddingNode(suite.collectionID, suite.channel, suite.manager, 128)
 		suite.NoError(err)

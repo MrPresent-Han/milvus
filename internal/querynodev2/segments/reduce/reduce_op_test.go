@@ -14,10 +14,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package segments
+package reduce
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/utils"
 	"math"
 	"sort"
 	"testing"
@@ -50,7 +52,7 @@ type ResultSuite struct {
 }
 
 func MergeSegcoreRetrieveResultsV1(ctx context.Context, retrieveResults []*segcorepb.RetrieveResults, param *mergeParam) (*segcorepb.RetrieveResults, error) {
-	plan := &RetrievePlan{ignoreNonPk: false}
+	plan, _ := segbase.NewRetrievePlan(context.Background(), nil, nil, uint64(0), 0, false)
 	return MergeSegcoreRetrieveResults(ctx, retrieveResults, param, nil, plan, nil)
 }
 
@@ -66,14 +68,14 @@ func (suite *ResultSuite) TestResult_MergeSegcoreRetrieveResults() {
 	FloatVector := []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 11.0, 22.0, 33.0, 44.0, 55.0, 66.0, 77.0, 88.0}
 
 	var fieldDataArray1 []*schemapb.FieldData
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{1000, 2000}, 1))
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{1000, 2000}, 1))
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
 
 	var fieldDataArray2 []*schemapb.FieldData
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000}, 1))
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000}, 1))
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
 
 	suite.Run("test skip dupPK 2", func() {
 		result1 := &segcorepb.RetrieveResults{
@@ -114,14 +116,14 @@ func (suite *ResultSuite) TestResult_MergeSegcoreRetrieveResults() {
 
 	suite.Run("test_duppk_multipke_segment", func() {
 		var fieldsData1 []*schemapb.FieldData
-		fieldsData1 = append(fieldsData1, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000}, 1))
-		fieldsData1 = append(fieldsData1, genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, []int64{1, 1}, 1))
-		fieldsData1 = append(fieldsData1, genFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
+		fieldsData1 = append(fieldsData1, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000}, 1))
+		fieldsData1 = append(fieldsData1, utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, []int64{1, 1}, 1))
+		fieldsData1 = append(fieldsData1, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
 
 		var fieldsData2 []*schemapb.FieldData
-		fieldsData2 = append(fieldsData2, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2500}, 1))
-		fieldsData2 = append(fieldsData2, genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, []int64{1}, 1))
-		fieldsData2 = append(fieldsData2, genFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:8], Dim))
+		fieldsData2 = append(fieldsData2, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2500}, 1))
+		fieldsData2 = append(fieldsData2, utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, []int64{1}, 1))
+		fieldsData2 = append(fieldsData2, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:8], Dim))
 
 		result1 := &segcorepb.RetrieveResults{
 			Ids: &schemapb.IDs{
@@ -254,7 +256,7 @@ func (suite *ResultSuite) TestResult_MergeSegcoreRetrieveResults() {
 				ids[i] = int64(i)
 				offsets[i] = int64(i)
 			}
-			fieldData := genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, ids, 1)
+			fieldData := utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, ids, 1)
 
 			result := &segcorepb.RetrieveResults{
 				Ids: &schemapb.IDs{
@@ -333,14 +335,14 @@ func (suite *ResultSuite) TestResult_MergeInternalRetrieveResults() {
 	FloatVector := []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 11.0, 22.0, 33.0, 44.0, 55.0, 66.0, 77.0, 88.0}
 
 	var fieldDataArray1 []*schemapb.FieldData
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{1000, 2000}, 1))
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{1000, 2000}, 1))
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
 
 	var fieldDataArray2 []*schemapb.FieldData
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000}, 1))
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000}, 1))
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, Int64Array[0:2], 1))
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID, schemapb.DataType_FloatVector, FloatVector[0:16], Dim))
 
 	suite.Run("test skip dupPK 2", func() {
 		result1 := &internalpb.RetrieveResults{
@@ -395,9 +397,9 @@ func (suite *ResultSuite) TestResult_MergeInternalRetrieveResults() {
 				},
 			},
 			FieldsData: []*schemapb.FieldData{
-				genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64,
+				utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64,
 					[]int64{1, 2}, 1),
-				genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64,
+				utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64,
 					[]int64{3, 4}, 1),
 			},
 		}
@@ -410,9 +412,9 @@ func (suite *ResultSuite) TestResult_MergeInternalRetrieveResults() {
 				},
 			},
 			FieldsData: []*schemapb.FieldData{
-				genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64,
+				utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64,
 					[]int64{5, 6}, 1),
-				genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64,
+				utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64,
 					[]int64{7, 8}, 1),
 			},
 		}
@@ -493,7 +495,7 @@ func (suite *ResultSuite) TestResult_MergeInternalRetrieveResults() {
 				ids[i] = int64(i)
 				offsets[i] = int64(i)
 			}
-			fieldData := genFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, ids, 1)
+			fieldData := utils.GenFieldData(Int64FieldName, Int64FieldID, schemapb.DataType_Int64, ids, 1)
 
 			result := &internalpb.RetrieveResults{
 				Ids: &schemapb.IDs{
@@ -572,17 +574,17 @@ func (suite *ResultSuite) TestResult_MergeStopForBestResult() {
 	FloatVector := []float32{1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 11.0, 22.0, 33.0, 44.0}
 
 	var fieldDataArray1 []*schemapb.FieldData
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{1000, 2000, 3000}, 1))
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(Int64FieldName, Int64FieldID,
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{1000, 2000, 3000}, 1))
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(Int64FieldName, Int64FieldID,
 		schemapb.DataType_Int64, Int64Array[0:3], 1))
-	fieldDataArray1 = append(fieldDataArray1, genFieldData(FloatVectorFieldName, FloatVectorFieldID,
+	fieldDataArray1 = append(fieldDataArray1, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID,
 		schemapb.DataType_FloatVector, FloatVector[0:12], Dim))
 
 	var fieldDataArray2 []*schemapb.FieldData
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000, 4000}, 1))
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(Int64FieldName, Int64FieldID,
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000, 3000, 4000}, 1))
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(Int64FieldName, Int64FieldID,
 		schemapb.DataType_Int64, Int64Array[0:3], 1))
-	fieldDataArray2 = append(fieldDataArray2, genFieldData(FloatVectorFieldName, FloatVectorFieldID,
+	fieldDataArray2 = append(fieldDataArray2, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID,
 		schemapb.DataType_FloatVector, FloatVector[0:12], Dim))
 
 	suite.Run("test stop seg core merge for best", func() {
@@ -712,10 +714,10 @@ func (suite *ResultSuite) TestResult_MergeStopForBestResult() {
 			FieldsData: fieldDataArray1,
 		}
 		var drainDataArray2 []*schemapb.FieldData
-		drainDataArray2 = append(drainDataArray2, genFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000}, 1))
-		drainDataArray2 = append(drainDataArray2, genFieldData(Int64FieldName, Int64FieldID,
+		drainDataArray2 = append(drainDataArray2, utils.GenFieldData(common.TimeStampFieldName, common.TimeStampField, schemapb.DataType_Int64, []int64{2000}, 1))
+		drainDataArray2 = append(drainDataArray2, utils.GenFieldData(Int64FieldName, Int64FieldID,
 			schemapb.DataType_Int64, Int64Array[0:1], 1))
-		drainDataArray2 = append(drainDataArray2, genFieldData(FloatVectorFieldName, FloatVectorFieldID,
+		drainDataArray2 = append(drainDataArray2, utils.GenFieldData(FloatVectorFieldName, FloatVectorFieldID,
 			schemapb.DataType_FloatVector, FloatVector[0:4], Dim))
 		result2 := &internalpb.RetrieveResults{
 			Ids: &schemapb.IDs{
@@ -878,28 +880,28 @@ func (suite *ResultSuite) TestSort() {
 		},
 		Offset: []int64{5, 4, 3, 2, 9, 8, 7, 6},
 		FieldsData: []*schemapb.FieldData{
-			genFieldData("int64 field", 100, schemapb.DataType_Int64,
+			utils.GenFieldData("int64 field", 100, schemapb.DataType_Int64,
 				[]int64{5, 4, 3, 2, 9, 8, 7, 6}, 1),
-			genFieldData("double field", 101, schemapb.DataType_Double,
+			utils.GenFieldData("double field", 101, schemapb.DataType_Double,
 				[]float64{5, 4, 3, 2, 9, 8, 7, 6}, 1),
-			genFieldData("string field", 102, schemapb.DataType_VarChar,
+			utils.GenFieldData("string field", 102, schemapb.DataType_VarChar,
 				[]string{"5", "4", "3", "2", "9", "8", "7", "6"}, 1),
-			genFieldData("bool field", 103, schemapb.DataType_Bool,
+			utils.GenFieldData("bool field", 103, schemapb.DataType_Bool,
 				[]bool{false, true, false, true, false, true, false, true}, 1),
-			genFieldData("float field", 104, schemapb.DataType_Float,
+			utils.GenFieldData("float field", 104, schemapb.DataType_Float,
 				[]float32{5, 4, 3, 2, 9, 8, 7, 6}, 1),
-			genFieldData("int field", 105, schemapb.DataType_Int32,
+			utils.GenFieldData("int field", 105, schemapb.DataType_Int32,
 				[]int32{5, 4, 3, 2, 9, 8, 7, 6}, 1),
-			genFieldData("float vector field", 106, schemapb.DataType_FloatVector,
+			utils.GenFieldData("float vector field", 106, schemapb.DataType_FloatVector,
 				[]float32{5, 4, 3, 2, 9, 8, 7, 6}, 1),
-			genFieldData("binary vector field", 107, schemapb.DataType_BinaryVector,
+			utils.GenFieldData("binary vector field", 107, schemapb.DataType_BinaryVector,
 				[]byte{5, 4, 3, 2, 9, 8, 7, 6}, 8),
-			genFieldData("json field", 108, schemapb.DataType_JSON,
+			utils.GenFieldData("json field", 108, schemapb.DataType_JSON,
 				[][]byte{
 					[]byte("{\"5\": 5}"), []byte("{\"4\": 4}"), []byte("{\"3\": 3}"), []byte("{\"2\": 2}"),
 					[]byte("{\"9\": 9}"), []byte("{\"8\": 8}"), []byte("{\"7\": 7}"), []byte("{\"6\": 6}"),
 				}, 1),
-			genFieldData("json field", 108, schemapb.DataType_Array,
+			utils.GenFieldData("json field", 108, schemapb.DataType_Array,
 				[]*schemapb.ScalarField{
 					{Data: &schemapb.ScalarField_IntData{IntData: &schemapb.IntArray{Data: []int32{5, 6, 7}}}},
 					{Data: &schemapb.ScalarField_IntData{IntData: &schemapb.IntArray{Data: []int32{4, 5, 6}}}},
@@ -913,7 +915,7 @@ func (suite *ResultSuite) TestSort() {
 		},
 	}
 
-	sort.Sort(&byPK{result})
+	sort.Sort(segbase.NewByPK(result))
 
 	suite.Equal([]int64{2, 3, 4, 5, 6, 7, 8, 9}, result.GetIds().GetIntId().GetData())
 	suite.Equal([]int64{2, 3, 4, 5, 6, 7, 8, 9}, result.GetOffset())
@@ -1004,7 +1006,7 @@ func TestResult_MergeRequestCost(t *testing.T) {
 		},
 	}
 
-	channelCost := mergeRequestCost(costs)
+	channelCost := utils.MergeRequestCost(costs)
 	assert.Equal(t, int64(41), channelCost.ResponseTime)
 	assert.Equal(t, int64(42), channelCost.ServiceTime)
 	assert.Equal(t, int64(43), channelCost.TotalNQ)

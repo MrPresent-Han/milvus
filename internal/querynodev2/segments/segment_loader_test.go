@@ -19,6 +19,7 @@ package segments
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"math/rand"
 	"testing"
 	"time"
@@ -84,8 +85,8 @@ func (suite *SegmentLoaderSuite) SetupTest() {
 	initcore.InitRemoteChunkManager(paramtable.Get())
 
 	// Data
-	suite.schema = GenTestCollectionSchema("test", schemapb.DataType_Int64, false)
-	indexMeta := GenTestIndexMeta(suite.collectionID, suite.schema)
+	suite.schema = segbase.GenTestCollectionSchema("test", schemapb.DataType_Int64, false)
+	indexMeta := segbase.GenTestIndexMeta(suite.collectionID, suite.schema)
 	loadMeta := &querypb.LoadMetaInfo{
 		LoadType:     querypb.LoadType_LoadCollection,
 		CollectionID: suite.collectionID,
@@ -100,8 +101,8 @@ func (suite *SegmentLoaderSuite) SetupBM25() {
 	suite.loader = NewLoader(suite.manager, suite.chunkManager)
 	initcore.InitRemoteChunkManager(paramtable.Get())
 
-	suite.schema = GenTestBM25CollectionSchema("test")
-	indexMeta := GenTestIndexMeta(suite.collectionID, suite.schema)
+	suite.schema = segbase.GenTestBM25CollectionSchema("test")
+	indexMeta := segbase.GenTestIndexMeta(suite.collectionID, suite.schema)
 	loadMeta := &querypb.LoadMetaInfo{
 		LoadType:     querypb.LoadType_LoadCollection,
 		CollectionID: suite.collectionID,
@@ -124,7 +125,7 @@ func (suite *SegmentLoaderSuite) TestLoad() {
 	msgLength := 4
 
 	// Load sealed
-	binlogs, statsLogs, err := SaveBinLog(ctx,
+	binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID,
@@ -146,7 +147,7 @@ func (suite *SegmentLoaderSuite) TestLoad() {
 	suite.NoError(err)
 
 	// Load growing
-	binlogs, statsLogs, err = SaveBinLog(ctx,
+	binlogs, statsLogs, err = segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID+1,
@@ -174,7 +175,7 @@ func (suite *SegmentLoaderSuite) TestLoadFail() {
 	msgLength := 4
 
 	// Load sealed
-	binlogs, statsLogs, err := SaveBinLog(ctx,
+	binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID,
@@ -211,7 +212,7 @@ func (suite *SegmentLoaderSuite) TestLoadMultipleSegments() {
 	// Load sealed
 	for i := 0; i < suite.segmentNum; i++ {
 		segmentID := suite.segmentID + int64(i)
-		binlogs, statsLogs, err := SaveBinLog(ctx,
+		binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 			suite.collectionID,
 			suite.partitionID,
 			segmentID,
@@ -247,7 +248,7 @@ func (suite *SegmentLoaderSuite) TestLoadMultipleSegments() {
 	loadInfos = loadInfos[:0]
 	for i := 0; i < suite.segmentNum; i++ {
 		segmentID := suite.segmentID + int64(suite.segmentNum) + int64(i)
-		binlogs, statsLogs, err := SaveBinLog(ctx,
+		binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 			suite.collectionID,
 			suite.partitionID,
 			segmentID,
@@ -287,7 +288,7 @@ func (suite *SegmentLoaderSuite) TestLoadWithIndex() {
 	// Load sealed
 	for i := 0; i < suite.segmentNum; i++ {
 		segmentID := suite.segmentID + int64(i)
-		binlogs, statsLogs, err := SaveBinLog(ctx,
+		binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 			suite.collectionID,
 			suite.partitionID,
 			segmentID,
@@ -298,13 +299,13 @@ func (suite *SegmentLoaderSuite) TestLoadWithIndex() {
 		suite.NoError(err)
 
 		vecFields := funcutil.GetVecFieldIDs(suite.schema)
-		indexInfo, err := GenAndSaveIndex(
+		indexInfo, err := segbase.GenAndSaveIndex(
 			suite.collectionID,
 			suite.partitionID,
 			segmentID,
 			vecFields[0],
 			msgLength,
-			IndexFaissIVFFlat,
+			segbase.IndexFaissIVFFlat,
 			metric.L2,
 			suite.chunkManager,
 		)
@@ -338,7 +339,7 @@ func (suite *SegmentLoaderSuite) TestLoadBloomFilter() {
 	// Load sealed
 	for i := 0; i < suite.segmentNum; i++ {
 		segmentID := suite.segmentID + int64(i)
-		binlogs, statsLogs, err := SaveBinLog(ctx,
+		binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 			suite.collectionID,
 			suite.partitionID,
 			segmentID,
@@ -379,7 +380,7 @@ func (suite *SegmentLoaderSuite) TestLoadDeltaLogs() {
 	// Load sealed
 	for i := 0; i < suite.segmentNum; i++ {
 		segmentID := suite.segmentID + int64(i)
-		binlogs, statsLogs, err := SaveBinLog(ctx,
+		binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 			suite.collectionID,
 			suite.partitionID,
 			segmentID,
@@ -390,7 +391,7 @@ func (suite *SegmentLoaderSuite) TestLoadDeltaLogs() {
 		suite.NoError(err)
 
 		// Delete PKs 1, 2
-		deltaLogs, err := SaveDeltaLog(suite.collectionID,
+		deltaLogs, err := segbase.SaveDeltaLog(suite.collectionID,
 			suite.partitionID,
 			segmentID,
 			suite.chunkManager,
@@ -428,13 +429,13 @@ func (suite *SegmentLoaderSuite) TestLoadDeltaLogs() {
 func (suite *SegmentLoaderSuite) TestLoadBm25Stats() {
 	suite.SetupBM25()
 	msgLength := 1
-	sparseFieldID := simpleSparseFloatVectorField.id
+	sparseFieldID := segbase.SimpleSparseFloatVectorField.Id
 	loadInfos := make([]*querypb.SegmentLoadInfo, 0, suite.segmentNum)
 
 	for i := 0; i < suite.segmentNum; i++ {
 		segmentID := suite.segmentID + int64(i)
 
-		bm25logs, err := SaveBM25Log(suite.collectionID, suite.partitionID, segmentID, sparseFieldID, msgLength, suite.chunkManager)
+		bm25logs, err := segbase.SaveBM25Log(suite.collectionID, suite.partitionID, segmentID, sparseFieldID, msgLength, suite.chunkManager)
 		suite.NoError(err)
 
 		loadInfos = append(loadInfos, &querypb.SegmentLoadInfo{
@@ -468,7 +469,7 @@ func (suite *SegmentLoaderSuite) TestLoadDupDeltaLogs() {
 	// Load sealed
 	for i := 0; i < suite.segmentNum; i++ {
 		segmentID := suite.segmentID + int64(i)
-		binlogs, statsLogs, err := SaveBinLog(ctx,
+		binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 			suite.collectionID,
 			suite.partitionID,
 			segmentID,
@@ -479,7 +480,7 @@ func (suite *SegmentLoaderSuite) TestLoadDupDeltaLogs() {
 		suite.NoError(err)
 
 		// Delete PKs 1, 2
-		deltaLogs, err := SaveDeltaLog(suite.collectionID,
+		deltaLogs, err := segbase.SaveDeltaLog(suite.collectionID,
 			suite.partitionID,
 			segmentID,
 			suite.chunkManager,
@@ -602,7 +603,7 @@ func (suite *SegmentLoaderSuite) TestLoadWithMmap() {
 
 	msgLength := 100
 	// Load sealed
-	binlogs, statsLogs, err := SaveBinLog(ctx,
+	binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID,
@@ -629,7 +630,7 @@ func (suite *SegmentLoaderSuite) TestPatchEntryNum() {
 
 	msgLength := 100
 	segmentID := suite.segmentID
-	binlogs, statsLogs, err := SaveBinLog(ctx,
+	binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		segmentID,
@@ -640,13 +641,13 @@ func (suite *SegmentLoaderSuite) TestPatchEntryNum() {
 	suite.NoError(err)
 
 	vecFields := funcutil.GetVecFieldIDs(suite.schema)
-	indexInfo, err := GenAndSaveIndex(
+	indexInfo, err := segbase.GenAndSaveIndex(
 		suite.collectionID,
 		suite.partitionID,
 		segmentID,
 		vecFields[0],
 		msgLength,
-		IndexFaissIVFFlat,
+		segbase.IndexFaissIVFFlat,
 		metric.L2,
 		suite.chunkManager,
 	)
@@ -690,7 +691,7 @@ func (suite *SegmentLoaderSuite) TestRunOutMemory() {
 	msgLength := 4
 
 	// Load sealed
-	binlogs, statsLogs, err := SaveBinLog(ctx,
+	binlogs, statsLogs, err := segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID,
@@ -712,7 +713,7 @@ func (suite *SegmentLoaderSuite) TestRunOutMemory() {
 	suite.Error(err)
 
 	// Load growing
-	binlogs, statsLogs, err = SaveBinLog(ctx,
+	binlogs, statsLogs, err = segbase.SaveBinLog(ctx,
 		suite.collectionID,
 		suite.partitionID,
 		suite.segmentID+1,
@@ -782,7 +783,7 @@ func (suite *SegmentLoaderDetailSuite) SetupSuite() {
 	suite.partitionID = rand.Int63()
 	suite.segmentID = rand.Int63()
 	suite.segmentNum = 5
-	suite.schema = GenTestCollectionSchema("test", schemapb.DataType_Int64, false)
+	suite.schema = segbase.GenTestCollectionSchema("test", schemapb.DataType_Int64, false)
 }
 
 func (suite *SegmentLoaderDetailSuite) SetupTest() {
@@ -801,16 +802,16 @@ func (suite *SegmentLoaderDetailSuite) SetupTest() {
 	initcore.InitRemoteChunkManager(paramtable.Get())
 
 	// Data
-	schema := GenTestCollectionSchema("test", schemapb.DataType_Int64, false)
+	schema := segbase.GenTestCollectionSchema("test", schemapb.DataType_Int64, false)
 
-	indexMeta := GenTestIndexMeta(suite.collectionID, schema)
+	indexMeta := segbase.GenTestIndexMeta(suite.collectionID, schema)
 	loadMeta := &querypb.LoadMetaInfo{
 		LoadType:     querypb.LoadType_LoadCollection,
 		CollectionID: suite.collectionID,
 		PartitionIDs: []int64{suite.partitionID},
 	}
 
-	collection := NewCollection(suite.collectionID, schema, indexMeta, loadMeta)
+	collection := segbase.NewCollection(suite.collectionID, schema, indexMeta, loadMeta)
 	suite.collectionManager.EXPECT().Get(suite.collectionID).Return(collection).Maybe()
 }
 
@@ -820,7 +821,7 @@ func (suite *SegmentLoaderDetailSuite) TestWaitSegmentLoadDone() {
 
 		var infos []*querypb.SegmentLoadInfo
 		suite.segmentManager.EXPECT().Exist(mock.Anything, mock.Anything).Return(false)
-		suite.segmentManager.EXPECT().GetWithType(suite.segmentID, SegmentTypeSealed).RunAndReturn(func(segmentID int64, segmentType commonpb.SegmentState) Segment {
+		suite.segmentManager.EXPECT().GetWithType(suite.segmentID, SegmentTypeSealed).RunAndReturn(func(segmentID int64, segmentType commonpb.SegmentState) segbase.Segment {
 			defer func() { idx++ }()
 			if idx == 0 {
 				go func() {
@@ -849,7 +850,7 @@ func (suite *SegmentLoaderDetailSuite) TestWaitSegmentLoadDone() {
 		var idx int
 		var infos []*querypb.SegmentLoadInfo
 		suite.segmentManager.EXPECT().Exist(mock.Anything, mock.Anything).Return(false)
-		suite.segmentManager.EXPECT().GetWithType(suite.segmentID, SegmentTypeSealed).RunAndReturn(func(segmentID int64, segmentType commonpb.SegmentState) Segment {
+		suite.segmentManager.EXPECT().GetWithType(suite.segmentID, SegmentTypeSealed).RunAndReturn(func(segmentID int64, segmentType commonpb.SegmentState) segbase.Segment {
 			defer func() { idx++ }()
 			if idx == 0 {
 				go func() {
@@ -876,7 +877,7 @@ func (suite *SegmentLoaderDetailSuite) TestWaitSegmentLoadDone() {
 		suite.SetupTest()
 
 		suite.segmentManager.EXPECT().Exist(mock.Anything, mock.Anything).Return(false)
-		suite.segmentManager.EXPECT().GetWithType(suite.segmentID, SegmentTypeSealed).RunAndReturn(func(segmentID int64, segmentType commonpb.SegmentState) Segment {
+		suite.segmentManager.EXPECT().GetWithType(suite.segmentID, SegmentTypeSealed).RunAndReturn(func(segmentID int64, segmentType commonpb.SegmentState) segbase.Segment {
 			return nil
 		})
 		suite.loader.prepare(context.Background(), SegmentTypeSealed, &querypb.SegmentLoadInfo{

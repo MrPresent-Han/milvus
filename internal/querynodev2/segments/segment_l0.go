@@ -18,6 +18,7 @@ package segments
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"sync"
 
 	"github.com/samber/lo"
@@ -32,7 +33,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
 )
 
-var _ Segment = (*L0Segment)(nil)
+var _ segbase.Segment = (*L0Segment)(nil)
 
 type L0Segment struct {
 	baseSegment
@@ -42,11 +43,11 @@ type L0Segment struct {
 	tss       []uint64
 }
 
-func NewL0Segment(collection *Collection,
+func NewL0Segment(collection *segbase.Collection,
 	segmentType SegmentType,
 	version int64,
 	loadInfo *querypb.SegmentLoadInfo,
-) (Segment, error) {
+) (segbase.Segment, error) {
 	/*
 		CSegmentInterface
 		NewSegment(CCollection collection, uint64_t segment_id, SegmentType seg_type);
@@ -131,15 +132,15 @@ func (s *L0Segment) Level() datapb.SegmentLevel {
 	return datapb.SegmentLevel_L0
 }
 
-func (s *L0Segment) Search(ctx context.Context, searchReq *SearchRequest) (*SearchResult, error) {
+func (s *L0Segment) Search(ctx context.Context, searchReq *segbase.SearchRequest) (*segbase.SearchResult, error) {
 	return nil, nil
 }
 
-func (s *L0Segment) Retrieve(ctx context.Context, plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
+func (s *L0Segment) Retrieve(ctx context.Context, plan *segbase.RetrievePlan) (*segcorepb.RetrieveResults, error) {
 	return nil, nil
 }
 
-func (s *L0Segment) RetrieveByOffsets(ctx context.Context, plan *RetrievePlan, offsets []int64) (*segcorepb.RetrieveResults, error) {
+func (s *L0Segment) RetrieveByOffsets(ctx context.Context, plan *segbase.RetrievePlan, offsets []int64) (*segcorepb.RetrieveResults, error) {
 	return nil, nil
 }
 
@@ -169,7 +170,7 @@ func (s *L0Segment) DeleteRecords() ([]storage.PrimaryKey, []uint64) {
 	return s.pks, s.tss
 }
 
-func (s *L0Segment) Release(ctx context.Context, opts ...releaseOption) {
+func (s *L0Segment) Release(ctx context.Context, opts ...segbase.ReleaseOption) {
 	s.dataGuard.Lock()
 	defer s.dataGuard.Unlock()
 

@@ -14,15 +14,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package segments
+package segbase
 
 import (
 	"context"
-
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
 	"github.com/milvus-io/milvus/internal/proto/datapb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/pkg/util/metautil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
@@ -33,6 +33,31 @@ type ResourceUsage struct {
 	MemorySize     uint64
 	DiskSize       uint64
 	MmapFieldCount int
+}
+
+type ReleaseScope int
+
+const (
+	ReleaseScopeAll ReleaseScope = iota
+	ReleaseScopeData
+)
+
+type releaseOptions struct {
+	Scope ReleaseScope
+}
+
+func NewReleaseOptions() *releaseOptions {
+	return &releaseOptions{
+		Scope: ReleaseScopeAll,
+	}
+}
+
+type ReleaseOption func(*releaseOptions)
+
+func WithReleaseScope(scope ReleaseScope) ReleaseOption {
+	return func(options *releaseOptions) {
+		options.Scope = scope
+	}
 }
 
 // Segment is the interface of a segment implementation.
@@ -51,7 +76,7 @@ type Segment interface {
 	Version() int64
 	CASVersion(int64, int64) bool
 	StartPosition() *msgpb.MsgPosition
-	Type() SegmentType
+	Type() segments.SegmentType
 	Level() datapb.SegmentLevel
 	IsSorted() bool
 	LoadInfo() *querypb.SegmentLoadInfo
@@ -70,9 +95,9 @@ type Segment interface {
 	ResourceUsageEstimate() ResourceUsage
 
 	// Index related
-	GetIndex(fieldID int64) *IndexedFieldInfo
+	GetIndex(fieldID int64) *segments.IndexedFieldInfo
 	ExistIndex(fieldID int64) bool
-	Indexes() []*IndexedFieldInfo
+	Indexes() []*segments.IndexedFieldInfo
 	HasRawData(fieldID int64) bool
 
 	// Modification related
@@ -80,7 +105,7 @@ type Segment interface {
 	Delete(ctx context.Context, primaryKeys []storage.PrimaryKey, timestamps []typeutil.Timestamp) error
 	LoadDeltaData(ctx context.Context, deltaData *storage.DeltaData) error
 	LastDeltaTimestamp() uint64
-	Release(ctx context.Context, opts ...releaseOption)
+	Release(ctx context.Context, opts ...ReleaseOption)
 
 	// Bloom filter related
 	UpdateBloomFilter(pks []storage.PrimaryKey)

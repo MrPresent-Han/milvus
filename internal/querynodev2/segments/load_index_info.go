@@ -27,6 +27,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"runtime"
 	"time"
 	"unsafe"
@@ -49,7 +50,7 @@ func newLoadIndexInfo(ctx context.Context) (*LoadIndexInfo, error) {
 	var cLoadIndexInfo C.CLoadIndexInfo
 
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		status = C.NewLoadIndexInfo(&cLoadIndexInfo)
 		return nil, nil
 	}).Await()
@@ -61,7 +62,7 @@ func newLoadIndexInfo(ctx context.Context) (*LoadIndexInfo, error) {
 
 // deleteLoadIndexInfo would delete C.CLoadIndexInfo
 func deleteLoadIndexInfo(info *LoadIndexInfo) {
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		C.DeleteLoadIndexInfo(info.cLoadIndexInfo)
 		return nil, nil
 	}).Await()
@@ -70,7 +71,7 @@ func deleteLoadIndexInfo(info *LoadIndexInfo) {
 // appendIndexParam append indexParam to index
 func (li *LoadIndexInfo) appendIndexParam(ctx context.Context, indexKey string, indexValue string) error {
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cIndexKey := C.CString(indexKey)
 		defer C.free(unsafe.Pointer(cIndexKey))
 		cIndexValue := C.CString(indexValue)
@@ -83,7 +84,7 @@ func (li *LoadIndexInfo) appendIndexParam(ctx context.Context, indexKey string, 
 
 func (li *LoadIndexInfo) appendIndexInfo(ctx context.Context, indexID int64, buildID int64, indexVersion int64) error {
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cIndexID := C.int64_t(indexID)
 		cBuildID := C.int64_t(buildID)
 		cIndexVersion := C.int64_t(indexVersion)
@@ -96,7 +97,7 @@ func (li *LoadIndexInfo) appendIndexInfo(ctx context.Context, indexID int64, bui
 
 func (li *LoadIndexInfo) cleanLocalData(ctx context.Context) error {
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		status = C.CleanLoadedIndex(li.cLoadIndexInfo)
 		return nil, nil
 	}).Await()
@@ -105,7 +106,7 @@ func (li *LoadIndexInfo) cleanLocalData(ctx context.Context) error {
 
 func (li *LoadIndexInfo) appendIndexFile(ctx context.Context, filePath string) error {
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cIndexFilePath := C.CString(filePath)
 		defer C.free(unsafe.Pointer(cIndexFilePath))
 
@@ -118,7 +119,7 @@ func (li *LoadIndexInfo) appendIndexFile(ctx context.Context, filePath string) e
 // appendFieldInfo appends fieldID & fieldType to index
 func (li *LoadIndexInfo) appendFieldInfo(ctx context.Context, collectionID int64, partitionID int64, segmentID int64, fieldID int64, fieldType schemapb.DataType, enableMmap bool, mmapDirPath string) error {
 	var status C.CStatus
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cColID := C.int64_t(collectionID)
 		cParID := C.int64_t(partitionID)
 		cSegID := C.int64_t(segmentID)
@@ -135,7 +136,7 @@ func (li *LoadIndexInfo) appendFieldInfo(ctx context.Context, collectionID int64
 }
 
 func (li *LoadIndexInfo) appendStorageInfo(uri string, version int64) {
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		cURI := C.CString(uri)
 		defer C.free(unsafe.Pointer(cURI))
 		cVersion := C.int64_t(version)
@@ -154,7 +155,7 @@ func (li *LoadIndexInfo) appendIndexData(ctx context.Context, indexKeys []string
 	}
 
 	var status C.CStatus
-	GetLoadPool().Submit(func() (any, error) {
+	segbase.GetLoadPool().Submit(func() (any, error) {
 		traceCtx := ParseCTraceContext(ctx)
 		status = C.AppendIndexV2(traceCtx.ctx, li.cLoadIndexInfo)
 		runtime.KeepAlive(traceCtx)
@@ -169,7 +170,7 @@ func (li *LoadIndexInfo) appendIndexEngineVersion(ctx context.Context, indexEngi
 
 	var status C.CStatus
 
-	GetDynamicPool().Submit(func() (any, error) {
+	segbase.GetDynamicPool().Submit(func() (any, error) {
 		status = C.AppendIndexEngineVersionToLoadInfo(li.cLoadIndexInfo, cIndexEngineVersion)
 		return nil, nil
 	}).Await()
@@ -184,7 +185,7 @@ func (li *LoadIndexInfo) appendLoadIndexInfo(ctx context.Context, info *cgopb.Lo
 	}
 
 	var status C.CStatus
-	_, _ = GetDynamicPool().Submit(func() (any, error) {
+	_, _ = segbase.GetDynamicPool().Submit(func() (any, error) {
 		status = C.FinishLoadIndexInfo(li.cLoadIndexInfo, (*C.uint8_t)(unsafe.Pointer(&marshaled[0])), (C.uint64_t)(len(marshaled)))
 		return nil, nil
 	}).Await()
@@ -194,7 +195,7 @@ func (li *LoadIndexInfo) appendLoadIndexInfo(ctx context.Context, info *cgopb.Lo
 
 func (li *LoadIndexInfo) loadIndex(ctx context.Context) error {
 	var status C.CStatus
-	_, _ = GetLoadPool().Submit(func() (any, error) {
+	_, _ = segbase.GetLoadPool().Submit(func() (any, error) {
 		start := time.Now()
 		defer func() {
 			metrics.QueryNodeCGOCallLatency.WithLabelValues(

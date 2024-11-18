@@ -4,8 +4,8 @@ package segments
 
 import (
 	context "context"
-
 	commonpb "github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -151,19 +151,19 @@ func (_c *MockSegmentManager_Exist_Call) RunAndReturn(run func(int64, commonpb.S
 }
 
 // Get provides a mock function with given fields: segmentID
-func (_m *MockSegmentManager) Get(segmentID int64) Segment {
+func (_m *MockSegmentManager) Get(segmentID int64) segbase.Segment {
 	ret := _m.Called(segmentID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Get")
 	}
 
-	var r0 Segment
-	if rf, ok := ret.Get(0).(func(int64) Segment); ok {
+	var r0 segbase.Segment
+	if rf, ok := ret.Get(0).(func(int64) segbase.Segment); ok {
 		r0 = rf(segmentID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(Segment)
+			r0 = ret.Get(0).(segbase.Segment)
 		}
 	}
 
@@ -188,18 +188,18 @@ func (_c *MockSegmentManager_Get_Call) Run(run func(segmentID int64)) *MockSegme
 	return _c
 }
 
-func (_c *MockSegmentManager_Get_Call) Return(_a0 Segment) *MockSegmentManager_Get_Call {
+func (_c *MockSegmentManager_Get_Call) Return(_a0 segbase.Segment) *MockSegmentManager_Get_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockSegmentManager_Get_Call) RunAndReturn(run func(int64) Segment) *MockSegmentManager_Get_Call {
+func (_c *MockSegmentManager_Get_Call) RunAndReturn(run func(int64) segbase.Segment) *MockSegmentManager_Get_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetAndPin provides a mock function with given fields: segments, filters
-func (_m *MockSegmentManager) GetAndPin(segments []int64, filters ...SegmentFilter) ([]Segment, error) {
+func (_m *MockSegmentManager) GetAndPin(segments []int64, filters ...SegmentFilter) ([]segbase.Segment, error) {
 	_va := make([]interface{}, len(filters))
 	for _i := range filters {
 		_va[_i] = filters[_i]
@@ -213,16 +213,16 @@ func (_m *MockSegmentManager) GetAndPin(segments []int64, filters ...SegmentFilt
 		panic("no return value specified for GetAndPin")
 	}
 
-	var r0 []Segment
+	var r0 []segbase.Segment
 	var r1 error
-	if rf, ok := ret.Get(0).(func([]int64, ...SegmentFilter) ([]Segment, error)); ok {
+	if rf, ok := ret.Get(0).(func([]int64, ...SegmentFilter) ([]segbase.Segment, error)); ok {
 		return rf(segments, filters...)
 	}
-	if rf, ok := ret.Get(0).(func([]int64, ...SegmentFilter) []Segment); ok {
+	if rf, ok := ret.Get(0).(func([]int64, ...SegmentFilter) []segbase.Segment); ok {
 		r0 = rf(segments, filters...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]Segment)
+			r0 = ret.Get(0).([]segbase.Segment)
 		}
 	}
 
@@ -261,18 +261,18 @@ func (_c *MockSegmentManager_GetAndPin_Call) Run(run func(segments []int64, filt
 	return _c
 }
 
-func (_c *MockSegmentManager_GetAndPin_Call) Return(_a0 []Segment, _a1 error) *MockSegmentManager_GetAndPin_Call {
+func (_c *MockSegmentManager_GetAndPin_Call) Return(_a0 []segbase.Segment, _a1 error) *MockSegmentManager_GetAndPin_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockSegmentManager_GetAndPin_Call) RunAndReturn(run func([]int64, ...SegmentFilter) ([]Segment, error)) *MockSegmentManager_GetAndPin_Call {
+func (_c *MockSegmentManager_GetAndPin_Call) RunAndReturn(run func([]int64, ...SegmentFilter) ([]segbase.Segment, error)) *MockSegmentManager_GetAndPin_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetAndPinBy provides a mock function with given fields: filters
-func (_m *MockSegmentManager) GetAndPinBy(filters ...SegmentFilter) ([]Segment, error) {
+func (_m *MockSegmentManager) GetAndPinBy(filters ...SegmentFilter) ([]segbase.Segment, error) {
 	_va := make([]interface{}, len(filters))
 	for _i := range filters {
 		_va[_i] = filters[_i]
@@ -285,16 +285,16 @@ func (_m *MockSegmentManager) GetAndPinBy(filters ...SegmentFilter) ([]Segment, 
 		panic("no return value specified for GetAndPinBy")
 	}
 
-	var r0 []Segment
+	var r0 []segbase.Segment
 	var r1 error
-	if rf, ok := ret.Get(0).(func(...SegmentFilter) ([]Segment, error)); ok {
+	if rf, ok := ret.Get(0).(func(...SegmentFilter) ([]segbase.Segment, error)); ok {
 		return rf(filters...)
 	}
-	if rf, ok := ret.Get(0).(func(...SegmentFilter) []Segment); ok {
+	if rf, ok := ret.Get(0).(func(...SegmentFilter) []segbase.Segment); ok {
 		r0 = rf(filters...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]Segment)
+			r0 = ret.Get(0).([]segbase.Segment)
 		}
 	}
 
@@ -332,18 +332,18 @@ func (_c *MockSegmentManager_GetAndPinBy_Call) Run(run func(filters ...SegmentFi
 	return _c
 }
 
-func (_c *MockSegmentManager_GetAndPinBy_Call) Return(_a0 []Segment, _a1 error) *MockSegmentManager_GetAndPinBy_Call {
+func (_c *MockSegmentManager_GetAndPinBy_Call) Return(_a0 []segbase.Segment, _a1 error) *MockSegmentManager_GetAndPinBy_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MockSegmentManager_GetAndPinBy_Call) RunAndReturn(run func(...SegmentFilter) ([]Segment, error)) *MockSegmentManager_GetAndPinBy_Call {
+func (_c *MockSegmentManager_GetAndPinBy_Call) RunAndReturn(run func(...SegmentFilter) ([]segbase.Segment, error)) *MockSegmentManager_GetAndPinBy_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetBy provides a mock function with given fields: filters
-func (_m *MockSegmentManager) GetBy(filters ...SegmentFilter) []Segment {
+func (_m *MockSegmentManager) GetBy(filters ...SegmentFilter) []segbase.Segment {
 	_va := make([]interface{}, len(filters))
 	for _i := range filters {
 		_va[_i] = filters[_i]
@@ -356,12 +356,12 @@ func (_m *MockSegmentManager) GetBy(filters ...SegmentFilter) []Segment {
 		panic("no return value specified for GetBy")
 	}
 
-	var r0 []Segment
-	if rf, ok := ret.Get(0).(func(...SegmentFilter) []Segment); ok {
+	var r0 []segbase.Segment
+	if rf, ok := ret.Get(0).(func(...SegmentFilter) []segbase.Segment); ok {
 		r0 = rf(filters...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]Segment)
+			r0 = ret.Get(0).([]segbase.Segment)
 		}
 	}
 
@@ -393,30 +393,30 @@ func (_c *MockSegmentManager_GetBy_Call) Run(run func(filters ...SegmentFilter))
 	return _c
 }
 
-func (_c *MockSegmentManager_GetBy_Call) Return(_a0 []Segment) *MockSegmentManager_GetBy_Call {
+func (_c *MockSegmentManager_GetBy_Call) Return(_a0 []segbase.Segment) *MockSegmentManager_GetBy_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockSegmentManager_GetBy_Call) RunAndReturn(run func(...SegmentFilter) []Segment) *MockSegmentManager_GetBy_Call {
+func (_c *MockSegmentManager_GetBy_Call) RunAndReturn(run func(...SegmentFilter) []segbase.Segment) *MockSegmentManager_GetBy_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetGrowing provides a mock function with given fields: segmentID
-func (_m *MockSegmentManager) GetGrowing(segmentID int64) Segment {
+func (_m *MockSegmentManager) GetGrowing(segmentID int64) segbase.Segment {
 	ret := _m.Called(segmentID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetGrowing")
 	}
 
-	var r0 Segment
-	if rf, ok := ret.Get(0).(func(int64) Segment); ok {
+	var r0 segbase.Segment
+	if rf, ok := ret.Get(0).(func(int64) segbase.Segment); ok {
 		r0 = rf(segmentID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(Segment)
+			r0 = ret.Get(0).(segbase.Segment)
 		}
 	}
 
@@ -441,30 +441,30 @@ func (_c *MockSegmentManager_GetGrowing_Call) Run(run func(segmentID int64)) *Mo
 	return _c
 }
 
-func (_c *MockSegmentManager_GetGrowing_Call) Return(_a0 Segment) *MockSegmentManager_GetGrowing_Call {
+func (_c *MockSegmentManager_GetGrowing_Call) Return(_a0 segbase.Segment) *MockSegmentManager_GetGrowing_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockSegmentManager_GetGrowing_Call) RunAndReturn(run func(int64) Segment) *MockSegmentManager_GetGrowing_Call {
+func (_c *MockSegmentManager_GetGrowing_Call) RunAndReturn(run func(int64) segbase.Segment) *MockSegmentManager_GetGrowing_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetSealed provides a mock function with given fields: segmentID
-func (_m *MockSegmentManager) GetSealed(segmentID int64) Segment {
+func (_m *MockSegmentManager) GetSealed(segmentID int64) segbase.Segment {
 	ret := _m.Called(segmentID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetSealed")
 	}
 
-	var r0 Segment
-	if rf, ok := ret.Get(0).(func(int64) Segment); ok {
+	var r0 segbase.Segment
+	if rf, ok := ret.Get(0).(func(int64) segbase.Segment); ok {
 		r0 = rf(segmentID)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(Segment)
+			r0 = ret.Get(0).(segbase.Segment)
 		}
 	}
 
@@ -489,30 +489,30 @@ func (_c *MockSegmentManager_GetSealed_Call) Run(run func(segmentID int64)) *Moc
 	return _c
 }
 
-func (_c *MockSegmentManager_GetSealed_Call) Return(_a0 Segment) *MockSegmentManager_GetSealed_Call {
+func (_c *MockSegmentManager_GetSealed_Call) Return(_a0 segbase.Segment) *MockSegmentManager_GetSealed_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockSegmentManager_GetSealed_Call) RunAndReturn(run func(int64) Segment) *MockSegmentManager_GetSealed_Call {
+func (_c *MockSegmentManager_GetSealed_Call) RunAndReturn(run func(int64) segbase.Segment) *MockSegmentManager_GetSealed_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetWithType provides a mock function with given fields: segmentID, typ
-func (_m *MockSegmentManager) GetWithType(segmentID int64, typ commonpb.SegmentState) Segment {
+func (_m *MockSegmentManager) GetWithType(segmentID int64, typ commonpb.SegmentState) segbase.Segment {
 	ret := _m.Called(segmentID, typ)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetWithType")
 	}
 
-	var r0 Segment
-	if rf, ok := ret.Get(0).(func(int64, commonpb.SegmentState) Segment); ok {
+	var r0 segbase.Segment
+	if rf, ok := ret.Get(0).(func(int64, commonpb.SegmentState) segbase.Segment); ok {
 		r0 = rf(segmentID, typ)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(Segment)
+			r0 = ret.Get(0).(segbase.Segment)
 		}
 	}
 
@@ -538,18 +538,18 @@ func (_c *MockSegmentManager_GetWithType_Call) Run(run func(segmentID int64, typ
 	return _c
 }
 
-func (_c *MockSegmentManager_GetWithType_Call) Return(_a0 Segment) *MockSegmentManager_GetWithType_Call {
+func (_c *MockSegmentManager_GetWithType_Call) Return(_a0 segbase.Segment) *MockSegmentManager_GetWithType_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *MockSegmentManager_GetWithType_Call) RunAndReturn(run func(int64, commonpb.SegmentState) Segment) *MockSegmentManager_GetWithType_Call {
+func (_c *MockSegmentManager_GetWithType_Call) RunAndReturn(run func(int64, commonpb.SegmentState) segbase.Segment) *MockSegmentManager_GetWithType_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Put provides a mock function with given fields: ctx, segmentType, segments
-func (_m *MockSegmentManager) Put(ctx context.Context, segmentType commonpb.SegmentState, segments ...Segment) {
+func (_m *MockSegmentManager) Put(ctx context.Context, segmentType commonpb.SegmentState, segments ...segbase.Segment) {
 	_va := make([]interface{}, len(segments))
 	for _i := range segments {
 		_va[_i] = segments[_i]
@@ -574,12 +574,12 @@ func (_e *MockSegmentManager_Expecter) Put(ctx interface{}, segmentType interfac
 		append([]interface{}{ctx, segmentType}, segments...)...)}
 }
 
-func (_c *MockSegmentManager_Put_Call) Run(run func(ctx context.Context, segmentType commonpb.SegmentState, segments ...Segment)) *MockSegmentManager_Put_Call {
+func (_c *MockSegmentManager_Put_Call) Run(run func(ctx context.Context, segmentType commonpb.SegmentState, segments ...segbase.Segment)) *MockSegmentManager_Put_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := make([]Segment, len(args)-2)
+		variadicArgs := make([]segbase.Segment, len(args)-2)
 		for i, a := range args[2:] {
 			if a != nil {
-				variadicArgs[i] = a.(Segment)
+				variadicArgs[i] = a.(segbase.Segment)
 			}
 		}
 		run(args[0].(context.Context), args[1].(commonpb.SegmentState), variadicArgs...)
@@ -592,7 +592,7 @@ func (_c *MockSegmentManager_Put_Call) Return() *MockSegmentManager_Put_Call {
 	return _c
 }
 
-func (_c *MockSegmentManager_Put_Call) RunAndReturn(run func(context.Context, commonpb.SegmentState, ...Segment)) *MockSegmentManager_Put_Call {
+func (_c *MockSegmentManager_Put_Call) RunAndReturn(run func(context.Context, commonpb.SegmentState, ...segbase.Segment)) *MockSegmentManager_Put_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -727,7 +727,7 @@ func (_c *MockSegmentManager_RemoveBy_Call) RunAndReturn(run func(context.Contex
 }
 
 // Unpin provides a mock function with given fields: segments
-func (_m *MockSegmentManager) Unpin(segments []Segment) {
+func (_m *MockSegmentManager) Unpin(segments []segbase.Segment) {
 	_m.Called(segments)
 }
 
@@ -742,9 +742,9 @@ func (_e *MockSegmentManager_Expecter) Unpin(segments interface{}) *MockSegmentM
 	return &MockSegmentManager_Unpin_Call{Call: _e.mock.On("Unpin", segments)}
 }
 
-func (_c *MockSegmentManager_Unpin_Call) Run(run func(segments []Segment)) *MockSegmentManager_Unpin_Call {
+func (_c *MockSegmentManager_Unpin_Call) Run(run func(segments []segbase.Segment)) *MockSegmentManager_Unpin_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].([]Segment))
+		run(args[0].([]segbase.Segment))
 	})
 	return _c
 }
@@ -754,7 +754,7 @@ func (_c *MockSegmentManager_Unpin_Call) Return() *MockSegmentManager_Unpin_Call
 	return _c
 }
 
-func (_c *MockSegmentManager_Unpin_Call) RunAndReturn(run func([]Segment)) *MockSegmentManager_Unpin_Call {
+func (_c *MockSegmentManager_Unpin_Call) RunAndReturn(run func([]segbase.Segment)) *MockSegmentManager_Unpin_Call {
 	_c.Call.Return(run)
 	return _c
 }

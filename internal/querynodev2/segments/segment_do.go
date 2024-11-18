@@ -2,6 +2,8 @@ package segments
 
 import (
 	"context"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/utils"
 
 	"go.uber.org/zap"
 	"golang.org/x/sync/errgroup"
@@ -11,17 +13,17 @@ import (
 	"github.com/milvus-io/milvus/pkg/util/conc"
 )
 
-type doOnSegmentFunc func(ctx context.Context, segment Segment) error
+type doOnSegmentFunc func(ctx context.Context, segment segbase.Segment) error
 
-func doOnSegment(ctx context.Context, mgr *Manager, seg Segment, do doOnSegmentFunc) error {
+func doOnSegment(ctx context.Context, mgr *Manager, seg segbase.Segment, do doOnSegmentFunc) error {
 	// record search time and cache miss
 	var err error
-	accessRecord := metricsutil.NewQuerySegmentAccessRecord(getSegmentMetricLabel(seg))
+	accessRecord := metricsutil.NewQuerySegmentAccessRecord(utils.GetSegmentMetricLabel(seg))
 	defer func() {
 		accessRecord.Finish(err)
 	}()
 	if seg.IsLazyLoad() {
-		ctx, cancel := withLazyLoadTimeoutContext(ctx)
+		ctx, cancel := utils.WithLazyLoadTimeoutContext(ctx)
 		defer cancel()
 
 		var missing bool
@@ -38,7 +40,7 @@ func doOnSegment(ctx context.Context, mgr *Manager, seg Segment, do doOnSegmentF
 }
 
 // doOnSegments Be careful to use this, since no any pool is used.
-func doOnSegments(ctx context.Context, mgr *Manager, segments []Segment, do doOnSegmentFunc) error {
+func doOnSegments(ctx context.Context, mgr *Manager, segments []segbase.Segment, do doOnSegmentFunc) error {
 	errGroup, ctx := errgroup.WithContext(ctx)
 	for _, segment := range segments {
 		seg := segment
@@ -52,7 +54,7 @@ func doOnSegments(ctx context.Context, mgr *Manager, segments []Segment, do doOn
 	return errGroup.Wait()
 }
 
-func doOnSegmentsWithPool(ctx context.Context, mgr *Manager, segments []Segment, do doOnSegmentFunc, pool *conc.Pool[any]) error {
+func doOnSegmentsWithPool(ctx context.Context, mgr *Manager, segments []segbase.Segment, do doOnSegmentFunc, pool *conc.Pool[any]) error {
 	futures := make([]*conc.Future[any], 0, len(segments))
 	for _, segment := range segments {
 		seg := segment

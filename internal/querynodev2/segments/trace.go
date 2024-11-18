@@ -38,6 +38,11 @@ type CTraceContext struct {
 	ctx     C.CTraceContext
 }
 
+// GetCtx returns the C context.
+func (c *CTraceContext) GetCtx() C.CTraceContext {
+	return c.ctx
+}
+
 // ParseCTraceContext parses tracing span and convert it into `C.CTraceContext`.
 func ParseCTraceContext(ctx context.Context) *CTraceContext {
 	span := trace.SpanFromContext(ctx)

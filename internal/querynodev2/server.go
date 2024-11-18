@@ -31,6 +31,7 @@ import "C"
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"os"
 	"path"
 	"path/filepath"
@@ -443,8 +444,8 @@ func (node *QueryNode) Stop() error {
 			for (node.manager != nil && !node.manager.Segment.Empty()) ||
 				(node.pipelineManager != nil && node.pipelineManager.Num() != 0) {
 				var (
-					sealedSegments  = []segments.Segment{}
-					growingSegments = []segments.Segment{}
+					sealedSegments  = []segbase.Segment{}
+					growingSegments = []segbase.Segment{}
 					channelNum      = 0
 				)
 				if node.manager != nil {
@@ -458,10 +459,10 @@ func (node *QueryNode) Stop() error {
 				select {
 				case <-timeoutCh:
 					log.Warn("migrate data timed out", zap.Int64("ServerID", node.GetNodeID()),
-						zap.Int64s("sealedSegments", lo.Map(sealedSegments, func(s segments.Segment, i int) int64 {
+						zap.Int64s("sealedSegments", lo.Map(sealedSegments, func(s segbase.Segment, i int) int64 {
 							return s.ID()
 						})),
-						zap.Int64s("growingSegments", lo.Map(growingSegments, func(t segments.Segment, i int) int64 {
+						zap.Int64s("growingSegments", lo.Map(growingSegments, func(t segbase.Segment, i int) int64 {
 							return t.ID()
 						})),
 						zap.Int("channelNum", channelNum),
@@ -471,10 +472,10 @@ func (node *QueryNode) Stop() error {
 					metrics.StoppingBalanceSegmentNum.WithLabelValues(fmt.Sprint(node.GetNodeID())).Set(float64(len(sealedSegments)))
 					metrics.StoppingBalanceChannelNum.WithLabelValues(fmt.Sprint(node.GetNodeID())).Set(float64(channelNum))
 					log.Info("migrate data...", zap.Int64("ServerID", node.GetNodeID()),
-						zap.Int64s("sealedSegments", lo.Map(sealedSegments, func(s segments.Segment, i int) int64 {
+						zap.Int64s("sealedSegments", lo.Map(sealedSegments, func(s segbase.Segment, i int) int64 {
 							return s.ID()
 						})),
-						zap.Int64s("growingSegments", lo.Map(growingSegments, func(t segments.Segment, i int) int64 {
+						zap.Int64s("growingSegments", lo.Map(growingSegments, func(t segbase.Segment, i int) int64 {
 							return t.ID()
 						})),
 						zap.Int("channelNum", channelNum),

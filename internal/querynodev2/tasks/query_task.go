@@ -3,6 +3,9 @@ package tasks
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/reduce"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/utils"
 	"strconv"
 	"time"
 
@@ -26,7 +29,7 @@ import (
 var _ scheduler.Task = &QueryTask{}
 
 func NewQueryTask(ctx context.Context,
-	collection *segments.Collection,
+	collection *segbase.Collection,
 	manager *segments.Manager,
 	req *querypb.QueryRequest,
 ) *QueryTask {
@@ -44,7 +47,7 @@ func NewQueryTask(ctx context.Context,
 
 type QueryTask struct {
 	ctx            context.Context
-	collection     *segments.Collection
+	collection     *segbase.Collection
 	segmentManager *segments.Manager
 	req            *querypb.QueryRequest
 	result         *internalpb.RetrieveResults
@@ -100,12 +103,13 @@ func (t *QueryTask) Execute() error {
 	}
 	tr := timerecord.NewTimeRecorderWithTrace(t.ctx, "QueryTask")
 
-	retrievePlan, err := segments.NewRetrievePlan(
+	retrievePlan, err := segbase.NewRetrievePlan(
 		t.ctx,
 		t.collection,
 		t.req.Req.GetSerializedExprPlan(),
 		t.req.Req.GetMvccTimestamp(),
 		t.req.Req.Base.GetMsgID(),
+		false,
 	)
 	if err != nil {
 		return err
@@ -117,7 +121,7 @@ func (t *QueryTask) Execute() error {
 		return err
 	}
 
-	reducer := segments.CreateSegCoreReducer(
+	reducer := reduce.CreateSegCoreReducer(
 		t.req,
 		t.collection.Schema(),
 		t.segmentManager,
@@ -125,7 +129,7 @@ func (t *QueryTask) Execute() error {
 	beforeReduce := time.Now()
 
 	reduceResults := make([]*segcorepb.RetrieveResults, 0, len(results))
-	querySegments := make([]segments.Segment, 0, len(results))
+	querySegments := make([]segbase.Segment, 0, len(results))
 	for _, result := range results {
 		reduceResults = append(reduceResults, result.Result)
 		querySegments = append(querySegments, result.Segment)
@@ -141,8 +145,8 @@ func (t *QueryTask) Execute() error {
 		return err
 	}
 
-	relatedDataSize := lo.Reduce(querySegments, func(acc int64, seg segments.Segment, _ int) int64 {
-		return acc + segments.GetSegmentRelatedDataSize(seg)
+	relatedDataSize := lo.Reduce(querySegments, func(acc int64, seg segbase.Segment, _ int) int64 {
+		return acc + utils.GetSegmentRelatedDataSize(seg)
 	}, 0)
 
 	t.result = &internalpb.RetrieveResults{

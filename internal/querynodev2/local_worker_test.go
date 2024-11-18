@@ -19,6 +19,7 @@ package querynodev2
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"testing"
 
 	"github.com/samber/lo"
@@ -30,7 +31,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/indexpb"
 	"github.com/milvus-io/milvus/internal/proto/querypb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
-	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/util/dependency"
 	"github.com/milvus-io/milvus/pkg/util/etcd"
 	"github.com/milvus-io/milvus/pkg/util/paramtable"
@@ -93,9 +93,9 @@ func (suite *LocalWorkerTestSuite) BeforeTest(suiteName, testName string) {
 	err = suite.node.Start()
 	suite.NoError(err)
 
-	suite.schema = segments.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
-	suite.indexMeta = segments.GenTestIndexMeta(suite.collectionID, suite.schema)
-	collection := segments.NewCollection(suite.collectionID, suite.schema, suite.indexMeta, &querypb.LoadMetaInfo{
+	suite.schema = segbase.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
+	suite.indexMeta = segbase.GenTestIndexMeta(suite.collectionID, suite.schema)
+	collection := segbase.NewCollection(suite.collectionID, suite.schema, suite.indexMeta, &querypb.LoadMetaInfo{
 		LoadType: querypb.LoadType_LoadCollection,
 	})
 	loadMata := &querypb.LoadMetaInfo{
@@ -114,7 +114,7 @@ func (suite *LocalWorkerTestSuite) AfterTest(suiteName, testName string) {
 
 func (suite *LocalWorkerTestSuite) TestLoadSegment() {
 	// load empty
-	schema := segments.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
+	schema := segbase.GenTestCollectionSchema(suite.collectionName, schemapb.DataType_Int64, true)
 	req := &querypb.LoadSegmentsRequest{
 		Base: &commonpb.MsgBase{
 			TargetID: suite.node.session.GetServerID(),

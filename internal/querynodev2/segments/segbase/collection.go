@@ -14,7 +14,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package segments
+package segbase
 
 /*
 #cgo pkg-config: milvus_core
@@ -163,6 +163,10 @@ type Collection struct {
 	refCount *atomic.Uint32
 }
 
+func (c *Collection) GetCCollection() string {
+	return c.collectionPtr
+}
+
 // GetDBName returns the database name of collection.
 func (c *Collection) GetDBName() string {
 	return c.dbName
@@ -191,6 +195,10 @@ func (c *Collection) IsGpuIndex() bool {
 // getPartitionIDs return partitionIDs of collection
 func (c *Collection) GetPartitions() []int64 {
 	return c.partitions.Collect()
+}
+
+func (c *Collection) GetLoadFields() typeutil.Set[int64] {
+	return c.loadFields
 }
 
 func (c *Collection) ExistPartition(partitionIDs ...int64) bool {

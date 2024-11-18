@@ -19,6 +19,7 @@ package querynodev2
 import (
 	"context"
 	"encoding/json"
+	"github.com/milvus-io/milvus/internal/querynodev2/segments/segbase"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -49,7 +50,7 @@ func TestGetPipelineJSON(t *testing.T) {
 
 	collectionManager := segments.NewMockCollectionManager(t)
 	segmentManager := segments.NewMockSegmentManager(t)
-	collectionManager.EXPECT().Get(mock.Anything).Return(&segments.Collection{})
+	collectionManager.EXPECT().Get(mock.Anything).Return(&segbase.Collection{})
 	manager := &segments.Manager{
 		Collection: collectionManager,
 		Segment:    segmentManager,
@@ -105,7 +106,7 @@ func TestGetSegmentJSON(t *testing.T) {
 
 	node := &QueryNode{}
 	mockedSegmentManager := segments.NewMockSegmentManager(t)
-	mockedSegmentManager.EXPECT().GetBy().Return([]segments.Segment{segment})
+	mockedSegmentManager.EXPECT().GetBy().Return([]segbase.Segment{segment})
 	node.manager = &segments.Manager{Segment: mockedSegmentManager}
 
 	jsonStr := getSegmentJSON(node)
