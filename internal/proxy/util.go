@@ -1252,8 +1252,8 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 							return nil, nil, nil, nil, aggErr
 						}
 						aggregates = append(aggregates, aggFunc)
-						resultFieldNameMap[outputFieldName] = true
-						userOutputFieldsMap[outputFieldName] = true
+						resultFieldNameMap[aggFieldName] = true
+						userOutputFieldsMap[aggFieldName] = true
 					} else {
 						return nil, nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not loaded", aggFieldName, aggregateName)
 					}
