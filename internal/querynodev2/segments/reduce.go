@@ -34,7 +34,7 @@ type SliceInfo struct {
 	SliceTopKs []int64
 }
 
-// SearchResult contains a pointer to the search result in C++ memory
+// SearchResult find a pointer to the search result in C++ memory
 type SearchResult struct {
 	cSearchResult C.CSearchResult
 }
@@ -45,7 +45,7 @@ type (
 	StreamSearchReducer   = C.CSearchStreamReducer
 )
 
-// RetrieveResult contains a pointer to the retrieve result in C++ memory
+// RetrieveResult find a pointer to the retrieve result in C++ memory
 type RetrieveResult struct {
 	cRetrieveResult C.CRetrieveResult
 }

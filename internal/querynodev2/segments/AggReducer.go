@@ -17,16 +17,61 @@ type Entry struct {
 	val interface{}
 }
 
+func (r *Row) Equal(other *Row) bool {
+	// Check if the number of entries is the same
+	if len(r.entries) != len(other.entries) {
+		return false
+	}
+	// Compare each entry for equality
+	for i := 0; i < r.keyCount; i++ {
+		if r.entries[i].val != other.entries[i].val {
+			return false
+		}
+	}
+	return true
+}
+
 func newEntry(v interface{}) *Entry {
 	return &Entry{val: v}
 }
 
 type Row struct {
-	entries []*Entry
+	entries  []*Entry
+	keyCount int
+}
+
+func newRow(entries []*Entry, kCount int) *Row {
+	return &Row{entries: entries, keyCount: kCount}
 }
 
 type Bucket struct {
 	rows []*Row
+}
+
+func (bucket *Bucket) addRow(row *Row) {
+	bucket.rows = append(bucket.rows, row)
+}
+
+func (bucket *Bucket) accumulate(row *Row, idx int) error {
+	if idx >= len(bucket.rows) || idx < 0 {
+		return fmt.Errorf("wrong idx:%d for bucket", idx)
+	}
+	bucket.rows[idx].Equal()
+}
+
+const NONE int = -1
+
+func (bucket *Bucket) find(row *Row) int {
+	for idx, existingRow := range bucket.rows {
+		if existingRow.Equal(row) {
+			return idx
+		}
+	}
+	return NONE
+}
+
+func NewBucket() *Bucket {
+	return &Bucket{rows: make([]*Row, 0, 1)}
 }
 
 type AggReducer struct {
@@ -70,30 +115,28 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 	if results == nil || len(results) == 0 {
 		return nil, fmt.Errorf("no input segment's retrieved results can be reduced")
 	}
-	/*fieldIdMap := make(map[int64]*schemapb.FieldSchema)
-	for _, fieldMeta := range reducer.schema.GetFields() {
-		fieldIdMap[fieldMeta.GetFieldID()] = fieldMeta
-	}
-	types := make([]schemapb.DataType, 0, len(reducer.groupByFieldIds))
-	for _, groupByField := range reducer.groupByFieldIds {
-		if fieldIdMap[groupByField] == nil {
-			return nil, fmt.Errorf("group by field must exist in the schema in the reduce stage")
-		}
-		types = append(types, fieldIdMap[groupByField].GetDataType())
-	}*/
-	//create hashers based on first result
+
+	// 1. compute hash values for all rows in the result retrieved
 	rowNumber := CalculateRowNumber(results)
 	reducer.hashes = make([]uint64, rowNumber)
 	numGroupingKeys := len(reducer.groupByFieldIds)
-	hashers := make([]Hasher, 0, numGroupingKeys)
+	hashers := make([]FieldAccessor, 0, numGroupingKeys)
+	accumulators := make([]FieldAccessor, 0)
 	firstFieldData := results[0].GetFieldsData()
 	for idx, fieldData := range firstFieldData {
 		if idx < numGroupingKeys {
-			hasher, err := newHasher(fieldData.GetType())
+			hasher, err := newFieldAccessor(fieldData.GetType())
 			if err != nil {
 				return nil, err
 			}
 			hashers = append(hashers, hasher)
+		}
+		if idx >= numGroupingKeys {
+			accumulator, err := newFieldAccessor(fieldData.GetType())
+			if err != nil {
+				return nil, err
+			}
+			accumulators = append(accumulators, accumulator)
 		}
 	}
 
@@ -110,9 +153,13 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 			return nil, fmt.Errorf("retrieved results have no column data")
 		}
 		rowCount := -1
-		for i := 0; i < numGroupingKeys; i++ {
+		for i := 0; i < outputColumnCount; i++ {
 			fieldData := fieldDatas[i]
-			hashers[i].setVals(fieldData)
+			if i < numGroupingKeys {
+				hashers[i].setVals(fieldData)
+			} else {
+				accumulators[i-numGroupingKeys].setVals(fieldData)
+			}
 			if rowCount == -1 {
 				rowCount = hashers[i].rowCount()
 			} else if rowCount != hashers[i].rowCount() {
@@ -120,12 +167,30 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 					i, rowCount, hashers[i].rowCount())
 			}
 		}
-		for i := 0; i < rowCount; i++ {
-			for j := 0; j < numGroupingKeys; j++ {
-				if i > 0 {
-					reducer.hashes[rowIdx] = typeutil2.HashMix(reducer.hashes[rowIdx], hashers[j].hash(i))
+		for row := 0; row < rowCount; row++ {
+			rowEntries := make([]*Entry, outputColumnCount)
+			for col := 0; col < outputColumnCount; col++ {
+				if col < numGroupingKeys {
+					if col > 0 {
+						reducer.hashes[rowIdx] = typeutil2.HashMix(reducer.hashes[rowIdx], hashers[col].hash(row))
+					} else {
+						reducer.hashes[rowIdx] = hashers[col].hash(row)
+					}
+					rowEntries[col] = newEntry(hashers[col].val(row))
 				} else {
-					reducer.hashes[rowIdx] = hashers[j].hash(i)
+					rowEntries[col] = newEntry(accumulators[col-numGroupingKeys].val(row))
+				}
+			}
+			newRow := newRow(rowEntries, numGroupingKeys)
+			if bucket := reducer.hashValsMap[reducer.hashes[rowIdx]]; bucket == nil {
+				newBucket := NewBucket()
+				newBucket.addRow(newRow)
+				reducer.hashValsMap[reducer.hashes[rowIdx]] = newBucket
+			} else {
+				if rowIdx := bucket.find(newRow); rowIdx == NONE {
+					bucket.addRow(newRow)
+				} else {
+
 				}
 			}
 			rowIdx++
@@ -135,201 +200,225 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 	return nil, nil
 }
 
-func newHasher(fieldType schemapb.DataType) (Hasher, error) {
+func newFieldAccessor(fieldType schemapb.DataType) (FieldAccessor, error) {
 	switch fieldType {
 	case schemapb.DataType_Bool:
-		return newBoolHasher(), nil
+		return newBoolFieldAccessor(), nil
 	case schemapb.DataType_Int8:
 	case schemapb.DataType_Int16:
 	case schemapb.DataType_Int32:
-		return newInt32Hasher(), nil
+		return newInt32FieldAccessor(), nil
 	case schemapb.DataType_Int64:
-		return newInt64Hasher(), nil
+		return newInt64FieldAccessor(), nil
 	case schemapb.DataType_VarChar:
 	case schemapb.DataType_String:
-		return newStringHasher(), nil
+		return newStringFieldAccessor(), nil
 	case schemapb.DataType_Float:
-		return newFloat32Hasher(), nil
+		return newFloat32FieldAccessor(), nil
 	case schemapb.DataType_Double:
-		return newFloat64Hasher(), nil
+		return newFloat64FieldAccessor(), nil
 	default:
 		return nil, fmt.Errorf("unsupported data type for hasher")
 	}
 	return nil, nil
 }
 
-type Hasher interface {
+type FieldAccessor interface {
 	hash(idx int) uint64
+	val(idx int) interface{}
 	setVals(fieldData *schemapb.FieldData)
 	rowCount() int
 }
 
-type Int32Hasher struct {
+type Int32FieldAccessor struct {
 	vals   []int32
 	hasher hash.Hash64
 	buffer []byte
 }
 
-func (i32Hasher *Int32Hasher) hash(idx int) uint64 {
-	i32Hasher.hasher.Reset()
-	val := i32Hasher.vals[idx]
-	binary.LittleEndian.PutUint64(i32Hasher.buffer, uint64(val))
-	i32Hasher.hasher.Write(i32Hasher.buffer)
-	return i32Hasher.hasher.Sum64()
+func (i32Field *Int32FieldAccessor) hash(idx int) uint64 {
+	i32Field.hasher.Reset()
+	val := i32Field.vals[idx]
+	binary.LittleEndian.PutUint64(i32Field.buffer, uint64(val))
+	i32Field.hasher.Write(i32Field.buffer)
+	return i32Field.hasher.Sum64()
 }
 
-func (i32Hasher *Int32Hasher) setVals(fieldData *schemapb.FieldData) {
-	i32Hasher.vals = fieldData.GetScalars().GetIntData().GetData()
+func (i32Field *Int32FieldAccessor) setVals(fieldData *schemapb.FieldData) {
+	i32Field.vals = fieldData.GetScalars().GetIntData().GetData()
 }
 
-func (i32Hasher *Int32Hasher) rowCount() int {
-	return len(i32Hasher.vals)
+func (i32Field *Int32FieldAccessor) rowCount() int {
+	return len(i32Field.vals)
 }
 
-func newInt32Hasher() Hasher {
-	return &Int32Hasher{hasher: fnv.New64a(), buffer: make([]byte, 4)}
+func (i32Field *Int32FieldAccessor) val(idx int) interface{} {
+	return i32Field.vals[idx]
 }
 
-type Int64Hasher struct {
+func newInt32FieldAccessor() FieldAccessor {
+	return &Int32FieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 4)}
+}
+
+type Int64FieldAccessor struct {
 	vals   []int64
 	hasher hash.Hash64
 	buffer []byte
 }
 
-func (i64Hasher *Int64Hasher) hash(idx int) uint64 {
-	i64Hasher.hasher.Reset()
-	val := i64Hasher.vals[idx]
-	binary.LittleEndian.PutUint64(i64Hasher.buffer, uint64(val))
-	i64Hasher.hasher.Write(i64Hasher.buffer)
-	return i64Hasher.hasher.Sum64()
+func (i64Field *Int64FieldAccessor) hash(idx int) uint64 {
+	i64Field.hasher.Reset()
+	val := i64Field.vals[idx]
+	binary.LittleEndian.PutUint64(i64Field.buffer, uint64(val))
+	i64Field.hasher.Write(i64Field.buffer)
+	return i64Field.hasher.Sum64()
 }
 
-func (i64Hasher *Int64Hasher) setVals(fieldData *schemapb.FieldData) {
-	i64Hasher.vals = fieldData.GetScalars().GetLongData().GetData()
+func (i64Field *Int64FieldAccessor) setVals(fieldData *schemapb.FieldData) {
+	i64Field.vals = fieldData.GetScalars().GetLongData().GetData()
 }
 
-func (i64Hasher *Int64Hasher) rowCount() int {
-	return len(i64Hasher.vals)
+func (i64Field *Int64FieldAccessor) rowCount() int {
+	return len(i64Field.vals)
 }
 
-func newInt64Hasher() Hasher {
-	return &Int64Hasher{hasher: fnv.New64a(), buffer: make([]byte, 8)}
+func (i64Field *Int64FieldAccessor) val(idx int) interface{} {
+	return i64Field.vals[idx]
 }
 
-// BoolHasher
-type BoolHasher struct {
+func newInt64FieldAccessor() FieldAccessor {
+	return &Int64FieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 8)}
+}
+
+// BoolFieldAccessor
+type BoolFieldAccessor struct {
 	vals   []bool
 	hasher hash.Hash64
 	buffer []byte
 }
 
-func (boolHasher *BoolHasher) hash(idx int) uint64 {
-	boolHasher.hasher.Reset()
-	val := boolHasher.vals[idx]
+func (boolField *BoolFieldAccessor) hash(idx int) uint64 {
+	boolField.hasher.Reset()
+	val := boolField.vals[idx]
 	if val {
-		boolHasher.buffer[0] = 1
+		boolField.buffer[0] = 1
 	} else {
-		boolHasher.buffer[0] = 0
+		boolField.buffer[0] = 0
 	}
-	boolHasher.hasher.Write(boolHasher.buffer[:1])
-	return boolHasher.hasher.Sum64()
+	boolField.hasher.Write(boolField.buffer[:1])
+	return boolField.hasher.Sum64()
 }
 
-func (boolHasher *BoolHasher) setVals(fieldData *schemapb.FieldData) {
-	boolHasher.vals = fieldData.GetScalars().GetBoolData().GetData()
+func (boolField *BoolFieldAccessor) setVals(fieldData *schemapb.FieldData) {
+	boolField.vals = fieldData.GetScalars().GetBoolData().GetData()
 }
 
-func (boolHasher *BoolHasher) rowCount() int {
-	return len(boolHasher.vals)
+func (boolField *BoolFieldAccessor) rowCount() int {
+	return len(boolField.vals)
 }
 
-func newBoolHasher() Hasher {
-	return &BoolHasher{hasher: fnv.New64a(), buffer: make([]byte, 1)}
+func (boolField *BoolFieldAccessor) val(idx int) interface{} {
+	return boolField.vals[idx]
 }
 
-// Float32Hasher
-type Float32Hasher struct {
+func newBoolFieldAccessor() FieldAccessor {
+	return &BoolFieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 1)}
+}
+
+// Float32FieldAccessor
+type Float32FieldAccessor struct {
 	vals   []float32
 	hasher hash.Hash64
 	buffer []byte
 }
 
-func (f32Hasher *Float32Hasher) hash(idx int) uint64 {
-	f32Hasher.hasher.Reset()
-	val := f32Hasher.vals[idx]
-	binary.LittleEndian.PutUint32(f32Hasher.buffer, math.Float32bits(val))
-	f32Hasher.hasher.Write(f32Hasher.buffer[:4])
-	return f32Hasher.hasher.Sum64()
+func (f32FieldAccessor *Float32FieldAccessor) hash(idx int) uint64 {
+	f32FieldAccessor.hasher.Reset()
+	val := f32FieldAccessor.vals[idx]
+	binary.LittleEndian.PutUint32(f32FieldAccessor.buffer, math.Float32bits(val))
+	f32FieldAccessor.hasher.Write(f32FieldAccessor.buffer[:4])
+	return f32FieldAccessor.hasher.Sum64()
 }
 
-func (f32Hasher *Float32Hasher) setVals(fieldData *schemapb.FieldData) {
-	f32Hasher.vals = fieldData.GetScalars().GetFloatData().GetData()
+func (f32FieldAccessor *Float32FieldAccessor) setVals(fieldData *schemapb.FieldData) {
+	f32FieldAccessor.vals = fieldData.GetScalars().GetFloatData().GetData()
 }
 
-func (f32Hasher *Float32Hasher) rowCount() int {
-	return len(f32Hasher.vals)
+func (f32FieldAccessor *Float32FieldAccessor) rowCount() int {
+	return len(f32FieldAccessor.vals)
 }
 
-func newFloat32Hasher() Hasher {
-	return &Float32Hasher{hasher: fnv.New64a(), buffer: make([]byte, 4)}
+func (f32FieldAccessor *Float32FieldAccessor) val(idx int) interface{} {
+	return f32FieldAccessor.vals[idx]
 }
 
-// Float64Hasher
-type Float64Hasher struct {
+func newFloat32FieldAccessor() FieldAccessor {
+	return &Float32FieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 4)}
+}
+
+// Float64FieldAccessor
+type Float64FieldAccessor struct {
 	vals   []float64
 	hasher hash.Hash64
 	buffer []byte
 }
 
-func (f64Hasher *Float64Hasher) hash(idx int) uint64 {
-	f64Hasher.hasher.Reset()
-	val := f64Hasher.vals[idx]
-	binary.LittleEndian.PutUint64(f64Hasher.buffer, math.Float64bits(val))
-	f64Hasher.hasher.Write(f64Hasher.buffer)
-	return f64Hasher.hasher.Sum64()
+func (f64Field *Float64FieldAccessor) hash(idx int) uint64 {
+	f64Field.hasher.Reset()
+	val := f64Field.vals[idx]
+	binary.LittleEndian.PutUint64(f64Field.buffer, math.Float64bits(val))
+	f64Field.hasher.Write(f64Field.buffer)
+	return f64Field.hasher.Sum64()
 }
 
-func (f64Hasher *Float64Hasher) setVals(fieldData *schemapb.FieldData) {
-	f64Hasher.vals = fieldData.GetScalars().GetDoubleData().GetData()
+func (f64Field *Float64FieldAccessor) setVals(fieldData *schemapb.FieldData) {
+	f64Field.vals = fieldData.GetScalars().GetDoubleData().GetData()
 }
 
-func (f64Hasher *Float64Hasher) rowCount() int {
-	return len(f64Hasher.vals)
+func (f64Field *Float64FieldAccessor) rowCount() int {
+	return len(f64Field.vals)
 }
 
-func newFloat64Hasher() Hasher {
-	return &Float64Hasher{hasher: fnv.New64a(), buffer: make([]byte, 8)}
+func (f64Field *Float64FieldAccessor) val(idx int) interface{} {
+	return f64Field.vals[idx]
 }
 
-// StringHasher
-type StringHasher struct {
+func newFloat64FieldAccessor() FieldAccessor {
+	return &Float64FieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 8)}
+}
+
+// StringFieldAccessor
+type StringFieldAccessor struct {
 	vals   []string
 	hasher hash.Hash64
 	buffer []byte
 }
 
-func (stringHasher *StringHasher) hash(idx int) uint64 {
-	stringHasher.hasher.Reset()
-	val := stringHasher.vals[idx]
-	if len(val) > len(stringHasher.buffer) {
+func (stringField *StringFieldAccessor) hash(idx int) uint64 {
+	stringField.hasher.Reset()
+	val := stringField.vals[idx]
+	if len(val) > len(stringField.buffer) {
 		newSize := typeutil2.NextPowerOfTwo(len(val))
-		stringHasher.buffer = make([]byte, newSize)
+		stringField.buffer = make([]byte, newSize)
 	}
-	copy(stringHasher.buffer, val)
-	stringHasher.hasher.Write(stringHasher.buffer[0:len(val)])
-	return stringHasher.hasher.Sum64()
+	copy(stringField.buffer, val)
+	stringField.hasher.Write(stringField.buffer[0:len(val)])
+	return stringField.hasher.Sum64()
 }
 
-func (stringHasher *StringHasher) setVals(fieldData *schemapb.FieldData) {
-	stringHasher.vals = fieldData.GetScalars().GetStringData().GetData()
+func (stringField *StringFieldAccessor) setVals(fieldData *schemapb.FieldData) {
+	stringField.vals = fieldData.GetScalars().GetStringData().GetData()
 }
 
-func (stringHasher *StringHasher) rowCount() int {
-	return len(stringHasher.vals)
+func (stringField *StringFieldAccessor) rowCount() int {
+	return len(stringField.vals)
+}
+func (stringField *StringFieldAccessor) val(idx int) interface{} {
+	return stringField.vals[idx]
 }
 
-func newStringHasher() Hasher {
-	return &StringHasher{hasher: fnv.New64a(), buffer: make([]byte, 1024)}
+func newStringFieldAccessor() FieldAccessor {
+	return &StringFieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 1024)}
 }
 
 func (reducer *AggReducer) calculateHash(fieldDatas []*schemapb.FieldData) {
