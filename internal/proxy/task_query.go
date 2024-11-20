@@ -289,6 +289,8 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+
+	// parse aggregates
 	t.internalAggregates = agg.OrganizeAggregates(t.userAggregates)
 	t.plan.GetQuery().Aggregates = agg.AggregatesToPB(t.internalAggregates)
 	t.RetrieveRequest.Aggregates = t.plan.GetQuery().GetAggregates()

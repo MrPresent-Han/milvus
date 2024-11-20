@@ -206,7 +206,7 @@ public:
         return reinterpret_cast<Bucket*>(reinterpret_cast<char*>(table_) + offset);
     }
 
-    int64_t bucketOffset(uint64_t hash ) const {
+    int64_t bucketOffset(uint64_t hash) const {
         return hash & bucketOffsetMask_;
     }
 

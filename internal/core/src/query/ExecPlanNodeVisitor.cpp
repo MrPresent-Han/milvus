@@ -253,7 +253,7 @@ void fillDataArrayFromColumnVector(const ColumnVectorPtr& column_vector, DataArr
         default: {
             PanicInfo(DataTypeInvalid,
                       fmt::format("unsupported data type {}",
-                                  column_vector.type()));
+                                  column_vector->type()));
         }
     }
 }

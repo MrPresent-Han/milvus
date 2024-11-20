@@ -2,7 +2,6 @@ package segments
 
 import (
 	"context"
-
 	"github.com/samber/lo"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -33,6 +32,14 @@ func CreateSegCoreReducer(req *querypb.QueryRequest, schema *schemapb.Collection
 	if req.GetReq().GetIsCount() {
 		return &cntReducerSegCore{}
 	}
+
+	if len(req.GetReq().GetGroupByFieldIds()) > 0 {
+
+	}
+	if len(req.GetReq().GetAggregates()) > 0 {
+
+	}
+
 	return newDefaultLimitReducerSegcore(req, schema, manager)
 }
 
