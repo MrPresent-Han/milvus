@@ -514,13 +514,18 @@ func AssembleBucket(bucket *Bucket, fieldDatas []*schemapb.FieldData, rowIdx int
 	colCount := len(fieldDatas)
 	for r := 0; r < bucket.RowCount(); r++ {
 		row := bucket.RowAt(r)
-		for c := 0; c < colCount; c++ {
-			err := AssembleSingleValue(row.ValAt(c), fieldDatas[c], rowIdx)
-			if err != nil {
-				return err
-			}
-		}
+		AssembleSingleRow(colCount, row, fieldDatas, rowIdx)
 		rowIdx++
+	}
+	return nil
+}
+
+func AssembleSingleRow(colCount int, row *Row, fieldDatas []*schemapb.FieldData, rowIdx int) error {
+	for c := 0; c < colCount; c++ {
+		err := AssembleSingleValue(row.ValAt(c), fieldDatas[c], rowIdx)
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -598,6 +603,7 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 	hashers := make([]FieldAccessor, 0, numGroupingKeys)
 	accumulators := make([]FieldAccessor, 0)
 	firstFieldData := results[0].GetFieldDatas()
+	outputColumnCount := len(firstFieldData)
 	for idx, fieldData := range firstFieldData {
 		if idx < numGroupingKeys {
 			hasher, err := NewFieldAccessor(fieldData.GetType())
@@ -615,15 +621,35 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 		}
 	}
 
+	isGlobal := numGroupingKeys == 0
+	if isGlobal {
+		reducedResult := NewAggregationResult(nil)
+		reducedResult.fieldDatas = typeutil.PrepareResultFieldData(firstFieldData, 1)
+		rows := make([]*Row, len(results))
+		for idx, result := range results {
+			entries := make([]*Entry, outputColumnCount)
+			for col := 0; col < outputColumnCount; col++ {
+				fieldData := result.GetFieldDatas()[col]
+				accumulators[col].SetVals(fieldData)
+				entries[col] = NewEntry(accumulators[col].ValAt(0))
+			}
+			rows[idx] = NewRow(entries)
+		}
+		for r := 1; r < len(rows); r++ {
+			for c := 0; c < outputColumnCount; c++ {
+				rows[0].UpdateEntry(rows[r], c, aggs[c])
+			}
+		}
+		AssembleSingleRow(outputColumnCount, rows[0], reducedResult.fieldDatas, 0)
+		return reducedResult, nil
+	}
+
 	// 2. compute hash values for all rows in the result retrieved
-	outputColumnCount := -1
 	rowIdx := 0
 	totalRowCount := 0
 	for _, result := range results {
 		fieldDatas := result.GetFieldDatas()
-		if outputColumnCount == -1 {
-			outputColumnCount = len(fieldDatas)
-		} else if outputColumnCount != len(fieldDatas) {
+		if outputColumnCount != len(fieldDatas) {
 			return nil, fmt.Errorf("retrieved results from different segments have different size of columns")
 		}
 		if outputColumnCount == 0 {
@@ -703,7 +729,7 @@ func AggResult2internalResult(aggRes *AggregationResult) *internalpb.RetrieveRes
 	return &internalpb.RetrieveResults{FieldsData: aggRes.GetFieldDatas()}
 }
 
-func SegcoreResults2AggResult(results []*segcorepb.RetrieveResults) []*agg.AggregationResult {
+func SegcoreResults2AggResult(results []*segcorepb.RetrieveResults) []*AggregationResult {
 	aggResults := make([]*AggregationResult, len(results))
 	for i := 0; i < len(results); i++ {
 		aggResults[i] = NewAggregationResult(results[i].GetFieldsData())
