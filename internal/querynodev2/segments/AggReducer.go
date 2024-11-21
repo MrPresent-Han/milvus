@@ -3,6 +3,7 @@ package segments
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/typeutil"
 
 	"github.com/milvus-io/milvus/internal/agg"
 
@@ -90,6 +91,7 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 	// 2. compute hash values for all rows in the result retrieved
 	outputColumnCount := -1
 	rowIdx := 0
+	totalRowCount := 0
 	for _, result := range results {
 		fieldDatas := result.GetFieldsData()
 		if outputColumnCount == -1 {
@@ -133,10 +135,12 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 			if bucket := reducer.hashValsMap[reducer.hashes[rowIdx]]; bucket == nil {
 				newBucket := agg.NewBucket()
 				newBucket.AddRow(newRow)
+				totalRowCount++
 				reducer.hashValsMap[reducer.hashes[rowIdx]] = newBucket
 			} else {
 				if rowIdx := bucket.Find(newRow, numGroupingKeys); rowIdx == agg.NONE {
 					bucket.AddRow(newRow)
+					totalRowCount++
 				} else {
 					bucket.Accumulate(newRow, rowIdx, numGroupingKeys, aggs)
 				}
@@ -145,5 +149,17 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 		}
 	}
 
-	return nil, nil
+	//3. assemble reduced buckets into retrievedResult
+	reducedResult := &segcorepb.RetrieveResults{}
+	reducedResult.FieldsData = typeutil.PrepareResultFieldData(firstFieldData, int64(totalRowCount))
+	//
+	rowIdx = 0
+	for _, bucket := range reducer.hashValsMap {
+		err := agg.AssembleBucket(bucket, reducedResult.FieldsData, rowIdx)
+		if err != nil {
+			return nil, err
+		}
+		rowIdx += bucket.RowCount()
+	}
+	return reducedResult, nil
 }

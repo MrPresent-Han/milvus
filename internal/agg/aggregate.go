@@ -205,6 +205,10 @@ func (r *Row) Count() int {
 	return len(r.entries)
 }
 
+func (r *Row) ValAt(col int) interface{} {
+	return r.entries[col].val
+}
+
 func (r *Row) Equal(other *Row, keyCount int) bool {
 	// Check if the number of entries is the same
 	if len(r.entries) != len(other.entries) {
@@ -233,6 +237,14 @@ type Bucket struct {
 
 func (bucket *Bucket) AddRow(row *Row) {
 	bucket.rows = append(bucket.rows, row)
+}
+
+func (bucket *Bucket) RowAt(idx int) *Row {
+	return bucket.rows[idx]
+}
+
+func (bucket *Bucket) RowCount() int {
+	return len(bucket.rows)
 }
 
 func (bucket *Bucket) Accumulate(row *Row, idx int, keyCount int, aggs []AggregateBase) error {
@@ -491,4 +503,41 @@ func (stringField *StringFieldAccessor) ValAt(idx int) interface{} {
 
 func newStringFieldAccessor() FieldAccessor {
 	return &StringFieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 1024)}
+}
+
+func AssembleBucket(bucket *Bucket, fieldDatas []*schemapb.FieldData, rowIdx int) error {
+	colCount := len(fieldDatas)
+	for r := 0; r < bucket.RowCount(); r++ {
+		row := bucket.RowAt(r)
+		for c := 0; c < colCount; c++ {
+			err := AssembleSingleValue(row.ValAt(c), fieldDatas[c], rowIdx)
+			if err != nil {
+				return err
+			}
+		}
+		rowIdx++
+	}
+}
+
+func AssembleSingleValue(val interface{}, fieldData *schemapb.FieldData, rowIdx int) error {
+	switch fieldData.GetType() {
+	case schemapb.DataType_Bool:
+		fieldData.GetScalars().GetBoolData().GetData()[rowIdx] = val.(bool)
+	case schemapb.DataType_Int8:
+	case schemapb.DataType_Int16:
+	case schemapb.DataType_Int32:
+		fieldData.GetScalars().GetIntData().GetData()[rowIdx] = val.(int32)
+	case schemapb.DataType_Int64:
+		fieldData.GetScalars().GetLongData().GetData()[rowIdx] = val.(int64)
+	case schemapb.DataType_Float:
+		fieldData.GetScalars().GetFloatData().GetData()[rowIdx] = val.(float32)
+	case schemapb.DataType_Double:
+		fieldData.GetScalars().GetDoubleData().GetData()[rowIdx] = val.(float64)
+	case schemapb.DataType_VarChar:
+	case schemapb.DataType_String:
+		fieldData.GetScalars().GetStringData().GetData()[rowIdx] = val.(string)
+	default:
+		return fmt.Errorf("unsupported DataType:%d", fieldData.GetType())
+	}
+	return nil
 }
