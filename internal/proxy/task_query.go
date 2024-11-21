@@ -59,10 +59,9 @@ type queryTask struct {
 	queryParams    *queryParams
 	schema         *schemaInfo
 
-	userOutputFields   []string
-	userDynamicFields  []string
-	userAggregates     []agg.AggregateBase
-	internalAggregates map[agg.AggID]agg.AggregateBase
+	userOutputFields  []string
+	userDynamicFields []string
+	userAggregates    []agg.AggregateBase
 
 	resultBuf *typeutil.ConcurrentSet[*internalpb.RetrieveResults]
 
@@ -291,8 +290,7 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	}
 
 	// parse aggregates
-	t.internalAggregates = agg.OrganizeAggregates(t.userAggregates)
-	t.plan.GetQuery().Aggregates = agg.AggregatesToPB(t.internalAggregates)
+	t.plan.GetQuery().Aggregates = agg.AggregatesToPB(t.userAggregates)
 	t.RetrieveRequest.Aggregates = t.plan.GetQuery().GetAggregates()
 
 	// parse group by field ids
