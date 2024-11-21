@@ -22,7 +22,7 @@ func CreateInternalReducer(req *querypb.QueryRequest, schema *schemapb.Collectio
 		return &cntReducer{}
 	}
 	if len(req.GetReq().GetAggregates()) > 0 || len(req.GetReq().GetGroupByFieldIds()) > 0 {
-		return NewInternalAggReducer(req.GetReq().GetOutputFieldsId(), req.GetReq().GetAggregates(), schema)
+		return NewInternalAggReducer(req.GetReq().GetGroupByFieldIds(), req.GetReq().GetAggregates(), schema)
 	}
 	return newDefaultLimitReducer(req, schema)
 }

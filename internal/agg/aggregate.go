@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/planpb"
@@ -703,13 +704,17 @@ func AggResult2internalResult(aggRes *AggregationResult) *internalpb.RetrieveRes
 }
 
 func SegcoreResults2AggResult(results []*segcorepb.RetrieveResults) []*agg.AggregationResult {
-	aggResults := make([]*agg.AggregationResult, len(results))
+	aggResults := make([]*AggregationResult, len(results))
 	for i := 0; i < len(results); i++ {
-		aggResults[i] = agg.NewAggregationResult(results[i].GetFieldsData())
+		aggResults[i] = NewAggregationResult(results[i].GetFieldsData())
 	}
 	return aggResults
 }
 
-func AggResult2segcoreResult(aggRes *agg.AggregationResult) *segcorepb.RetrieveResults {
+func AggResult2segcoreResult(aggRes *AggregationResult) *segcorepb.RetrieveResults {
 	return &segcorepb.RetrieveResults{FieldsData: aggRes.GetFieldDatas()}
+}
+
+func AggResult2MilvusResult(aggRes *AggregationResult) *milvuspb.QueryResults {
+	return &milvuspb.QueryResults{FieldsData: aggRes.GetFieldDatas()}
 }
