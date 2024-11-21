@@ -3,6 +3,7 @@
 //
 
 #include "AggregationNode.h"
+#include "common/Utils.h"
 
 namespace milvus {
 namespace exec {
@@ -28,10 +29,12 @@ void PhyAggregationNode::prepareOutput(vector_size_t size){
 
 RowVectorPtr PhyAggregationNode::GetOutput() {
   if (finished_||(!no_more_input_ && !grouping_set_->hasOutput())) {
+      LOG_INFO("hc==skip running aggnode");
       input_ = nullptr;
       return nullptr;
   }
-
+  DeferLambda([&](){ finished_ = true;});
+  LOG_INFO("hc===start running aggnode");
   const auto& queryConfig = operator_context_->get_driver_context()->GetQueryConfig();
   auto batch_size = queryConfig->get_expr_batch_size();
   const auto outputRowCount = isGlobal_? 1: batch_size;

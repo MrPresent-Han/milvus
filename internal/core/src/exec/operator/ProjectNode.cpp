@@ -35,8 +35,10 @@ void PhyProjectNode::AddInput(milvus::RowVectorPtr &input) {
 RowVectorPtr
 PhyProjectNode::GetOutput() {
     if (is_finished_ ||input_ == nullptr) {
+        LOG_INFO("hc==skip running project node");
         return nullptr;
     }
+    LOG_INFO("hc==start running project node");
     auto col_input = GetColumnVector(input_);
     TargetBitmapView bitset_view(col_input->GetRawData(), col_input->size());
     auto result_pair = segment_->find_first(0, bitset_view);

@@ -38,7 +38,7 @@ public:
 
     bool
     IsFinished() override {
-        return false;
+        return finished_;
     }
 
     bool
@@ -59,6 +59,11 @@ public:
 
     void
     initialize() override;
+
+    std::string
+    ToString() const override {
+        return "PhyAggregationNode";
+    }
 
 
 private:
