@@ -33,13 +33,10 @@ func CreateSegCoreReducer(req *querypb.QueryRequest, schema *schemapb.Collection
 		return &cntReducerSegCore{}
 	}
 
-	if len(req.GetReq().GetGroupByFieldIds()) > 0 {
-
+	if len(req.GetReq().GetGroupByFieldIds()) > 0 || len(req.GetReq().GetAggregates()) > 0 {
+		return NewAggReducer(req.GetReq().GetGroupByFieldIds(), req.GetReq().GetAggregates(), schema)
 	}
-	if len(req.GetReq().GetAggregates()) > 0 {
-
-	}
-
+	
 	return newDefaultLimitReducerSegcore(req, schema, manager)
 }
 
