@@ -40,7 +40,7 @@ func MatchAggregationExpression(expression string) (bool, string, string) {
 
 type AggregateBase interface {
 	Name() string
-	Update()
+	Update(target *Entry, new *Entry) error
 	ToPB() *planpb.Aggregate
 	FieldID() int64
 }
@@ -85,7 +85,33 @@ func (sum *SumAggregate) Name() string {
 	return kSum
 }
 
-func (sum *SumAggregate) Update() {
+func (sum *SumAggregate) Update(target *Entry, new *Entry) error {
+	if target == nil || new == nil {
+		return fmt.Errorf("target or new entry is nil")
+	}
+
+	// Handle nil `val` for initialization
+	if target.val == nil {
+		target.val = new.val
+		return nil
+	}
+	// ensure the value type outside
+	switch target.val.(type) {
+	case int:
+		target.val = target.val.(int) + new.val.(int)
+	case int32:
+		target.val = target.val.(int32) + new.val.(int32)
+	case int64:
+		target.val = target.val.(int64) + new.val.(int64)
+	case float32:
+		target.val = target.val.(float32) + new.val.(float32)
+	case float64:
+		target.val = target.val.(float64) + new.val.(float64)
+	default:
+		return fmt.Errorf("unsupported type: %T", target.val)
+	}
+
+	return nil
 }
 
 func (sum *SumAggregate) ToPB() *planpb.Aggregate {
@@ -103,7 +129,8 @@ type CountAggregate struct {
 func (count *CountAggregate) Name() string {
 	return kCount
 }
-func (count *CountAggregate) Update() {
+func (count *CountAggregate) Update(target *Entry, new *Entry) error {
+	return nil
 }
 
 func (count *CountAggregate) ToPB() *planpb.Aggregate {
@@ -121,7 +148,8 @@ type MinAggregate struct {
 func (min *MinAggregate) Name() string {
 	return kMin
 }
-func (min *MinAggregate) Update() {
+func (min *MinAggregate) Update(target *Entry, new *Entry) error {
+	return nil
 }
 
 func (min *MinAggregate) ToPB() *planpb.Aggregate {
@@ -139,7 +167,8 @@ type MaxAggregate struct {
 func (max *MaxAggregate) Name() string {
 	return kMax
 }
-func (max *MaxAggregate) Update() {
+func (max *MaxAggregate) Update(target *Entry, new *Entry) error {
+	return nil
 }
 
 func (max *MaxAggregate) ToPB() *planpb.Aggregate {
@@ -172,6 +201,10 @@ type Row struct {
 	entries []*Entry
 }
 
+func (r *Row) Count() int {
+	return len(r.entries)
+}
+
 func (r *Row) Equal(other *Row, keyCount int) bool {
 	// Check if the number of entries is the same
 	if len(r.entries) != len(other.entries) {
@@ -184,6 +217,10 @@ func (r *Row) Equal(other *Row, keyCount int) bool {
 		}
 	}
 	return true
+}
+
+func (r *Row) UpdateEntry(newRow *Row, col int, agg AggregateBase) {
+	agg.Update(r.entries[col], newRow.entries[col])
 }
 
 func NewRow(entries []*Entry) *Row {
@@ -202,7 +239,21 @@ func (bucket *Bucket) Accumulate(row *Row, idx int, keyCount int, aggs []Aggrega
 	if idx >= len(bucket.rows) || idx < 0 {
 		return fmt.Errorf("wrong idx:%d for bucket", idx)
 	}
-	//bucket.rows[idx].Equal()
+	targetRow := bucket.rows[idx]
+	if targetRow == nil {
+		return fmt.Errorf("nil row at the target idx:%d, cannot acculumate the row", idx)
+	}
+	if row.Count() != targetRow.Count() {
+		return fmt.Errorf("column count:%d in the row must be equal to the target row:%d", row.Count(), bucket.rows[idx].Count())
+	}
+	if row.Count() != keyCount+len(aggs) {
+		return fmt.Errorf("column count:%d in the row must be sum of keyCount:%d and the number of aggs:%d", row.Count(), keyCount, len(aggs))
+	}
+
+	for col := keyCount; col < row.Count(); col++ {
+		targetRow.UpdateEntry(row, col, aggs[col-keyCount])
+	}
+
 	return nil
 }
 

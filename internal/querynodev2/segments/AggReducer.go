@@ -10,7 +10,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/planpb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	typeutil2 "github.com/milvus-io/milvus/internal/util/typeutil"
-
 )
 
 type AggReducer struct {
@@ -139,7 +138,7 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 				if rowIdx := bucket.Find(newRow, numGroupingKeys); rowIdx == agg.NONE {
 					bucket.AddRow(newRow)
 				} else {
-					bucket.Accumulate(newRow, rowIdx, numGroupingKeys, )
+					bucket.Accumulate(newRow, rowIdx, numGroupingKeys, aggs)
 				}
 			}
 			rowIdx++
@@ -147,6 +146,4 @@ func (reducer *AggReducer) Reduce(ctx context.Context, results []*segcorepb.Retr
 	}
 
 	return nil, nil
-}
-
 }
