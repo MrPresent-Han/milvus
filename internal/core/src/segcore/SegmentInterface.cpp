@@ -100,8 +100,9 @@ SegmentInternalInterface::Retrieve(tracer::TraceContext* trace_ctx,
     tracer::AutoSpan span("Retrieve", tracer::GetRootSpan());
     auto results = std::make_unique<proto::segcore::RetrieveResults>();
     query::ExecPlanNodeVisitor visitor(*this, timestamp);
+    LOG_INFO("hc===before entering get_retrieve_result");
     auto retrieve_results = visitor.get_retrieve_result(*plan->plan_node_);
-
+    LOG_INFO("hc===after get_retrieve_result");
     retrieve_results.segment_ = (void*)this;
     results->set_has_more_result(retrieve_results.has_more_result);
 

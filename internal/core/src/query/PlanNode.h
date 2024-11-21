@@ -80,7 +80,6 @@ struct RetrievePlanNode : PlanNode {
 
     bool is_count_;
     int64_t limit_;
-    std::vector<int64_t> output_fields_{};
 };
 
 }  // namespace milvus::query

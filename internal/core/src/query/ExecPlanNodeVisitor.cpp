@@ -284,12 +284,14 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
     // Get plan
     auto plan = plan::PlanFragment(node.plannodes_);
 
+    LOG_INFO("hc===before entering executing framework");
     // Set query context
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
         DEAFULT_QUERY_ID, segment, active_count, timestamp_);
 
     // Do task execution
     auto result = ExecuteTask2(plan, query_context);
+    LOG_INFO("hc===before setting up retrieve result");
     setupRetrieveResult(result,
                         query_context,
                         node,
@@ -309,6 +311,7 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
         auto column_vec = std::dynamic_pointer_cast<ColumnVector>(result->child(0));
         AssertInfo(column_vec, "children inside row vector must be of column vector for now");
         if (column_vec->IsBitmap()){
+            LOG_INFO("hc===start setting up bitview");
             BitsetTypeView view(column_vec->GetRawData(), column_vec->size());
             tmp_retrieve_result.total_data_cnt_ = column_vec->size();
             tracer::AutoSpan _("Find Limit Pk", tracer::GetRootSpan());
@@ -317,26 +320,15 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
             tmp_retrieve_result.has_more_result = results_pair.second;
             retrieve_result_opt_ = std::move(tmp_retrieve_result);
         } else {
-            AssertInfo(node.output_fields_.size() == result->childrens().size(), "output rowVector's children size:{} "
-                                                                                 "is not equal to outputFields size:{}",
-                       result->childrens().size(),node.output_fields_.size());
+            LOG_INFO("hc===start setting up group result");
             const auto& fields_map = segment->get_schema().get_fields();
             // load data in the result vector into retrieve_result
             auto column_count = result->childrens().size();
             tmp_retrieve_result.field_data_.resize(column_count);
-            for(auto i = 0; i < column_count; i++) {
-                auto field_id = FieldId(node.output_fields_[i]);
-                auto field_meta = fields_map.at(field_id);
-                auto field_type = field_meta.get_data_type();
-                if (field_type != column_vec->type()) {
-                    PanicInfo(DataTypeInvalid,
-                              fmt::format("target output field data type:{} must be the same as"
-                                          "column vector data type:{}", field_type, column_vec->type()));
-                }
 
+            for(auto i = 0; i < column_count; i++) {
                 DataArray data_array;
-                data_array.set_type(GetProtoDataType(field_type));
-                data_array.set_field_id(field_id.get());
+                data_array.set_type(GetProtoDataType(column_vec->type()));
                 auto columnVec = std::dynamic_pointer_cast<ColumnVector>(result->child(i));
                 AssertInfo(column_vec, "children inside row vector must be of column vector for now");
                 fillDataArrayFromColumnVector(columnVec, data_array);

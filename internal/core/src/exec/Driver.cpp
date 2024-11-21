@@ -203,12 +203,13 @@ Driver::RunInternal(std::shared_ptr<Driver>& self,
                     RowVectorPtr& result) {
     try {
         int num_operators = operators_.size();
+        LOG_INFO("hc===operator_size:{}", num_operators);
         ContinueFuture future;
 
         for (;;) {
             for (int32_t i = num_operators - 1; i >= 0; --i) {
                 auto op = operators_[i].get();
-
+                LOG_INFO("hc===operator_i:{}, op:{}", i, op->ToString());
                 current_operator_index_ = i;
                 CALL_OPERATOR(
                     blocking_reason_ = op->IsBlocked(&future), op, "IsBlocked");

@@ -193,6 +193,7 @@ ProtoParser::RetrievePlanNodeFromProto(
             auto group_by_field_count = query.group_by_field_ids_size();
             auto agg_functions_count = query.aggregates_size();
             if (group_by_field_count > 0 || agg_functions_count > 0) {
+                LOG_INFO("hc===start to parse groupby keys");
                 std::set<FieldId> fields_to_project;
                 std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
                 groupingKeys.reserve(group_by_field_count);
@@ -204,6 +205,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                     groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_id));
                     fields_to_project.insert(field_id);
                 }
+                LOG_INFO("hc===groupingKeys.size:{}", groupingKeys.size());
 
                 std::vector<plan::AggregationNode::Aggregate> aggregates;
                 std::vector<std::string> agg_names;
@@ -222,12 +224,15 @@ ProtoParser::RetrievePlanNodeFromProto(
                     aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
                     fields_to_project.insert(field_id);
                 }
+                LOG_INFO("hc===parse fields_to_project:{}, aggregates_size:{}", fields_to_project.size(), aggregates.size());
+
                 // add projectNode
                 auto project_field_list = std::vector<FieldId>(fields_to_project.begin(), fields_to_project.end());
                 plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
                                                                project_field_list,
                                                                sources);
 
+                LOG_INFO("hc===added project node");
                 // add agg node
                 sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
                 plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
@@ -237,18 +242,13 @@ ProtoParser::RetrievePlanNodeFromProto(
                                                                    std::move(aggregates),
                                                                    RowType::None,
                                                                    sources);
-                sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+                LOG_INFO("hc===added agg node");
             }
             node->plannodes_ = plannode;
         }
         return node;
     }();
-
-    plan_node->output_fields_.resize(plan_node_proto.output_field_ids_size());
-    for(auto i = 0; plan_node_proto.output_field_ids().size(); i++) {
-        plan_node->output_fields_[i] = plan_node_proto.output_field_ids()[i];
-    }
-
+    LOG_INFO("hc===generated plan node");
     return plan_node;
 }
 
@@ -292,7 +292,7 @@ ProtoParser::CreateRetrievePlan(const proto::plan::PlanNode& plan_node_proto) {
     for (auto dynamic_field : plan_node_proto.dynamic_fields()) {
         retrieve_plan->target_dynamic_fields_.push_back(dynamic_field);
     }
-
+    LOG_INFO("hc===has generated retrieve plan");
     return retrieve_plan;
 }
 

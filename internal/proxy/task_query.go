@@ -200,10 +200,18 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 		}
 	}
 
+	// parse group by fields
+	groupByFieldsStr, err := funcutil.GetAttrByKeyFromRepeatedKV(QueryGroupByFieldsKey, queryParamsPair)
+	var groupByFields []string
+	if err == nil {
+		groupByFields = strings.Split(groupByFieldsStr, ",")
+	}
+	log.Info("hc==", zap.Strings("groupByFields:", groupByFields))
+
 	limitStr, err := funcutil.GetAttrByKeyFromRepeatedKV(LimitKey, queryParamsPair)
 	// if limit is not provided
 	if err != nil {
-		return &queryParams{limit: typeutil.Unlimited, reduceType: reduceType, isIterator: isIterator}, nil
+		return &queryParams{limit: typeutil.Unlimited, reduceType: reduceType, isIterator: isIterator, groupByFields: groupByFields}, nil
 	}
 	limit, err = strconv.ParseInt(limitStr, 0, 64)
 	if err != nil {
@@ -222,13 +230,6 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 	// validate max result window.
 	if err = validateMaxQueryResultWindow(offset, limit); err != nil {
 		return nil, fmt.Errorf("invalid max query result window, %w", err)
-	}
-
-	// parse group by fields
-	groupByFieldsStr, err := funcutil.GetAttrByKeyFromRepeatedKV(QueryGroupByFieldsKey, queryParamsPair)
-	var groupByFields []string
-	if err == nil {
-		groupByFields = strings.Split(groupByFieldsStr, ",")
 	}
 
 	return &queryParams{
@@ -290,6 +291,9 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	}
 
 	// parse aggregates
+	for _, agg := range t.userAggregates {
+		log.Info("hc==", zap.String("agg.Name()", agg.Name()), zap.Int64("agg.FieldId()", agg.FieldID()))
+	}
 	t.plan.GetQuery().Aggregates = agg.AggregatesToPB(t.userAggregates)
 	t.RetrieveRequest.Aggregates = t.plan.GetQuery().GetAggregates()
 
@@ -300,16 +304,25 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	}
 	t.plan.GetQuery().GroupByFieldIds = groupByFieldsIDs
 	t.RetrieveRequest.GroupByFieldIds = groupByFieldsIDs
+	log.Info("hc==", zap.Int64s("groupBYFieldIds", groupByFieldsIDs))
+	hasAgg := len(t.RetrieveRequest.GroupByFieldIds) > 0 || len(t.RetrieveRequest.Aggregates) > 0
 
 	//parse output field ids
-	outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
-	if err != nil {
-		return err
+	if hasAgg {
+		emptyOutputFields := make([]UniqueID, 0)
+		t.RetrieveRequest.OutputFieldsId = emptyOutputFields
+		t.plan.OutputFieldIds = emptyOutputFields
+	} else {
+		outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
+		if err != nil {
+			return err
+		}
+		outputFieldIDs = append(outputFieldIDs, common.TimeStampField)
+		t.RetrieveRequest.OutputFieldsId = outputFieldIDs
+		t.plan.OutputFieldIds = outputFieldIDs
+		t.plan.DynamicFields = t.userDynamicFields
 	}
-	outputFieldIDs = append(outputFieldIDs, common.TimeStampField)
-	t.RetrieveRequest.OutputFieldsId = outputFieldIDs
-	t.plan.OutputFieldIds = outputFieldIDs
-	t.plan.DynamicFields = t.userDynamicFields
+
 	log.Ctx(ctx).Debug("translate output fields to field ids",
 		zap.Int64s("OutputFieldsID", t.OutputFieldsId),
 		zap.String("requestType", "query"))
