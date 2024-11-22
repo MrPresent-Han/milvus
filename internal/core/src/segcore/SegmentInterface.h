@@ -444,6 +444,12 @@ class SegmentInternalInterface : public SegmentInterface {
         int64_t count,
         const std::vector<std::string>& dynamic_field_names) const = 0;
 
+    virtual FieldDataPtr
+    bulk_subscript_field_data(FieldId field_id,
+                   const FieldMeta& field_meta,
+                   const int64_t* seg_offsets,
+                   int64_t count) const = 0;
+
  protected:
     mutable std::shared_mutex mutex_;
     // fieldID -> std::pair<num_rows, avg_size>

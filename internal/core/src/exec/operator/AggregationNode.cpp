@@ -28,6 +28,7 @@ void PhyAggregationNode::prepareOutput(vector_size_t size){
 }
 
 RowVectorPtr PhyAggregationNode::GetOutput() {
+    LOG_INFO("hc==enter PhyAggregationNode, {}", grouping_set_==nullptr);
   if (finished_||(!no_more_input_ && !grouping_set_->hasOutput())) {
       LOG_INFO("hc==skip running aggnode");
       input_ = nullptr;
@@ -52,15 +53,18 @@ RowVectorPtr PhyAggregationNode::GetOutput() {
 
 void PhyAggregationNode::initialize() {
     Operator::initialize();
+    LOG_INFO("hc===start to init phy agg operator, aggregationNode_->sources.size:{}", aggregationNode_->sources().size());
     const auto& input_type = aggregationNode_->sources()[0]->output_type();
     auto hashers = createVectorHashers(input_type, aggregationNode_->GroupingKeys());
     auto numHashers = hashers.size();
+    LOG_INFO("hc===hasher.size:{}", numHashers);
     std::vector<AggregateInfo> aggregateInfos = toAggregateInfo(*aggregationNode_,
                                                                 *operator_context_,
                                                                 numHashers);
-
+    LOG_INFO("hc===aggregateInfos.size:{}", aggregateInfos.size());
     // Check that aggregate result type match the output type.
     for (auto i = 0; i < aggregateInfos.size(); i++) {
+        LOG_INFO("hc===asserted aggregation type:{}", i);
         const auto aggResultType = aggregateInfos[i].function_->resultType();
         const auto expectedType = output_type_->column_type(numHashers + i);
         AssertInfo(aggResultType==expectedType,
@@ -69,13 +73,14 @@ void PhyAggregationNode::initialize() {
                    expectedType,
                    plan::AggregationNode::stepName(aggregationNode_->step()));
     }
-
+    LOG_INFO("hc===asserted aggregation type");
     grouping_set_ = std::make_unique<GroupingSet>(
             input_type,
             std::move(hashers),
             std::move(aggregateInfos),
             !aggregationNode_->ignoreNullKeys(),
             isRawInput(aggregationNode_->step()));
+    LOG_INFO("hc===has init AggregationNode");
     aggregationNode_.reset();
 }
 

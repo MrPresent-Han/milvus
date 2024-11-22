@@ -192,6 +192,12 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
         int64_t count,
         const std::vector<std::string>& dynamic_field_names) const override;
 
+    FieldDataPtr
+    bulk_subscript_field_data(FieldId field_id,
+                              const FieldMeta& field_meta,
+                              const int64_t* seg_offsets,
+                              int64_t count) const override;
+
     bool
     is_mmap_field(FieldId id) const override;
 

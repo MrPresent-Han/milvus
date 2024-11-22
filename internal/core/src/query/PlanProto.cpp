@@ -194,16 +194,35 @@ ProtoParser::RetrievePlanNodeFromProto(
             auto agg_functions_count = query.aggregates_size();
             if (group_by_field_count > 0 || agg_functions_count > 0) {
                 LOG_INFO("hc===start to parse groupby keys");
-                std::set<FieldId> fields_to_project;
+                std::set<FieldId> project_id_set;
+                std::vector<FieldId> project_id_list;
+                std::vector<std::string> project_name_list;
+                std::vector<milvus::DataType> project_type_list;
+                project_id_list.reserve(group_by_field_count);
+                project_name_list.reserve(group_by_field_count);
+                project_type_list.reserve(group_by_field_count);
+
                 std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
                 groupingKeys.reserve(group_by_field_count);
+
+                auto insert_if_not_exist = [&](FieldId& field_id, std::string& field_name, milvus::DataType field_type) {
+                    LOG_INFO("hc===insert_if_not_exist:{}", field_name);
+                    if (project_id_set.find(field_id) == project_id_set.end()) {
+                        project_id_set.insert(field_id);
+                        project_name_list.emplace_back(field_name);
+                        project_type_list.emplace_back(field_type);
+                        LOG_INFO("hc===inserted:{}", field_name);
+                    }
+                };
+
                 for(int i = 0; i < group_by_field_count; i++) {
                     auto input_field_id = query.group_by_field_ids(i);
                     AssertInfo(input_field_id > 0, "input field_id to group by must be positive, but is:{}", input_field_id);
                     auto field_id = FieldId(input_field_id);
                     auto field_type = schema.GetFieldType(field_id);
-                    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_id));
-                    fields_to_project.insert(field_id);
+                    auto field_name = schema.GetFieldName(field_id);
+                    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_name, field_id));
+                    insert_if_not_exist(field_id, field_name, field_type);
                 }
                 LOG_INFO("hc===groupingKeys.size:{}", groupingKeys.size());
 
@@ -222,14 +241,16 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto agg_input = std::make_shared<expr::FieldAccessTypeExpr>(field_type, field_name, field_id);
                     auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{agg_input}, nullptr);
                     aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
-                    fields_to_project.insert(field_id);
+                    insert_if_not_exist(field_id, field_name, field_type);
                 }
-                LOG_INFO("hc===parse fields_to_project:{}, aggregates_size:{}", fields_to_project.size(), aggregates.size());
+                LOG_INFO("hc===parse project_id_set:{}, aggregates_size:{}", project_id_set.size(), aggregates.size());
 
                 // add projectNode
-                auto project_field_list = std::vector<FieldId>(fields_to_project.begin(), fields_to_project.end());
+                auto project_field_id_list = std::vector<FieldId>(project_id_set.begin(), project_id_set.end());
                 plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
-                                                               project_field_list,
+                                                               project_field_id_list,
+                                                               project_name_list,
+                                                               project_type_list,
                                                                sources);
 
                 LOG_INFO("hc===added project node");
@@ -240,7 +261,6 @@ ProtoParser::RetrievePlanNodeFromProto(
                                                                    std::move(groupingKeys),
                                                                    std::move(agg_names),
                                                                    std::move(aggregates),
-                                                                   RowType::None,
                                                                    sources);
                 LOG_INFO("hc===added agg node");
             }

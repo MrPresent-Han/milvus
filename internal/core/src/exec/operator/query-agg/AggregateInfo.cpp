@@ -35,7 +35,8 @@ std::vector<AggregateInfo> toAggregateInfo(
                 aggregate.call_->fun_name(),
                 isPartialOutput(step)? plan::AggregationNode::Step::kPartial:plan::AggregationNode::Step::kSingle,
                 aggregate.rawInputTypes_,
-                aggResultType);
+                aggResultType,
+                *(operatorCtx.get_exec_context()->get_query_config()));
         info.output_ = index;
         aggregates.emplace_back(std::move(info));
     }

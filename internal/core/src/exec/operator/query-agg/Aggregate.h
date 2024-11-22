@@ -52,7 +52,8 @@ public:
             const std::string& name,
             plan::AggregationNode::Step step,
             const std::vector<DataType>& argTypes,
-            DataType resultType);
+            DataType resultType,
+            const QueryConfig& query_config);
 
     void setOffsets(
         int32_t offset,
@@ -158,6 +159,9 @@ struct AggregateFunctionEntry {
     std::vector<expr::AggregateFunctionSignaturePtr> signatures;
     AggregateFunctionFactory factory;
 };
+
+const AggregateFunctionEntry*
+getAggregateFunctionEntry(const std::string& name);
 
 using AggregateFunctionMap = folly::Synchronized<std::unordered_map<std::string, AggregateFunctionEntry>>;
 

@@ -3,6 +3,7 @@
 //
 #include "Aggregate.h"
 #include "AggregateUtil.h"
+#include "exec/expression/Utils.h"
 
 namespace milvus{
 namespace exec{
@@ -19,13 +20,32 @@ void Aggregate::setOffsetsInternal(int32_t offset,
     initializedByte_ = initializedByte;
     initializedMask_ = initializedMask;
     rowSizeOffset_ = rowSizeOffset;
-}   
+}
+
+const AggregateFunctionEntry*
+getAggregateFunctionEntry(const std::string& name){
+    auto sanitizedName = milvus::exec::sanitizeName(name);
+
+    return aggregateFunctions().withRLock(
+            [&](const auto& functionsMap) -> const AggregateFunctionEntry* {
+                auto it = functionsMap.find(sanitizedName);
+                if (it != functionsMap.end()) {
+                    return &it->second;
+                }
+                return nullptr;
+            });
+}
 
 std::unique_ptr<Aggregate> Aggregate::create(const std::string& name,
                                              plan::AggregationNode::Step step,
                                              const std::vector<DataType>& argTypes,
-                                             DataType resultType) {
-    return nullptr;
+                                             DataType resultType,
+                                             const QueryConfig& query_config) {
+    if(auto func = getAggregateFunctionEntry(name)) {
+        LOG_INFO("hc=== found aggregation function factory for name:{}", name);
+        return func->factory(step, argTypes, resultType, query_config);
+    }
+    PanicInfo(UnexpectedError, "Aggregate function not registered: {}", name);
 }
 
 bool isRawInput(milvus::plan::AggregationNode::Step step) {

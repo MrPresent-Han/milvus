@@ -19,5 +19,11 @@
 namespace milvus {
 namespace exec {
 
+void registerAllAggregateFunctions(const std::string& prefix,
+                                      bool withCompanionFunctions,
+                                      bool overwrite) {
+    registerSumAggregate(prefix, withCompanionFunctions, overwrite);
+}
+
 }
 }

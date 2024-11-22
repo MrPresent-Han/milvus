@@ -1800,6 +1800,14 @@ ChunkedSegmentSealedImpl::bulk_subscript(FieldId field_id,
     return get_raw_data(field_id, field_meta, seg_offsets, count);
 }
 
+FieldDataPtr
+ChunkedSegmentSealedImpl::bulk_subscript_field_data(FieldId field_id,
+                          const FieldMeta& field_meta,
+                          const int64_t* seg_offsets,
+                          int64_t count) const {
+    return nullptr;
+}
+
 std::unique_ptr<DataArray>
 ChunkedSegmentSealedImpl::bulk_subscript(
     FieldId field_id,

@@ -20,7 +20,7 @@
 
 namespace milvus{
 namespace exec {
-void registerAllFunctions(const std::string& prefix = "",
+void registerAllAggregateFunctions(const std::string& prefix = "",
                           bool withCompanionFunctions = true,
                           bool overwrite = true);
 

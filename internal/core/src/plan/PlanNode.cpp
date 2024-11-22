@@ -24,8 +24,8 @@ RowTypePtr getAggregationOutputType(const std::vector<expr::FieldAccessTypeExprP
     std::vector<std::string> names;
     std::vector<milvus::DataType> types;
     for (auto& key : groupingKeys) {
-        types.emplace_back(key->type());
         names.emplace_back(key->name());
+        types.emplace_back(key->type());
     }
 
     for (int i = 0; i < aggregateNames.size(); i++) {
@@ -41,7 +41,6 @@ AggregationNode::AggregationNode(const milvus::plan::PlanNodeId &id,
                                  std::vector<expr::FieldAccessTypeExprPtr> &&groupingKeys,
                                  std::vector<std::string> &&aggNames,
                                  std::vector<Aggregate> &&aggregates,
-                                 std::shared_ptr<const RowType> output_type,
                                  std::vector<PlanNodePtr> sources):
                                  PlanNode(id),
                                  step_(step),

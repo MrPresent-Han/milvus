@@ -137,6 +137,16 @@ Driver::Run(std::shared_ptr<Driver> self) {
     }
 }
 
+void Driver::initializeOperators() {
+    if (operatorsInitialized_) {
+        return;
+    }
+    operatorsInitialized_ = true;
+    for(auto& op: operators_) {
+        op->initialize();
+    }
+}
+
 void
 Driver::Init(std::unique_ptr<DriverContext> ctx,
              std::vector<std::unique_ptr<Operator>> operators) {
@@ -202,6 +212,7 @@ Driver::RunInternal(std::shared_ptr<Driver>& self,
                     std::shared_ptr<BlockingState>& blocking_state,
                     RowVectorPtr& result) {
     try {
+        initializeOperators();
         int num_operators = operators_.size();
         LOG_INFO("hc===operator_size:{}", num_operators);
         ContinueFuture future;

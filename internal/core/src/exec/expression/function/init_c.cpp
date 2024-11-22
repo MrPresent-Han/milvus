@@ -16,8 +16,14 @@
 
 #include "exec/expression/function/init_c.h"
 #include "exec/expression/function/FunctionFactory.h"
+#include "exec/operator/query-agg/RegisterAggregateFunctions.h"
 
 void
 InitExecExpressionFunctionFactory() {
     milvus::exec::expression::FunctionFactory::Instance().Initialize();
+}
+
+void
+RegisterAggregationFunctions(){
+    milvus::exec::registerAllAggregateFunctions();
 }

@@ -275,8 +275,13 @@ class ProjectNode : public PlanNode {
 public:
     ProjectNode(const PlanNodeId& id,
                 std::vector<FieldId>& field_ids,
+                std::vector<std::string>& field_names,
+                std::vector<milvus::DataType>& field_types,
                 std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
-                : PlanNode(id), sources_(std::move(sources)), field_ids_(std::move(field_ids)){
+                : PlanNode(id),
+                sources_(std::move(sources)),
+                field_ids_(std::move(field_ids)),
+                output_type_(std::make_shared<RowType>(std::move(field_names), std::move(field_types))){
     }
 
     std::vector<PlanNodePtr>
@@ -286,7 +291,7 @@ public:
 
     RowTypePtr
     output_type() const override {
-        return RowType::None;
+        return output_type_;
     }
 
     std::string_view
@@ -307,6 +312,7 @@ public:
 private:
     const std::vector<PlanNodePtr> sources_;
     const std::vector<FieldId> field_ids_;
+    const RowTypePtr output_type_;
 };
 
 class MvccNode : public PlanNode {
@@ -470,13 +476,12 @@ public:
                     std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
                     std::vector<std::string>&& aggNames,
                     std::vector<Aggregate>&& aggregates,
-                    std::shared_ptr<const RowType> output_type,
                     std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{});
 
 
     RowTypePtr
     output_type() const override {
-        return RowType::None;
+        return output_type_;
     }
 
     std::vector<PlanNodePtr> sources() const override {

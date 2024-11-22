@@ -47,6 +47,7 @@
 #include "Json.h"
 
 #include "CustomBitset.h"
+#include "log/Log.h"
 
 namespace milvus {
 
@@ -752,9 +753,12 @@ public:
 
     column_index_t GetChildIndex(std::string name) const {
         std::optional<column_index_t> idx;
+        LOG_INFO("hc===names_.size():{}", names_.size());
         for(auto i = 0; i < names_.size(); i++) {
+            LOG_INFO("hc===names_[i]:{}, name:{}", names_[i], name);
             if (names_[i] == name) {
                 idx = i;
+                break;
             }
         }
         AssertInfo(idx.has_value(), "Cannot find target column in the rowType list");

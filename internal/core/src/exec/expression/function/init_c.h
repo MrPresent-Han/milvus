@@ -16,12 +16,17 @@
 
 #pragma once
 
+#include "RegisterAggregateFunctions.h"
+
 #ifdef __cplusplus
 extern "C" {
 #endif
 
 void
 InitExecExpressionFunctionFactory();
+
+void
+RegisterAggregationFunctions();
 
 #ifdef __cplusplus
 };

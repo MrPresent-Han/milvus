@@ -41,18 +41,18 @@ PhyProjectNode::GetOutput() {
     LOG_INFO("hc==start running project node");
     auto col_input = GetColumnVector(input_);
     TargetBitmapView bitset_view(col_input->GetRawData(), col_input->size());
-    auto result_pair = segment_->find_first(0, bitset_view);
+    auto result_pair = segment_->find_first(10000, bitset_view);
     auto selected_offsets = result_pair.first;
     auto selected_count = selected_offsets.size();
     is_finished_ = true;
-
+    LOG_INFO("hc==project_selected_count:{}", selected_count);
     auto row_type = OutputType();
     std::vector<VectorPtr> column_vectors;
     for (int i = 0; i < fields_to_project_.size(); i++) {
         auto column_type = row_type->column_type(i);
         auto field_id = fields_to_project_.at(i);
-        auto field_data = segment_->bulk_subscript(field_id, selected_offsets.data(), selected_count);
         auto column_vector = std::make_shared<ColumnVector>(column_type, selected_count);
+        auto field_data = segment_->bulk_subscript(field_id, selected_offsets.data(), selected_count);
         column_vectors.emplace_back(column_vector);
     }
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));
