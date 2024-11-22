@@ -26,11 +26,13 @@ RowTypePtr getAggregationOutputType(const std::vector<expr::FieldAccessTypeExprP
     for (auto& key : groupingKeys) {
         names.emplace_back(key->name());
         types.emplace_back(key->type());
+        LOG_INFO("hc===pushed group name:{}, type:{}", key->name(), key->type());
     }
 
     for (int i = 0; i < aggregateNames.size(); i++) {
         names.emplace_back(aggregateNames[i]);
         types.emplace_back(aggregates[i].call_->type());
+        LOG_INFO("hc===pushed agg name:{}, type:{}", aggregateNames[i], aggregates[i].call_->type());
     }
 
     return std::make_shared<RowType>(std::move(names), std::move(types));

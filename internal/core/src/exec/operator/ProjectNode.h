@@ -53,6 +53,11 @@ class PhyProjectNode: public Operator{
           return BlockingReason::kNotBlocked;
       }
 
+      std::string
+      ToString() const override {
+          return "Project Operator";
+      }
+
 private:
     const segcore::SegmentInternalInterface* segment_;
     bool is_finished_{false};

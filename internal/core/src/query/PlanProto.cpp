@@ -183,11 +183,13 @@ ProtoParser::RetrievePlanNodeFromProto(
                 plannode = std::move(expr_parser);
                 sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
             }
+            LOG_INFO("hc===added filterbits node");
 
             // 2. mvccNode
             plannode = std::make_shared<milvus::plan::MvccNode>(
                 milvus::plan::GetNextPlanNodeId(), sources);
             sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
+            LOG_INFO("hc===added mvccnode");
 
             // 3. projectNode and aggNode
             auto group_by_field_count = query.group_by_field_ids_size();

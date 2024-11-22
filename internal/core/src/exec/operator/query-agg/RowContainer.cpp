@@ -23,10 +23,10 @@ namespace exec {
 
 RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
                            const std::vector<Accumulator>& accumulators,
-                           bool nullableKeys):
-                           keyTypes_(keyTypes),
-                           accumulators_(accumulators),
-                           nullableKeys_(nullableKeys){
+                           bool ignoreNullKeys):
+        keyTypes_(keyTypes),
+        accumulators_(accumulators),
+        ignoreNullKeys_(ignoreNullKeys){
     int32_t offset = 0;
     int32_t nullOffset = 0;
     bool isVariableWidth = false;
@@ -34,7 +34,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         offsets_.push_back(offset);
         offset += GetDataTypeSize(type, 1);
         nullOffsets_.push_back(nullOffset);
-        if(nullableKeys_) {
+        if(!ignoreNullKeys_) {
             ++nullOffset;
         }
         isVariableWidth |= !IsFixedSizeType(type);
@@ -94,8 +94,8 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     uint16_t column_sum = keyTypes_.size() + accumulators.size();
     for (auto i = 0; i < offsets_.size(); i++){
         rowColumns_.emplace_back(offsets_[i],
-                                 (nullableKeys_ || i >= keyTypes_.size())? nullOffsets_[nullOffsetsPos]
-                                 :RowColumn::kNotNullOffset);
+                                 (!ignoreNullKeys_ || i >= keyTypes_.size()) ? nullOffsets_[nullOffsetsPos]
+                                                                            : RowColumn::kNotNullOffset);
         // offsets_ contains the offsets for keys, then accumulators
         // This captures the case where i is the index of an accumulator.
         if(!accumulators.empty() && i >= keyTypes_.size() && i < column_sum) {
@@ -120,7 +120,7 @@ void RowContainer::store(const milvus::ColumnVectorPtr &column_data, milvus::vec
                          int32_t column_index) {
     auto numKeys = keyTypes_.size();
     bool isKey = column_index < numKeys;
-    if (isKey && !nullableKeys_) {
+    if (isKey && ignoreNullKeys_) {
         MILVUS_DYNAMIC_TYPE_DISPATCH(storeNoNulls, keyTypes_[column_index], column_data, index, row, offsets_[column_index]);
     } else {
         AssertInfo(isKey||accumulators_.empty(), "Should only store into rows for key");

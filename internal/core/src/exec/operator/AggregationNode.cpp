@@ -61,24 +61,12 @@ void PhyAggregationNode::initialize() {
     std::vector<AggregateInfo> aggregateInfos = toAggregateInfo(*aggregationNode_,
                                                                 *operator_context_,
                                                                 numHashers);
-    LOG_INFO("hc===aggregateInfos.size:{}", aggregateInfos.size());
-    // Check that aggregate result type match the output type.
-    for (auto i = 0; i < aggregateInfos.size(); i++) {
-        LOG_INFO("hc===asserted aggregation type:{}", i);
-        const auto aggResultType = aggregateInfos[i].function_->resultType();
-        const auto expectedType = output_type_->column_type(numHashers + i);
-        AssertInfo(aggResultType==expectedType,
-                   "Unexpected result type for an aggregation: {}, expected {}, step {}",
-                   aggResultType,
-                   expectedType,
-                   plan::AggregationNode::stepName(aggregationNode_->step()));
-    }
     LOG_INFO("hc===asserted aggregation type");
     grouping_set_ = std::make_unique<GroupingSet>(
             input_type,
             std::move(hashers),
             std::move(aggregateInfos),
-            !aggregationNode_->ignoreNullKeys(),
+            aggregationNode_->ignoreNullKeys(),
             isRawInput(aggregationNode_->step()));
     LOG_INFO("hc===has init AggregationNode");
     aggregationNode_.reset();

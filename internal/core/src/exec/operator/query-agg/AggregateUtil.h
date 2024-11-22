@@ -15,6 +15,8 @@
 // limitations under the License.
 #pragma once
 
+#include "common/Types.h"
+
 namespace milvus {
 namespace exec {
 // The result of aggregation function registration.
@@ -33,6 +35,7 @@ struct AggregateRegistrationResult {
                mergeExtractFunction == other.mergeExtractFunction;
     }
 };
+
 }
 }
 

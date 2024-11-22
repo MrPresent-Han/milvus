@@ -111,7 +111,7 @@ class RowContainer {
 public:
     RowContainer(const std::vector<DataType>& keyTypes,
                  const std::vector<Accumulator>& accumulators,
-                 bool nullableKeys);
+                 bool ignoreNullKeys);
 
     // The number of flags (bits) per accumulator, one for null and one for
     // initialized.
@@ -419,7 +419,7 @@ private:
     static constexpr uint32_t kNextFreeOffset_ = 0;
 
     const std::vector<DataType> keyTypes_;
-    const bool nullableKeys_;
+    const bool ignoreNullKeys_;
     std::vector<uint32_t> offsets_;
     std::vector<uint32_t> nullOffsets_;
     

@@ -527,7 +527,7 @@ private:
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
     const std::vector<std::string> aggregateNames_;
     const std::vector<Aggregate> aggregates_;
-    const bool ignoreNullKeys_;
+    const bool ignoreNullKeys_{true};
     const std::vector<PlanNodePtr> sources_;
     const RowTypePtr output_type_;
 };

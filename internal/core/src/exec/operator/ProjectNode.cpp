@@ -51,11 +51,14 @@ PhyProjectNode::GetOutput() {
     for (int i = 0; i < fields_to_project_.size(); i++) {
         auto column_type = row_type->column_type(i);
         auto field_id = fields_to_project_.at(i);
-        auto column_vector = std::make_shared<ColumnVector>(column_type, selected_count);
-        auto field_data_array = segment_->bulk_subscript(field_id, selected_offsets.data(), selected_count);
+        LOG_INFO("hc==start to project column_type:{}, field_id:{}, selected_count:{}",column_type, field_id.get(), selected_count);
+        auto field_data = segment_->bulk_subscript_field_data(field_id, selected_offsets.data(), selected_count);
+        auto column_vector = std::make_shared<ColumnVector>(std::move(field_data));
         column_vectors.emplace_back(column_vector);
+        LOG_INFO("hc==finish project column{}", i);
     }
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));
+    LOG_INFO("hc==finish project columns:");
     return row_vector;
 }
 

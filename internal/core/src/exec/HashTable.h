@@ -121,7 +121,7 @@ void forceGenericHashMode() {
 
 /// Populates 'hashes' and 'rows' fields in 'lookup' in preparation for
 /// 'groupProbe' call. Rehashes the table if necessary. Uses lookup.hashes to
-/// decode grouping keys from 'input'. If 'ignoreNullKeys' is true, updates
+/// decode grouping keys from 'input'. If 'ignoreNullKeys_' is true, updates
 /// 'rows' to remove entries with null grouping keys. After this call, 'rows'
 /// may have no entries selected.
 void prepareForGroupProbe(
@@ -145,7 +145,7 @@ protected:
 
 class ProbeState;
 
-template <bool nullableKeys>
+template <bool ignoreNullKeys>
 class HashTable : public BaseHashTable {
 public:
     HashTable(
@@ -157,7 +157,7 @@ public:
             keyTypes.push_back(hasher->ChannelDataType());
         }
         hashMode_ = HashMode::kHash;
-        rows_ = std::make_unique<RowContainer>(keyTypes, accumulators, nullableKeys);
+        rows_ = std::make_unique<RowContainer>(keyTypes, accumulators, ignoreNullKeys);
     };
 
     void setHashMode(HashMode mode, int32_t numNew) override;

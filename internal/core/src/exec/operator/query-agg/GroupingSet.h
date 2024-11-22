@@ -30,14 +30,14 @@ class GroupingSet {
     GroupingSet(const RowTypePtr& input_type,
                 std::vector<std::unique_ptr<VectorHasher>>&& hashers,
                 std::vector<AggregateInfo>&& aggregates,
-                bool nullableKeys,
+                bool ignoreNullKeys,
                 bool isRawInput):
-                hashers_(std::move(hashers)),
-                isGlobal_(hashers_.empty()),
-                isRawInput_(isRawInput),
-                aggregates_(std::move(aggregates)),
-                nullableKeys_(nullableKeys),
-                isAdaptive_(true){}
+            hashers_(std::move(hashers)),
+            isGlobal_(hashers_.empty()),
+            isRawInput_(isRawInput),
+            aggregates_(std::move(aggregates)),
+            ignoreNullKeys_(ignoreNullKeys),
+            isAdaptive_(true){}
 
     ~GroupingSet();
 
@@ -73,7 +73,7 @@ class GroupingSet {
 private:
     const bool isGlobal_;
     const bool isRawInput_;
-    const bool nullableKeys_;
+    const bool ignoreNullKeys_;
     
     std::vector<std::unique_ptr<VectorHasher>> hashers_;
     std::vector<AggregateInfo> aggregates_;
