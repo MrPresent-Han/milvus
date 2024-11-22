@@ -299,6 +299,12 @@ install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/exec/expression/function/
         FILES_MATCHING PATTERN "*_c.h"
 )
 
+# Install exec/operator/
+install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/exec/operator/
+        DESTINATION include/exec/operator/
+        FILES_MATCHING PATTERN "*_c.h"
+)
+
 # Install indexbuilder
 install(DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/src/indexbuilder/
         DESTINATION include/indexbuilder

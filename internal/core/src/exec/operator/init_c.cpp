@@ -14,10 +14,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "exec/expression/function/init_c.h"
-#include "exec/expression/function/FunctionFactory.h"
+#include "exec/operator/init_c.h"
+#include "exec/operator/query-agg/RegisterAggregateFunctions.h"
 
 void
-InitExecExpressionFunctionFactory() {
-    milvus::exec::expression::FunctionFactory::Instance().Initialize();
+RegisterAggregationFunctions(){
+    milvus::exec::registerAllAggregateFunctions();
 }

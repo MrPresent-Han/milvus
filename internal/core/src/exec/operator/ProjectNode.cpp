@@ -52,7 +52,7 @@ PhyProjectNode::GetOutput() {
         auto column_type = row_type->column_type(i);
         auto field_id = fields_to_project_.at(i);
         auto column_vector = std::make_shared<ColumnVector>(column_type, selected_count);
-        auto field_data = segment_->bulk_subscript(field_id, selected_offsets.data(), selected_count);
+        auto field_data_array = segment_->bulk_subscript(field_id, selected_offsets.data(), selected_count);
         column_vectors.emplace_back(column_vector);
     }
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));

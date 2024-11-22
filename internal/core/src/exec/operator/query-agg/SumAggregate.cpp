@@ -33,15 +33,16 @@ AggregateRegistrationResult registerSum(
         bool overwrite) {
     std::vector<std::shared_ptr<expr::AggregateFunctionSignature>> signatures{
             expr::AggregateFunctionSignatureBuilder()
-                    .returnType(DataType::DOUBLE)
+                    .argumentType(DataType::DOUBLE)
                     .intermediateType(DataType::DOUBLE)
-                    .argumentType(DataType::DOUBLE).build()};
+                    .returnType(DataType::DOUBLE)
+                    .build()};
 
     for(const auto& inputType: {DataType::INT8, DataType::INT16, DataType::INT32, DataType::INT64}) {
         signatures.emplace_back(expr::AggregateFunctionSignatureBuilder()
         .argumentType(inputType)
         .intermediateType(DataType::INT64)
-        .intermediateType(DataType::INT64).build());
+        .returnType(DataType::INT64).build());
     }
     return exec::registerAggregateFunction(name,
                                            signatures,

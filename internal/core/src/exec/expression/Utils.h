@@ -162,7 +162,7 @@ GetValueFromProtoWithOverflow(
     return GetValueFromProtoInternal<T>(value_proto, overflowed);
 }
 
-std::string sanitizeName(const std::string& name) {
+inline std::string sanitizeName(const std::string& name) {
     std::string sanitizedName;
     sanitizedName.resize(name.size());
     std::transform(name.begin(), name.end(), sanitizedName.begin(), [](unsigned char c){

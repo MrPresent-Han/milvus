@@ -226,7 +226,6 @@ class SegmentGrowingImpl : public SegmentGrowing {
 
     FieldDataPtr
     bulk_subscript_field_data(FieldId field_id,
-                              const FieldMeta& field_meta,
                               const int64_t* seg_offsets,
                               int64_t count) const override;
 
