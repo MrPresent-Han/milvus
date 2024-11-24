@@ -188,6 +188,14 @@ class SegmentGrowingImpl : public SegmentGrowing {
                             int64_t count,
                             google::protobuf::RepeatedPtrField<T>* dst) const;
 
+    template <typename S, typename T=S>
+    void
+    bulk_subscript_ptr_impl(const VectorBase* vec_raw,
+                            const int64_t* seg_offsets,
+                            int64_t count,
+                            T* dst) const;
+
+
     // for scalar array vectors
     template <typename T>
     void
@@ -219,15 +227,17 @@ class SegmentGrowingImpl : public SegmentGrowing {
                    int64_t count,
                    void* output) const override;
 
+    void
+    bulk_subscript(FieldId field_id,
+                   DataType data_type,
+                   const int64_t* seg_offsets,
+                   int64_t count,
+                   void* output) const override;
+
     std::unique_ptr<DataArray>
     bulk_subscript(FieldId field_id,
                    const int64_t* seg_offsets,
                    int64_t count) const override;
-
-    FieldDataPtr
-    bulk_subscript_field_data(FieldId field_id,
-                              const int64_t* seg_offsets,
-                              int64_t count) const override;
 
     std::unique_ptr<DataArray>
     bulk_subscript(

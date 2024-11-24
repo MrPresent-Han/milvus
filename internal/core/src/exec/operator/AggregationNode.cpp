@@ -73,8 +73,10 @@ void PhyAggregationNode::initialize() {
 }
 
 void PhyAggregationNode::AddInput(milvus::RowVectorPtr& input) {
+    LOG_INFO("hc==add input for aggregation, size:{}", input->size());
     grouping_set_->addInput(input);
     numInputRows_ += input->size();
+    LOG_INFO("hc==finished adding input for aggregation, numInputRows_:{}", numInputRows_);
 }
 
 };

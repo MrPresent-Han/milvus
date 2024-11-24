@@ -262,6 +262,7 @@ Driver::RunInternal(std::shared_ptr<Driver>& self,
                             }
                         }
                         if (result) {
+                            LOG_INFO("hc===driver add input for i:{}, op:{}", i, next_op->ToString());
                             CALL_OPERATOR(
                                 next_op->AddInput(result), next_op, "AddInput");
                             i += 2;

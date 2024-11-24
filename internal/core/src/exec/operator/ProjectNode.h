@@ -59,6 +59,10 @@ class PhyProjectNode: public Operator{
       }
 
 private:
+    FieldDataPtr projectFieldData(FieldId fieldId, milvus::DataType dataType, const int64_t* seg_offsets,
+                                  int64_t count) const;
+
+private:
     const segcore::SegmentInternalInterface* segment_;
     bool is_finished_{false};
     const std::vector<FieldId> fields_to_project_;

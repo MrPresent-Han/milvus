@@ -22,15 +22,19 @@ GroupingSet::~GroupingSet(){}
 
 void GroupingSet::addInput(const RowVectorPtr& input) {
     if (isGlobal_) {
+        LOG_INFO("hc===add global input for aggregation");
         addGlobalAggregationInput(input);
+        LOG_INFO("hc===finish add  global input for aggregation");
         return;
     }
     auto numRows = input->size();
     numInputRows_ += numRows;
-
+    LOG_INFO("hc===adding global numInputRows_:{}", numInputRows_);
     active_rows_.resize(numRows);
     active_rows_.set();
+    LOG_INFO("hc===after setting active rows, numRows:{}", numRows);
     addInputForActiveRows(input);
+    LOG_INFO("hc===finish addInput for grouping set, numRows:{}", numRows);
 }
 
 void GroupingSet::initializeGlobalAggregation() {
@@ -157,17 +161,23 @@ void GroupingSet::extractGroups(folly::Range<char **> groups, const milvus::RowV
 void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
     AssertInfo(!isGlobal_, "Global aggregations should not reach add input for active rows");
     if (!hash_table_) {
+        LOG_INFO("hc===no hash_table, start to construct hash table");
         createHashTable();
+        LOG_INFO("hc===create hash_table down");
     }
     ensureInputFits(input);
-
+    LOG_INFO("hc===start to prepareForGroupProbe");
     hash_table_->prepareForGroupProbe(*lookup_, input, active_rows_, ignoreNullKeys_);
+    LOG_INFO("hc===after prepareForGroupProbe, rows_size:{}", lookup_->rows_.size());
     if (lookup_->rows_.empty()) {
+        LOG_INFO("hc===no rows to return, skip directly");
         // No rows to probe. Can happen when ignoreNullKeys_ is true and all rows
         // have null keys.
         return;
     }
+    LOG_INFO("hc===start to group probe, rows_size:{}", lookup_->rows_.size());
     hash_table_->groupProbe(*lookup_);
+    LOG_INFO("hc===finish group probe, rows_size:{}", lookup_->rows_.size());
     auto* groups = lookup_->hits_.data();
     const auto& newGroups = lookup_->newGroups_;
     for(auto i = 0; i < aggregates_.size(); i++) {

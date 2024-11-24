@@ -192,11 +192,6 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
         int64_t count,
         const std::vector<std::string>& dynamic_field_names) const override;
 
-    FieldDataPtr
-    bulk_subscript_field_data(FieldId field_id,
-                              const int64_t* seg_offsets,
-                              int64_t count) const override;
-
     bool
     is_mmap_field(FieldId id) const override;
 
@@ -224,6 +219,13 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
     // where Vec is determined from field_offset
     void
     bulk_subscript(SystemFieldType system_type,
+                   const int64_t* seg_offsets,
+                   int64_t count,
+                   void* output) const override;
+
+    void
+    bulk_subscript(FieldId field_id,
+                   DataType data_type,
                    const int64_t* seg_offsets,
                    int64_t count,
                    void* output) const override;
@@ -267,6 +269,14 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
                             const int64_t* seg_offsets,
                             int64_t count,
                             google::protobuf::RepeatedPtrField<T>* dst_raw);
+
+    template <typename S, typename T = S>
+    static void
+    bulk_subscript_ptr_impl(const ChunkedColumnBase* field,
+                            const int64_t* seg_offsets,
+                            int64_t count,
+                            T* dst);
+
 
     template <typename T>
     static void

@@ -40,26 +40,105 @@ PhyProjectNode::GetOutput() {
     }
     LOG_INFO("hc==start running project node");
     auto col_input = GetColumnVector(input_);
-    TargetBitmapView bitset_view(col_input->GetRawData(), col_input->size());
-    auto result_pair = segment_->find_first(10000, bitset_view);
+    // raw data view
+    TargetBitmapView raw_data_view(col_input->GetRawData(), col_input->size());
+    auto result_pair = segment_->find_first(-1, raw_data_view);
     auto selected_offsets = result_pair.first;
     auto selected_count = selected_offsets.size();
-    is_finished_ = true;
-    LOG_INFO("hc==project_selected_count:{}", selected_count);
+    // valid data view
+    TargetBitmapView valid_data_view(col_input->GetValidRawData(), col_input->size());
+    LOG_INFO("hc==project_selected_count:{}, col_input_size:{}", selected_count, col_input->size());
     auto row_type = OutputType();
     std::vector<VectorPtr> column_vectors;
     for (int i = 0; i < fields_to_project_.size(); i++) {
         auto column_type = row_type->column_type(i);
         auto field_id = fields_to_project_.at(i);
-        LOG_INFO("hc==start to project column_type:{}, field_id:{}, selected_count:{}",column_type, field_id.get(), selected_count);
-        auto field_data = segment_->bulk_subscript_field_data(field_id, selected_offsets.data(), selected_count);
-        auto column_vector = std::make_shared<ColumnVector>(std::move(field_data));
+        LOG_INFO("hc==start to project column_type:{}, field_id:{}, selected_count:{}", column_type, field_id.get(),
+                 selected_count);
+        auto field_data = projectFieldData(field_id, column_type, selected_offsets.data(), selected_count);
+        LOG_INFO("hc==finish project column{}, length:{}", i, field_data->Length());
+        auto column_vector = std::make_shared<ColumnVector>(std::move(field_data), std::move(valid_data_view));
         column_vectors.emplace_back(column_vector);
-        LOG_INFO("hc==finish project column{}", i);
+        LOG_INFO("hc==finish project column{}, length:{}", i, column_vector->size());
+        /*for(int j = 0; j < selected_count; j++) {
+            auto* val = column_vector->RawValueAt(j, GetDataTypeSize(column_type));
+            if (column_type == DataType::INT32) {
+                LOG_INFO("hc==projected_i:{} val:{}", j, *static_cast<int32_t*>(val));
+            }
+            if (column_type == DataType::INT16) {
+                LOG_INFO("hc==projected_i:{} val:{}", j, *static_cast<int16_t*>(val));
+            }
+        }*/
     }
+    is_finished_ = true;
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));
     LOG_INFO("hc==finish project columns:");
     return row_vector;
+}
+
+FieldDataPtr
+PhyProjectNode::projectFieldData(milvus::FieldId fieldId,
+                                 milvus::DataType dataType,
+                                 const int64_t *seg_offsets,
+                                 int64_t count) const {
+    FieldDataPtr ret = nullptr;
+    switch(dataType) {
+        case milvus::DataType::BOOL: {
+            FixedVector<bool> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<bool, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        case milvus::DataType::INT8: {
+            FixedVector<int8_t> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<int8_t, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        case milvus::DataType::INT16: {
+            FixedVector<int16_t> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<int16_t, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        case milvus::DataType::INT32: {
+            FixedVector<int32_t> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<int32_t, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        case milvus::DataType::INT64: {
+            FixedVector<int64_t> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<int64_t, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        case milvus::DataType::FLOAT: {
+            FixedVector<float> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<float, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        case milvus::DataType::DOUBLE: {
+            FixedVector<double> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<double, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        case milvus::DataType::STRING:
+        case milvus::DataType::VARCHAR: {
+            FixedVector<std::string> vec(count);
+            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            ret = std::make_shared<FieldDataImpl<std::string, true>>(1, dataType, false, std::move(vec));
+            break;
+        }
+        default: {
+            PanicInfo(DataTypeInvalid,
+                      fmt::format("unsupported data type {}",
+                                  dataType));
+        }
+    }
+    return ret;
 }
 
 };

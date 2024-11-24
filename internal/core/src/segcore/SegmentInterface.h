@@ -431,6 +431,13 @@ class SegmentInternalInterface : public SegmentInterface {
                    int64_t count,
                    void* output) const = 0;
 
+    virtual void
+    bulk_subscript(FieldId field_id,
+                   DataType data_type,
+                   const int64_t* seg_offsets,
+                   int64_t count,
+                   void* output) const = 0;
+
     // calculate output[i] = Vec[seg_offsets[i]}, where Vec binds to field_offset
     virtual std::unique_ptr<DataArray>
     bulk_subscript(FieldId field_id,
@@ -444,10 +451,6 @@ class SegmentInternalInterface : public SegmentInterface {
         int64_t count,
         const std::vector<std::string>& dynamic_field_names) const = 0;
 
-    virtual FieldDataPtr
-    bulk_subscript_field_data(FieldId field_id,
-                   const int64_t* seg_offsets,
-                   int64_t count) const = 0;
 
  protected:
     mutable std::shared_mutex mutex_;
