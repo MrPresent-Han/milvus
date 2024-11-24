@@ -32,7 +32,8 @@ void GroupingSet::addInput(const RowVectorPtr& input) {
     LOG_INFO("hc===adding global numInputRows_:{}", numInputRows_);
     active_rows_.resize(numRows);
     active_rows_.set();
-    LOG_INFO("hc===after setting active rows, numRows:{}", numRows);
+    LOG_INFO("hc===after setting active rows, numRows:{}, active_rows_.size:{}, active_rows_.count:{}", 
+        numRows, active_rows_.size(), active_rows_.count());
     addInputForActiveRows(input);
     LOG_INFO("hc===finish addInput for grouping set, numRows:{}", numRows);
 }

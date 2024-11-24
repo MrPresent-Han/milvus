@@ -44,14 +44,18 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
     auto& hashers = lookup.hashers_;
     int numKeys = hashers.size();
     // set up column vector to each column
+    LOG_INFO("hc==before starting to hash, numKeys:{}", numKeys);
     for (auto i = 0; i < numKeys; i++) {
         auto& hasher = hashers[i];
         auto column_idx = hasher->ChannelIndex();
+        LOG_INFO("hc==hash:{}, column_idx:{}", i, column_idx);
         ColumnVectorPtr column_ptr = std::dynamic_pointer_cast<ColumnVector>(input->child(column_idx));
         AssertInfo(column_ptr!=nullptr, "Failed to get column vector from row vector input");
         hashers[i]->setColumnData(column_ptr);
+        LOG_INFO("hc==hash:{}, column.length:", i, column_ptr->size());
         // deselect null values
         if (!ignoreNullKeys) {
+            LOG_INFO("hc==hash:{}, do not ignore null:", i);
             int64_t length = column_ptr->size();
             TargetBitmapView valid_bits_view(column_ptr->GetValidRawData(), length);
             activeRows&=valid_bits_view;
@@ -62,6 +66,7 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
     const auto mode = hashMode();
     for (auto i = 0; i < hashers.size(); i++) {
         if (mode == BaseHashTable::HashMode::kHash) {
+            LOG_INFO("hc==hashers start hashing:{}", i);
             hashers[i]->hash(i > 0, activeRows, lookup.hashes_);
         } else {
             PanicInfo(milvus::OpTypeInvalid, "Not support target hashMode, only support kHash for now");

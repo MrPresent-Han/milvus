@@ -35,6 +35,7 @@ std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
 
 template<DataType Type>
 void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBitmapView& activeRows, bool mix, uint64_t* result) {
+    LOG_INFO("hc==entering hasherValues, element_size:");
     if constexpr (Type==DataType::ROW || Type==DataType::ARRAY || Type==DataType::JSON) {
         PanicInfo(milvus::DataTypeInvalid, "NotSupport hash for complext type row/array/json:{}", Type);
     } else {
@@ -42,12 +43,15 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
         auto element_data_type = ChannelDataType();
         auto element_size = GetDataTypeSize(element_data_type);
         auto start = 0;
+        LOG_INFO("hc==hasherValues, element_size:{}", element_size);
         do {
             auto next_valid_op = activeRows.find_next(start);
             if (!next_valid_op.has_value()){
+                LOG_INFO("hc==hasher no valid op, break");
                 break;
             }
             auto next_valid_row = next_valid_op.value();
+            LOG_INFO("hc==hash next_valid_row:{}", next_valid_row);
             if (!column_data->ValidAt(next_valid_row)) {
                 result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], kNullHash): kNullHash;
                 continue;
@@ -61,6 +65,7 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
             } else {
                 hash_value = folly::hasher<T>()(*value);
             }
+            LOG_INFO("hc==next_valid_row:{}, hashValue:{}", next_valid_row, hash_value);
             result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], hash_value) : hash_value;
             start = next_valid_row;
         } while(true);
@@ -78,7 +83,6 @@ VectorHasher::hash(bool mix, const TargetBitmapView& activeRows, std::vector<uin
     // }
     auto element_data_type = ChannelDataType();
     MILVUS_DYNAMIC_TYPE_DISPATCH(hashValues, element_data_type, columnData(), activeRows, mix, result.data());
-    //PanicInfo(DataTypeInvalid, "Unsupported data type for dispatch");
 }
 
 
