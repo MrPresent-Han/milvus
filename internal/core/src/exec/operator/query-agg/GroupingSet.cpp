@@ -141,10 +141,10 @@ void GroupingSet::ensureInputFits(const RowVectorPtr& input){
 }
 
 void GroupingSet::extractGroups(folly::Range<char **> groups, const milvus::RowVectorPtr &result) {
-    result->resize(groups.size());
     if (groups.empty()) {
         return;
     }
+    result->resize(groups.size());
     RowContainer* rows = hash_table_->rows();
     auto totalKeys = rows->KeyTypes().size();
     for(auto i = 0; i < totalKeys; i++) {

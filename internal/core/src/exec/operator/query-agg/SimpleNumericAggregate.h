@@ -26,6 +26,7 @@ protected:
             int32_t numGroups,
             VectorPtr* result,
             ExtractOneValue extractOneValue) {
+        LOG_INFO("hc===doExtractValues, numGroups:{}, element_size:{}", numGroups, (*result)->elementSize(), sizeof(TData));
         AssertInfo((*result)->elementSize()==sizeof(TData), "Incorrect type size of input result vector");
         ColumnVectorPtr result_column = std::dynamic_pointer_cast<ColumnVector>(*result);
         AssertInfo(result_column != nullptr, "input vector for extracting aggregation must be of Type ColumnVector");

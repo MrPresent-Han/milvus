@@ -325,6 +325,7 @@ public:
                 if (row == nullptr) {
                     result_column_vec->nullAt(resultIndex);
                 } else {
+                    LOG_INFO("hc===set key value for resIndex:{}, value:{}", resultIndex, valueAt<T>(row, offset));
                     result_column_vec->SetValueAt<T>(resultIndex, valueAt<T>(row, offset));
                 }
             }
