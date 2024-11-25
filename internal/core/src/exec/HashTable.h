@@ -202,18 +202,26 @@ public:
     static constexpr uint64_t kBucketSize = sizeof(Bucket);
 
     Bucket* bucketAt(int64_t offset) const {
-        AssertInfo(0 == offset&(kBucketSize-1), "Invalid offset:{} and kBucketSize:{}", offset, kBucketSize);
+        LOG_INFO("hc===check_offset:{}, kBucketSize:{}, cal:{}, res1:{}, res2:{}",
+                 offset,
+                 kBucketSize,
+                 offset&(kBucketSize-1),
+                 offset&(kBucketSize-1)==0,
+                 static_cast<uint64_t>(offset)&(kBucketSize-1)==static_cast<uint64_t>(0));
+        //AssertInfo(offset&(kBucketSize-1)==0, "Invalid offset:{} and kBucketSize:{}", offset, kBucketSize);
         return reinterpret_cast<Bucket*>(reinterpret_cast<char*>(table_) + offset);
     }
 
     int64_t bucketOffset(uint64_t hash) const {
+        LOG_INFO("hc===bucketOffset:hash{}, bucketOffsetMask_:{}, res:{}", hash, bucketOffsetMask_, hash & bucketOffsetMask_);
         return hash & bucketOffsetMask_;
     }
 
     int64_t nextBucketOffset(int64_t bucketOffset) const {
-        AssertInfo(bucketOffset&(kBucketSize - 1) == 0, "Invalid bucketOffset:{} for nextBucketOffset", bucketOffset);
+        //AssertInfo(bucketOffset&(kBucketSize - 1) == 0, "Invalid bucketOffset:{} for nextBucketOffset", bucketOffset);
         AssertInfo(bucketOffset < sizeMask_, "BucketOffset:{} must be less than sizeMask_:{} for nextBucketOffset",
                    bucketOffset, sizeMask_);
+        LOG_INFO("hc===nextBucketOffset:bucketOffset{}, sizeMask_:{}, res:{}", bucketOffset, sizeMask_, bucketOffset&(kBucketSize - 1));
         return sizeMask_ & (bucketOffset + kBucketSize);
     }
 
@@ -243,16 +251,12 @@ public:
 
     void extractGroups(char** output_groups, size_t group_count);
 
-    template<bool isJoin, bool isNormalizedKey = false>
     void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
 
     void clear(bool freeTable = false) override;
 
-    // 'initNormalizedKeys' is passed to 'rehash' --> 'rehash' --> 'insertBatch'.
-    // If it's false and the table is in normalized keys mode,
-    // the keys are retrieved from the row and the hash is made
-    // from this, without recomputing the normalized key.
-    void checkSize(int32_t numNew, bool initNormalizedKeys);
+
+    void checkSize(int32_t numNew);
 
 
     // Returns the number of entries after which the table gets rehashed.

@@ -49,7 +49,7 @@ protected:
                       const VectorPtr& vector,
                       UpdateSingleValue updateSingleValue,
                       bool mayPushdown){
-        auto start = 0;
+        auto start = -1;
         auto column_data = std::dynamic_pointer_cast<ColumnVector>(vector);
         AssertInfo(column_data!=nullptr, "input column data for upgrading groups should not be nullptr");
         while(true) {
@@ -58,10 +58,10 @@ protected:
                 return;
             }
             auto selected_idx = next_selected.value();
-            if (column_data->ValidAt(selected_idx)) {
+            if (!column_data->ValidAt(selected_idx)) {
                 continue;
             }
-            updateNonNullValue<tableHasNulls, TData>(groups[selected_idx], column_data->ValueAt<TData>(selected_idx), updateSingleValue);
+            updateNonNullValue<tableHasNulls, TData>(groups[selected_idx], column_data->ValueAt<TValue>(selected_idx), updateSingleValue);
             start = selected_idx;
         }
     }
@@ -91,7 +91,7 @@ protected:
             if (column_data->ValidAt(selected_idx)) {
                 continue;
             }
-            updateNonNullValue<true, TData>(group, column_data->ValueAt<TData>(selected_idx), updateSingleValue);
+            updateNonNullValue<true, TData>(group, column_data->ValueAt<TValue>(selected_idx), updateSingleValue);
             start = selected_idx;
         }
     }

@@ -95,8 +95,10 @@ private:
         if constexpr (std::is_same_v<TData, double> || std::is_same_v<TData, float>||
                 std::is_same_v<TData, int64_t> && Overflow) {
             result += value;
+            LOG_INFO("hc==update single value:{}, result:{}", value, result);
         } else {
             result = checkPlus(result, value);
+            LOG_INFO("hc==update single value:{}, result:{}", value, result);
         }
     }
 };

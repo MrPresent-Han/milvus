@@ -23,28 +23,25 @@ void PhyAggregationNode::prepareOutput(vector_size_t size){
         BaseVector::prepareForReuse(new_output, size);
         output_ = std::static_pointer_cast<RowVector>(new_output);
     } else {
-        output_ = std::make_shared<RowVector>(output_type_, size, 0);
+        output_ = std::make_shared<RowVector>(output_type_, size);
     }
 }
 
 RowVectorPtr PhyAggregationNode::GetOutput() {
-    LOG_INFO("hc==enter PhyAggregationNode, {}", grouping_set_==nullptr);
+  LOG_INFO("hc==enter PhyAggregationNode, {}", grouping_set_==nullptr);
   if (finished_||(!no_more_input_ && !grouping_set_->hasOutput())) {
       LOG_INFO("hc==skip running aggnode");
       input_ = nullptr;
       return nullptr;
   }
   DeferLambda([&](){ finished_ = true;});
-  LOG_INFO("hc===start running aggnode");
+  LOG_INFO("hc===start running aggnode GetOutput");
   const auto& queryConfig = operator_context_->get_driver_context()->GetQueryConfig();
   auto batch_size = queryConfig->get_expr_batch_size();
   const auto outputRowCount = isGlobal_? 1: batch_size;
   prepareOutput(outputRowCount);
   const bool hasData = grouping_set_->getOutput(output_);
   if (!hasData) {
-      if (no_more_input_) {
-        finished_ = true;
-      }
       return nullptr;
   }
   numOutputRows_ += output_->size();
@@ -66,8 +63,7 @@ void PhyAggregationNode::initialize() {
             input_type,
             std::move(hashers),
             std::move(aggregateInfos),
-            aggregationNode_->ignoreNullKeys(),
-            isRawInput(aggregationNode_->step()));
+            aggregationNode_->ignoreNullKeys());
     LOG_INFO("hc===has init AggregationNode");
     aggregationNode_.reset();
 }

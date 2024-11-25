@@ -178,10 +178,12 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
     }
     LOG_INFO("hc===start to group probe, rows_size:{}", lookup_->rows_.size());
     hash_table_->groupProbe(*lookup_);
-    LOG_INFO("hc===finish group probe, rows_size:{}", lookup_->rows_.size());
+    LOG_INFO("hc===finish group probe, rows_size:{}, hits_.size:{}, newGroups_.size:{}",
+             lookup_->rows_.size(), lookup_->hits_.size(), lookup_->newGroups_.size());
     auto* groups = lookup_->hits_.data();
     const auto& newGroups = lookup_->newGroups_;
     for(auto i = 0; i < aggregates_.size(); i++) {
+        LOG_INFO("hc===start to aggregate:{}", i);
         auto& function = aggregates_[i].function_;
         if (!newGroups.empty()) {
             function->initializeNewGroups(groups, newGroups);
@@ -190,7 +192,9 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
             continue;
         }
         populateTempVectors(i, input);
+        LOG_INFO("hc===has populated vectors for aggregate:{}", i);
         function->addRawInput(groups, active_rows_, tempVectors_, false);
+        LOG_INFO("hc===addRawInput for aggregate:{}", i);
     }
     tempVectors_.clear();
 }

@@ -42,7 +42,7 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
         using T = typename TypeTraits<Type>::NativeType;
         auto element_data_type = ChannelDataType();
         auto element_size = GetDataTypeSize(element_data_type);
-        auto start = 0;
+        auto start = -1;
         LOG_INFO("hc==hasherValues, element_size:{}", element_size);
         do {
             auto next_valid_op = activeRows.find_next(start);
@@ -65,7 +65,7 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
             } else {
                 hash_value = folly::hasher<T>()(*value);
             }
-            LOG_INFO("hc==next_valid_row:{}, hashValue:{}", next_valid_row, hash_value);
+            LOG_INFO("hc==next_valid_row:{}, hashValue:{}, original_value:{}", next_valid_row, hash_value, *value);
             result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], hash_value) : hash_value;
             start = next_valid_row;
         } while(true);
@@ -84,8 +84,6 @@ VectorHasher::hash(bool mix, const TargetBitmapView& activeRows, std::vector<uin
     auto element_data_type = ChannelDataType();
     MILVUS_DYNAMIC_TYPE_DISPATCH(hashValues, element_data_type, columnData(), activeRows, mix, result.data());
 }
-
-
 
 }
 }

@@ -107,12 +107,13 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
 }
 
 char* RowContainer::newRow() {
-    char* row = new char[fixedRowSize_ + alignment_];
+    char* row = new char[fixedRowSize_];
     if (rows_.size() < numRows_ + 1) {
         rows_.resize(numRows_ + 1024);
     }
     rows_[numRows_] = row;
     ++numRows_;
+    LOG_INFO("hc==fixedRowSize_:{}, alignment_:{}, numRows_:{}", fixedRowSize_, alignment_, numRows_);
     return row;
 }
 
@@ -121,6 +122,7 @@ void RowContainer::store(const milvus::ColumnVectorPtr &column_data, milvus::vec
     auto numKeys = keyTypes_.size();
     bool isKey = column_index < numKeys;
     if (isKey && ignoreNullKeys_) {
+        LOG_INFO("hc===storeNoNulls:index{}, column_index:{}", index, column_index);
         MILVUS_DYNAMIC_TYPE_DISPATCH(storeNoNulls, keyTypes_[column_index], column_data, index, row, offsets_[column_index]);
     } else {
         AssertInfo(isKey||accumulators_.empty(), "Should only store into rows for key");

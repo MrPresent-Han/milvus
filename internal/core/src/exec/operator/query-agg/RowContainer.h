@@ -166,12 +166,16 @@ public:
         } else {
             using T = typename TypeTraits<Type>::NativeType;
             T* raw_value = static_cast<T*>(column->RawValueAt(index, sizeof(T)));
+            bool equal = false;
             if constexpr (std::is_same_v<T, std::string>) {
                 const std::string& raw = *static_cast<std::string*>(raw_value);
-                return raw == *(strAt(row, offset));
+                equal = (raw == *(strAt(row, offset)));
+                LOG_INFO("hc===start to equal str values, raw_value:{}, group_val:{}", raw, *(strAt(row, offset)), equal);
             } else {
-                return milvus::comparePrimitiveAsc(*raw_value, valueAt<T>(row, offset));
+                equal = (milvus::comparePrimitiveAsc(*raw_value, valueAt<T>(row, offset))==0);
+                LOG_INFO("hc===start to equal values, raw_value:{}, group_val:{}, equal:{}", *raw_value, valueAt<T>(row, offset), equal);
             }
+            return equal;
         }
     }
 
@@ -191,13 +195,14 @@ public:
         return equalsNoNulls<Type>(row, offset, column, index);
     }
 
-    template <bool nullableKeys>
+    template <bool mayHaveNulls>
     inline bool equals(const char* row, RowColumn column, const ColumnVectorPtr& column_data, vector_size_t index) {
         auto type = column_data->type();
-        if constexpr (nullableKeys) {
+        if constexpr (mayHaveNulls) {
             return MILVUS_DYNAMIC_TYPE_DISPATCH(
                     equalsWithNulls, type, row, column.offset(), column.nullByte(), column.nullMask(), column_data, index);
         } else {
+            LOG_INFO("hc===start to compare with no null values, index:{}, column_offset:{}", index, column.offset());
             return MILVUS_DYNAMIC_TYPE_DISPATCH(
                     equalsNoNulls, type, row, column.offset(), column_data, index);
         }
@@ -249,8 +254,10 @@ public:
                 // the string object and also the underlying char array are both allocated on the heap
                 // must call clear method to deallocate these memory allocated for varchar type to avoid memory leak
                 *reinterpret_cast<std::string**>(group + offset) = new std::string(*static_cast<std::string*>(raw_val_ptr));
+                LOG_INFO("hc===stored str value at offset:{}, val:{}", offset, *static_cast<std::string*>(raw_val_ptr));
             } else {
                 *reinterpret_cast<T*>(group + offset) = *(static_cast<T*>(raw_val_ptr));
+                LOG_INFO("hc===stored value at offset:{}, val:{}", offset, *(static_cast<T*>(raw_val_ptr)));
             }
         }
     }
