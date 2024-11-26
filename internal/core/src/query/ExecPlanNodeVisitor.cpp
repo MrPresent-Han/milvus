@@ -24,6 +24,7 @@
 #include "plan/PlanNode.h"
 #include "exec/Task.h"
 #include "segcore/SegmentInterface.h"
+#include "segcore/Utils.h"
 #include "common/Tracer.h"
 namespace milvus::query {
 
@@ -120,6 +121,7 @@ ExecPlanNodeVisitor::ExecuteTask2(plan::PlanFragment &plan, std::shared_ptr<milv
         if (!result) {
             break;
         }
+        LOG_INFO("hc==ExecuteTask2:{}, size:{}", result->childrens().size(), result->size());
         if (ret) {
             auto childrens = result->childrens();
             AssertInfo(childrens.size() == ret->childrens().size(), "column count of row vectors in different rounds"
@@ -291,7 +293,7 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
 
     // Do task execution
     auto result = ExecuteTask2(plan, query_context);
-    LOG_INFO("hc===before setting up retrieve result");
+    LOG_INFO("hc===before setting up retrieve result:{}, size:{}", result->childrens().size(), result->size());
     setupRetrieveResult(result,
                         query_context,
                         node,
@@ -307,7 +309,7 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
     if (node.is_count_) {
         retrieve_result_opt_ = std::move(query_context->get_retrieve_result());
     } else {
-        AssertInfo(result->childrens().empty(), "Result row vector must have at least one column");
+        AssertInfo(!result->childrens().empty(), "Result row vector must have at least one column");
         auto column_vec = std::dynamic_pointer_cast<ColumnVector>(result->child(0));
         AssertInfo(column_vec, "children inside row vector must be of column vector for now");
         if (column_vec->IsBitmap()){
@@ -327,12 +329,11 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
             tmp_retrieve_result.field_data_.resize(column_count);
 
             for(auto i = 0; i < column_count; i++) {
-                DataArray data_array;
-                data_array.set_type(GetProtoDataType(column_vec->type()));
                 auto columnVec = std::dynamic_pointer_cast<ColumnVector>(result->child(i));
                 AssertInfo(column_vec, "children inside row vector must be of column vector for now");
-                fillDataArrayFromColumnVector(columnVec, data_array);
-                tmp_retrieve_result.field_data_[i] = std::move(data_array);
+                auto data_array = milvus::segcore::CreateScalarDataArray(column_vec->size(), column_vec->type(), column_vec->type(), column_vec->nullCount() > 0);
+                fillDataArrayFromColumnVector(columnVec, *data_array);
+                tmp_retrieve_result.field_data_[i] = std::move(*data_array);
             }
             retrieve_result_opt_ = std::move(tmp_retrieve_result);
         }

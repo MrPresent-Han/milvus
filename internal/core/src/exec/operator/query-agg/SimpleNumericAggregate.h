@@ -40,6 +40,7 @@ protected:
                 result_column->clearNullAt(i);
                 rawValues[i] = extractOneValue(group);
             }
+            LOG_INFO("hc===try to extractValues, numGroups:{}, i:{}", numGroups, i);
         }
     }
 

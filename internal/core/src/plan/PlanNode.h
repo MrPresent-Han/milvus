@@ -467,6 +467,8 @@ public:
         /// might be different from the input types specified in 'call' when
         /// aggregation step is kIntermediate or kFinal.
         std::vector<DataType> rawInputTypes_;
+
+        DataType resultType_;
     public:
         Aggregate(expr::CallExprPtr call):call_(call){}
     };

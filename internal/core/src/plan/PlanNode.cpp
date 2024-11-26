@@ -31,7 +31,7 @@ RowTypePtr getAggregationOutputType(const std::vector<expr::FieldAccessTypeExprP
 
     for (int i = 0; i < aggregateNames.size(); i++) {
         names.emplace_back(aggregateNames[i]);
-        types.emplace_back(aggregates[i].call_->type());
+        types.emplace_back(aggregates[i].resultType_);
         LOG_INFO("hc===pushed agg name:{}, type:{}", aggregateNames[i], aggregates[i].call_->type());
     }
 

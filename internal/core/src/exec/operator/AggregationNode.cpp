@@ -45,6 +45,7 @@ RowVectorPtr PhyAggregationNode::GetOutput() {
       return nullptr;
   }
   numOutputRows_ += output_->size();
+  LOG_INFO("hc===finish getting agg output, numOutputRows_:{}", numOutputRows_);
   return output_;
 }
 

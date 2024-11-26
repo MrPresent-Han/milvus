@@ -109,9 +109,9 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
 char* RowContainer::newRow() {
     char* row = new char[fixedRowSize_];
     if (rows_.size() < numRows_ + 1) {
-        rows_.resize(numRows_ + 1024);
+        rows_.reserve(numRows_ + 1024);
     }
-    rows_[numRows_] = row;
+    rows_.emplace_back(row);
     ++numRows_;
     LOG_INFO("hc==fixedRowSize_:{}, alignment_:{}, numRows_:{}", fixedRowSize_, alignment_, numRows_);
     return row;

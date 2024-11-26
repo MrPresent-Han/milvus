@@ -53,6 +53,7 @@ public:
     void initializeNewGroupsInternal(char** groups, folly::Range<const vector_size_t*> indices) override {
         Aggregate::setAllNulls(groups, indices);
         for(auto i: indices) {
+            LOG_INFO("hc===initializeNewGroupsInternal, i:{}", i);
             (*Aggregate::value<TAccumulator>(groups[i])) = 0;
         }
     }

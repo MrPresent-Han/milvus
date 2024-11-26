@@ -52,7 +52,6 @@ public:
             const std::string& name,
             plan::AggregationNode::Step step,
             const std::vector<DataType>& argTypes,
-            DataType resultType,
             const QueryConfig& query_config);
 
     void setOffsets(
@@ -86,6 +85,7 @@ public:
     T* value(char* group) const {
         AssertInfo(reinterpret_cast<uintptr_t>(group + offset_) % accumulatorAlignmentSize() == 0,
                    "aggregation value in the groups is not aligned");
+        LOG_INFO("hc== retrieved aggregate, offset:{}, value:{}", offset_, *reinterpret_cast<T*>(group + offset_));
         return reinterpret_cast<T*>(group + offset_);
     }
 
@@ -154,7 +154,6 @@ protected:
 
 using AggregateFunctionFactory = std::function<std::unique_ptr<Aggregate>(plan::AggregationNode::Step step,
                                                                           const std::vector<DataType>& argTypes,
-                                                                          DataType resultType,
                                                                           const QueryConfig& config)>;
 
 struct AggregateFunctionEntry {

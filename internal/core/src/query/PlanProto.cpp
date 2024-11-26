@@ -244,6 +244,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{agg_input}, nullptr);
                     aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
                     aggregates.back().rawInputTypes_.emplace_back(field_type);
+                    aggregates.back().resultType_ = GetAggResultType(agg_name, field_type);
                     insert_if_not_exist(field_id, field_name, field_type);
                 }
                 LOG_INFO("hc===parse project_id_set:{}, aggregates_size:{}", project_id_set.size(), aggregates.size());

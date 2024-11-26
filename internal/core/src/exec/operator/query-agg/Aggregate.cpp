@@ -39,11 +39,10 @@ getAggregateFunctionEntry(const std::string& name){
 std::unique_ptr<Aggregate> Aggregate::create(const std::string& name,
                                              plan::AggregationNode::Step step,
                                              const std::vector<DataType>& argTypes,
-                                             DataType resultType,
                                              const QueryConfig& query_config) {
     if(auto func = getAggregateFunctionEntry(name)) {
         LOG_INFO("hc=== found aggregation function factory for name:{}", name);
-        return func->factory(step, argTypes, resultType, query_config);
+        return func->factory(step, argTypes, query_config);
     }
     PanicInfo(UnexpectedError, "Aggregate function not registered: {}", name);
 }

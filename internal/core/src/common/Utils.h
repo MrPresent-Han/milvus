@@ -347,5 +347,34 @@ T checkedMultiply(const T& a, const T& b, const char* typeName = "integer") {
     return result;
 }
 
+const char* const kSum = "sum";
+const char* const KMin = "min";
+const char* const KMax = "max";
+const char* const KCount = "count";
+
+inline
+DataType GetAggResultType(std::string func_name, DataType input_type) {
+    if (func_name == kSum) {
+        switch (input_type) {
+            case DataType::INT8:
+            case DataType::INT16:
+            case DataType::INT32:
+            case DataType::INT64: {
+                return DataType::INT64;
+            }
+            case DataType::FLOAT:{
+                return DataType::FLOAT;
+            }
+            case DataType::DOUBLE:{
+                return DataType::DOUBLE;
+            }
+            default: {
+                PanicInfo(DataTypeInvalid, "Unsupported data type for type:{}", input_type);
+            }
+        }
+    }
+    PanicInfo(OpTypeInvalid, "Unsupported func type:{}", func_name);
+}
+
 }  // namespace milvus
 

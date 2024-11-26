@@ -17,7 +17,6 @@
 #include "SumAggregateBase.h"
 #include "RegisterAggregateFunctions.h"
 #include "AggregateUtil.h"
-#include "AggregateNames.h"
 #include "expr/FunctionSignature.h"
 
 namespace milvus {
@@ -48,7 +47,6 @@ AggregateRegistrationResult registerSum(
                                            signatures,
                                            [name](plan::AggregationNode::Step step,
                                                    const std::vector<DataType>& argumentTypes,
-                                                   DataType resultType,
                                                    const QueryConfig& config)->std::unique_ptr<Aggregate>{
                                                         AssertInfo(argumentTypes.size()==1, "function:{} only accept one argument", name);
                                                         auto inputType = argumentTypes[0];

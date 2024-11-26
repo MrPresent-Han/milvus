@@ -156,6 +156,7 @@ void GroupingSet::extractGroups(folly::Range<char **> groups, const milvus::RowV
         auto aggregateVector = result->child(totalKeys + i);
         function->extractValues(groups.data(), groups.size(), &aggregateVector);
     }
+    LOG_INFO("hc== GroupingSet::extractGroups, children_size:{}, length:{}", result->childrens().size(), result->size());
 }
 
 

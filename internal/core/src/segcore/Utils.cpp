@@ -239,6 +239,24 @@ CreateScalarDataArray(int64_t count, const FieldMeta& field_meta) {
     }
 
     auto scalar_array = data_array->mutable_scalars();
+    SetUpScalarFieldData(scalar_array, data_type, field_meta.get_element_type(), count);
+    return data_array;
+}
+
+std::unique_ptr<DataArray>
+CreateScalarDataArray(int64_t count, DataType data_type, DataType element_type, bool nullable) {
+    auto data_array = std::make_unique<DataArray>();
+    data_array->set_type(static_cast<milvus::proto::schema::DataType>(data_type));
+    if (nullable) {
+        data_array->mutable_valid_data()->Resize(count, false);
+    }
+    auto scalar_array = data_array->mutable_scalars();
+    SetUpScalarFieldData(scalar_array, data_type, element_type, count);
+    return data_array;
+}
+
+void
+SetUpScalarFieldData(milvus::proto::schema::ScalarField*& scalar_array, DataType data_type, DataType element_type, int64_t count) {
     switch (data_type) {
         case DataType::BOOL: {
             auto obj = scalar_array->mutable_bool_data();
@@ -295,8 +313,7 @@ CreateScalarDataArray(int64_t count, const FieldMeta& field_meta) {
         case DataType::ARRAY: {
             auto obj = scalar_array->mutable_array_data();
             obj->mutable_data()->Reserve(count);
-            obj->set_element_type(static_cast<milvus::proto::schema::DataType>(
-                field_meta.get_element_type()));
+            obj->set_element_type(static_cast<milvus::proto::schema::DataType>(element_type));
             for (int i = 0; i < count; i++) {
                 *(obj->mutable_data()->Add()) = proto::schema::ScalarField();
             }
@@ -307,8 +324,6 @@ CreateScalarDataArray(int64_t count, const FieldMeta& field_meta) {
                       fmt::format("unsupported datatype {}", data_type));
         }
     }
-
-    return data_array;
 }
 
 std::unique_ptr<DataArray>
