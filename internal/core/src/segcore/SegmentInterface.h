@@ -384,6 +384,11 @@ class SegmentInternalInterface : public SegmentInterface {
     find_first(int64_t limit, const BitsetType& bitset) const = 0;
 
     void
+    FillTargetEntryDirectly(tracer::TraceContext* trace_ctx,
+                            const std::unique_ptr<proto::segcore::RetrieveResults>& results,
+                            RetrieveResult& retrieveResult) const ;
+
+    void
     FillTargetEntry(
         tracer::TraceContext* trace_ctx,
         const query::RetrievePlan* plan,

@@ -293,14 +293,11 @@ func NewFieldAccessor(fieldType schemapb.DataType) (FieldAccessor, error) {
 	switch fieldType {
 	case schemapb.DataType_Bool:
 		return newBoolFieldAccessor(), nil
-	case schemapb.DataType_Int8:
-	case schemapb.DataType_Int16:
-	case schemapb.DataType_Int32:
+	case schemapb.DataType_Int8, schemapb.DataType_Int16, schemapb.DataType_Int32:
 		return newInt32FieldAccessor(), nil
 	case schemapb.DataType_Int64:
 		return newInt64FieldAccessor(), nil
-	case schemapb.DataType_VarChar:
-	case schemapb.DataType_String:
+	case schemapb.DataType_VarChar, schemapb.DataType_String:
 		return newStringFieldAccessor(), nil
 	case schemapb.DataType_Float:
 		return newFloat32FieldAccessor(), nil
@@ -328,7 +325,7 @@ type Int32FieldAccessor struct {
 func (i32Field *Int32FieldAccessor) Hash(idx int) uint64 {
 	i32Field.hasher.Reset()
 	val := i32Field.vals[idx]
-	binary.LittleEndian.PutUint64(i32Field.buffer, uint64(val))
+	binary.LittleEndian.PutUint32(i32Field.buffer, uint32(val))
 	i32Field.hasher.Write(i32Field.buffer)
 	return i32Field.hasher.Sum64()
 }
@@ -510,19 +507,18 @@ func newStringFieldAccessor() FieldAccessor {
 	return &StringFieldAccessor{hasher: fnv.New64a(), buffer: make([]byte, 1024)}
 }
 
-func AssembleBucket(bucket *Bucket, fieldDatas []*schemapb.FieldData, rowIdx int) error {
+func AssembleBucket(bucket *Bucket, fieldDatas []*schemapb.FieldData) error {
 	colCount := len(fieldDatas)
 	for r := 0; r < bucket.RowCount(); r++ {
 		row := bucket.RowAt(r)
-		AssembleSingleRow(colCount, row, fieldDatas, rowIdx)
-		rowIdx++
+		AssembleSingleRow(colCount, row, fieldDatas)
 	}
 	return nil
 }
 
-func AssembleSingleRow(colCount int, row *Row, fieldDatas []*schemapb.FieldData, rowIdx int) error {
+func AssembleSingleRow(colCount int, row *Row, fieldDatas []*schemapb.FieldData) error {
 	for c := 0; c < colCount; c++ {
-		err := AssembleSingleValue(row.ValAt(c), fieldDatas[c], rowIdx)
+		err := AssembleSingleValue(row.ValAt(c), fieldDatas[c])
 		if err != nil {
 			return err
 		}
@@ -530,23 +526,20 @@ func AssembleSingleRow(colCount int, row *Row, fieldDatas []*schemapb.FieldData,
 	return nil
 }
 
-func AssembleSingleValue(val interface{}, fieldData *schemapb.FieldData, rowIdx int) error {
+func AssembleSingleValue(val interface{}, fieldData *schemapb.FieldData) error {
 	switch fieldData.GetType() {
 	case schemapb.DataType_Bool:
-		fieldData.GetScalars().GetBoolData().GetData()[rowIdx] = val.(bool)
-	case schemapb.DataType_Int8:
-	case schemapb.DataType_Int16:
-	case schemapb.DataType_Int32:
-		fieldData.GetScalars().GetIntData().GetData()[rowIdx] = val.(int32)
+		fieldData.GetScalars().GetBoolData().Data = append(fieldData.GetScalars().GetBoolData().GetData(), val.(bool))
+	case schemapb.DataType_Int8, schemapb.DataType_Int16, schemapb.DataType_Int32:
+		fieldData.GetScalars().GetIntData().Data = append(fieldData.GetScalars().GetIntData().GetData(), val.(int32))
 	case schemapb.DataType_Int64:
-		fieldData.GetScalars().GetLongData().GetData()[rowIdx] = val.(int64)
+		fieldData.GetScalars().GetLongData().Data = append(fieldData.GetScalars().GetLongData().GetData(), val.(int64))
 	case schemapb.DataType_Float:
-		fieldData.GetScalars().GetFloatData().GetData()[rowIdx] = val.(float32)
+		fieldData.GetScalars().GetFloatData().Data = append(fieldData.GetScalars().GetFloatData().GetData(), val.(float32))
 	case schemapb.DataType_Double:
-		fieldData.GetScalars().GetDoubleData().GetData()[rowIdx] = val.(float64)
-	case schemapb.DataType_VarChar:
-	case schemapb.DataType_String:
-		fieldData.GetScalars().GetStringData().GetData()[rowIdx] = val.(string)
+		fieldData.GetScalars().GetDoubleData().Data = append(fieldData.GetScalars().GetDoubleData().GetData(), val.(float64))
+	case schemapb.DataType_VarChar, schemapb.DataType_String:
+		fieldData.GetScalars().GetStringData().Data = append(fieldData.GetScalars().GetStringData().GetData(), val.(string))
 	default:
 		return fmt.Errorf("unsupported DataType:%d", fieldData.GetType())
 	}
@@ -600,8 +593,9 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 
 	//1. set up hashers and accumulators
 	numGroupingKeys := len(reducer.groupByFieldIds)
-	hashers := make([]FieldAccessor, 0, numGroupingKeys)
-	accumulators := make([]FieldAccessor, 0)
+	numAggs := len(reducer.aggregates)
+	hashers := make([]FieldAccessor, numGroupingKeys)
+	accumulators := make([]FieldAccessor, numAggs)
 	firstFieldData := results[0].GetFieldDatas()
 	outputColumnCount := len(firstFieldData)
 	for idx, fieldData := range firstFieldData {
@@ -610,14 +604,14 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 			if err != nil {
 				return nil, err
 			}
-			hashers = append(hashers, hasher)
+			hashers[idx] = hasher
 		}
 		if idx >= numGroupingKeys {
 			accumulator, err := NewFieldAccessor(fieldData.GetType())
 			if err != nil {
 				return nil, err
 			}
-			accumulators = append(accumulators, accumulator)
+			accumulators[idx-numGroupingKeys] = accumulator
 		}
 	}
 
@@ -640,12 +634,11 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 				rows[0].UpdateEntry(rows[r], c, aggs[c])
 			}
 		}
-		AssembleSingleRow(outputColumnCount, rows[0], reducedResult.fieldDatas, 0)
+		AssembleSingleRow(outputColumnCount, rows[0], reducedResult.fieldDatas)
 		return reducedResult, nil
 	}
 
 	// 2. compute hash values for all rows in the result retrieved
-	rowIdx := 0
 	totalRowCount := 0
 	for _, result := range results {
 		fieldDatas := result.GetFieldDatas()
@@ -665,9 +658,12 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 			}
 			if rowCount == -1 {
 				rowCount = hashers[i].RowCount()
-			} else if rowCount != hashers[i].RowCount() {
+			} else if i < numGroupingKeys && rowCount != hashers[i].RowCount() {
 				return nil, fmt.Errorf("field data:%d for different columns have different row count, %d vs %d, wrong state",
 					i, rowCount, hashers[i].RowCount())
+			} else if rowCount != accumulators[i-numGroupingKeys].RowCount() {
+				return nil, fmt.Errorf("field data:%d for different columns have different row count, %d vs %d, wrong state",
+					i, rowCount, accumulators[i-numGroupingKeys].RowCount())
 			}
 		}
 		for row := 0; row < rowCount; row++ {
@@ -699,20 +695,17 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 					bucket.Accumulate(newRow, rowIdx, numGroupingKeys, aggs)
 				}
 			}
-			rowIdx++
 		}
 	}
 
 	//3. assemble reduced buckets into retrievedResult
 	reducedResult := NewAggregationResult(nil)
 	reducedResult.fieldDatas = typeutil.PrepareResultFieldData(firstFieldData, int64(totalRowCount))
-	rowIdx = 0
 	for _, bucket := range reducer.hashValsMap {
-		err := AssembleBucket(bucket, reducedResult.GetFieldDatas(), rowIdx)
+		err := AssembleBucket(bucket, reducedResult.GetFieldDatas())
 		if err != nil {
 			return nil, err
 		}
-		rowIdx += bucket.RowCount()
 	}
 	return reducedResult, nil
 }

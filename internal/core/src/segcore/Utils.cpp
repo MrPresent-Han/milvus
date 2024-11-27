@@ -243,16 +243,19 @@ CreateScalarDataArray(int64_t count, const FieldMeta& field_meta) {
     return data_array;
 }
 
-std::unique_ptr<DataArray>
-CreateScalarDataArray(int64_t count, DataType data_type, DataType element_type, bool nullable) {
-    auto data_array = std::make_unique<DataArray>();
-    data_array->set_type(static_cast<milvus::proto::schema::DataType>(data_type));
+void
+CreateScalarDataArray(DataArray& data_array, int64_t count, DataType data_type, DataType element_type, bool nullable) {
+    LOG_INFO("hc==111111, data_type:{}", data_type);
+    data_array.set_type(static_cast<milvus::proto::schema::DataType>(data_type));
+    LOG_INFO("hc==222222, data_type:{}", data_type);
     if (nullable) {
-        data_array->mutable_valid_data()->Resize(count, false);
+        LOG_INFO("hc==333333, data_type:{}", data_type);
+        data_array.mutable_valid_data()->Resize(count, false);
     }
-    auto scalar_array = data_array->mutable_scalars();
+    LOG_INFO("hc==444444, data_type:{}", data_type);
+    auto scalar_array = data_array.mutable_scalars();
+    LOG_INFO("hc==CreateScalarDataArray, count:{}", count);
     SetUpScalarFieldData(scalar_array, data_type, element_type, count);
-    return data_array;
 }
 
 void
@@ -281,6 +284,7 @@ SetUpScalarFieldData(milvus::proto::schema::ScalarField*& scalar_array, DataType
         case DataType::INT64: {
             auto obj = scalar_array->mutable_long_data();
             obj->mutable_data()->Resize(count, 0);
+            LOG_INFO("hc==resize long array size:{}, state:{}", count, obj->mutable_data()->mutable_data()==nullptr);
             break;
         }
         case DataType::FLOAT: {

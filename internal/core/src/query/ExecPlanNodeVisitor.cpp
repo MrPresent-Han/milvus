@@ -232,8 +232,11 @@ void fillDataArrayFromColumnVector(const ColumnVectorPtr& column_vector, DataArr
             break;
         }
         case DataType::INT64:{
-            auto int_data = data_array.mutable_scalars()->mutable_long_data();
-            fillTypedDataArray<int64_t>(column_raw_data, column_data_size, int_data->mutable_data()->mutable_data());
+            auto longData = data_array.mutable_scalars()->mutable_long_data();
+            LOG_INFO("hc===longData1:{}", longData == nullptr);
+            LOG_INFO("hc===longData2:{}", longData->mutable_data() == nullptr);
+            LOG_INFO("hc===longData3:{}", longData->mutable_data()->mutable_data() ==nullptr);
+            fillTypedDataArray<int64_t>(column_raw_data, column_data_size, longData->mutable_data()->mutable_data());
             break;
         }
         case DataType::FLOAT: {
@@ -243,7 +246,7 @@ void fillDataArrayFromColumnVector(const ColumnVectorPtr& column_vector, DataArr
         }
         case DataType::DOUBLE: {
             auto double_data = data_array.mutable_scalars()->mutable_double_data();
-            fillTypedDataArray<float>(column_raw_data, column_data_size, double_data->mutable_data()->mutable_data());
+            fillTypedDataArray<double>(column_raw_data, column_data_size, double_data->mutable_data()->mutable_data());
             break;
         }
         case DataType::VARCHAR:
@@ -310,12 +313,12 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
         retrieve_result_opt_ = std::move(query_context->get_retrieve_result());
     } else {
         AssertInfo(!result->childrens().empty(), "Result row vector must have at least one column");
-        auto column_vec = std::dynamic_pointer_cast<ColumnVector>(result->child(0));
-        AssertInfo(column_vec, "children inside row vector must be of column vector for now");
-        if (column_vec->IsBitmap()){
+        auto first_column = std::dynamic_pointer_cast<ColumnVector>(result->child(0));
+        AssertInfo(first_column, "children inside row vector must be of column vector for now");
+        if (first_column->IsBitmap()){
             LOG_INFO("hc===start setting up bitview");
-            BitsetTypeView view(column_vec->GetRawData(), column_vec->size());
-            tmp_retrieve_result.total_data_cnt_ = column_vec->size();
+            BitsetTypeView view(first_column->GetRawData(), first_column->size());
+            tmp_retrieve_result.total_data_cnt_ = first_column->size();
             tracer::AutoSpan _("Find Limit Pk", tracer::GetRootSpan());
             auto results_pair = segment->find_first(node.limit_, view);
             tmp_retrieve_result.result_offsets_ = std::move(results_pair.first);
@@ -329,11 +332,13 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
             tmp_retrieve_result.field_data_.resize(column_count);
 
             for(auto i = 0; i < column_count; i++) {
-                auto columnVec = std::dynamic_pointer_cast<ColumnVector>(result->child(i));
+                auto column_vec = std::dynamic_pointer_cast<ColumnVector>(result->child(i));
                 AssertInfo(column_vec, "children inside row vector must be of column vector for now");
-                auto data_array = milvus::segcore::CreateScalarDataArray(column_vec->size(), column_vec->type(), column_vec->type(), column_vec->nullCount() > 0);
-                fillDataArrayFromColumnVector(columnVec, *data_array);
-                tmp_retrieve_result.field_data_[i] = std::move(*data_array);
+                DataArray data_array;
+                LOG_INFO("hc===try to assemble column, size:{}", column_vec->size());
+                milvus::segcore::CreateScalarDataArray(data_array, column_vec->size(), column_vec->type(), column_vec->type(), column_vec->nullCount() > 0);
+                fillDataArrayFromColumnVector(column_vec, data_array);
+                tmp_retrieve_result.field_data_[i] = std::move(data_array);
             }
             retrieve_result_opt_ = std::move(tmp_retrieve_result);
         }
