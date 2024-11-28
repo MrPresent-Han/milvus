@@ -10,6 +10,8 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 	typeutil2 "github.com/milvus-io/milvus/internal/util/typeutil"
 	"github.com/milvus-io/milvus/pkg/util/typeutil"
+	"github.com/pingcap/log"
+	"go.uber.org/zap"
 	"hash"
 	"hash/fnv"
 	"math"
@@ -618,6 +620,8 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 	accumulators := make([]FieldAccessor, numAggs)
 	firstFieldData := results[0].GetFieldDatas()
 	outputColumnCount := len(firstFieldData)
+	log.Info("hc===GroupAggReducer", zap.Int("outputColumnCount", outputColumnCount),
+		zap.Int("numGroupingKeys", numGroupingKeys), zap.Int("numAggs", numAggs))
 	for idx, fieldData := range firstFieldData {
 		if idx < numGroupingKeys {
 			hasher, err := NewFieldAccessor(fieldData.GetType())
@@ -670,17 +674,22 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 		}
 		rowCount := -1
 		for i := 0; i < outputColumnCount; i++ {
+			log.Info("hc===outputColumn:", zap.Int("column_i", i))
 			fieldData := fieldDatas[i]
 			if i < numGroupingKeys {
+				log.Info("hc===set value for hasher:", zap.Int("column_i", i))
 				hashers[i].SetVals(fieldData)
 			} else {
 				accumulators[i-numGroupingKeys].SetVals(fieldData)
+				log.Info("hc===set value for accumulator:", zap.Int("column_i", i), zap.Int("i-numGroupingKeys", i-numGroupingKeys))
 			}
 			if rowCount == -1 {
 				rowCount = hashers[i].RowCount()
-			} else if i < numGroupingKeys && rowCount != hashers[i].RowCount() {
-				return nil, fmt.Errorf("field data:%d for different columns have different row count, %d vs %d, wrong state",
-					i, rowCount, hashers[i].RowCount())
+			} else if i < numGroupingKeys {
+				if rowCount != hashers[i].RowCount() {
+					return nil, fmt.Errorf("field data:%d for different columns have different row count, %d vs %d, wrong state",
+						i, rowCount, hashers[i].RowCount())
+				}
 			} else if rowCount != accumulators[i-numGroupingKeys].RowCount() {
 				return nil, fmt.Errorf("field data:%d for different columns have different row count, %d vs %d, wrong state",
 					i, rowCount, accumulators[i-numGroupingKeys].RowCount())
