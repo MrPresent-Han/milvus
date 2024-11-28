@@ -11,15 +11,26 @@ import (
 
 type MilvusAggReducer struct {
 	groupAggReducer *agg.GroupAggReducer
+	outputMap       *agg.AggregationFieldMap
 }
 
-func NewMilvusAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate, schema *schemapb.CollectionSchema) *MilvusAggReducer {
+func NewMilvusAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate,
+	schema *schemapb.CollectionSchema, outputMap *agg.AggregationFieldMap) *MilvusAggReducer {
+	//hc--must ensure outputMap is not nil outside
 	return &MilvusAggReducer{
 		agg.NewGroupAggReducer(groupByFieldIds, aggregates, schema),
+		outputMap,
 	}
 }
 
 func (reducer *MilvusAggReducer) Reduce(results []*internalpb.RetrieveResults) (*milvuspb.QueryResults, error) {
 	reducedAggRes, err := reducer.groupAggReducer.Reduce(context.Background(), agg.InternalResult2AggResult(results))
-	return agg.AggResult2MilvusResult(reducedAggRes), err
+	fieldCount := reducer.outputMap.Count()
+	reOrganizedFieldDatas := make([]*schemapb.FieldData, fieldCount)
+	for i := 0; i < fieldCount; i++ {
+		reducedIdx := reducer.outputMap.IndexAt(i)
+		reOrganizedFieldDatas[i] = reducedAggRes.GetFieldDatas()[reducedIdx]
+		reOrganizedFieldDatas[i].FieldName = reducer.outputMap.NameAt(i)
+	}
+	return &milvuspb.QueryResults{FieldsData: reOrganizedFieldDatas}, err
 }

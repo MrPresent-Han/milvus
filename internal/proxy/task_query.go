@@ -75,6 +75,7 @@ type queryTask struct {
 	allQueryCnt          int64
 	totalRelatedDataSize int64
 	mustUsePartitionKey  bool
+	aggregationFieldMap  *agg.AggregationFieldMap
 }
 
 type queryParams struct {
@@ -312,6 +313,7 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 		emptyOutputFields := make([]UniqueID, 0)
 		t.RetrieveRequest.OutputFieldsId = emptyOutputFields
 		t.plan.OutputFieldIds = emptyOutputFields
+		t.aggregationFieldMap = agg.NewAggregationFieldMap(t.request.GetOutputFields(), t.queryParams.groupByFields, t.userAggregates)
 	} else {
 		outputFieldIDs, err := translateToOutputFieldIDs(t.request.GetOutputFields(), schema.CollectionSchema)
 		if err != nil {
@@ -594,7 +596,7 @@ func (t *queryTask) PostExecute(ctx context.Context) error {
 	metrics.ProxyDecodeResultLatency.WithLabelValues(strconv.FormatInt(paramtable.GetNodeID(), 10), metrics.QueryLabel).Observe(0.0)
 	tr.CtxRecord(ctx, "reduceResultStart")
 
-	reducer := createMilvusReducer(ctx, t.queryParams, t.RetrieveRequest, t.schema.CollectionSchema, t.plan, t.collectionName)
+	reducer := createMilvusReducer(ctx, t.queryParams, t.RetrieveRequest, t.schema.CollectionSchema, t.plan, t.collectionName, t.aggregationFieldMap)
 
 	t.result, err = reducer.Reduce(toReduceResults)
 	if err != nil {

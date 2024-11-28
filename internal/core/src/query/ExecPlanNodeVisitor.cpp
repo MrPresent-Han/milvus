@@ -233,9 +233,6 @@ void fillDataArrayFromColumnVector(const ColumnVectorPtr& column_vector, DataArr
         }
         case DataType::INT64:{
             auto longData = data_array.mutable_scalars()->mutable_long_data();
-            LOG_INFO("hc===longData1:{}", longData == nullptr);
-            LOG_INFO("hc===longData2:{}", longData->mutable_data() == nullptr);
-            LOG_INFO("hc===longData3:{}", longData->mutable_data()->mutable_data() ==nullptr);
             fillTypedDataArray<int64_t>(column_raw_data, column_data_size, longData->mutable_data()->mutable_data());
             break;
         }
@@ -326,7 +323,6 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
             retrieve_result_opt_ = std::move(tmp_retrieve_result);
         } else {
             LOG_INFO("hc===start setting up group result");
-            const auto& fields_map = segment->get_schema().get_fields();
             // load data in the result vector into retrieve_result
             auto column_count = result->childrens().size();
             tmp_retrieve_result.field_data_.resize(column_count);

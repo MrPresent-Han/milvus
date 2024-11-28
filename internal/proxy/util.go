@@ -1247,7 +1247,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 			} else if isAgg, aggregateName, aggFieldName := agg.MatchAggregationExpression(outputFieldName); isAgg {
 				if aggFieldID, ok := allFieldNameMap[aggFieldName]; ok {
 					if schema.IsFieldLoaded(aggFieldID) {
-						aggFunc, aggErr := agg.NewAggregate(aggregateName, aggFieldID)
+						aggFunc, aggErr := agg.NewAggregate(aggregateName, aggFieldID, outputFieldName)
 						if aggErr != nil {
 							return nil, nil, nil, nil, aggErr
 						}

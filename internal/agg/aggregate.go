@@ -48,18 +48,19 @@ type AggregateBase interface {
 	Update(target *Entry, new *Entry) error
 	ToPB() *planpb.Aggregate
 	FieldID() int64
+	OriginalName() string
 }
 
-func NewAggregate(aggregateName string, aggFieldID int64) (AggregateBase, error) {
+func NewAggregate(aggregateName string, aggFieldID int64, originalName string) (AggregateBase, error) {
 	switch aggregateName {
 	case kCount:
-		return &CountAggregate{fieldID: aggFieldID}, nil
+		return &CountAggregate{fieldID: aggFieldID, originalName: originalName}, nil
 	case kSum:
-		return &SumAggregate{fieldID: aggFieldID}, nil
+		return &SumAggregate{fieldID: aggFieldID, originalName: originalName}, nil
 	case kMin:
-		return &MinAggregate{fieldID: aggFieldID}, nil
+		return &MinAggregate{fieldID: aggFieldID, originalName: originalName}, nil
 	case kMax:
-		return &MaxAggregate{fieldID: aggFieldID}, nil
+		return &MaxAggregate{fieldID: aggFieldID, originalName: originalName}, nil
 	default:
 		return nil, fmt.Errorf("invalid Aggregation operator %s", aggregateName)
 	}
@@ -83,7 +84,8 @@ func FromPB(pb *planpb.Aggregate) (AggregateBase, error) {
 }
 
 type SumAggregate struct {
-	fieldID int64
+	fieldID      int64
+	originalName string
 }
 
 func (sum *SumAggregate) Name() string {
@@ -127,8 +129,13 @@ func (sum *SumAggregate) FieldID() int64 {
 	return sum.fieldID
 }
 
+func (sum *SumAggregate) OriginalName() string {
+	return sum.originalName
+}
+
 type CountAggregate struct {
-	fieldID int64
+	fieldID      int64
+	originalName string
 }
 
 func (count *CountAggregate) Name() string {
@@ -146,8 +153,13 @@ func (count *CountAggregate) FieldID() int64 {
 	return count.fieldID
 }
 
+func (count *CountAggregate) OriginalName() string {
+	return count.originalName
+}
+
 type MinAggregate struct {
-	fieldID int64
+	fieldID      int64
+	originalName string
 }
 
 func (min *MinAggregate) Name() string {
@@ -165,8 +177,13 @@ func (min *MinAggregate) FieldID() int64 {
 	return min.fieldID
 }
 
+func (min *MinAggregate) OriginalName() string {
+	return min.originalName
+}
+
 type MaxAggregate struct {
-	fieldID int64
+	fieldID      int64
+	originalName string
 }
 
 func (max *MaxAggregate) Name() string {
@@ -182,6 +199,10 @@ func (max *MaxAggregate) ToPB() *planpb.Aggregate {
 
 func (max *MaxAggregate) FieldID() int64 {
 	return max.fieldID
+}
+
+func (max *MaxAggregate) OriginalName() string {
+	return max.originalName
 }
 
 func AggregatesToPB(aggregates []AggregateBase) []*planpb.Aggregate {
@@ -736,4 +757,46 @@ func AggResult2segcoreResult(aggRes *AggregationResult) *segcorepb.RetrieveResul
 
 func AggResult2MilvusResult(aggRes *AggregationResult) *milvuspb.QueryResults {
 	return &milvuspb.QueryResults{FieldsData: aggRes.GetFieldDatas()}
+}
+
+type AggregationFieldMap struct {
+	userOriginalOutputFields     []string
+	userOriginalOutputFieldIdxes []int
+}
+
+func (aggMap *AggregationFieldMap) Count() int {
+	return len(aggMap.userOriginalOutputFields)
+}
+
+func (aggMap *AggregationFieldMap) IndexAt(idx int) int {
+	return aggMap.userOriginalOutputFieldIdxes[idx]
+}
+
+func (aggMap *AggregationFieldMap) NameAt(idx int) string {
+	return aggMap.userOriginalOutputFields[idx]
+}
+
+func NewAggregationFieldMap(originalUserOutputFields []string, groupByFields []string, aggs []AggregateBase) *AggregationFieldMap {
+	numGroupingKeys := len(groupByFields)
+
+	groupByFieldMap := make(map[string]int, len(groupByFields))
+	for i, field := range groupByFields {
+		groupByFieldMap[field] = i
+	}
+	aggFieldMap := make(map[string]int, len(aggs))
+	for i, agg := range aggs {
+		aggFieldMap[agg.OriginalName()] = i + numGroupingKeys
+	}
+
+	userOriginalOutputFieldIdxes := make([]int, len(originalUserOutputFields))
+	for i, outputField := range originalUserOutputFields {
+		if idx, exist := groupByFieldMap[outputField]; exist {
+			userOriginalOutputFieldIdxes[i] = idx
+		}
+		if idx, exist := aggFieldMap[outputField]; exist {
+			userOriginalOutputFieldIdxes[i] = idx
+		}
+	}
+
+	return &AggregationFieldMap{originalUserOutputFields, userOriginalOutputFieldIdxes}
 }
