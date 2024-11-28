@@ -31,11 +31,7 @@ public:
     Accumulator(
         bool isFixedSize,
         int32_t fixedSize,
-        int32_t alignment,
-        DataType spillType,
-        std::function<void(folly::Range<char**> groups, VectorPtr& result)>
-            spillExtractFunction,
-        std::function<void(folly::Range<char**> groups)> destroyFunction);
+        int32_t alignment);
 
     explicit Accumulator(Aggregate* aggregate, DataType spillType);
 
@@ -55,9 +51,6 @@ private:
     const bool isFixedSize_;
     const int32_t fixedSize_;
     const int32_t alignment_;
-    const DataType spillType_;
-    std::function<void(folly::Range<char**> groups, VectorPtr& result)> spillExtractFunction_;
-    std::function<void(folly::Range<char**> groups)> destroyFunction_;
 };
 
 

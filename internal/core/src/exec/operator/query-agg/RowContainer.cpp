@@ -41,7 +41,9 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     }
     // Make offset at least sizeof pointer so that there is space for a
     // free list next pointer below the bit at 'freeFlagOffset_'.
+    LOG_INFO("hc====grouping keys last offset:{}", offset);
     offset = std::max<int32_t>(offset, sizeof(void*));
+    LOG_INFO("hc====grouping keys last offset after roundup:{}", offset);
     const int32_t firstAggregateOffset = offset;
     if (!accumulators.empty()) {
         // This moves nullOffset to the start of the next byte.
@@ -59,10 +61,12 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         isVariableWidth |= !accumulator.isFixedSize();
         alignment_ = combineAlignments(accumulator.alignment(), alignment_);
     }
+    LOG_INFO("hc====accumulator null offset:{}, null offsets.size:{}, isVariableWidth:{}", nullOffset, nullOffsets_.size(), isVariableWidth);
 
     // Free flag.
     nullOffsets_.push_back(nullOffset);
     freeFlagOffset_ = nullOffset + firstAggregateOffset * 8;
+    LOG_INFO("hc====accumulator freeFlagOffset_:{}", freeFlagOffset_);
     ++nullOffset;
     // Add 1 to the last null offset to get the number of bits.
     flagBytes_ = milvus::bits::nBytes(nullOffsets_.back() + 1);
@@ -70,10 +74,12 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         nullOffsets_[i] += firstAggregateOffset * 8;
     }
     offset += flagBytes_;
+    LOG_INFO("hc====accumulator flagBytes_:{}, offset:{}", flagBytes_, offset);
 
     for(const auto& accumulator : accumulators) {
         offset = milvus::bits::roundUp(offset, accumulator.alignment());
         offsets_.push_back(offset);
+        LOG_INFO("hc====accumulator_i offset:{}, fixedSize:{}", offset, accumulator.fixedWidthSize());
         offset += accumulator.fixedWidthSize();
     }
     if (isVariableWidth) {
@@ -81,6 +87,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         offset += sizeof(uint32_t);
     }
     fixedRowSize_ = milvus::bits::roundUp(offset, alignment_);
+    LOG_INFO("hc==RowContainer==fixedRowSize_:{}", fixedRowSize_);
 
     // A distinct hash table has no aggregates and if the hash table has
     // no nulls, it may be that there are no null flags.
@@ -96,6 +103,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         rowColumns_.emplace_back(offsets_[i],
                                  (!ignoreNullKeys_ || i >= keyTypes_.size()) ? nullOffsets_[nullOffsetsPos]
                                                                             : RowColumn::kNotNullOffset);
+        LOG_INFO("hc==RowContainer==i:{}, offset_:{}, null_offset:{}", i, offsets_[i], nullOffsets_[nullOffsetsPos]);
         // offsets_ contains the offsets for keys, then accumulators
         // This captures the case where i is the index of an accumulator.
         if(!accumulators.empty() && i >= keyTypes_.size() && i < column_sum) {
@@ -103,6 +111,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         } else {
             ++nullOffsetsPos;
         }
+
     }
 }
 
@@ -135,25 +144,17 @@ void RowContainer::store(const milvus::ColumnVectorPtr &column_data, milvus::vec
 Accumulator::Accumulator(
         bool isFixedSize,
         int32_t fixedSize,
-        int32_t alignment,
-        DataType spillType,
-        std::function<void(folly::Range<char**> groups, milvus::VectorPtr& result)>
-            spillExtractFunction,
-        std::function<void(folly::Range<char**> groups)> destroyFunction):
+        int32_t alignment):
         isFixedSize_{isFixedSize},
         fixedSize_{fixedSize},
-        alignment_{alignment},
-        spillType_{spillType},
-        spillExtractFunction_{std::move(spillExtractFunction)},
-        destroyFunction_{std::move(destroyFunction)}{
+        alignment_{alignment}{
             
         }
 
 Accumulator::Accumulator(milvus::exec::Aggregate *aggregate, DataType spillType):
     isFixedSize_(aggregate->isFixedSize()),
     fixedSize_{aggregate->accumulatorFixedWidthSize()},
-    alignment_(aggregate->accumulatorAlignmentSize()),
-    spillType_(spillType){
+    alignment_(aggregate->accumulatorAlignmentSize()){
 
     AssertInfo(aggregate!=nullptr, "Input aggregate for accumulator cannot be nullptr!");
 }
