@@ -249,12 +249,9 @@ public:
     // a power of 2.
     void allocateTables(uint64_t size);
 
-    void extractGroups(char** output_groups, size_t group_count);
-
     void fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
 
     void clear(bool freeTable = false) override;
-
 
     void checkSize(int32_t numNew);
 

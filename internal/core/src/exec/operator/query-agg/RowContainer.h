@@ -144,10 +144,6 @@ public:
         return *reinterpret_cast<const T*>(group + offset);
     }
 
-    char*& nextFree(char* row) {
-        return *reinterpret_cast<char**>(row + kNextFreeOffset_);
-    }
-
     template <DataType Type>
     inline bool equalsNoNulls(
             const char* row,
@@ -158,15 +154,16 @@ public:
             PanicInfo(DataTypeInvalid, "Cannot support complex data type:[ROW/JSON/ARRAY] in rows container for now");
         } else {
             using T = typename TypeTraits<Type>::NativeType;
-            T* raw_value = static_cast<T*>(column->RawValueAt(index, sizeof(T)));
+            //T* raw_value = static_cast<T*>(column->RawValueAt(index, sizeof(T)));
+            T raw_value = column->ValueAt<T>(index);
             bool equal = false;
             if constexpr (std::is_same_v<T, std::string>) {
-                const std::string& raw = *static_cast<std::string*>(raw_value);
-                equal = (raw == *(strAt(row, offset)));
-                LOG_INFO("hc===start to equal str values, raw_value:{}, group_val:{}", raw, *(strAt(row, offset)), equal);
+                //const std::string& raw = *static_cast<std::string*>(raw_value);
+                equal = (raw_value == *(strAt(row, offset)));
+                LOG_INFO("hc===start to equal str values, raw_value:{}, group_val:{}, equal:{}", raw_value, *(strAt(row, offset)), equal);
             } else {
-                equal = (milvus::comparePrimitiveAsc(*raw_value, valueAt<T>(row, offset))==0);
-                LOG_INFO("hc===start to equal values, raw_value:{}, group_val:{}, equal:{}", *raw_value, valueAt<T>(row, offset), equal);
+                equal = (milvus::comparePrimitiveAsc(raw_value, valueAt<T>(row, offset))==0);
+                LOG_INFO("hc===start to equal values, raw_value:{}, group_val:{}, equal:{}", raw_value, valueAt<T>(row, offset), equal);
             }
             return equal;
         }
@@ -282,7 +279,7 @@ public:
                 result_column_vec->nullAt(resultIndex);
             } else {
                 if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
-                    auto* str_ptr = valueAt<T*>(row, offset);
+                    auto* str_ptr = strAt(row, offset);
                     result_column_vec->SetValueAt<T>(resultIndex, *str_ptr);
                 } else {
                     result_column_vec->SetValueAt<T>(resultIndex, valueAt<T>(row, offset));
@@ -301,24 +298,26 @@ public:
             const VectorPtr& result){
         auto maxRows = numRows + resultOffset;
         AssertInfo(maxRows == result->size(), "extracted rows number should be equal to the size of result vector");
-        if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
-            PanicInfo(DataTypeInvalid, "Not support extract string values for now");
-        } else {
-            auto result_column_vec = std::dynamic_pointer_cast<ColumnVector>(result);
-            AssertInfo(result_column_vec != nullptr, "Input column to extract result must be of ColumnVector type");
-            for (auto i = 0; i < numRows; i++) {
-                const char *row;
-                if constexpr (useRowNumber) {
-                    auto rowNumber = rowNumbers[i];
-                    row = rowNumber >= 0 ? rows[rowNumber] : nullptr;
+        auto result_column_vec = std::dynamic_pointer_cast<ColumnVector>(result);
+        AssertInfo(result_column_vec != nullptr, "Input column to extract result must be of ColumnVector type");
+        for (auto i = 0; i < numRows; i++) {
+            const char *row;
+            if constexpr (useRowNumber) {
+                auto rowNumber = rowNumbers[i];
+                row = rowNumber >= 0 ? rows[rowNumber] : nullptr;
+            } else {
+                row = rows[i];
+            }
+            auto resultIndex = resultOffset + i;
+            if (row == nullptr) {
+                result_column_vec->nullAt(resultIndex);
+            } else {
+                if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, std::string_view>) {
+                    auto* str_ptr = strAt(row, offset);
+                    LOG_INFO("hc===set str key value for resIndex:{}, value:{}", resultIndex, *str_ptr);
+                    result_column_vec->SetValueAt<T>(resultIndex, *str_ptr);
                 } else {
-                    row = rows[i];
-                }
-                auto resultIndex = resultOffset + i;
-                if (row == nullptr) {
-                    result_column_vec->nullAt(resultIndex);
-                } else {
-                    LOG_INFO("hc===set key value for resIndex:{}, value:{}", resultIndex, valueAt<T>(row, offset));
+                    LOG_INFO("hc===set primitive key value for resIndex:{}, value:{}", resultIndex, valueAt<T>(row, offset));
                     result_column_vec->SetValueAt<T>(resultIndex, valueAt<T>(row, offset));
                 }
             }
@@ -416,9 +415,6 @@ public:
     }
 
 private:
-     // Offset of the pointer to the next free row on a free row.
-    static constexpr uint32_t kNextFreeOffset_ = 0;
-
     const std::vector<DataType> keyTypes_;
     const bool ignoreNullKeys_;
     std::vector<uint32_t> offsets_;

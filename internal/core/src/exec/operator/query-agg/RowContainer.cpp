@@ -32,7 +32,11 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     bool isVariableWidth = false;
     for(auto& type: keyTypes_){
         offsets_.push_back(offset);
-        offset += GetDataTypeSize(type, 1);
+        if (type==DataType::VARCHAR || type==DataType::STRING) {
+            offset += 8; //use a pointer to store string
+        } else {
+            offset += GetDataTypeSize(type, 1);
+        }
         nullOffsets_.push_back(nullOffset);
         if(!ignoreNullKeys_) {
             ++nullOffset;

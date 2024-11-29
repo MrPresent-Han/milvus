@@ -40,10 +40,8 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
         PanicInfo(milvus::DataTypeInvalid, "NotSupport hash for complext type row/array/json:{}", Type);
     } else {
         using T = typename TypeTraits<Type>::NativeType;
-        auto element_data_type = ChannelDataType();
-        auto element_size = GetDataTypeSize(element_data_type);
         auto start = -1;
-        LOG_INFO("hc==hasherValues, element_size:{}", element_size);
+        LOG_INFO("hc==hasherValues, element_size:");
         do {
             auto next_valid_op = activeRows.find_next(start);
             if (!next_valid_op.has_value()){
@@ -56,16 +54,15 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
                 result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], kNullHash): kNullHash;
                 continue;
             }
-            void* raw_value = column_data->RawValueAt(next_valid_row, element_size);
-            AssertInfo(raw_value != nullptr, "Failed to get raw value pointer from column data");
-            auto* value = static_cast<T*>(raw_value);
+
+            T raw_value = column_data->ValueAt<T>(next_valid_row);
             uint64_t hash_value = kNullHash;
             if constexpr (std::is_floating_point_v<T>) {
-                hash_value = milvus::NaNAwareHash<T>()(*value);
+                hash_value = milvus::NaNAwareHash<T>()(raw_value);
             } else {
-                hash_value = folly::hasher<T>()(*value);
+                hash_value = folly::hasher<T>()(raw_value);
             }
-            LOG_INFO("hc==next_valid_row:{}, hashValue:{}, original_value:{}", next_valid_row, hash_value, *value);
+            LOG_INFO("hc==next_valid_row:{}, hashValue:{}, original_value:{}", next_valid_row, hash_value, raw_value);
             result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], hash_value) : hash_value;
             start = next_valid_row;
         } while(true);
