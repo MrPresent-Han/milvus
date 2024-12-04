@@ -266,8 +266,9 @@ ProtoParser::RetrievePlanNodeFromProto(
                                                                    std::move(groupingKeys),
                                                                    std::move(agg_names),
                                                                    std::move(aggregates),
+                                                                   query.ignore_null_keys(),
                                                                    sources);
-                LOG_INFO("hc===added agg node");
+                LOG_INFO("hc===added agg node, ignore_null_keys:{}", query.ignore_null_keys());
             }
             node->plannodes_ = plannode;
         }

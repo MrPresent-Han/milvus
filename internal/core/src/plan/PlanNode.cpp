@@ -43,6 +43,7 @@ AggregationNode::AggregationNode(const milvus::plan::PlanNodeId &id,
                                  std::vector<expr::FieldAccessTypeExprPtr> &&groupingKeys,
                                  std::vector<std::string> &&aggNames,
                                  std::vector<Aggregate> &&aggregates,
+                                 bool ignoreNullKeys,
                                  std::vector<PlanNodePtr> sources):
                                  PlanNode(id),
                                  step_(step),
@@ -51,7 +52,7 @@ AggregationNode::AggregationNode(const milvus::plan::PlanNodeId &id,
                                  aggregates_(std::move(aggregates)),
                                  sources_(std::move(sources)),
                                  output_type_(getAggregationOutputType(groupingKeys_, aggregateNames_, aggregates_)),
-                                 ignoreNullKeys_(true){}
+                                 ignoreNullKeys_(ignoreNullKeys){}
 
 }
 }

@@ -195,6 +195,7 @@ message RetrieveRequest {
   // for query agg
   repeated int64 group_by_field_ids = 18;
   repeated plan.Aggregate aggregates = 19;
+  bool ignore_null_keys = 20;
 }
 
 

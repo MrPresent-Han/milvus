@@ -476,6 +476,7 @@ public:
                     std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
                     std::vector<std::string>&& aggNames,
                     std::vector<Aggregate>&& aggregates,
+                    bool ignoreNullKeys,
                     std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{});
 
 
