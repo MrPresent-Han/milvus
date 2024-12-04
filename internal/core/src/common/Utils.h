@@ -376,5 +376,9 @@ DataType GetAggResultType(std::string func_name, DataType input_type) {
     PanicInfo(OpTypeInvalid, "Unsupported func type:{}", func_name);
 }
 
+inline int32_t Align(int32_t number, int32_t alignment) {
+    return (number + alignment - 1) & ~(alignment - 1);
+}
+
 }  // namespace milvus
 

@@ -69,12 +69,13 @@ public:
         LOG_INFO("hc===has initialized new groups");
         for(auto index : indices) {
             groups[index][initializedByte_] |= initializedMask_;
-            LOG_INFO("hc===set up init byte for index:{}", index);
+            LOG_INFO("hc===set up init byte for index:{}, initializedByte_:{}, initializedMask_:{}",
+                     index, initializedByte_, initializedMask_);
         }
     }
 
     virtual void addSingleGroupRawInput(char* group, const TargetBitmapView& activeRows,
-                                        const std::vector<VectorPtr>& input, bool mayPushDown) = 0;
+                                        const std::vector<VectorPtr>& input) = 0;
 
     virtual void addRawInput(char** groups, const TargetBitmapView& activeRows,
                              const std::vector<VectorPtr>& input, bool mayPushDown) = 0;

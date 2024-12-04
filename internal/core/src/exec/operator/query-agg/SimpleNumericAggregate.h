@@ -63,7 +63,7 @@ protected:
             if (!column_data->ValidAt(selected_idx)) {
                 continue;
             }
-            updateNonNullValue<tableHasNulls, TData>(groups[selected_idx], column_data->ValueAt<TValue>(selected_idx), updateSingleValue);
+            updateNonNullValue<tableHasNulls, TData>(groups[selected_idx], TData(column_data->ValueAt<TValue>(selected_idx)), updateSingleValue);
             start = selected_idx;
         }
     }
@@ -71,17 +71,13 @@ protected:
     template <
             typename TData = TResult,
             typename TValue = TInput,
-            typename UpdateSingle,
-            typename UpdateDuplicate>
+            typename UpdateSingle>
     void updateOneGroup(
             char* group,
             const TargetBitmapView& rows,
             const VectorPtr& vector,
-            UpdateSingle updateSingleValue,
-            UpdateDuplicate /*updateDuplicateValues*/,
-            bool /*mayPushdown*/,
-            TData initialValue) {
-        auto start = 0;
+            UpdateSingle updateSingleValue) {
+        auto start = -1;
         auto column_data = std::dynamic_pointer_cast<ColumnVector>(vector);
         AssertInfo(column_data!=nullptr, "input column data for upgrading groups should not be nullptr");
         while(true) {
@@ -91,9 +87,9 @@ protected:
             }
             auto selected_idx = next_selected.value();
             if (column_data->ValidAt(selected_idx)) {
-                continue;
+                LOG_INFO("hc== updateOneGroup, selected_idx:{}", selected_idx);
+                updateNonNullValue<true, TData>(group, TData(column_data->ValueAt<TValue>(selected_idx)), updateSingleValue);
             }
-            updateNonNullValue<true, TData>(group, column_data->ValueAt<TValue>(selected_idx), updateSingleValue);
             start = selected_idx;
         }
     }

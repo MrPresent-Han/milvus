@@ -60,15 +60,6 @@ PhyProjectNode::GetOutput() {
         auto column_vector = std::make_shared<ColumnVector>(std::move(field_data), std::move(valid_data_view));
         column_vectors.emplace_back(column_vector);
         LOG_INFO("hc==finish project column{}, length:{}", i, column_vector->size());
-        /*for(int j = 0; j < selected_count; j++) {
-            auto* val = column_vector->RawValueAt(j, GetDataTypeSize(column_type));
-            if (column_type == DataType::INT32) {
-                LOG_INFO("hc==projected_i:{} val:{}", j, *static_cast<int32_t*>(val));
-            }
-            if (column_type == DataType::INT16) {
-                LOG_INFO("hc==projected_i:{} val:{}", j, *static_cast<int16_t*>(val));
-            }
-        }*/
     }
     is_finished_ = true;
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));

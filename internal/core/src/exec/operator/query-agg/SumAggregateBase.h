@@ -45,9 +45,9 @@ public:
     }
 
     void addSingleGroupRawInput(char* group, const TargetBitmapView& activeRows,
-                                const std::vector<VectorPtr>& input, bool mayPushDown) override {
+                                const std::vector<VectorPtr>& input) override {
         BaseAggregate::template updateOneGroup<TAccumulator>(group, activeRows, input[0],
-                &updateSingleValue<TAccumulator>, &updateDuplicateValues<TAccumulator>, mayPushDown, TAccumulator(0));
+                &updateSingleValue<TAccumulator>);
     }
 
     void initializeNewGroupsInternal(char** groups, folly::Range<const vector_size_t*> indices) override {
@@ -55,21 +55,6 @@ public:
         for(auto i: indices) {
             LOG_INFO("hc===initializeNewGroupsInternal, i:{}", i);
             (*Aggregate::value<TAccumulator>(groups[i])) = 0;
-        }
-    }
-
-    template <typename TData>
-    #if defined(FOLLY_DISABLE_UNDEFINED_BEHAVIOR_SANITIZER)
-        FOLLY_DISABLE_UNDEFINED_BEHAVIOR_SANITIZER("signed-integer-overflow")
-    #endif
-    static void updateDuplicateValues(TData& result, TData value, int n) {
-        if constexpr(
-                (std::is_same_v<TData, int64_t> && Overflow) ||
-                std::is_same_v<TData, double> || std::is_same_v<TData, float>) {
-            result += n * value;
-        } else {
-            result = checkPlus<TData>(result,
-                                      checkedMultiply<TData>(TData(n), value));
         }
     }
 
@@ -93,13 +78,14 @@ private:
     FOLLY_DISABLE_UNDEFINED_BEHAVIOR_SANITIZER("signed-integer-overflow")
 #endif
     static void updateSingleValue(TData& result, TData value) {
+        LOG_INFO("hc==try to update single value:{}, result:{}", value, result);
         if constexpr (std::is_same_v<TData, double> || std::is_same_v<TData, float>||
                 std::is_same_v<TData, int64_t> && Overflow) {
             result += value;
-            LOG_INFO("hc==update single value:{}, result:{}", value, result);
+            LOG_INFO("hc==update single double/float value:{}, result:{}", value, result);
         } else {
             result = checkPlus(result, value);
-            LOG_INFO("hc==update single value:{}, result:{}", value, result);
+            LOG_INFO("hc==update single primitive value:{}, result:{}", value, result);
         }
     }
 };

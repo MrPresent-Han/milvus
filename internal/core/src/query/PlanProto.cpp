@@ -196,7 +196,6 @@ ProtoParser::RetrievePlanNodeFromProto(
             auto agg_functions_count = query.aggregates_size();
             if (group_by_field_count > 0 || agg_functions_count > 0) {
                 LOG_INFO("hc===start to parse groupby keys");
-                std::set<FieldId> project_id_set;
                 std::vector<FieldId> project_id_list;
                 std::vector<std::string> project_name_list;
                 std::vector<milvus::DataType> project_type_list;
@@ -209,11 +208,11 @@ ProtoParser::RetrievePlanNodeFromProto(
 
                 auto insert_if_not_exist = [&](FieldId& field_id, std::string& field_name, milvus::DataType field_type) {
                     LOG_INFO("hc===insert_if_not_exist:{}", field_name);
-                    if (project_id_set.find(field_id) == project_id_set.end()) {
-                        project_id_set.insert(field_id);
+                    if (std::count(project_id_list.begin(), project_id_list.end(), field_id)==0) {
+                        project_id_list.emplace_back(field_id);
                         project_name_list.emplace_back(field_name);
                         project_type_list.emplace_back(field_type);
-                        LOG_INFO("hc===inserted:{}", field_name);
+                        LOG_INFO("hc===inserted projected field:{}, type:{}", field_name, field_type);
                     }
                 };
 
@@ -223,7 +222,8 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto field_id = FieldId(input_field_id);
                     auto field_type = schema.GetFieldType(field_id);
                     auto field_name = schema.GetFieldName(field_id);
-                    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_name, field_id));
+                    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_name, field_id));\
+                    LOG_INFO("hc===to insert projected field:{}, type:{}", field_name, field_type);
                     insert_if_not_exist(field_id, field_name, field_type);
                 }
                 LOG_INFO("hc===groupingKeys.size:{}", groupingKeys.size());
@@ -245,12 +245,13 @@ ProtoParser::RetrievePlanNodeFromProto(
                     aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
                     aggregates.back().rawInputTypes_.emplace_back(field_type);
                     aggregates.back().resultType_ = GetAggResultType(agg_name, field_type);
+                    LOG_INFO("hc===to insert projected field:{}, type:{}", field_name, field_type);
                     insert_if_not_exist(field_id, field_name, field_type);
                 }
-                LOG_INFO("hc===parse project_id_set:{}, aggregates_size:{}", project_id_set.size(), aggregates.size());
+                LOG_INFO("hc===parse project_id_set:{}, aggregates_size:{}", project_id_list.size(), aggregates.size());
 
                 // add projectNode
-                auto project_field_id_list = std::vector<FieldId>(project_id_set.begin(), project_id_set.end());
+                auto project_field_id_list = std::vector<FieldId>(project_id_list.begin(), project_id_list.end());
                 plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
                                                                project_field_id_list,
                                                                project_name_list,

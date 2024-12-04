@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include "GroupingSet.h"
+#include "common/Utils.h"
 
 namespace milvus{
 namespace exec{
@@ -77,12 +78,15 @@ void GroupingSet::initializeGlobalAggregation() {
         accumulatorFlagsOffset += RowContainer::kNumAccumulatorFlags;
         alignment = RowContainer::combineAlignments(accumulator.alignment(), alignment);
     }
-    lookup_->hits_[0] = new char[offset + alignment];//TODO memory allocation control
+    AssertInfo(__builtin_popcount(alignment)==1, "alignment of aggregations must be power of two");
+    offset = milvus::Align(offset, alignment);
+    lookup_->hits_[0] = new char[offset];//TODO memory allocation control
+    LOG_INFO("hc====has initialzed one hit for global aggregation result, offset:{}, alignment:{}", offset, alignment);
     const auto singleGroup = std::vector<vector_size_t>{0};
     for(auto& aggregate: aggregates_) {
         aggregate.function_->initializeNewGroups(lookup_->hits_.data(), singleGroup);
     }
-
+    LOG_INFO("hc====has initialzed one hit for global aggregation result");
     globalAggregationInitialized_ = true;
 }
 
@@ -95,7 +99,8 @@ void GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input) {
     for(auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
         populateTempVectors(i, input);
-        function->addSingleGroupRawInput(group, active_rows_, tempVectors_, false);
+        LOG_INFO("hc====has populated temp vectors for agg:{}", i);
+        function->addSingleGroupRawInput(group, active_rows_, tempVectors_);
     }
     tempVectors_.clear();
 }
@@ -105,6 +110,7 @@ bool GroupingSet::getGlobalAggregationOutput(milvus::RowVectorPtr &result) {
     auto groups = lookup_->hits_.data();
     for(auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
+        LOG_INFO("hc=== aggregation child_idx:{}", aggregates_[i].output_);
         auto resultVector = result->child(aggregates_[i].output_);
         function->extractValues(groups, 1, &resultVector);
     }
@@ -112,11 +118,12 @@ bool GroupingSet::getGlobalAggregationOutput(milvus::RowVectorPtr &result) {
 }
 
 bool GroupingSet::getOutput(milvus::RowVectorPtr &result) {
+    if (isGlobal_) {
+        LOG_INFO("hc===try to get global aggregation result_size:{}", result->size());
+        return getGlobalAggregationOutput(result);
+    }
     if (hash_table_ == nullptr) {
         return false;
-    }
-    if (isGlobal_) {
-        return getGlobalAggregationOutput(result);
     }
     const auto& all_rows = hash_table_->rows()->allRows();
     if(all_rows.empty()) {
@@ -127,7 +134,7 @@ bool GroupingSet::getOutput(milvus::RowVectorPtr &result) {
     return true;
 }
 
-std::vector<Accumulator> GroupingSet::accumulators(bool /*excludeToIntermediate*/) {
+std::vector<Accumulator> GroupingSet::accumulators() {
     std::vector<Accumulator> accumulators;
     accumulators.reserve(aggregates_.size());
     for(auto& aggregate: aggregates_) {
@@ -202,9 +209,11 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
 
 void GroupingSet::populateTempVectors(int32_t aggregateIndex, const milvus::RowVectorPtr &input) {
     const auto& channel_idxes = aggregates_[aggregateIndex].input_column_idxes_;
+    LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_idxes_len:{}", aggregateIndex, channel_idxes.size());
     tempVectors_.resize(channel_idxes.size());
     for(auto i = 0; i < channel_idxes.size(); i++) {
         tempVectors_[i] = input->child(channel_idxes[i]);
+        LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_idxe:{}", aggregateIndex, channel_idxes[i]);
     }
 }
 
@@ -213,7 +222,6 @@ void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowConta
     int i = 0;
     for (auto& aggregate : aggregates) {
         auto& function = aggregate.function_;
-        //function->setAllocator(&rows.stringAllocator());
         const auto& rowColumn = rows.columnAt(numKeys + i);
         function->setOffsets(
             rowColumn.offset(),
@@ -228,9 +236,9 @@ void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowConta
 
 void GroupingSet::createHashTable(){
     if (ignoreNullKeys_) {
-        hash_table_ = std::make_unique<HashTable<true>>(std::move(hashers_), accumulators(false));
+        hash_table_ = std::make_unique<HashTable<true>>(std::move(hashers_), accumulators());
     } else {
-        hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_), accumulators(false));
+        hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_), accumulators());
     }
 
     auto& rows = *(hash_table_->rows());
