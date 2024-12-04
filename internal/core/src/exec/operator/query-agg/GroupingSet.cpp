@@ -201,7 +201,7 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
         }
         populateTempVectors(i, input);
         LOG_INFO("hc===has populated vectors for aggregate:{}", i);
-        function->addRawInput(groups, active_rows_, tempVectors_, false);
+        function->addRawInput(groups, active_rows_, tempVectors_);
         LOG_INFO("hc===addRawInput for aggregate:{}", i);
     }
     tempVectors_.clear();
@@ -215,6 +215,10 @@ void GroupingSet::populateTempVectors(int32_t aggregateIndex, const milvus::RowV
         tempVectors_[i] = input->child(channel_idxes[i]);
         LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_idxe:{}", aggregateIndex, channel_idxes[i]);
     }
+}
+
+int32_t GroupingSet::outputRowCount() const {
+    return lookup_->newGroups_.size();
 }
 
 void initializeAggregates(const std::vector<AggregateInfo>& aggregates, RowContainer& rows) {
@@ -240,7 +244,6 @@ void GroupingSet::createHashTable(){
     } else {
         hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_), accumulators());
     }
-
     auto& rows = *(hash_table_->rows());
     initializeAggregates(aggregates_, rows);
     lookup_ = std::make_unique<HashLookup>(hash_table_->hashers());

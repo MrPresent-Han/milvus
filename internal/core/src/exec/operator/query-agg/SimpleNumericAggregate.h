@@ -49,8 +49,7 @@ protected:
     void updateGroups(char** groups,
                       const TargetBitmapView& rows,
                       const VectorPtr& vector,
-                      UpdateSingleValue updateSingleValue,
-                      bool mayPushdown){
+                      UpdateSingleValue updateSingleValue){
         auto start = -1;
         auto column_data = std::dynamic_pointer_cast<ColumnVector>(vector);
         AssertInfo(column_data!=nullptr, "input column data for upgrading groups should not be nullptr");

@@ -36,9 +36,8 @@ RowVectorPtr PhyAggregationNode::GetOutput() {
   }
   DeferLambda([&](){ finished_ = true;});
   LOG_INFO("hc===start running agg node GetOutput");
-  const auto& queryConfig = operator_context_->get_driver_context()->GetQueryConfig();
-  auto batch_size = queryConfig->get_expr_batch_size();
-  const auto outputRowCount = isGlobal_? 1: batch_size;
+  const auto outputRowCount = isGlobal_? 1: grouping_set_->outputRowCount();
+  LOG_INFO("hc===PhyAggregationNode outputRowCount:{}", outputRowCount);
   prepareOutput(outputRowCount);
   const bool hasData = grouping_set_->getOutput(output_);
   if (!hasData) {

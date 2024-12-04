@@ -457,8 +457,6 @@ public:
         kSingle
     };
 
-    static const char* stepName(Step step);
-
     struct Aggregate {
         /// Function name and input column names.
         expr::CallExprPtr call_;
@@ -510,14 +508,6 @@ public:
 
     Step step() const {
         return step_;
-    }
-
-    bool isFinal() const {
-        return step_ == Step::kFinal;
-    }
-
-    bool isSingle() const {
-        return step_ == Step::kSingle;
     }
 
     bool ignoreNullKeys() const {

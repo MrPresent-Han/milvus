@@ -73,6 +73,8 @@ class GroupingSet {
 
     bool getGlobalAggregationOutput(RowVectorPtr& result);
 
+    int32_t outputRowCount() const;
+
 private:
     bool isGlobal_;
     const bool ignoreNullKeys_;

@@ -78,7 +78,7 @@ public:
                                         const std::vector<VectorPtr>& input) = 0;
 
     virtual void addRawInput(char** groups, const TargetBitmapView& activeRows,
-                             const std::vector<VectorPtr>& input, bool mayPushDown) = 0;
+                             const std::vector<VectorPtr>& input) = 0;
 
     virtual void extractValues(char** groups, int32_t numGroups, VectorPtr* result) = 0;
 
@@ -179,8 +179,6 @@ AggregateRegistrationResult registerAggregateFunction(const std::string& name,
                                                       const AggregateFunctionFactory& factory,
                                                       bool registerCompanionFunctions,
                                                       bool overwrite);
-
-bool isRawInput(milvus::plan::AggregationNode::Step step);
 
 bool isPartialOutput(milvus::plan::AggregationNode::Step step);
 

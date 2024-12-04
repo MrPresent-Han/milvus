@@ -118,7 +118,6 @@ func (sum *SumAggregate) Update(target *Entry, new *Entry) error {
 	default:
 		return fmt.Errorf("unsupported type: %T", target.val)
 	}
-
 	return nil
 }
 
@@ -254,6 +253,15 @@ func (r *Row) UpdateEntry(newRow *Row, col int, agg AggregateBase) {
 	agg.Update(r.entries[col], newRow.entries[col])
 }
 
+func (r *Row) ToString() string {
+	var builder strings.Builder
+	builder.WriteString("hc===row:")
+	for _, entry := range r.entries {
+		builder.WriteString(fmt.Sprintf("%v,", entry.val))
+	}
+	return builder.String()
+}
+
 func NewRow(entries []*Entry) *Row {
 	return &Row{entries: entries}
 }
@@ -288,11 +296,11 @@ func (bucket *Bucket) Accumulate(row *Row, idx int, keyCount int, aggs []Aggrega
 	if row.Count() != keyCount+len(aggs) {
 		return fmt.Errorf("column count:%d in the row must be sum of keyCount:%d and the number of aggs:%d", row.Count(), keyCount, len(aggs))
 	}
-
+	log.Info("hc===before update target row", zap.String("target_row", targetRow.ToString()), zap.String("new_row", row.ToString()))
 	for col := keyCount; col < row.Count(); col++ {
 		targetRow.UpdateEntry(row, col, aggs[col-keyCount])
 	}
-
+	log.Info("hc===after update target row", zap.String("target_row", targetRow.ToString()), zap.String("new_row", row.ToString()))
 	return nil
 }
 

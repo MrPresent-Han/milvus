@@ -252,10 +252,9 @@ public:
         }
     }
 
-    template <bool useRowNumber, typename T>
+    template <typename T>
     static void extractValuesWithNulls(
             const char* const* rows,
-            folly::Range<const vector_size_t*> rowNumbers,
             int32_t numRows,
             int32_t offset,
             int32_t nullByte,
@@ -267,13 +266,7 @@ public:
         auto result_column_vec = std::dynamic_pointer_cast<ColumnVector>(result);
         AssertInfo(result_column_vec != nullptr, "Input column to extract result must be of ColumnVector type");
         for (auto i = 0; i < numRows; i++) {
-            const char *row;
-            if constexpr (useRowNumber) {
-                auto rowNumber = rowNumbers[i];
-                row = rowNumber >= 0 ? rows[rowNumber] : nullptr;
-            } else {
-                row = rows[i];
-            }
+            const char *row = rows[i];
             auto resultIndex = resultOffset + i;
             if (row == nullptr || isNullAt(row, nullByte, nullMask)) {
                 result_column_vec->nullAt(resultIndex);
@@ -288,10 +281,9 @@ public:
         }
     }
 
-    template <bool useRowNumber, typename T>
+    template <typename T>
     static void extractValuesNoNulls(
             const char* const* rows,
-            folly::Range<const vector_size_t*> rowNumbers,
             int32_t numRows,
             int32_t offset,
             int32_t resultOffset,
@@ -301,13 +293,7 @@ public:
         auto result_column_vec = std::dynamic_pointer_cast<ColumnVector>(result);
         AssertInfo(result_column_vec != nullptr, "Input column to extract result must be of ColumnVector type");
         for (auto i = 0; i < numRows; i++) {
-            const char *row;
-            if constexpr (useRowNumber) {
-                auto rowNumber = rowNumbers[i];
-                row = rowNumber >= 0 ? rows[rowNumber] : nullptr;
-            } else {
-                row = rows[i];
-            }
+            const char *row = rows[i];
             auto resultIndex = resultOffset + i;
             if (row == nullptr) {
                 result_column_vec->nullAt(resultIndex);
@@ -324,10 +310,9 @@ public:
         }
     }
 
-    template <bool useRowNumbers, DataType Type>
+    template <DataType Type>
     static void extractColumnTypedInternal(
             const char* const* rows,
-            folly::Range<const vector_size_t*> rowNumbers,
             int32_t numRows,
             RowColumn column,
             int32_t resultOffset,
@@ -340,9 +325,8 @@ public:
             auto nullMask = column.nullMask();
             auto offset = column.offset();
             if (nullMask) {
-                extractValuesWithNulls<useRowNumbers, T>(
+                extractValuesWithNulls<T>(
                         rows,
-                        rowNumbers,
                         numRows,
                         offset,
                         column.nullByte(),
@@ -350,26 +334,18 @@ public:
                         resultOffset,
                         result);
             } else {
-                extractValuesNoNulls<useRowNumbers, T>(
-                        rows, rowNumbers, numRows, offset, resultOffset, result);
+                extractValuesNoNulls<T>(rows, numRows, offset, resultOffset, result);
             }
         }
     }
 
     template <DataType Type>
     static void extractColumnTyped(const char* const* rows,
-                                   folly::Range<const vector_size_t*> rowNumbers,
                                    int32_t numRows,
                                    RowColumn column,
                                    int32_t resultOffset,
                                    const VectorPtr& result) {
-        if (rowNumbers.size() > 0) {
-            extractColumnTypedInternal<true, Type>(
-                    rows, rowNumbers, rowNumbers.size(), column, resultOffset, result);
-        } else {
-            extractColumnTypedInternal<false, Type>(
-                    rows, rowNumbers, numRows, column, resultOffset, result);
-        }
+        extractColumnTypedInternal<Type>(rows, numRows, column, resultOffset, result);
     }
 
     static void extractColumn(const char* const* rows, int32_t num_rows, RowColumn column, vector_size_t result_offset,
@@ -445,7 +421,7 @@ private:
 
 inline void RowContainer::extractColumn(const char *const *rows, int32_t num_rows, milvus::exec::RowColumn column,
                                         milvus::vector_size_t result_offset, const milvus::VectorPtr &result) {
-    MILVUS_DYNAMIC_TYPE_DISPATCH(extractColumnTyped, result->type(), rows, {}, num_rows, column, result_offset, result);
+    MILVUS_DYNAMIC_TYPE_DISPATCH(extractColumnTyped, result->type(), rows, num_rows, column, result_offset, result);
 }
 }
 }

@@ -47,11 +47,6 @@ std::unique_ptr<Aggregate> Aggregate::create(const std::string& name,
     PanicInfo(UnexpectedError, "Aggregate function not registered: {}", name);
 }
 
-bool isRawInput(milvus::plan::AggregationNode::Step step) {
-    return step == milvus::plan::AggregationNode::Step::kPartial ||
-           step == milvus::plan::AggregationNode::Step::kSingle;
-}
-
 bool isPartialOutput(milvus::plan::AggregationNode::Step step) {
     return step == milvus::plan::AggregationNode::Step::kPartial ||
            step == milvus::plan::AggregationNode::Step::kIntermediate;

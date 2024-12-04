@@ -16,6 +16,7 @@
 
 #include "ProjectNode.h"
 #include "exec/expression/Utils.h"
+#include "segcore/Utils.h"
 
 namespace milvus{
 namespace exec {
@@ -55,7 +56,7 @@ PhyProjectNode::GetOutput() {
         auto field_id = fields_to_project_.at(i);
         LOG_INFO("hc==start to project column_type:{}, field_id:{}, selected_count:{}", column_type, field_id.get(),
                  selected_count);
-        auto field_data = projectFieldData(field_id, column_type, selected_offsets.data(), selected_count);
+        auto field_data = bulk_script_field_data(field_id, column_type, selected_offsets.data(), selected_count, segment_);
         LOG_INFO("hc==finish project column{}, length:{}", i, field_data->Length());
         auto column_vector = std::make_shared<ColumnVector>(std::move(field_data), std::move(valid_data_view));
         column_vectors.emplace_back(column_vector);
@@ -65,71 +66,6 @@ PhyProjectNode::GetOutput() {
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));
     LOG_INFO("hc==finish project columns:");
     return row_vector;
-}
-
-FieldDataPtr
-PhyProjectNode::projectFieldData(milvus::FieldId fieldId,
-                                 milvus::DataType dataType,
-                                 const int64_t *seg_offsets,
-                                 int64_t count) const {
-    FieldDataPtr ret = nullptr;
-    switch(dataType) {
-        case milvus::DataType::BOOL: {
-            FixedVector<bool> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<bool, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        case milvus::DataType::INT8: {
-            FixedVector<int8_t> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<int8_t, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        case milvus::DataType::INT16: {
-            FixedVector<int16_t> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<int16_t, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        case milvus::DataType::INT32: {
-            FixedVector<int32_t> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<int32_t, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        case milvus::DataType::INT64: {
-            FixedVector<int64_t> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<int64_t, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        case milvus::DataType::FLOAT: {
-            FixedVector<float> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<float, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        case milvus::DataType::DOUBLE: {
-            FixedVector<double> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<double, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        case milvus::DataType::STRING:
-        case milvus::DataType::VARCHAR: {
-            FixedVector<std::string> vec(count);
-            segment_->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
-            ret = std::make_shared<FieldDataImpl<std::string, true>>(1, dataType, false, std::move(vec));
-            break;
-        }
-        default: {
-            PanicInfo(DataTypeInvalid,
-                      fmt::format("unsupported data type {}",
-                                  dataType));
-        }
-    }
-    return ret;
 }
 
 };

@@ -28,6 +28,7 @@
 #include "log/Log.h"
 #include "segcore/DeletedRecord.h"
 #include "segcore/InsertRecord.h"
+#include "SegmentInterface.h"
 
 namespace milvus::segcore {
 
@@ -218,4 +219,9 @@ upper_bound(const ConcurrentVector<Timestamp>& timestamps,
             int64_t first,
             int64_t last,
             Timestamp value);
+
+
+FieldDataPtr
+bulk_script_field_data(FieldId fieldId, DataType dataType, const int64_t *seg_offsets, int64_t count,
+                       const segcore::SegmentInternalInterface* segment);
 }  // namespace milvus::segcore

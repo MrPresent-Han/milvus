@@ -53,20 +53,5 @@ AggregationNode::AggregationNode(const milvus::plan::PlanNodeId &id,
                                  output_type_(getAggregationOutputType(groupingKeys_, aggregateNames_, aggregates_)),
                                  ignoreNullKeys_(true){}
 
-const char* AggregationNode::stepName(milvus::plan::AggregationNode::Step step) {
-    switch (step) {
-        case milvus::plan::AggregationNode::Step::kPartial:
-            return "PARTIAL";
-        case milvus::plan::AggregationNode::Step::kFinal:
-            return "FINAL";
-        case milvus::plan::AggregationNode::Step::kIntermediate:
-            return "INTERMEDIATE";
-        case milvus::plan::AggregationNode::Step::kSingle:
-            return "SINGLE";
-        default:
-            return "UNKNOWN";
-    }
-}
-
 }
 }
