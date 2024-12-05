@@ -1304,15 +1304,15 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
                                   const int64_t* seg_offsets,
                                   int64_t count,
                                   void* data,
-                                  bool* valid_data) const {
+                                  TargetBitmapView& valid_map) const {
     LOG_INFO("hc===try to subscript data from sealed segment, count:{}", count);
     auto& field_meta = schema_->operator[](field_id);
     auto& field_data = fields_.at(field_id);
     if (field_data->IsNullable()) {
         for(auto i = 0; i < count; i++) {
-            valid_data[i] = field_data->IsValid(seg_offsets[i]);
+            valid_map.set(i, field_data->IsValid(seg_offsets[i]));
         }
-        LOG_INFO("hc===finish subscript valid data from sealed segment, count:{}", count);
+        LOG_INFO("hc===finish subscript valid data from sealed segment, count:{}, valid_count:{}", count, valid_map.count());
     }
 
     switch(data_type) {

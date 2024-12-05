@@ -442,7 +442,7 @@ class SegmentInternalInterface : public SegmentInterface {
                    const int64_t* seg_offsets,
                    int64_t count,
                    void* data,
-                   bool* valid_data) const = 0;
+                   TargetBitmapView& valid_map) const = 0;
 
     // calculate output[i] = Vec[seg_offsets[i]}, where Vec binds to field_offset
     virtual std::unique_ptr<DataArray>

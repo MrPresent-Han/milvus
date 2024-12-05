@@ -154,11 +154,9 @@ public:
             PanicInfo(DataTypeInvalid, "Cannot support complex data type:[ROW/JSON/ARRAY] in rows container for now");
         } else {
             using T = typename TypeTraits<Type>::NativeType;
-            //T* raw_value = static_cast<T*>(column->RawValueAt(index, sizeof(T)));
             T raw_value = column->ValueAt<T>(index);
             bool equal = false;
             if constexpr (std::is_same_v<T, std::string>) {
-                //const std::string& raw = *static_cast<std::string*>(raw_value);
                 equal = (raw_value == *(strAt(row, offset)));
                 LOG_INFO("hc===start to equal str values, raw_value:{}, group_val:{}, equal:{}", raw_value, *(strAt(row, offset)), equal);
             } else {
@@ -180,6 +178,7 @@ public:
         bool rowIsNull = isNullAt(row, nullByte, nullMask);
         bool columnIsNull = column->ValidAt(index);
         if (rowIsNull || columnIsNull) {
+            LOG_INFO("hc===rowIsNull:{}, columnIsNull:{}, index:{}, offset:{}", rowIsNull, columnIsNull, index, offset);
             return rowIsNull==columnIsNull;
         }
         return equalsNoNulls<Type>(row, offset, column, index);
@@ -221,8 +220,10 @@ public:
                 row[nullByte]|=nullMask;
                 if constexpr (std::is_same_v<T, std::string>) {
                     *reinterpret_cast<std::string**>(row + offset) = null_string_val_ptr;
+                    LOG_INFO("hc===store null str value at, offset:{}, index:{}", offset, index);
                 } else {
                     *reinterpret_cast<T*>(row+offset) = T();
+                    LOG_INFO("hc===store null primitive value at, offset:{}, index:{}", offset, index);
                 }
                 return;
             }

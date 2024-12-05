@@ -825,16 +825,16 @@ SegmentGrowingImpl::bulk_subscript(FieldId field_id,
                                     const int64_t* seg_offsets,
                                     int64_t count,
                                     void* data,
-                                    bool* valid_data) const {
+                                    TargetBitmapView& valid_map) const {
     auto vec_ptr = insert_record_.get_data_base(field_id);
     auto& field_meta = schema_->operator[](field_id);
     LOG_INFO("hc===try to subscript data from growing segment, count:{}", count);
     if (field_meta.is_nullable()) {
         auto valid_vec_ptr = insert_record_.get_valid_data(field_id);
         for(auto i = 0; i < count; i++) {
-            valid_data[i] = valid_vec_ptr->is_valid(seg_offsets[i]);
+            valid_map.set(i, valid_vec_ptr->is_valid(seg_offsets[i]));
         }
-        LOG_INFO("hc===finish subscript valid data from growing segment, count:{}", count);
+        LOG_INFO("hc===finish subscript valid data from growing segment, count:{}, valid_count:{}", count, valid_map.count());
     }
 
     switch (field_meta.get_data_type()) {

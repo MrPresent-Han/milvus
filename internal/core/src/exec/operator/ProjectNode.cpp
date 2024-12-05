@@ -54,11 +54,13 @@ PhyProjectNode::GetOutput() {
         auto field_id = fields_to_project_.at(i);
         LOG_INFO("hc==start to project column_type:{}, field_id:{}, selected_count:{}", column_type, field_id.get(),
                  selected_count);
-        auto field_data = bulk_script_field_data(field_id, column_type, selected_offsets.data(), selected_count, segment_);
-        LOG_INFO("hc==finish project column{}, length:{}", i, field_data->Length());
-        auto column_vector = std::make_shared<ColumnVector>(std::move(field_data));
+
+        TargetBitmap valid_map(selected_count);
+        TargetBitmapView valid_view(valid_map.data(), selected_count);
+        auto field_data = bulk_script_field_data(field_id, column_type, selected_offsets.data(), selected_count, segment_, valid_view);
+        auto column_vector = std::make_shared<ColumnVector>(std::move(field_data), std::move(valid_view));
         column_vectors.emplace_back(column_vector);
-        LOG_INFO("hc==finish project column{}, length:{}, valid_count:", i, column_vector->size());
+        LOG_INFO("hc==finish project column:{}, length:{}, valid_count:{}", i, column_vector->size(), valid_map.count());
     }
     is_finished_ = true;
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));

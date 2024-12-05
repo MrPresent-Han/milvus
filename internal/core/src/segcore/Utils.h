@@ -223,5 +223,6 @@ upper_bound(const ConcurrentVector<Timestamp>& timestamps,
 
 FieldDataPtr
 bulk_script_field_data(FieldId fieldId, DataType dataType, const int64_t *seg_offsets, int64_t count,
-                       const segcore::SegmentInternalInterface* segment);
+                       const segcore::SegmentInternalInterface* segment,
+                       TargetBitmapView& valid_view);
 }  // namespace milvus::segcore

@@ -229,7 +229,7 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
                    const int64_t* seg_offsets,
                    int64_t count,
                    void* data,
-                   bool* valid_data) const override;
+                   TargetBitmapView& valid_map) const override;
 
     void
     check_search(const query::Plan* plan) const override;
