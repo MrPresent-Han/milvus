@@ -46,8 +46,6 @@ PhyProjectNode::GetOutput() {
     auto result_pair = segment_->find_first(-1, raw_data_view);
     auto selected_offsets = result_pair.first;
     auto selected_count = selected_offsets.size();
-    // valid data view
-    TargetBitmapView valid_data_view(col_input->GetValidRawData(), col_input->size());
     LOG_INFO("hc==project_selected_count:{}, col_input_size:{}", selected_count, col_input->size());
     auto row_type = OutputType();
     std::vector<VectorPtr> column_vectors;
@@ -58,7 +56,7 @@ PhyProjectNode::GetOutput() {
                  selected_count);
         auto field_data = bulk_script_field_data(field_id, column_type, selected_offsets.data(), selected_count, segment_);
         LOG_INFO("hc==finish project column{}, length:{}", i, field_data->Length());
-        auto column_vector = std::make_shared<ColumnVector>(std::move(field_data), std::move(valid_data_view));
+        auto column_vector = std::make_shared<ColumnVector>(std::move(field_data));
         column_vectors.emplace_back(column_vector);
         LOG_INFO("hc==finish project column{}, length:{}, valid_count:", i, column_vector->size());
     }

@@ -137,6 +137,12 @@ class ColumnVector final : public SimpleVector {
         values_ = std::move(value);
     }
 
+    ColumnVector(FieldDataPtr&& data):
+            SimpleVector(data->get_data_type(), data->Length()), is_bitmap_(false) {
+        values_ = std::move(data);
+        valid_values_ = TargetBitmapView(data->ValidData(), data->ValidDataSize());
+    }
+
     virtual ~ColumnVector() override {
         values_.reset();
         valid_values_.reset();
