@@ -52,6 +52,7 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
             LOG_INFO("hc==hash next_valid_row:{}", next_valid_row);
             if (!column_data->ValidAt(next_valid_row)) {
                 result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], kNullHash): kNullHash;
+                LOG_INFO("hc==hash invalid at next_valid_row:{}, hash null values, result[next_valid_row]:{}", next_valid_row, result[next_valid_row]);
                 continue;
             }
 

@@ -822,67 +822,76 @@ SegmentGrowingImpl::bulk_subscript(SystemFieldType system_type,
 void
 SegmentGrowingImpl::bulk_subscript(FieldId field_id,
                                    DataType data_type,
-    const int64_t* seg_offsets,
-            int64_t count,
-    void* output) const {
+                                    const int64_t* seg_offsets,
+                                    int64_t count,
+                                    void* data,
+                                    bool* valid_data) const {
     auto vec_ptr = insert_record_.get_data_base(field_id);
     auto& field_meta = schema_->operator[](field_id);
     LOG_INFO("hc===try to subscript data from growing segment, count:{}", count);
+    if (field_meta.is_nullable()) {
+        auto valid_vec_ptr = insert_record_.get_valid_data(field_id);
+        for(auto i = 0; i < count; i++) {
+            valid_data[i] = valid_vec_ptr->is_valid(seg_offsets[i]);
+        }
+        LOG_INFO("hc===finish subscript valid data from growing segment, count:{}", count);
+    }
+
     switch (field_meta.get_data_type()) {
         case DataType::BOOL: {
             bulk_subscript_impl<bool>(vec_ptr,
                                       seg_offsets,
                                       count,
-                                      static_cast<bool*>(output));
+                                      static_cast<bool*>(data));
             break;
         }
         case DataType::INT8: {
             bulk_subscript_impl<int8_t>(vec_ptr,
                                         seg_offsets,
                                         count,
-                                        static_cast<int8_t*>(output));
+                                        static_cast<int8_t*>(data));
             break;
         }
         case DataType::INT16: {
             bulk_subscript_impl<int16_t>(vec_ptr,
                                          seg_offsets,
                                          count,
-                                         static_cast<int16_t*>(output));
+                                         static_cast<int16_t*>(data));
             break;
         }
         case DataType::INT32: {
             bulk_subscript_impl<int32_t>(vec_ptr,
                                          seg_offsets,
                                          count,
-                                         static_cast<int32_t*>(output));
+                                         static_cast<int32_t*>(data));
             break;
         }
         case DataType::INT64: {
             bulk_subscript_impl<int64_t>(vec_ptr,
                                          seg_offsets,
                                          count,
-                                         static_cast<int64_t*>(output));
+                                         static_cast<int64_t*>(data));
             break;
         }
         case DataType::FLOAT: {
             bulk_subscript_impl<float>(vec_ptr,
                                        seg_offsets,
                                        count,
-                                       static_cast<float*>(output));
+                                       static_cast<float*>(data));
             break;
         }
         case DataType::DOUBLE: {
             bulk_subscript_impl<double>(vec_ptr,
                                         seg_offsets,
                                         count,
-                                        static_cast<double*>(output));
+                                        static_cast<double*>(data));
             break;
         }
         case DataType::VARCHAR: {
             bulk_subscript_ptr_impl<std::string>(vec_ptr,
                                                  seg_offsets,
                                                  count,
-                                                 static_cast<std::string*>(output));
+                                                 static_cast<std::string*>(data));
             break;
         }
         default: {

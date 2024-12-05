@@ -24,15 +24,18 @@ namespace exec {
 
 void populateLookupRows(const TargetBitmapView& activeRows, std::vector<vector_size_t>& lookupRows) {
     if (activeRows.all()) {
+        LOG_INFO("hc==all rows are selected, populate all rows");
         std::iota(lookupRows.begin(), lookupRows.end(), 0);
     } else {
         auto start = -1;
+        LOG_INFO("hc==part of rows are selected, populate these selected rows, rows_size:{}", lookupRows.size());
         do {
             auto next_active = activeRows.find_next(start);
             if (!next_active.has_value()) break;
             auto next_active_row = next_active.value();
             lookupRows.emplace_back(next_active_row);
             start = next_active_row;
+            LOG_INFO("hc==populate active_row:{}, rows_size:{}", next_active_row, lookupRows.size());
         } while(true);
     }
 }
@@ -55,10 +58,11 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
         LOG_INFO("hc==hash:{}, column.length:", i, column_ptr->size());
         // deselect null values
         if (ignoreNullKeys) {
-            LOG_INFO("hc==hash:{}, ignore null keys:", i);
             int64_t length = column_ptr->size();
             TargetBitmapView valid_bits_view(column_ptr->GetValidRawData(), length);
             activeRows&=valid_bits_view;
+            LOG_INFO("hc==hash:{}, ignore null keys, length:{}, valid_bits_count:{}, activeRows_count:{}",
+                     i, length, valid_bits_view.count(), activeRows.count());
         }
     }
     lookup.reset(activeRows.size()); //hc---set for next round

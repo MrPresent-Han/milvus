@@ -975,53 +975,54 @@ FieldDataPtr
 bulk_script_field_data(FieldId fieldId, DataType dataType, const int64_t *seg_offsets, int64_t count,
                        const segcore::SegmentInternalInterface* segment) {
     FieldDataPtr ret = nullptr;
+    FixedVector<uint8_t> valid_data(count);
     switch(dataType) {
         case milvus::DataType::BOOL: {
             FixedVector<bool> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<bool, true>>(1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::INT8: {
             FixedVector<int8_t> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<int8_t, true>>(1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::INT16: {
             FixedVector<int16_t> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<int16_t, true>>(1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::INT32: {
             FixedVector<int32_t> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<int32_t, true>>(1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::INT64: {
             FixedVector<int64_t> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<int64_t, true>>(1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::FLOAT: {
             FixedVector<float> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<float, true>>(1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::DOUBLE: {
             FixedVector<double> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<double, true>>(1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::STRING:
         case milvus::DataType::VARCHAR: {
             FixedVector<std::string> vec(count);
-            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data());
+            segment->bulk_subscript(fieldId, dataType, seg_offsets, count, vec.data(), valid_data.data());
             ret = std::make_shared<FieldDataImpl<std::string, true>>(1, dataType, false, std::move(vec));
             break;
         }

@@ -228,7 +228,8 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
                    DataType data_type,
                    const int64_t* seg_offsets,
                    int64_t count,
-                   void* output) const override;
+                   void* data,
+                   bool* valid_data) const override;
 
     void
     check_search(const query::Plan* plan) const override;

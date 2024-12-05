@@ -441,7 +441,8 @@ class SegmentInternalInterface : public SegmentInterface {
                    DataType data_type,
                    const int64_t* seg_offsets,
                    int64_t count,
-                   void* output) const = 0;
+                   void* data,
+                   bool* valid_data) const = 0;
 
     // calculate output[i] = Vec[seg_offsets[i]}, where Vec binds to field_offset
     virtual std::unique_ptr<DataArray>

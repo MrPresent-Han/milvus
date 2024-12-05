@@ -232,7 +232,8 @@ class SegmentGrowingImpl : public SegmentGrowing {
                    DataType data_type,
                    const int64_t* seg_offsets,
                    int64_t count,
-                   void* output) const override;
+                   void* data,
+                   bool* valid_data) const override;
 
     std::unique_ptr<DataArray>
     bulk_subscript(FieldId field_id,

@@ -60,7 +60,7 @@ PhyProjectNode::GetOutput() {
         LOG_INFO("hc==finish project column{}, length:{}", i, field_data->Length());
         auto column_vector = std::make_shared<ColumnVector>(std::move(field_data), std::move(valid_data_view));
         column_vectors.emplace_back(column_vector);
-        LOG_INFO("hc==finish project column{}, length:{}", i, column_vector->size());
+        LOG_INFO("hc==finish project column{}, length:{}, valid_count:", i, column_vector->size());
     }
     is_finished_ = true;
     auto row_vector = std::make_shared<RowVector>(std::move(column_vectors));
