@@ -222,7 +222,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto field_id = FieldId(input_field_id);
                     auto field_type = schema.GetFieldType(field_id);
                     auto field_name = schema.GetFieldName(field_id);
-                    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_name, field_id));\
+                    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_name, field_id));
                     LOG_INFO("hc===to insert projected field:{}, type:{}", field_name, field_type);
                     insert_if_not_exist(field_id, field_name, field_type);
                 }
@@ -253,9 +253,9 @@ ProtoParser::RetrievePlanNodeFromProto(
                 // add projectNode
                 auto project_field_id_list = std::vector<FieldId>(project_id_list.begin(), project_id_list.end());
                 plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
-                                                               project_field_id_list,
-                                                               project_name_list,
-                                                               project_type_list,
+                                                               std::move(project_field_id_list),
+                                                               std::move(project_name_list),
+                                                               std::move(project_type_list),
                                                                sources);
 
                 LOG_INFO("hc===added project node");

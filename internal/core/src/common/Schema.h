@@ -245,8 +245,6 @@ class Schema {
         auto& meta = fields_.at(field_id);
         return meta.get_name().get();
     }
-
-
  private:
     int64_t debug_id = START_USER_FIELDID;
     std::vector<FieldId> field_ids_;

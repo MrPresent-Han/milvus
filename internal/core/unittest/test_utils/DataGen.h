@@ -343,6 +343,9 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     if (random_valid)
                         x = rand();
                     valid_data[i] = x % 2 == 0 ? true : false;
+                    if (field_meta.get_data_type() == DataType::INT16) {
+                        LOG_INFO("hc=== valid_i:{}, valid:{}", i, valid_data[i]);
+                    }
                 }
             }
             auto array = milvus::segcore::CreateDataArrayFrom(
@@ -437,6 +440,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     } else {
                         data[i] = i / repeat_count;
                     }
+                    //LOG_INFO("hc==inserted int64_data_i:{}, x:{}", i, data[i]);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -450,6 +454,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     else
                         x = i / repeat_count;
                     data[i] = x;
+                    //LOG_INFO("hc==inserted int32_data_i:{}, x:{}", i, x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -463,6 +468,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     else
                         x = i / repeat_count;
                     data[i] = x;
+                    LOG_INFO("hc==inserted int16_data_i:{}, x:{}", i, x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -503,6 +509,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     for (int j = 0; j < repeat_count; j++) {
                         data[i * repeat_count + j] = str;
                     }
+                    LOG_INFO("hc==inserted varchar_data_i:{}, x:{}", i, str);
                 }
                 std::sort(data.begin(), data.end());
                 insert_cols(data, N, field_meta, random_valid);

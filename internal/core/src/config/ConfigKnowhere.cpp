@@ -34,6 +34,7 @@ KnowhereInitImpl(const char* conf_file) {
         knowhere::KnowhereConfig::SetEarlyStopThreshold(0);
         knowhere::KnowhereConfig::ShowVersion();
         if (!google::IsGoogleLoggingInitialized()) {
+            std::cout << "hc==init google logging" << std::endl;
             google::InitGoogleLogging("milvus");
         }
 
@@ -42,6 +43,7 @@ KnowhereInitImpl(const char* conf_file) {
         google::SetCommandLineOption("minloglevel", "4");
 #else
         if (conf_file != nullptr) {
+            std::cout << "hc==init glog flag files" << std::endl;
             gflags::SetCommandLineOption("flagfile", conf_file);
         }
 #endif

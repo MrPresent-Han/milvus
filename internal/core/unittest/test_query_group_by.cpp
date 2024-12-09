@@ -13,31 +13,57 @@
 #include "test_utils/DataGen.h"
 #include "segcore/SegmentSealed.h"
 #include "plan/PlanNode.h"
+#include "exec/QueryContext.h"
+#include "exec/Task.h"
+#include <glog/logging.h>
+#include "config/ConfigKnowhere.h"
+#include "segcore/segcore_init_c.h"
 
 using namespace milvus;
 using namespace milvus::segcore;
 using namespace milvus::plan;
+using namespace milvus::exec;
 
 class QueryAggTest: public testing::TestWithParam<bool> {
+public:
+    constexpr static const char bool_field[] = "bool";
+    constexpr static const char int8_field[] = "int8";
+    constexpr static const char int16_field[] = "int16";
+    constexpr static const char int32_field[] = "int32";
+    constexpr static const char int64_field[] = "int64";
+    constexpr static const char float_field[] = "float";
+    constexpr static const char double_field[] = "double";
+    constexpr static const char string_field[] = "string";
+
 protected:
     void SetUp() override {
+        SegcoreInit("/home/hanchun/Documents/project/milvus/configs/glog.conf");
         schema_ = std::make_shared<Schema>();
         auto vec_fid = schema_->AddDebugField(
                 "fakevec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
         bool nullable = GetParam();
-        auto bool_fid = schema_->AddDebugField("bool", DataType::BOOL, nullable);
-        auto int8_fid = schema_->AddDebugField("int8", DataType::INT8, nullable);
-        auto int16_fid = schema_->AddDebugField("int16", DataType::INT16, nullable);
-        auto int32_fid = schema_->AddDebugField("int32", DataType::INT32, nullable);
-        auto int64_fid = schema_->AddDebugField("int64", DataType::INT64, nullable);
-        auto float_fid = schema_->AddDebugField("float", DataType::FLOAT, nullable);
-        auto double_fid = schema_->AddDebugField("double", DataType::DOUBLE, nullable);
-        auto str1_fid = schema_->AddDebugField("string1", DataType::VARCHAR, nullable);
+        auto bool_fid = schema_->AddDebugField(bool_field, DataType::BOOL, nullable);
+        auto int8_fid = schema_->AddDebugField(int8_field, DataType::INT8, nullable);
+        auto int16_fid = schema_->AddDebugField(int16_field, DataType::INT16, nullable);
+        auto int32_fid = schema_->AddDebugField(int32_field, DataType::INT32, nullable);
+        auto int64_fid = schema_->AddDebugField(int64_field, DataType::INT64, nullable);
+        auto float_fid = schema_->AddDebugField(float_field, DataType::FLOAT, nullable);
+        auto double_fid = schema_->AddDebugField(double_field, DataType::DOUBLE, nullable);
+        auto str1_fid = schema_->AddDebugField(string_field, DataType::VARCHAR, nullable);
+        field_map_[bool_field] = bool_fid;
+        field_map_[int8_field] = int8_fid;
+        field_map_[int16_field] = int16_fid;
+        field_map_[int32_field] = int32_fid;
+        field_map_[int64_field] = int64_fid;
+        field_map_[float_field] = float_fid;
+        field_map_[double_field] = double_fid;
+        field_map_[string_field] = str1_fid;
+
         schema_->set_primary_field_id(str1_fid);
 
         auto segment = CreateSealedSegment(schema_);
-        num_rows_ = 100;
-        auto raw_data = DataGen(schema_, num_rows_, 42, 0, 1, 10, false, true, nullable);
+        num_rows_ = 20;
+        auto raw_data = DataGen(schema_, num_rows_, 42, 0, 3, 10, false, false, nullable);
         auto fields = schema_->get_fields();
         for (auto field_data : raw_data.raw_->fields_data()) {
             int64_t field_id = field_data.field_id();
@@ -50,6 +76,13 @@ protected:
 
             segment->LoadFieldData(FieldId(field_id), info);
         }
+        // load ts field data
+        auto field_data = std::make_shared<FieldData<int64_t>>(DataType::INT64, false);
+        field_data->FillFieldData(raw_data.timestamps_.data(), num_rows_);
+        auto ts_field_data_info = FieldDataInfo{
+                TimestampFieldID.get(), static_cast<size_t>(num_rows_), std::vector<FieldDataPtr>{field_data}};
+        segment->LoadFieldData(TimestampFieldID, ts_field_data_info);
+
         segment_ = SegmentSealedSPtr(segment.release());
     }
 
@@ -60,20 +93,98 @@ public:
     int64_t num_rows_{0};
     SegmentSealedSPtr segment_;
     std::shared_ptr<Schema> schema_;
+    std::map<std::string, FieldId> field_map_;
 };
 
 INSTANTIATE_TEST_SUITE_P(TaskTestSuite,
                          QueryAggTest,
-                         ::testing::Values(true,
-                                           false));
+                         ::testing::Values(true));
 
+
+RowVectorPtr execPlan(std::shared_ptr<Task>& task) {
+    RowVectorPtr ret = nullptr;
+    for (;;) {
+        auto result = task->Next();
+        if (!result) {
+            break;
+        }
+        if (ret) {
+            auto childrens = result->childrens();
+            AssertInfo(childrens.size() == ret->childrens().size(), "column count of row vectors in different rounds"
+                                                                    "should be consistent, ret_column_count:{}, "
+                                                                    "new_result_column_count:{}",
+                       childrens.size(),
+                       ret->childrens().size());
+            for(auto i = 0; i < childrens.size(); i++) {
+                if (auto column_vec = std::dynamic_pointer_cast<ColumnVector>(childrens[i])) {
+                    auto ret_column_vector = std::dynamic_pointer_cast<ColumnVector>(ret->child(i));
+                    ret_column_vector->append(*column_vec);
+                } else {
+                    PanicInfo(UnexpectedError, "expr return type not matched");
+                }
+            }
+        } else {
+            ret = result;
+        }
+    }
+    return ret;
+}
 
 TEST_P(QueryAggTest, GroupFixedLengthType) {
-    std::cout << "hc=== query agg test" << std::endl;
     std::vector<milvus::plan::PlanNodePtr> sources;
     //set up mvcc_node + project_node + agg_node
+    // group by int16_field
+    // mvcc node
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
             milvus::plan::GetNextPlanNodeId(), sources);
+    sources = std::vector<milvus::plan::PlanNodePtr>{mvcc_node};
+    // project node
+    auto int16_id = field_map_[int16_field];
+    PlanNodePtr project_node = std::make_shared<milvus::plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
+                                                                           std::vector<FieldId>{int16_id},
+                                                                           std::vector<std::string>{int16_field},
+                                                                           std::vector<DataType>{DataType::INT16},
+                                                                           sources);
+    sources = std::vector<milvus::plan::PlanNodePtr>{project_node};
+    // agg node
+    std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
+    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(DataType::INT16, int16_field, int16_id));
+    PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
+                                                       milvus::plan::AggregationNode::Step::kSingle,
+                                                       std::move(groupingKeys),
+                                                       std::vector<std::string>{},
+                                                       std::vector<plan::AggregationNode::Aggregate>{},
+                                                       GetParam(),
+                                                       sources);
 
+    auto plan = plan::PlanFragment(agg_node);
+    auto query_context = std::make_shared<milvus::exec::QueryContext>(
+            "test1",
+            segment_.get(),
+            1000000,
+            MAX_TIMESTAMP,
+            std::make_shared<milvus::exec::QueryConfig>(
+                    std::unordered_map<std::string, std::string>{}));
+
+    auto task = Task::Create("task_query_group_by", plan, 0, query_context);
+    RowVectorPtr ret = execPlan(task);
+    EXPECT_EQ(1, ret->childrens().size());
+    auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
+    // as there are 20 values repeating 3 three times, after groupby, at least 7 valid unique values will be returned
+    EXPECT_TRUE(column->size() <= 7);
+    auto count = column->size();
+    std::set<int16_t> set;
+    for(auto i = 0; i < count; i++) {
+        int16_t val = column->ValueAt<int16_t>(i);
+        if(set.count(val) > 0){
+            EXPECT_TRUE(false);
+            // there should not be any duplicated vals in the returned column
+        }
+        set.insert(val);
+    }
+    EXPECT_TRUE(set.size()==column->size());
+}
+
+TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
 
 }

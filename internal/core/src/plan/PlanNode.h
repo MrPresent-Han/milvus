@@ -274,9 +274,9 @@ class FilterBitsNode : public PlanNode {
 class ProjectNode : public PlanNode {
 public:
     ProjectNode(const PlanNodeId& id,
-                std::vector<FieldId>& field_ids,
-                std::vector<std::string>& field_names,
-                std::vector<milvus::DataType>& field_types,
+                std::vector<FieldId>&& field_ids,
+                std::vector<std::string>&& field_names,
+                std::vector<milvus::DataType>&& field_types,
                 std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
                 : PlanNode(id),
                 sources_(std::move(sources)),

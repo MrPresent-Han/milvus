@@ -28,12 +28,14 @@ void populateLookupRows(const TargetBitmapView& activeRows, std::vector<vector_s
         std::iota(lookupRows.begin(), lookupRows.end(), 0);
     } else {
         auto start = -1;
+        auto idx = 0;
+        AssertInfo(lookupRows.size()==activeRows.count(), "loop up count is not equal to active rows count, wrong state");
         LOG_INFO("hc==part of rows are selected, populate these selected rows, rows_size:{}", lookupRows.size());
         do {
             auto next_active = activeRows.find_next(start);
             if (!next_active.has_value()) break;
             auto next_active_row = next_active.value();
-            lookupRows.emplace_back(next_active_row);
+            lookupRows[idx++] = next_active_row;
             start = next_active_row;
             LOG_INFO("hc==populate active_row:{}, rows_size:{}", next_active_row, lookupRows.size());
         } while(true);
@@ -65,7 +67,7 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
                      i, length, valid_bits_view.count(), activeRows.count());
         }
     }
-    lookup.reset(activeRows.size()); //hc---set for next round
+    lookup.reset(activeRows.count()); //hc---set for next round
 
     const auto mode = hashMode();
     for (auto i = 0; i < hashers.size(); i++) {
