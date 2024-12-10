@@ -65,8 +65,9 @@ public:
     }
 
     virtual void initializeNewGroups(char** groups, folly::Range<const vector_size_t*> indices) {
+        LOG_INFO("hc===start to initializeNewGroupsInternal new groups");
         initializeNewGroupsInternal(groups, indices);
-        LOG_INFO("hc===has initialized new groups");
+        LOG_INFO("hc===has initializeNewGroupsInternal new groups");
         for(auto index : indices) {
             groups[index][initializedByte_] |= initializedMask_;
             LOG_INFO("hc===set up init byte for index:{}, initializedByte_:{}, initializedMask_:{}",

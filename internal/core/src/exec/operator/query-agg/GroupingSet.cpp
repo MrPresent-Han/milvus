@@ -194,7 +194,11 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
         LOG_INFO("hc===start to aggregate:{}", i);
         auto& function = aggregates_[i].function_;
         if (!newGroups.empty()) {
-            function->initializeNewGroups(groups, newGroups);
+            LOG_INFO("hc===start to initializeNewGroups: newGroups.data:{}, newGroups.size:{}", newGroups.data() != nullptr, newGroups.size());
+            folly::Range<const vector_size_t*> range(newGroups.data(), newGroups.size());
+            LOG_INFO("hc===has created range, size:{}, function!=nullptr:{}", range.size(), function!= nullptr);
+            function->initializeNewGroups(groups, range);
+            LOG_INFO("hc===end to initializeNewGroups:{}", i);
         }
         if (!active_rows_.any()) {
             continue;

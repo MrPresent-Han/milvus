@@ -18,6 +18,7 @@
 #include <glog/logging.h>
 #include "config/ConfigKnowhere.h"
 #include "segcore/segcore_init_c.h"
+#include "exec/operator/query-agg/RegisterAggregateFunctions.h"
 
 using namespace milvus;
 using namespace milvus::segcore;
@@ -38,6 +39,8 @@ public:
 protected:
     void SetUp() override {
         SegcoreInit("/home/hanchun/Documents/project/milvus/configs/glog.conf");
+        registerAllAggregateFunctions();
+
         schema_ = std::make_shared<Schema>();
         auto vec_fid = schema_->AddDebugField(
                 "fakevec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
@@ -132,6 +135,7 @@ RowVectorPtr execPlan(std::shared_ptr<Task>& task) {
 
 TEST_P(QueryAggTest, GroupFixedLengthType) {
     std::vector<milvus::plan::PlanNodePtr> sources;
+    bool ignoreNullKeys = GetParam();
     //set up mvcc_node + project_node + agg_node
     // group by int16_field
     // mvcc node
@@ -154,7 +158,7 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
                                                        std::move(groupingKeys),
                                                        std::vector<std::string>{},
                                                        std::vector<plan::AggregationNode::Aggregate>{},
-                                                       GetParam(),
+                                                       ignoreNullKeys,
                                                        sources);
 
     auto plan = plan::PlanFragment(agg_node);
@@ -170,8 +174,13 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
     RowVectorPtr ret = execPlan(task);
     EXPECT_EQ(1, ret->childrens().size());
     auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
-    // as there are 20 values repeating 3 three times, after groupby, at least 7 valid unique values will be returned
-    EXPECT_TRUE(column->size() <= 7);
+    if (ignoreNullKeys) {
+        // as there are 20 values repeating 3 three times, after groupby, at most 7 valid unique values will be returned
+        EXPECT_TRUE(column->size() <= 7);
+    } else {
+        EXPECT_TRUE(column->size() == 7);
+    }
+
     auto count = column->size();
     std::set<int16_t> set;
     for(auto i = 0; i < count; i++) {
@@ -186,5 +195,69 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
 }
 
 TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
+    std::vector<milvus::plan::PlanNodePtr> sources;
+    //set up mvcc_node + project_node + agg_node
+    // group by int16_field and int32_field
+    // mvcc node
+    PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
+            milvus::plan::GetNextPlanNodeId(), sources);
+    sources = std::vector<milvus::plan::PlanNodePtr>{mvcc_node};
+    // project node
+    auto int16_id = field_map_[int16_field];
+    auto int32_id = field_map_[int32_field];
+    auto int64_id = field_map_[int64_field];
+    PlanNodePtr project_node = std::make_shared<milvus::plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
+                                                                           std::vector<FieldId>{int16_id, int32_id, int64_id},
+                                                                           std::vector<std::string>{int16_field, int32_field, int64_field},
+                                                                           std::vector<DataType>{DataType::INT16, DataType::INT32, DataType::INT64},
+                                                                           sources);
+    sources = std::vector<milvus::plan::PlanNodePtr>{project_node};
+    // agg node, group by int16, int32, sum(int64)
+    std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
+    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(DataType::INT16, int16_field, int16_id));
+    groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(DataType::INT32, int32_field, int32_id));
+    std::string agg_name = "sum";
+    std::vector<plan::AggregationNode::Aggregate> aggregates;
+    auto agg_input = std::make_shared<expr::FieldAccessTypeExpr>(DataType::INT64, int64_field, int64_id);
+    auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{agg_input}, nullptr);
+    aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+    aggregates.back().rawInputTypes_.emplace_back(DataType::INT64);
+    aggregates.back().resultType_ = GetAggResultType(agg_name, DataType::INT64);
+
+
+    PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
+                                                                   milvus::plan::AggregationNode::Step::kSingle,
+                                                                   std::move(groupingKeys),
+                                                                   std::vector<std::string>{"sum"},
+                                                                   std::move(aggregates),
+                                                                   GetParam(),
+                                                                   sources);
+
+    auto plan = plan::PlanFragment(agg_node);
+    auto query_context = std::make_shared<milvus::exec::QueryContext>(
+            "test1",
+            segment_.get(),
+            1000000,
+            MAX_TIMESTAMP,
+            std::make_shared<milvus::exec::QueryConfig>(
+                    std::unordered_map<std::string, std::string>{}));
+
+    auto task = Task::Create("task_query_group_by", plan, 0, query_context);
+    RowVectorPtr ret = execPlan(task);
+    EXPECT_EQ(3, ret->childrens().size());
+    /*auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
+    // as there are 20 values repeating 3 three times, after groupby, at least 7 valid unique values will be returned
+    EXPECT_TRUE(column->size() <= 7);
+    auto count = column->size();
+    std::set<int16_t> set;
+    for(auto i = 0; i < count; i++) {
+        int16_t val = column->ValueAt<int16_t>(i);
+        if(set.count(val) > 0){
+            EXPECT_TRUE(false);
+            // there should not be any duplicated vals in the returned column
+        }
+        set.insert(val);
+    }
+    EXPECT_TRUE(set.size()==column->size());*/
 
 }
