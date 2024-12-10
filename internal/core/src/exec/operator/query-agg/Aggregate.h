@@ -64,7 +64,21 @@ public:
         setOffsetsInternal(offset, nullByte, nullMask, initializedByte, initializedMask, rowSizeOffset);        
     }
 
-    virtual void initializeNewGroups(char** groups, folly::Range<const vector_size_t*> indices) {
+    void test1(char** groups) {
+        LOG_INFO("hc===test Aggregate, groups!=nullptr:{}", groups!=nullptr);
+    }
+
+    void test2(folly::Range<const vector_size_t*> indices) {
+        LOG_INFO("hc===test Aggregate, indices.size:{}", indices.size());
+    }
+
+    virtual void test3(){
+        LOG_INFO("hc===test virutal method of Aggregate");
+    }
+
+    virtual void test4() = 0;
+
+    void initializeNewGroups(char** groups, folly::Range<const vector_size_t*> indices) {
         LOG_INFO("hc===start to initializeNewGroupsInternal new groups");
         initializeNewGroupsInternal(groups, indices);
         LOG_INFO("hc===has initializeNewGroupsInternal new groups");

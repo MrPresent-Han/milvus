@@ -53,10 +53,6 @@ struct HashLookup {
     /// For groupProbe, row numbers for which a new entry was inserted (didn't
     /// exist before the groupProbe). Empty for joinProbe.
     std::vector<vector_size_t> newGroups_;
-
-    /// If using valueIds, list of concatenated valueIds. 1:1 with 'hashes'.
-    /// Populated by groupProbe and joinProbe.
-    std::vector<uint64_t> normalizedKeys_;
 };
 
 class BaseHashTable {

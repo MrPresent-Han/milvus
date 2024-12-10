@@ -34,9 +34,6 @@ class GroupingSet {
             hashers_(std::move(hashers)),
             aggregates_(std::move(aggregates)),
             ignoreNullKeys_(ignoreNullKeys){
-
-        LOG_INFO("hc===created GroupingSet, isGlobal_:{}, hashers_.size():{}, hashers_.empty():{}, aggregates_.size:{}",
-                 isGlobal_, hashers_.size(), hashers_.empty(), aggregates_.size());
         isGlobal_ = hashers_.empty();
         LOG_INFO("hc===created GroupingSet, isGlobal_:{}, hashers_.size():{}, hashers_.empty():{}, aggregates_.size:{}",
                  isGlobal_, hashers_.size(), hashers_.empty(), aggregates_.size());

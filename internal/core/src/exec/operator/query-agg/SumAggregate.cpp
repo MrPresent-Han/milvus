@@ -50,6 +50,7 @@ AggregateRegistrationResult registerSum(
                                                    const QueryConfig& config)->std::unique_ptr<Aggregate>{
                                                         AssertInfo(argumentTypes.size()==1, "function:{} only accept one argument", name);
                                                         auto inputType = argumentTypes[0];
+                                                        LOG_INFO("hc===create sum Aggreagate!!");
                                                         switch (inputType) {
                                                             case DataType::INT8:
                                                                 return std::make_unique<T<int8_t, int64_t, int64_t>>(DataType::INT64);

@@ -33,7 +33,7 @@ public:
         int32_t fixedSize,
         int32_t alignment);
 
-    explicit Accumulator(Aggregate* aggregate, DataType spillType);
+    explicit Accumulator(Aggregate* aggregate);
 
     bool isFixedSize() const {
         return isFixedSize_;

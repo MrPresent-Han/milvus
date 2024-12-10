@@ -16,6 +16,7 @@
 
 #include "GroupingSet.h"
 #include "common/Utils.h"
+#include "SumAggregateBase.h"
 
 namespace milvus{
 namespace exec{
@@ -65,7 +66,7 @@ void GroupingSet::initializeGlobalAggregation() {
 
     for(auto& aggregate: aggregates_) {
         auto& function = aggregate.function_;
-        Accumulator accumulator(function.get(), function->resultType());
+        Accumulator accumulator(function.get());
         // Accumulator offset must be aligned by their alignment size.
         offset = milvus::bits::roundUp(offset, accumulator.alignment());
         function->setOffsets(offset,
@@ -138,7 +139,7 @@ std::vector<Accumulator> GroupingSet::accumulators() {
     std::vector<Accumulator> accumulators;
     accumulators.reserve(aggregates_.size());
     for(auto& aggregate: aggregates_) {
-        accumulators.emplace_back(Accumulator{aggregate.function_.get(), aggregate.intermediateType_});
+        accumulators.emplace_back(Accumulator{aggregate.function_.get()});
     }
     return accumulators;
 }
@@ -174,29 +175,37 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
         createHashTable();
         LOG_INFO("hc===create hash_table down");
     }
+    aggregates_[0].function_->test4();
     ensureInputFits(input);
     LOG_INFO("hc===start to prepareForGroupProbe");
     hash_table_->prepareForGroupProbe(*lookup_, input, active_rows_, ignoreNullKeys_);
     LOG_INFO("hc===after prepareForGroupProbe, rows_size:{}", lookup_->rows_.size());
+    aggregates_[0].function_->test4();
     if (lookup_->rows_.empty()) {
         LOG_INFO("hc===no rows to return, skip directly");
         // No rows to probe. Can happen when ignoreNullKeys_ is true and all rows
         // have null keys.
         return;
     }
+    aggregates_[0].function_->test4();
     LOG_INFO("hc===start to group probe, rows_size:{}", lookup_->rows_.size());
     hash_table_->groupProbe(*lookup_);
     LOG_INFO("hc===finish group probe, rows_size:{}, hits_.size:{}, newGroups_.size:{}",
              lookup_->rows_.size(), lookup_->hits_.size(), lookup_->newGroups_.size());
+    aggregates_[0].function_->test4();
     auto* groups = lookup_->hits_.data();
     const auto& newGroups = lookup_->newGroups_;
     for(auto i = 0; i < aggregates_.size(); i++) {
+        aggregates_[0].function_->test4();
         LOG_INFO("hc===start to aggregate:{}", i);
         auto& function = aggregates_[i].function_;
         if (!newGroups.empty()) {
             LOG_INFO("hc===start to initializeNewGroups: newGroups.data:{}, newGroups.size:{}", newGroups.data() != nullptr, newGroups.size());
             folly::Range<const vector_size_t*> range(newGroups.data(), newGroups.size());
-            LOG_INFO("hc===has created range, size:{}, function!=nullptr:{}", range.size(), function!= nullptr);
+            function->test1(groups);
+            function->test2(range);
+            function->test3();
+            function->test4();
             function->initializeNewGroups(groups, range);
             LOG_INFO("hc===end to initializeNewGroups:{}", i);
         }

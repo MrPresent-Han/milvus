@@ -160,7 +160,7 @@ Accumulator::Accumulator(
             
         }
 
-Accumulator::Accumulator(milvus::exec::Aggregate *aggregate, DataType spillType):
+Accumulator::Accumulator(milvus::exec::Aggregate *aggregate):
     isFixedSize_(aggregate->isFixedSize()),
     fixedSize_{aggregate->accumulatorFixedWidthSize()},
     alignment_(aggregate->accumulatorAlignmentSize()){

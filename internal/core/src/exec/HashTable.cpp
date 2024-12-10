@@ -298,13 +298,13 @@ void HashTable<ignoreNullKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     auto rows = lookup.rows_.data();
     for(; probeIdx + 4 <= numProbes; probeIdx += 4) {
         int32_t row = rows[probeIdx];
-        state1.preProbe(*this, lookup.hashes_[row], row);
+        state1.preProbe(*this, lookup.hashes_[probeIdx], row);
         row = rows[probeIdx + 1];
-        state2.preProbe(*this, lookup.hashes_[row], row);
+        state2.preProbe(*this, lookup.hashes_[probeIdx+1], row);
         row = rows[probeIdx + 2];
-        state3.preProbe(*this, lookup.hashes_[row], row);
+        state3.preProbe(*this, lookup.hashes_[probeIdx+2], row);
         row = rows[probeIdx + 3];
-        state4.preProbe(*this, lookup.hashes_[row], row);
+        state4.preProbe(*this, lookup.hashes_[probeIdx+3], row);
 
         state1.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
         state2.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
@@ -318,7 +318,7 @@ void HashTable<ignoreNullKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     }
     for(; probeIdx < numProbes; probeIdx++) {
         int32_t row = rows[probeIdx];
-        state1.preProbe(*this, lookup.hashes_[row], row);
+        state1.preProbe(*this, lookup.hashes_[probeIdx], row);
         state1.firstProbe(*this, 0);
         fullProbe(lookup, state1, false);
     }
