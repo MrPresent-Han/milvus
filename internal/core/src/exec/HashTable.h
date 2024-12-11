@@ -46,8 +46,7 @@ struct HashLookup {
 
     /// Contains one entry for each row in 'rows'. Index is the row number.
     /// For groupProbe, a pointer to an existing or new row with matching grouping
-    /// keys. For joinProbe, a pointer to the first row with matching keys or null
-    /// if no match.
+    /// keys.
     std::vector<char*> hits_;
 
     /// For groupProbe, row numbers for which a new entry was inserted (didn't
@@ -66,8 +65,10 @@ public:
 
 enum class HashMode {kHash, kArray, kNormalizedKey};
 
-explicit BaseHashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers)
+    explicit BaseHashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers)
         :hashers_(std::move(hashers)){}
+
+    virtual ~BaseHashTable() = default;
 
     RowContainer* rows() const {
         return rows_.get();
@@ -155,6 +156,8 @@ public:
         hashMode_ = HashMode::kHash;
         rows_ = std::make_unique<RowContainer>(keyTypes, accumulators, ignoreNullKeys);
     };
+
+    ~HashTable() override{}
 
     void setHashMode(HashMode mode, int32_t numNew) override;
 

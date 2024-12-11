@@ -387,10 +387,9 @@ public:
 
     void clear() {
         for (auto row: rows_) {
-            delete row;
+            delete[] row;
         }
         numRows_ = 0;
-        numFreeRows_ = 0;
     }
 
     char* initializeRow(char* row);
@@ -420,7 +419,6 @@ private:
     std::vector<Accumulator> accumulators_;
 
     uint64_t numRows_ = 0;
-    uint64_t numFreeRows_ = 0;
     std::vector<char*> rows_{};
 };
 

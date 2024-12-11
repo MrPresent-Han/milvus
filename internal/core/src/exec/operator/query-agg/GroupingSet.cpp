@@ -127,12 +127,12 @@ bool GroupingSet::getOutput(milvus::RowVectorPtr &result) {
         return false;
     }
     const auto& all_rows = hash_table_->rows()->allRows();
-    if(all_rows.empty()) {
-        hash_table_->clear();
-        return false;
+    DeferLambda([&](){hash_table_->clear();});
+    if(!all_rows.empty()) {
+        extractGroups(folly::Range<char**>(const_cast<char**>(all_rows.data()), all_rows.size()), result);
+        return true;
     }
-    extractGroups(folly::Range<char**>(const_cast<char**>(all_rows.data()), all_rows.size()), result);
-    return true;
+    return false;
 }
 
 std::vector<Accumulator> GroupingSet::accumulators() {

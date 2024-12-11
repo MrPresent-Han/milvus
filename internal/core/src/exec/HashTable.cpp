@@ -28,14 +28,14 @@ void populateLookupRows(const TargetBitmapView& activeRows, std::vector<vector_s
         std::iota(lookupRows.begin(), lookupRows.end(), 0);
     } else {
         auto start = -1;
-        auto idx = 0;
-        AssertInfo(lookupRows.size()==activeRows.count(), "loop up count is not equal to active rows count, wrong state");
+        lookupRows.clear();
+        lookupRows.reserve(activeRows.count());
         LOG_INFO("hc==part of rows are selected, populate these selected rows, rows_size:{}", lookupRows.size());
         do {
             auto next_active = activeRows.find_next(start);
             if (!next_active.has_value()) break;
             auto next_active_row = next_active.value();
-            lookupRows[idx++] = next_active_row;
+            lookupRows.emplace_back(next_active_row);
             start = next_active_row;
             LOG_INFO("hc==populate active_row:{}, rows_size:{}", next_active_row, lookupRows.size());
         } while(true);
@@ -67,7 +67,7 @@ void BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
                      i, length, valid_bits_view.count(), activeRows.count());
         }
     }
-    lookup.reset(activeRows.count()); //hc---set for next round
+    lookup.reset(activeRows.size());
 
     const auto mode = hashMode();
     for (auto i = 0; i < hashers.size(); i++) {
@@ -298,13 +298,13 @@ void HashTable<ignoreNullKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     auto rows = lookup.rows_.data();
     for(; probeIdx + 4 <= numProbes; probeIdx += 4) {
         int32_t row = rows[probeIdx];
-        state1.preProbe(*this, lookup.hashes_[probeIdx], row);
+        state1.preProbe(*this, lookup.hashes_[row], row);
         row = rows[probeIdx + 1];
-        state2.preProbe(*this, lookup.hashes_[probeIdx+1], row);
+        state2.preProbe(*this, lookup.hashes_[row], row);
         row = rows[probeIdx + 2];
-        state3.preProbe(*this, lookup.hashes_[probeIdx+2], row);
+        state3.preProbe(*this, lookup.hashes_[row], row);
         row = rows[probeIdx + 3];
-        state4.preProbe(*this, lookup.hashes_[probeIdx+3], row);
+        state4.preProbe(*this, lookup.hashes_[row], row);
 
         state1.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
         state2.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
@@ -318,7 +318,7 @@ void HashTable<ignoreNullKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     }
     for(; probeIdx < numProbes; probeIdx++) {
         int32_t row = rows[probeIdx];
-        state1.preProbe(*this, lookup.hashes_[probeIdx], row);
+        state1.preProbe(*this, lookup.hashes_[row], row);
         state1.firstProbe(*this, 0);
         fullProbe(lookup, state1, false);
     }

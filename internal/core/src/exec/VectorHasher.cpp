@@ -35,14 +35,11 @@ std::vector<std::unique_ptr<VectorHasher>> createVectorHashers(
 
 template<DataType Type>
 void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBitmapView& activeRows, bool mix, uint64_t* result) {
-    LOG_INFO("hc==entering hasherValues, element_size:");
     if constexpr (Type==DataType::ROW || Type==DataType::ARRAY || Type==DataType::JSON) {
         PanicInfo(milvus::DataTypeInvalid, "NotSupport hash for complext type row/array/json:{}", Type);
     } else {
         using T = typename TypeTraits<Type>::NativeType;
         auto start = -1;
-        auto idx = 0;
-        LOG_INFO("hc==hasherValues, element_size:");
         do {
             auto next_valid_op = activeRows.find_next(start);
             if (!next_valid_op.has_value()){
@@ -50,9 +47,8 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
                 break;
             }
             auto next_valid_row = next_valid_op.value();
-            LOG_INFO("hc==hash next_valid_row:{}", next_valid_row);
             if (!column_data->ValidAt(next_valid_row)) {
-                result[idx] = mix? milvus::bits::hashMix(result[idx], kNullHash): kNullHash;
+                result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], kNullHash): kNullHash;
                 LOG_INFO("hc==hash invalid at next_valid_row:{}, hash null values, result[next_valid_row]:{}", next_valid_row, result[next_valid_row]);
             } else {
                 T raw_value = column_data->ValueAt<T>(next_valid_row);
@@ -63,10 +59,9 @@ void VectorHasher::hashValues(const ColumnVectorPtr& column_data, const TargetBi
                     hash_value = folly::hasher<T>()(raw_value);
                 }
                 LOG_INFO("hc==next_valid_row:{}, hashValue:{}, original_value:{}", next_valid_row, hash_value, raw_value);
-                result[idx] = mix? milvus::bits::hashMix(result[idx], hash_value) : hash_value;
+                result[next_valid_row] = mix? milvus::bits::hashMix(result[next_valid_row], hash_value) : hash_value;
             }
             start = next_valid_row;
-            idx++;
         } while(true);
     }
 }

@@ -59,10 +59,9 @@ protected:
                 return;
             }
             auto selected_idx = next_selected.value();
-            if (!column_data->ValidAt(selected_idx)) {
-                continue;
+            if (column_data->ValidAt(selected_idx)) {
+                updateNonNullValue<tableHasNulls, TData>(groups[selected_idx], TData(column_data->ValueAt<TValue>(selected_idx)), updateSingleValue);
             }
-            updateNonNullValue<tableHasNulls, TData>(groups[selected_idx], TData(column_data->ValueAt<TValue>(selected_idx)), updateSingleValue);
             start = selected_idx;
         }
     }
