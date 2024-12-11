@@ -58,9 +58,6 @@ public:
         }
     }
 
-    void test4() {
-        LOG_INFO("hc===SumAggregate called test4 method");
-    }
 
 protected:
     template <typename TData, typename TValue = TInput>

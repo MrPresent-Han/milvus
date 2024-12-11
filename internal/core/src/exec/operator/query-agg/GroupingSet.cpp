@@ -175,39 +175,27 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
         createHashTable();
         LOG_INFO("hc===create hash_table down");
     }
-    aggregates_[0].function_->test4();
     ensureInputFits(input);
     LOG_INFO("hc===start to prepareForGroupProbe");
     hash_table_->prepareForGroupProbe(*lookup_, input, active_rows_, ignoreNullKeys_);
     LOG_INFO("hc===after prepareForGroupProbe, rows_size:{}", lookup_->rows_.size());
-    aggregates_[0].function_->test4();
     if (lookup_->rows_.empty()) {
         LOG_INFO("hc===no rows to return, skip directly");
         // No rows to probe. Can happen when ignoreNullKeys_ is true and all rows
         // have null keys.
         return;
     }
-    aggregates_[0].function_->test4();
     LOG_INFO("hc===start to group probe, rows_size:{}", lookup_->rows_.size());
     hash_table_->groupProbe(*lookup_);
     LOG_INFO("hc===finish group probe, rows_size:{}, hits_.size:{}, newGroups_.size:{}",
              lookup_->rows_.size(), lookup_->hits_.size(), lookup_->newGroups_.size());
-    aggregates_[0].function_->test4();
     auto* groups = lookup_->hits_.data();
     const auto& newGroups = lookup_->newGroups_;
     for(auto i = 0; i < aggregates_.size(); i++) {
-        aggregates_[0].function_->test4();
         LOG_INFO("hc===start to aggregate:{}", i);
         auto& function = aggregates_[i].function_;
         if (!newGroups.empty()) {
-            LOG_INFO("hc===start to initializeNewGroups: newGroups.data:{}, newGroups.size:{}", newGroups.data() != nullptr, newGroups.size());
-            folly::Range<const vector_size_t*> range(newGroups.data(), newGroups.size());
-            function->test1(groups);
-            function->test2(range);
-            function->test3();
-            function->test4();
-            function->initializeNewGroups(groups, range);
-            LOG_INFO("hc===end to initializeNewGroups:{}", i);
+            function->initializeNewGroups(groups, newGroups);
         }
         if (!active_rows_.any()) {
             continue;
@@ -226,7 +214,7 @@ void GroupingSet::populateTempVectors(int32_t aggregateIndex, const milvus::RowV
     tempVectors_.resize(channel_idxes.size());
     for(auto i = 0; i < channel_idxes.size(); i++) {
         tempVectors_[i] = input->child(channel_idxes[i]);
-        LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_idxe:{}", aggregateIndex, channel_idxes[i]);
+        LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_idxes:{}", aggregateIndex, channel_idxes[i]);
     }
 }
 

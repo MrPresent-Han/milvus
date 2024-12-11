@@ -196,6 +196,7 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
 
 TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
     std::vector<milvus::plan::PlanNodePtr> sources;
+    auto ignoreNullKeys = GetParam();
     //set up mvcc_node + project_node + agg_node
     // group by int16_field and int32_field
     // mvcc node
@@ -230,7 +231,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
                                                                    std::move(groupingKeys),
                                                                    std::vector<std::string>{"sum"},
                                                                    std::move(aggregates),
-                                                                   GetParam(),
+                                                                   ignoreNullKeys,
                                                                    sources);
 
     auto plan = plan::PlanFragment(agg_node);
@@ -245,7 +246,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
     EXPECT_EQ(3, ret->childrens().size());
-    /*auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
+    auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
     // as there are 20 values repeating 3 three times, after groupby, at least 7 valid unique values will be returned
     EXPECT_TRUE(column->size() <= 7);
     auto count = column->size();
@@ -258,6 +259,6 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
         }
         set.insert(val);
     }
-    EXPECT_TRUE(set.size()==column->size());*/
+    EXPECT_TRUE(set.size()==column->size());
 
 }
