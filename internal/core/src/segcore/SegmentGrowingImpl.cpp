@@ -829,6 +829,7 @@ SegmentGrowingImpl::bulk_subscript(FieldId field_id,
     auto vec_ptr = insert_record_.get_data_base(field_id);
     auto& field_meta = schema_->operator[](field_id);
     LOG_INFO("hc===try to subscript data from growing segment, count:{}", count);
+    valid_map.set();
     if (field_meta.is_nullable()) {
         auto valid_vec_ptr = insert_record_.get_valid_data(field_id);
         for(auto i = 0; i < count; i++) {

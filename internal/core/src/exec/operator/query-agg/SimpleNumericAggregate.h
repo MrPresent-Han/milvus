@@ -60,7 +60,10 @@ protected:
             }
             auto selected_idx = next_selected.value();
             if (column_data->ValidAt(selected_idx)) {
+                LOG_INFO("hc===updateGroups, selected_idx:{} is valid, try to update value:{}", selected_idx, TData(column_data->ValueAt<TValue>(selected_idx)));
                 updateNonNullValue<tableHasNulls, TData>(groups[selected_idx], TData(column_data->ValueAt<TValue>(selected_idx)), updateSingleValue);
+            } else {
+                LOG_INFO("hc===updateGroups, selected_idx:{} is invalid, skip", selected_idx);
             }
             start = selected_idx;
         }

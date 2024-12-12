@@ -1399,11 +1399,11 @@ ChunkedSegmentSealedImpl::bulk_subscript(FieldId field_id,
     LOG_INFO("hc===try to subscript data from chunk sealed segment, count:{}", count);
     auto& field_meta = schema_->operator[](field_id);
     auto& field_data = fields_.at(field_id);
+    valid_map.set();
     if (field_data->IsNullable()) {
         for(auto i = 0; i < count; i++) {
             valid_map.set(i, field_data->IsValid(seg_offsets[i]));
         }
-        LOG_INFO("hc===finish subscript valid data from chunked sealed segment, count:{}, valid_count:{}", count, valid_map.count());
     }
     switch(data_type) {
         case DataType::BOOL: {

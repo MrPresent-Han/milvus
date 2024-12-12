@@ -397,6 +397,10 @@ CreateScalarDataArrayFrom(const void* data_raw,
         auto valid_data_ = reinterpret_cast<const bool*>(valid_data);
         auto obj = data_array->mutable_valid_data();
         obj->Add(valid_data_, valid_data_ + count);
+    } else {
+        FixedVector<bool> always_valid(count, true);
+        auto obj = data_array->mutable_valid_data();
+        obj->Add(reinterpret_cast<const bool*>(always_valid.data()), reinterpret_cast<const bool*>(always_valid.data()) + count);
     }
 
     auto scalar_array = data_array->mutable_scalars();

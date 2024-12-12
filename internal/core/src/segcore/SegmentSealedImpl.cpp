@@ -1314,9 +1314,10 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
                                   int64_t count,
                                   void* data,
                                   TargetBitmapView& valid_map) const {
-    LOG_INFO("hc===try to subscript data from sealed segment, count:{}", count);
+    LOG_INFO("hc===try to subscript data from sealed segment, count:{}, data_type:{}", count, data_type);
     auto& field_meta = schema_->operator[](field_id);
     auto& field_data = fields_.at(field_id);
+    valid_map.set();
     if (field_data->IsNullable()) {
         for(auto i = 0; i < count; i++) {
             valid_map.set(i, field_data->IsValid(seg_offsets[i]));
@@ -1354,7 +1355,7 @@ SegmentSealedImpl::bulk_subscript(FieldId field_id,
             break;
         }
         case DataType::INT64: {
-            bulk_subscript_impl<int32_t>(field_data->Data(),
+            bulk_subscript_impl<int64_t>(field_data->Data(),
                                          seg_offsets,
                                          count,
                                          static_cast<int64_t*>(data));

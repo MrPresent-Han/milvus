@@ -579,15 +579,13 @@ func AssembleSingleValue(val interface{}, fieldData *schemapb.FieldData) error {
 type GroupAggReducer struct {
 	groupByFieldIds []int64
 	aggregates      []*planpb.Aggregate
-	schema          *schemapb.CollectionSchema
 	hashValsMap     map[uint64]*Bucket
 }
 
-func NewGroupAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate, schema *schemapb.CollectionSchema) *GroupAggReducer {
+func NewGroupAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate) *GroupAggReducer {
 	return &GroupAggReducer{
 		groupByFieldIds: groupByFieldIds,
 		aggregates:      aggregates,
-		schema:          schema,
 		hashValsMap:     make(map[uint64]*Bucket), // Initialize hashValsMap
 	}
 }

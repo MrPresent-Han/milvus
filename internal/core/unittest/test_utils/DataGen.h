@@ -336,14 +336,15 @@ inline GeneratedData DataGen(SchemaPtr schema,
     auto insert_cols =
         [&insert_data](
             auto& data, int64_t count, auto& field_meta, bool random_valid) {
-            FixedVector<bool> valid_data(count);
+            FixedVector<bool> valid_data(count, true);
             if (field_meta.is_nullable()) {
                 for (int i = 0; i < count; ++i) {
                     int x = i;
                     if (random_valid)
                         x = rand();
-                    valid_data[i] = x % 2 == 0 ? true : false;
-                    if (field_meta.get_data_type() == DataType::INT16) {
+                    valid_data[i] = x % 2 == 0;
+                    if (field_meta.get_data_type() == DataType::INT16 || field_meta.get_data_type() == DataType::INT32 ||
+                        field_meta.get_data_type() == DataType::INT64) {
                         LOG_INFO("hc=== valid_i:{}, valid:{}", i, valid_data[i]);
                     }
                 }
@@ -440,7 +441,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     } else {
                         data[i] = i / repeat_count;
                     }
-                    //LOG_INFO("hc==inserted int64_data_i:{}, x:{}", i, data[i]);
+                    LOG_INFO("hc==inserted int64_data_i:{}, x:{}", i, data[i]);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -454,7 +455,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     else
                         x = i / repeat_count;
                     data[i] = x;
-                    //LOG_INFO("hc==inserted int32_data_i:{}, x:{}", i, x);
+                    LOG_INFO("hc==inserted int32_data_i:{}, x:{}", i, x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;

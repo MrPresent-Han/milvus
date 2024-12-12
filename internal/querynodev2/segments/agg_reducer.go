@@ -6,7 +6,6 @@ import (
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/planpb"
 
-	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/proto/segcorepb"
 )
 
@@ -14,9 +13,9 @@ type InternalAggReducer struct {
 	groupAggReducer *agg.GroupAggReducer
 }
 
-func NewInternalAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate, schema *schemapb.CollectionSchema) *InternalAggReducer {
+func NewInternalAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate) *InternalAggReducer {
 	return &InternalAggReducer{
-		agg.NewGroupAggReducer(groupByFieldIds, aggregates, schema),
+		agg.NewGroupAggReducer(groupByFieldIds, aggregates),
 	}
 }
 
@@ -29,9 +28,9 @@ type SegcoreAggReducer struct {
 	groupAggReducer *agg.GroupAggReducer
 }
 
-func NewSegcoreAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate, schema *schemapb.CollectionSchema) *SegcoreAggReducer {
+func NewSegcoreAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate) *SegcoreAggReducer {
 	return &SegcoreAggReducer{
-		agg.NewGroupAggReducer(groupByFieldIds, aggregates, schema),
+		agg.NewGroupAggReducer(groupByFieldIds, aggregates),
 	}
 }
 
