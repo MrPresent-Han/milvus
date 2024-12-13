@@ -181,17 +181,19 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
         EXPECT_TRUE(column->size() == 5);
     }
 
-    auto count = column->size();
-    std::set<int16_t> set;
-    for(auto i = 0; i < count; i++) {
-        int16_t val = column->ValueAt<int16_t>(i);
-        if(set.count(val) > 0){
-            EXPECT_TRUE(false);
-            // there should not be any duplicated vals in the returned column
+    if (!nullable || ignore_null_keys) {
+        auto count = column->size();
+        std::set<int16_t> set;
+        for(auto i = 0; i < count; i++) {
+            int16_t val = column->ValueAt<int16_t>(i);
+            if(set.count(val) > 0){
+                EXPECT_TRUE(false);
+                // there should not be any duplicated vals in the returned column
+            }
+            set.insert(val);
         }
-        set.insert(val);
+        EXPECT_TRUE(set.size()==column->size());
     }
-    EXPECT_TRUE(set.size()==column->size());
 }
 
 TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
@@ -362,14 +364,14 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
         for (auto j = 0; j < size; j++) {
             if (i==0) {
                 auto val = column->ValueAt<int8_t>(j);
-                std::cout << "int8_val:" << val << std::endl;
+                std::cout << "int8_val:" << int32_t(val) << std::endl;
             }
             if (i==1) {
                 auto val = column->ValueAt<std::string>(j);
                 std::cout << "str_val:" << val << std::endl;
             }
             if (i==2) {
-                auto val = column->ValueAt<float>(j);
+                auto val = column->ValueAt<double>(j);
                 std::cout << "float_val:" << val << std::endl;
             }
             if (i==3) {

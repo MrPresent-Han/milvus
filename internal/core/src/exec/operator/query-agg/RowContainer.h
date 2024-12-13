@@ -387,16 +387,19 @@ public:
 
     void clear() {
         for (auto row: rows_) {
-            if (!variable_offsets.empty()) {
-                for (auto& off: variable_offsets) {
-                    auto str = *reinterpret_cast<std::string**>(row + off);
-                    if(str){
-                        delete str;
-                        str = nullptr;
-                        *reinterpret_cast<std::string**>(row + off) = nullptr;
-                    }
+            for (auto i = 0; i < variable_offsets.size(); i++) {
+                auto& off = variable_offsets[i];
+                auto& row_col = columnAt(variable_idxes[i]);
+                bool isStrNull = isNullAt(row, row_col.nullByte(), row_col.nullMask());
+                auto str = *reinterpret_cast<std::string**>(row + off);
+                LOG_INFO("hc=== str_null:{}", isStrNull);
+                if(!isStrNull && str){
+                    delete str;
+                    str = nullptr;
+                    *reinterpret_cast<std::string**>(row + off) = nullptr;
                 }
             }
+            LOG_INFO("hc=== to delete row:{}", row);
             delete[] row;
         }
         numRows_ = 0;
@@ -407,6 +410,7 @@ public:
 private:
     const std::vector<DataType> keyTypes_;
     std::vector<int> variable_offsets{};
+    std::vector<int> variable_idxes{};
     const bool ignoreNullKeys_;
     std::vector<uint32_t> offsets_;
     std::vector<uint32_t> nullOffsets_;

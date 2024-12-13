@@ -30,11 +30,13 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
     int32_t offset = 0;
     int32_t nullOffset = 0;
     bool isVariableWidth = false;
+    int idx = 0;
     for(auto& type: keyTypes_){
         bool varLength = !IsFixedSizeType(type);
         isVariableWidth |= varLength;
         if(varLength) {
             variable_offsets.emplace_back(offset);
+            variable_idxes.emplace_back(idx);
         }
         offsets_.push_back(offset);
         if (type==DataType::VARCHAR || type==DataType::STRING) {
@@ -46,6 +48,7 @@ RowContainer::RowContainer(const std::vector<DataType> &keyTypes,
         if(!ignoreNullKeys_) {
             ++nullOffset;
         }
+        idx++;
     }
     // Make offset at least sizeof pointer so that there is space for a
     // free list next pointer below the bit at 'freeFlagOffset_'.
