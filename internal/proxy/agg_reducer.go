@@ -15,8 +15,8 @@ type MilvusAggReducer struct {
 }
 
 func NewMilvusAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate,
-	schema *schemapb.CollectionSchema, outputMap *agg.AggregationFieldMap) *MilvusAggReducer {
-	//hc--must ensure outputMap is not nil outside
+	outputMap *agg.AggregationFieldMap) *MilvusAggReducer {
+	// must ensure outputMap is not nil outside
 	return &MilvusAggReducer{
 		agg.NewGroupAggReducer(groupByFieldIds, aggregates),
 		outputMap,

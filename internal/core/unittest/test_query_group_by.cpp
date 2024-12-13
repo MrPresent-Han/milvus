@@ -352,25 +352,29 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
         }
     }
     if (nullable && ignore_null_keys) {
-        EXPECT_TRUE(size <= 7);
+        EXPECT_TRUE(size <= 5);
     } else if(!nullable) {
-        EXPECT_TRUE(size > 7);
+        EXPECT_EQ(size, 5);
     }
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(i));
         for (auto j = 0; j < size; j++) {
             if (i==0) {
-                auto val = column->ValueAt<int16_t>(j);
-                std::cout << "int16_val:" << val << std::endl;
+                auto val = column->ValueAt<int8_t>(j);
+                std::cout << "int8_val:" << val << std::endl;
             }
             if (i==1) {
-                auto val = column->ValueAt<int32_t>(j);
-                std::cout << "int32_val:" << val << std::endl;
+                auto val = column->ValueAt<std::string>(j);
+                std::cout << "str_val:" << val << std::endl;
             }
             if (i==2) {
-                auto val = column->ValueAt<int64_t>(j);
-                std::cout << "int64_val:" << val << std::endl;
+                auto val = column->ValueAt<float>(j);
+                std::cout << "float_val:" << val << std::endl;
+            }
+            if (i==3) {
+                auto val = column->ValueAt<double>(j);
+                std::cout << "double_val:" << val << std::endl;
             }
         }
     }

@@ -343,8 +343,8 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     if (random_valid)
                         x = rand();
                     valid_data[i] = x % 2 == 0;
-                    if (field_meta.get_data_type() == DataType::INT16 || field_meta.get_data_type() == DataType::INT32 ||
-                        field_meta.get_data_type() == DataType::INT64) {
+                    if (field_meta.get_data_type() == DataType::INT8 || field_meta.get_data_type() == DataType::VARCHAR ||
+                        field_meta.get_data_type() == DataType::FLOAT || field_meta.get_data_type() == DataType::DOUBLE) {
                         LOG_INFO("hc=== valid_i:{}, valid:{}", i, valid_data[i]);
                     }
                 }
@@ -441,7 +441,6 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     } else {
                         data[i] = i / repeat_count;
                     }
-                    LOG_INFO("hc==inserted int64_data_i:{}, x:{}", i, data[i]);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -469,7 +468,6 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     else
                         x = i / repeat_count;
                     data[i] = x;
-                    LOG_INFO("hc==inserted int16_data_i:{}, x:{}", i, x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -483,6 +481,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                     else
                         x = i / repeat_count;
                     data[i] = x;
+                    LOG_INFO("hc==inserted INT8:{}, x:{}", i, x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -491,6 +490,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                 vector<float> data(N);
                 for (auto& x : data) {
                     x = distr(random);
+                    LOG_INFO("hc==inserted FLOAT:{}", x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;
@@ -499,6 +499,7 @@ inline GeneratedData DataGen(SchemaPtr schema,
                 vector<double> data(N);
                 for (auto& x : data) {
                     x = distr(random);
+                    LOG_INFO("hc==inserted DOUBLE:{}", x);
                 }
                 insert_cols(data, N, field_meta, random_valid);
                 break;

@@ -387,6 +387,16 @@ public:
 
     void clear() {
         for (auto row: rows_) {
+            if (!variable_offsets.empty()) {
+                for (auto& off: variable_offsets) {
+                    auto str = *reinterpret_cast<std::string**>(row + off);
+                    if(str){
+                        delete str;
+                        str = nullptr;
+                        *reinterpret_cast<std::string**>(row + off) = nullptr;
+                    }
+                }
+            }
             delete[] row;
         }
         numRows_ = 0;
@@ -396,6 +406,7 @@ public:
 
 private:
     const std::vector<DataType> keyTypes_;
+    std::vector<int> variable_offsets{};
     const bool ignoreNullKeys_;
     std::vector<uint32_t> offsets_;
     std::vector<uint32_t> nullOffsets_;

@@ -88,6 +88,11 @@ func TestSegCoreAggReduce(t *testing.T) {
 	reducedRes, err := aggReducer.Reduce(context.Background(), results, nil, nil)
 	assert.NoError(t, err)
 	assert.NotNil(t, reducedRes)
+
+	resInt32 := []int32{2, 3, 4, 5, 8, 9, 11}
+	resInt64 := []int64{24, 66, 24, 15, 48, 18, 22}
+	assert.EqualValues(t, resInt32, reducedRes.GetFieldsData()[0])
+	assert.EqualValues(t, resInt64, reducedRes.GetFieldsData()[1])
 }
 
 func TestSegCoreAggReduceError(t *testing.T) {
@@ -163,8 +168,8 @@ func TestSegCoreAggReduceError(t *testing.T) {
 	}
 
 	reducedRes, err := aggReducer.Reduce(context.Background(), results, nil, nil)
-	assert.NoError(t, err)
-	assert.NotNil(t, reducedRes)
+	assert.Error(t, err)
+	assert.Nil(t, reducedRes)
 }
 
 func TestAggReduce(t *testing.T) {

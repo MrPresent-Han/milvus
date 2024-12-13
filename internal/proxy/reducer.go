@@ -27,7 +27,7 @@ func createMilvusReducer(ctx context.Context,
 		}
 	}
 	if len(req.GetAggregates()) > 0 || len(req.GetGroupByFieldIds()) > 0 {
-		return NewMilvusAggReducer(req.GetGroupByFieldIds(), req.GetAggregates(), schema, outputMap)
+		return NewMilvusAggReducer(req.GetGroupByFieldIds(), req.GetAggregates(), outputMap)
 	}
 	return newDefaultLimitReducer(ctx, params, req, schema, collectionName)
 }

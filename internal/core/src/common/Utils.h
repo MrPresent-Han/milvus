@@ -363,7 +363,7 @@ DataType GetAggResultType(std::string func_name, DataType input_type) {
                 return DataType::INT64;
             }
             case DataType::FLOAT:{
-                return DataType::FLOAT;
+                return DataType::DOUBLE;
             }
             case DataType::DOUBLE:{
                 return DataType::DOUBLE;
