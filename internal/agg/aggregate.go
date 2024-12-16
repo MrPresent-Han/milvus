@@ -671,6 +671,9 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 	// 2. compute hash values for all rows in the result retrieved
 	totalRowCount := 0
 	for _, result := range results {
+		if result == nil {
+			return nil, fmt.Errorf("input result from any sources cannot be nil")
+		}
 		fieldDatas := result.GetFieldDatas()
 		if outputColumnCount != len(fieldDatas) {
 			return nil, fmt.Errorf("retrieved results from different segments have different size of columns")
@@ -757,12 +760,15 @@ func AggResult2internalResult(aggRes *AggregationResult) *internalpb.RetrieveRes
 	return &internalpb.RetrieveResults{FieldsData: aggRes.GetFieldDatas()}
 }
 
-func SegcoreResults2AggResult(results []*segcorepb.RetrieveResults) []*AggregationResult {
+func SegcoreResults2AggResult(results []*segcorepb.RetrieveResults) ([]*AggregationResult, error) {
 	aggResults := make([]*AggregationResult, len(results))
 	for i := 0; i < len(results); i++ {
+		if results[i] == nil {
+			return nil, fmt.Errorf("input segcore query results from any sources cannot be nil")
+		}
 		aggResults[i] = NewAggregationResult(results[i].GetFieldsData())
 	}
-	return aggResults
+	return aggResults, nil
 }
 
 func AggResult2segcoreResult(aggRes *AggregationResult) *segcorepb.RetrieveResults {

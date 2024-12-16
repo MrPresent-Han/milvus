@@ -2,6 +2,7 @@ package segments
 
 import (
 	"context"
+	"fmt"
 	"github.com/milvus-io/milvus/internal/agg"
 	"github.com/milvus-io/milvus/internal/proto/internalpb"
 	"github.com/milvus-io/milvus/internal/proto/planpb"
@@ -35,6 +36,16 @@ func NewSegcoreAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregat
 }
 
 func (reducer *SegcoreAggReducer) Reduce(ctx context.Context, results []*segcorepb.RetrieveResults, segments []Segment, plan *RetrievePlan) (*segcorepb.RetrieveResults, error) {
-	reducedAggRes, err := reducer.groupAggReducer.Reduce(ctx, agg.SegcoreResults2AggResult(results))
+	aggRes, err := agg.SegcoreResults2AggResult(results)
+	if err != nil {
+		return nil, err
+	}
+	reducedAggRes, err := reducer.groupAggReducer.Reduce(ctx, aggRes)
+	if err != nil {
+		return nil, err
+	}
+	if reducedAggRes == nil {
+		return nil, fmt.Errorf("reduced Segcore Agg Result cannot be nil")
+	}
 	return agg.AggResult2segcoreResult(reducedAggRes), err
 }

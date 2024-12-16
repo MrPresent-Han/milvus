@@ -478,7 +478,7 @@ func Test_translateToOutputFieldIDs(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			ids, err := translateToFieldIDs(tc.outputFields, tc.schema, true)
+			ids, err := translateToOutputFieldIDs(tc.outputFields, tc.schema)
 			if tc.expectedError {
 				assert.Error(t, err)
 			} else {
