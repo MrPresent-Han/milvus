@@ -250,8 +250,8 @@ ProtoParser::RetrievePlanNodeFromProto(
                 std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
                 groupingKeys.reserve(group_by_field_count);
 
-                auto insert_if_not_exist = [&](FieldId& field_id, std::string& field_name, milvus::DataType field_type) {
-                    LOG_INFO("hc===insert_if_not_exist:{}", field_name);
+                auto insert_project_field_if_not_exist = [&](FieldId& field_id, std::string& field_name, milvus::DataType field_type) {
+                    LOG_INFO("hc===insert_project_field_if_not_exist:{}", field_name);
                     if (std::count(project_id_list.begin(), project_id_list.end(), field_id)==0) {
                         project_id_list.emplace_back(field_id);
                         project_name_list.emplace_back(field_name);
@@ -268,7 +268,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto field_name = schema.GetFieldName(field_id);
                     groupingKeys.emplace_back(std::make_shared<const expr::FieldAccessTypeExpr>(field_type, field_name, field_id));
                     LOG_INFO("hc===to insert projected field:{}, type:{}", field_name, field_type);
-                    insert_if_not_exist(field_id, field_name, field_type);
+                    insert_project_field_if_not_exist(field_id, field_name, field_type);
                 }
                 LOG_INFO("hc===groupingKeys.size:{}", groupingKeys.size());
 
@@ -277,20 +277,25 @@ ProtoParser::RetrievePlanNodeFromProto(
                 aggregates.reserve(query.aggregates_size());
                 for(int i = 0; i < query.aggregates_size(); i++) {
                     auto aggregate = query.aggregates(i);
-                    auto input_agg_field_id = aggregate.field_id();
-                    AssertInfo(input_agg_field_id > 0, "input field_id to aggregate must be positive, but is:{}", input_agg_field_id);
-                    auto field_id = FieldId(input_agg_field_id);
-                    auto field_type = schema.GetFieldType(field_id);
-                    auto field_name = schema.GetFieldName(field_id);
                     auto agg_name = getAggregateOpName(aggregate.op());
                     agg_names.emplace_back(agg_name);
-                    auto agg_input = std::make_shared<expr::FieldAccessTypeExpr>(field_type, field_name, field_id);
-                    auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{agg_input}, nullptr);
-                    aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
-                    aggregates.back().rawInputTypes_.emplace_back(field_type);
-                    aggregates.back().resultType_ = GetAggResultType(agg_name, field_type);
-                    LOG_INFO("hc===to insert projected field:{}, type:{}", field_name, field_type);
-                    insert_if_not_exist(field_id, field_name, field_type);
+                    auto input_agg_field_id = aggregate.field_id();
+                    if (input_agg_field_id == 0) {
+                        // count(*) do not need input project columns
+                        auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{}, nullptr);
+                        aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+                    } else {
+                        AssertInfo(input_agg_field_id > 0, "input field_id to aggregate must be positive or zero, but is:{}", input_agg_field_id);
+                        auto field_id = FieldId(input_agg_field_id);
+                        auto field_type = schema.GetFieldType(field_id);
+                        auto field_name = schema.GetFieldName(field_id);
+                        auto agg_input = std::make_shared<expr::FieldAccessTypeExpr>(field_type, field_name, field_id);
+                        auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{agg_input}, nullptr);
+                        aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+                        aggregates.back().rawInputTypes_.emplace_back(field_type);
+                        aggregates.back().resultType_ = GetAggResultType(agg_name, field_type);
+                        insert_project_field_if_not_exist(field_id, field_name, field_type);
+                    }
                 }
                 LOG_INFO("hc===parse project_id_set:{}, aggregates_size:{}", project_id_list.size(), aggregates.size());
 

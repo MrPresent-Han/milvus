@@ -12,7 +12,6 @@
 
 #include "common/Types.h"
 #include "plan/PlanNode.h"
-#include "AggregateUtil.h"
 #include "expr/FunctionSignature.h"
 #include "plan/PlanNode.h"
 #include "exec/QueryContext.h"
@@ -44,10 +43,6 @@ private:
     int32_t rowSizeOffset_ = 0;
 
 public:
-    DataType resultType() const {
-        return result_type_;
-    }
-
     static std::unique_ptr<Aggregate> create(
             const std::string& name,
             plan::AggregationNode::Step step,
@@ -174,11 +169,9 @@ AggregateFunctionMap& aggregateFunctions();
 /// scalar functions with it. When functions with `name` already exist, if
 /// overwrite is true, existing registration will be replaced. Otherwise, return
 /// false without overwriting the registry.
-AggregateRegistrationResult registerAggregateFunction(const std::string& name,
+void registerAggregateFunction(const std::string& name,
                                                       const std::vector<std::shared_ptr<expr::AggregateFunctionSignature>>& signatures,
-                                                      const AggregateFunctionFactory& factory,
-                                                      bool registerCompanionFunctions,
-                                                      bool overwrite);
+                                                      const AggregateFunctionFactory& factory);
 
 bool isPartialOutput(milvus::plan::AggregationNode::Step step);
 

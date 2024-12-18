@@ -1,8 +1,14 @@
+// Copyright (C) 2019-2020 Zilliz. All rights reserved.
 //
-// Created by hanchun on 24-10-22.
+// Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
 //
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software distributed under the License
+// is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+// or implied. See the License for the specific language governing permissions and limitations under the License
 #include "Aggregate.h"
-#include "AggregateUtil.h"
 #include "exec/expression/Utils.h"
 
 namespace milvus{
@@ -52,26 +58,13 @@ bool isPartialOutput(milvus::plan::AggregationNode::Step step) {
            step == milvus::plan::AggregationNode::Step::kIntermediate;
 }
 
-AggregateRegistrationResult registerAggregateFunction(const std::string& name,
+void registerAggregateFunction(const std::string& name,
                                                       const std::vector<std::shared_ptr<expr::AggregateFunctionSignature>>& signatures,
-                                                      const AggregateFunctionFactory& factory,
-                                                      bool registerCompanionFunctions,
-                                                      bool overwrite){
+                                                      const AggregateFunctionFactory& factory){
     auto realName = lowerString(name);
-    AggregateRegistrationResult registered;
-    if (overwrite) {
-        aggregateFunctions().withWLock([&](auto& aggFunctionMap){
-            aggFunctionMap[name] = {signatures, factory};
-        });
-        registered.mainFunction = true;
-    } else {
-        auto inserted = aggregateFunctions().withWLock([&](auto& aggFunctionMap){
-            auto [_, func_inserted] = aggFunctionMap.insert({name, {signatures, factory}});
-            return func_inserted;
-        });
-        registered.mainFunction = inserted;
-    }
-    return registered;
+    aggregateFunctions().withWLock([&](auto& aggFunctionMap){
+        aggFunctionMap[realName] = {signatures, factory};
+    });
 }
 
 AggregateFunctionMap& aggregateFunctions() {

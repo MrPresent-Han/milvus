@@ -29,9 +29,62 @@ public:
         });
     }
 
-    void addRawInput(char** group, const TargetBitmapView& activeRows,
+    void addRawInput(char** groups, const TargetBitmapView& activeRows,
                      const std::vector<VectorPtr>& input) override {
+        ColumnVectorPtr input_column = nullptr;
+        AssertInfo(input.empty() || input.size() == 1, fmt::format("input column count for count aggregation "
+                                                  "must be one or zero for now, but got:{}", input.size()));
+        if (input.size() == 1) {
+            input_column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
+        }
+        auto start = -1;
+        do {
+            auto next_active_idx = activeRows.find_next(start);
+            if (!next_active_idx.has_value()) {
+                break;
+            }
+            auto active_idx = next_active_idx.value();
+            if ((input_column && input_column->ValidAt(active_idx)) || !input_column) {
+                addToGroup(groups[active_idx], 1);
+            }
+            start = active_idx;
+        } while(true);
+    }
 
+    void addSingleGroupRawInput(char* group, const TargetBitmapView& activeRows, const std::vector<VectorPtr>& input) override {
+        if (input.empty()) {
+            addToGroup(group, activeRows.count());
+        } else {
+            AssertInfo(input.size() == 1, fmt::format("input column count for count aggregation "
+                                                      "must be exactly one for now, but got:{}", input.size()));
+            const auto& column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
+            auto start = -1;
+            do {
+                auto next_active_idx = activeRows.find_next(start);
+                if (!next_active_idx.has_value()) {
+                    break;
+                }
+                auto active_idx = next_active_idx.value();
+                if (column->ValidAt(active_idx)) {
+                    addToGroup(group, 1);
+                }
+                start = active_idx;
+            } while(true);
+        }
+    }
+
+    void initializeNewGroupsInternal(char** groups, folly::Range<const vector_size_t*> indices) override {
+        Aggregate::setAllNulls(groups, indices);
+        for(auto i: indices) {
+            LOG_INFO("hc===initializeNewGroupsInternal for count, i:{}", i);
+            // initialized result of count is always zero
+            *value<int64_t>(groups[i]) = static_cast<int64_t>(0);
+        }
+    }
+
+private:
+    inline void addToGroup(char* group, int64_t count) {
+        *value<int64_t>(group) += count;
     }
 
 };

@@ -20,14 +20,11 @@
 
 namespace milvus{
 namespace exec {
-void registerAllAggregateFunctions(const std::string& prefix = "",
-                          bool withCompanionFunctions = true,
-                          bool overwrite = true);
+void registerAllAggregateFunctions(const std::string& prefix = "");
 
 
-extern void registerSumAggregate(const std::string& prefix,
-                                 bool withCompanionFunctions,
-                                 bool overwrite);
+extern void registerSumAggregate(const std::string& prefix);
+extern void registerCountAggregate(const std::string& prefix);
 }
 }
 
