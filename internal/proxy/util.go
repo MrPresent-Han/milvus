@@ -1390,6 +1390,13 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, addPrimary
 						return nil, nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not loaded", aggFieldName, aggregateName)
 					}
 				} else {
+					if aggFieldName == "*" {
+						aggFunc, aggErr := agg.NewAggregate(aggregateName, 0, outputFieldName)
+						if aggErr != nil {
+							return nil, nil, nil, nil, aggErr
+						}
+						aggregates = append(aggregates, aggFunc)
+					}
 					return nil, nil, nil, nil, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
 				}
 			} else {

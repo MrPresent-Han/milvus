@@ -84,16 +84,7 @@ func FromPB(pb *planpb.Aggregate) (AggregateBase, error) {
 	return nil, nil
 }
 
-type SumAggregate struct {
-	fieldID      int64
-	originalName string
-}
-
-func (sum *SumAggregate) Name() string {
-	return kSum
-}
-
-func (sum *SumAggregate) Update(target *Entry, new *Entry) error {
+func AccumulateEntryVal(target *Entry, new *Entry) error {
 	if target == nil || new == nil {
 		return fmt.Errorf("target or new entry is nil")
 	}
@@ -121,6 +112,19 @@ func (sum *SumAggregate) Update(target *Entry, new *Entry) error {
 	return nil
 }
 
+type SumAggregate struct {
+	fieldID      int64
+	originalName string
+}
+
+func (sum *SumAggregate) Name() string {
+	return kSum
+}
+
+func (sum *SumAggregate) Update(target *Entry, new *Entry) error {
+	return AccumulateEntryVal(target, new)
+}
+
 func (sum *SumAggregate) ToPB() *planpb.Aggregate {
 	return &planpb.Aggregate{Op: planpb.AggregateOp_sum, FieldId: sum.FieldID()}
 }
@@ -142,7 +146,7 @@ func (count *CountAggregate) Name() string {
 	return kCount
 }
 func (count *CountAggregate) Update(target *Entry, new *Entry) error {
-	return nil
+	return AccumulateEntryVal(target, new)
 }
 
 func (count *CountAggregate) ToPB() *planpb.Aggregate {

@@ -21,11 +21,6 @@ func createMilvusReducer(ctx context.Context,
 	plan *planpb.PlanNode,
 	collectionName string,
 	outputMap *agg.AggregationFieldMap) milvusReducer {
-	if plan.GetQuery().GetIsCount() {
-		return &cntReducer{
-			collectionName: collectionName,
-		}
-	}
 	if len(req.GetAggregates()) > 0 || len(req.GetGroupByFieldIds()) > 0 {
 		return NewMilvusAggReducer(req.GetGroupByFieldIds(), req.GetAggregates(), outputMap)
 	}
