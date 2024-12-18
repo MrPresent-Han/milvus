@@ -15,6 +15,7 @@
 // limitations under the License.
 
 #include "RegisterAggregateFunctions.h"
+#include "log/Log.h"
 
 namespace milvus {
 namespace exec {

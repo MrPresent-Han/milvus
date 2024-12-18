@@ -62,8 +62,10 @@ void registerAggregateFunction(const std::string& name,
                                                       const std::vector<std::shared_ptr<expr::AggregateFunctionSignature>>& signatures,
                                                       const AggregateFunctionFactory& factory){
     auto realName = lowerString(name);
+    LOG_INFO("hc=== try to register agg function, name:{}, realName:{}", name, realName);
     aggregateFunctions().withWLock([&](auto& aggFunctionMap){
         aggFunctionMap[realName] = {signatures, factory};
+        LOG_INFO("hc=== registered agg function, name:{}, realName:{}", name, realName);
     });
 }
 

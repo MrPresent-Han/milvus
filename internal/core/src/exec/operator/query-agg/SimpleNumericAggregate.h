@@ -36,9 +36,11 @@ protected:
             char* group = groups[i];
             if (isNull(group)) {
                 result_column->nullAt(i);
+                LOG_INFO("hc===extractValues set null at i:{}", i);
             } else {
                 result_column->clearNullAt(i);
                 rawValues[i] = extractOneValue(group);
+                LOG_INFO("hc===try to extractValues, i:{}, rawValues[i]:{}", i, rawValues[i]);
             }
             LOG_INFO("hc===try to extractValues, numGroups:{}, i:{}", numGroups, i);
         }

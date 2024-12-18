@@ -329,7 +329,7 @@ int comparePrimitiveAsc(const T& left, const T& right) {
 
 inline std::string lowerString(const std::string& str) {
     std::string ret;
-    ret.reserve(str.size());
+    ret.resize(str.size());
     std::transform(str.begin(), str.end(), ret.begin(), [](unsigned char c) {
         return std::tolower(c);
     });
@@ -381,6 +381,9 @@ DataType GetAggResultType(std::string func_name, DataType input_type) {
                 PanicInfo(DataTypeInvalid, "Unsupported data type for type:{}", input_type);
             }
         }
+    }
+    if (func_name == KCount) {
+        return DataType::INT64;
     }
     PanicInfo(OpTypeInvalid, "Unsupported func type:{}", func_name);
 }

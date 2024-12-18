@@ -284,6 +284,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                         // count(*) do not need input project columns
                         auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{}, nullptr);
                         aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+                        aggregates.back().resultType_ = GetAggResultType(agg_name, DataType::NONE);
                     } else {
                         AssertInfo(input_agg_field_id > 0, "input field_id to aggregate must be positive or zero, but is:{}", input_agg_field_id);
                         auto field_id = FieldId(input_agg_field_id);

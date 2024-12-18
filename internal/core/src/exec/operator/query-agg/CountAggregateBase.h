@@ -24,13 +24,16 @@ public:
     }
 
     void extractValues(char** groups, int32_t numGroups, VectorPtr* result) override {
+        LOG_INFO("hc===extractValues for count");
         BaseAggregate::doExtractValues(groups, numGroups, result, [&](char* group){
+            LOG_INFO("hc===extractValues for count, value:{}", *value<int64_t>(group));
             return *value<int64_t>(group);
         });
     }
 
     void addRawInput(char** groups, const TargetBitmapView& activeRows,
                      const std::vector<VectorPtr>& input) override {
+        LOG_INFO("hc===addRawInput for count, active_rows:{}, active_size:{}", activeRows.count(), activeRows.size());
         ColumnVectorPtr input_column = nullptr;
         AssertInfo(input.empty() || input.size() == 1, fmt::format("input column count for count aggregation "
                                                   "must be one or zero for now, but got:{}", input.size()));
@@ -45,7 +48,10 @@ public:
             }
             auto active_idx = next_active_idx.value();
             if ((input_column && input_column->ValidAt(active_idx)) || !input_column) {
+                LOG_INFO("hc===addToGroup, active_idx:{}", active_idx);
                 addToGroup(groups[active_idx], 1);
+            } else {
+                LOG_INFO("hc===addRawInput failed to add count");
             }
             start = active_idx;
         } while(true);
@@ -74,7 +80,6 @@ public:
     }
 
     void initializeNewGroupsInternal(char** groups, folly::Range<const vector_size_t*> indices) override {
-        Aggregate::setAllNulls(groups, indices);
         for(auto i: indices) {
             LOG_INFO("hc===initializeNewGroupsInternal for count, i:{}", i);
             // initialized result of count is always zero

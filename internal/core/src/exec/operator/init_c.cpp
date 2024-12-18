@@ -16,6 +16,7 @@
 
 #include "exec/operator/init_c.h"
 #include "exec/operator/query-agg/RegisterAggregateFunctions.h"
+#include "log/Log.h"
 
 void
 RegisterAggregationFunctions(){
