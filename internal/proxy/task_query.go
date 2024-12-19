@@ -280,15 +280,6 @@ func createCntPlan(expr string, schemaHelper *typeutil.SchemaHelper, exprTemplat
 
 func (t *queryTask) createPlan(ctx context.Context) error {
 	schema := t.schema
-
-	cntMatch := matchCountRule(t.request.GetOutputFields())
-	if cntMatch {
-		var err error
-		t.plan, err = createCntPlan(t.request.GetExpr(), schema.schemaHelper, t.request.GetExprTemplateValues())
-		t.userOutputFields = []string{"count(*)"}
-		return err
-	}
-
 	var err error
 	if t.plan == nil {
 		t.plan, err = planparserv2.CreateRetrievePlan(schema.schemaHelper, t.request.Expr, t.request.GetExprTemplateValues())

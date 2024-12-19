@@ -233,7 +233,7 @@ ProtoParser::RetrievePlanNodeFromProto(
             plannode = std::make_shared<milvus::plan::MvccNode>(
                 milvus::plan::GetNextPlanNodeId(), sources);
             sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
-            LOG_INFO("hc===added mvccnode");
+            LOG_INFO("hc===added mvccnode, agg_functions_count:{}", query.aggregates_size());
 
             // 3. projectNode and aggNode
             auto group_by_field_count = query.group_by_field_ids_size();
@@ -301,14 +301,17 @@ ProtoParser::RetrievePlanNodeFromProto(
                 LOG_INFO("hc===parse project_id_set:{}, aggregates_size:{}", project_id_list.size(), aggregates.size());
 
                 // add projectNode
-                auto project_field_id_list = std::vector<FieldId>(project_id_list.begin(), project_id_list.end());
-                plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
-                                                               std::move(project_field_id_list),
-                                                               std::move(project_name_list),
-                                                               std::move(project_type_list),
-                                                               sources);
+                if (!project_id_list.empty()) {
+                    auto project_field_id_list = std::vector<FieldId>(project_id_list.begin(), project_id_list.end());
+                    plannode = std::make_shared<plan::ProjectNode>(milvus::plan::GetNextPlanNodeId(),
+                                                                   std::move(project_field_id_list),
+                                                                   std::move(project_name_list),
+                                                                   std::move(project_type_list),
+                                                                   sources);
 
-                LOG_INFO("hc===added project node");
+                    LOG_INFO("hc===added project node");
+                }
+
                 // add agg node
                 sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
                 plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
