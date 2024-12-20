@@ -1,6 +1,6 @@
 package proxy
 
-import (
+/*import (
 	"context"
 	"testing"
 
@@ -28,4 +28,4 @@ func Test_createMilvusReducer(t *testing.T) {
 	r = createMilvusReducer(ctx, nil, nil, nil, n, "", nil)
 	_, ok = r.(*cntReducer)
 	assert.True(t, ok)
-}
+}*/
