@@ -459,7 +459,10 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 	}
 	t.plan.GetQuery().Limit = t.RetrieveRequest.Limit
 
-	if planparserv2.IsAlwaysTruePlan(t.plan) && t.RetrieveRequest.Limit == typeutil.Unlimited {
+	// global agg only return one line as result which will not incur memory risks
+	globalAgg := len(t.userAggregates) > 0 && len(t.GetGroupByFieldIds()) == 0
+	
+	if planparserv2.IsAlwaysTruePlan(t.plan) && t.RetrieveRequest.Limit == typeutil.Unlimited && !globalAgg {
 		return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("empty expression should be used with limit"))
 	}
 

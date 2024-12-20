@@ -20,7 +20,14 @@
 
 namespace milvus{
 namespace exec{
-GroupingSet::~GroupingSet(){}
+GroupingSet::~GroupingSet(){
+    if(isGlobal_) {
+        AssertInfo(lookup_->hits_.size()==1, "GlobalAggregation should have exactly one output line");
+        char* global_line = lookup_->hits_[0];
+        delete[] global_line;
+        lookup_->hits_[0] = nullptr;
+    }
+}
 
 void GroupingSet::addInput(const RowVectorPtr& input) {
     if (isGlobal_) {
@@ -108,6 +115,7 @@ void GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input) {
 
 bool GroupingSet::getGlobalAggregationOutput(milvus::RowVectorPtr &result) {
     initializeGlobalAggregation();
+    AssertInfo(lookup_->hits_.size()==1, "GlobalAggregation should have exactly one output line");
     auto groups = lookup_->hits_.data();
     for(auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;

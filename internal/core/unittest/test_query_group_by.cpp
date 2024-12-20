@@ -485,7 +485,6 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
             milvus::plan::GetNextPlanNodeId(), sources);
     sources = std::vector<milvus::plan::PlanNodePtr>{mvcc_node};
-    // group by int8_field, str_field, count(*), count(double)
     std::string agg_name = "count";
     std::vector<plan::AggregationNode::Aggregate> aggregates;
     //  count(*)
@@ -506,7 +505,7 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
             "test1",
             segment_.get(),
-            1000000,
+            num_rows_,
             MAX_TIMESTAMP,
             std::make_shared<milvus::exec::QueryConfig>(
                     std::unordered_map<std::string, std::string>{}));
