@@ -60,10 +60,12 @@ PhyMvccNode::GetOutput() {
 
     TargetBitmapView data(col_input->GetRawData(), col_input->size());
     // need to expose null?
+    LOG_INFO("hc==111=set_count:{}, set_size:{}", data.count(), data.size());
     segment_->mask_with_timestamps(data, query_timestamp_);
+    LOG_INFO("hc==222=set_count:{}, set_size:{}", data.count(), data.size());
     segment_->mask_with_delete(data, active_count_, query_timestamp_);
     is_finished_ = true;
-
+    LOG_INFO("hc==222=set_count:{}, set_size:{}", data.count(), data.size());
     // input_ have already been updated
     return std::make_shared<RowVector>(std::vector<VectorPtr>{col_input});
 }

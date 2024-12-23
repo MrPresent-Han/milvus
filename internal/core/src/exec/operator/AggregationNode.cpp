@@ -29,7 +29,7 @@ void PhyAggregationNode::prepareOutput(vector_size_t size){
 
 RowVectorPtr PhyAggregationNode::GetOutput() {
   LOG_INFO("hc==enter PhyAggregationNode, {}", grouping_set_==nullptr);
-  if (finished_||(!no_more_input_ && !grouping_set_->hasOutput())) {
+  if (finished_||!no_more_input_) {
       LOG_INFO("hc==skip running aggnode");
       input_ = nullptr;
       return nullptr;

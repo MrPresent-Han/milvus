@@ -58,12 +58,15 @@ public:
     }
 
     void addSingleGroupRawInput(char* group, const TargetBitmapView& activeRows, const std::vector<VectorPtr>& input) override {
-        if (input.empty()) {
-            addToGroup(group, activeRows.count());
+        AssertInfo(input.size() == 1, fmt::format("input column count for count aggregation "
+                                                  "must be exactly one for now, but got:{}", input.size()));
+        const auto& column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
+        if (column->IsBitmap()) {
+            BitsetTypeView view(column->GetRawData(), column->size());
+            auto cnt = view.size() - view.count();
+            addToGroup(group, cnt);
+            LOG_INFO("hc===add count for global count, cnt:{}", cnt);
         } else {
-            AssertInfo(input.size() == 1, fmt::format("input column count for count aggregation "
-                                                      "must be exactly one for now, but got:{}", input.size()));
-            const auto& column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
             auto start = -1;
             do {
                 auto next_active_idx = activeRows.find_next(start);

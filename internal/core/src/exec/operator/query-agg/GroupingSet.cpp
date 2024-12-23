@@ -30,17 +30,16 @@ GroupingSet::~GroupingSet(){
 }
 
 void GroupingSet::addInput(const RowVectorPtr& input) {
+    auto numRows = input->size();
+    active_rows_.resize(numRows);
+    active_rows_.set();
+    numInputRows_ += numRows;
     if (isGlobal_) {
         LOG_INFO("hc===add global input for aggregation");
         addGlobalAggregationInput(input);
         LOG_INFO("hc===finish add  global input for aggregation");
         return;
     }
-    auto numRows = input->size();
-    numInputRows_ += numRows;
-    LOG_INFO("hc===adding global numInputRows_:{}", numInputRows_);
-    active_rows_.resize(numRows);
-    active_rows_.set();
     LOG_INFO("hc===after setting active rows, numRows:{}, active_rows_.size:{}, active_rows_.count:{}", 
         numRows, active_rows_.size(), active_rows_.count());
     addInputForActiveRows(input);
@@ -100,9 +99,6 @@ void GroupingSet::initializeGlobalAggregation() {
 
 void GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input) {
     initializeGlobalAggregation();
-    auto numRows = input->size();
-    active_rows_.resize(numRows);
-    active_rows_.set();
     auto* group = lookup_->hits_[0];
     for(auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
@@ -218,11 +214,16 @@ void GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
 
 void GroupingSet::populateTempVectors(int32_t aggregateIndex, const milvus::RowVectorPtr &input) {
     const auto& channel_idxes = aggregates_[aggregateIndex].input_column_idxes_;
-    LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_idxes_len:{}", aggregateIndex, channel_idxes.size());
-    tempVectors_.resize(channel_idxes.size());
-    for(auto i = 0; i < channel_idxes.size(); i++) {
-        tempVectors_[i] = input->child(channel_idxes[i]);
-        LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_idxes:{}", aggregateIndex, channel_idxes[i]);
+    if (channel_idxes.empty() && input->childrens().size() == 1) {
+        tempVectors_.resize(1);
+        tempVectors_[0] = input->child(0);
+        LOG_INFO("hc==populateTempVectors:agg_i:{}, for count aggregation", aggregateIndex);
+    } else {
+        tempVectors_.resize(channel_idxes.size());
+        for(auto i = 0; i < channel_idxes.size(); i++) {
+            tempVectors_[i] = input->child(channel_idxes[i]);
+        }
+        LOG_INFO("hc==populateTempVectors:agg_i:{}, channel_input_count:{}", aggregateIndex, channel_idxes.size());
     }
 }
 

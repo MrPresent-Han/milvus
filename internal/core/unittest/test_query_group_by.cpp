@@ -165,7 +165,7 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
             "test1",
             segment_.get(),
-            1000000,
+            num_rows_,
             MAX_TIMESTAMP,
             std::make_shared<milvus::exec::QueryConfig>(
                     std::unordered_map<std::string, std::string>{}));
@@ -240,7 +240,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
             "test1",
             segment_.get(),
-            1000000,
+            num_rows_,
             MAX_TIMESTAMP,
             std::make_shared<milvus::exec::QueryConfig>(
                     std::unordered_map<std::string, std::string>{}));
@@ -335,7 +335,7 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
             "test1",
             segment_.get(),
-            1000000,
+            num_rows_,
             MAX_TIMESTAMP,
             std::make_shared<milvus::exec::QueryConfig>(
                     std::unordered_map<std::string, std::string>{}));
@@ -431,7 +431,7 @@ TEST_P(QueryAggTest, CountAggTest) {
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
             "test1",
             segment_.get(),
-            1000000,
+            num_rows_,
             MAX_TIMESTAMP,
             std::make_shared<milvus::exec::QueryConfig>(
                     std::unordered_map<std::string, std::string>{}));
@@ -520,4 +520,48 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
     std::cout << "count:" << actual_count << std::endl;
     EXPECT_EQ(num_rows_, actual_count);
     // count(*) will always get all results' count no matter nullable or ignoreNullKeys
+}
+
+// Test count(*) when activeCount is zero
+TEST_P(QueryAggTest, GlobalCountEmptyTest) {
+    std::vector<milvus::plan::PlanNodePtr> sources;
+    auto [nullable, ignore_null_keys] = GetParam();
+    //set up mvcc_node + agg_node: global aggregation no need project column
+    PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
+            milvus::plan::GetNextPlanNodeId(), sources);
+    sources = std::vector<milvus::plan::PlanNodePtr>{mvcc_node};
+    std::string agg_name = "count";
+    std::vector<plan::AggregationNode::Aggregate> aggregates;
+    //  count(*)
+    {
+        auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{},nullptr);
+        aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+        aggregates.back().resultType_ = GetAggResultType(agg_name, DataType::NONE);
+    }
+    PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
+                                                                   milvus::plan::AggregationNode::Step::kSingle,
+                                                                   std::vector<expr::FieldAccessTypeExprPtr>{},
+                                                                   std::vector<std::string>{agg_name},
+                                                                   std::move(aggregates),
+                                                                   ignore_null_keys,
+                                                                   sources);
+
+    auto plan = plan::PlanFragment(agg_node);
+    auto query_context = std::make_shared<milvus::exec::QueryContext>(
+            "test1",
+            segment_.get(),
+            0,
+            MAX_TIMESTAMP,
+            std::make_shared<milvus::exec::QueryConfig>(
+                    std::unordered_map<std::string, std::string>{}));
+
+    auto task = Task::Create("task_query_group_by", plan, 0, query_context);
+    RowVectorPtr ret = execPlan(task);
+    EXPECT_EQ(1, ret->childrens().size());
+    auto output = ret->childrens()[0];
+    EXPECT_EQ(1, output->size());
+    auto output_column = std::dynamic_pointer_cast<ColumnVector>(output);
+    auto actual_count = output_column->ValueAt<int64_t>(0);
+    EXPECT_EQ(0, actual_count);
+    // count(*) will get zero if no valid input into agg node
 }

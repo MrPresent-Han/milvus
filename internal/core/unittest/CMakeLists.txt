@@ -70,6 +70,7 @@ set(MILVUS_TEST_FILES
         test_plan_proto.cpp
         test_query.cpp]]
         test_query_group_by.cpp
+        test_span.cpp
         #[[test_range_search_sort.cpp
         test_reduce_c.cpp
         test_reduce.cpp
@@ -82,7 +83,6 @@ set(MILVUS_TEST_FILES
        #[[ test_search_group_by.cpp
         test_segcore.cpp
         test_similarity_corelation.cpp
-        test_span.cpp
         test_storage.cpp
         test_string_expr.cpp
         test_text_match.cpp

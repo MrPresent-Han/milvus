@@ -60,10 +60,6 @@ class GroupingSet {
 
     bool getOutput(RowVectorPtr& result);
 
-    bool hasOutput() {
-        return noMoreInput_;
-    }
-
     void extractGroups(folly::Range<char**> groups, const RowVectorPtr& result);
 
     void populateTempVectors(int32_t aggregateIndex, const RowVectorPtr& input);
@@ -86,9 +82,6 @@ private:
     TargetBitmap active_rows_;
 
     uint64_t numInputRows_ = 0;
-
-
-    bool noMoreInput_{false};
 
     // Boolean indicating whether accumulators for a global aggregation (i.e.
     // aggregation with no grouping keys) have been initialized.
