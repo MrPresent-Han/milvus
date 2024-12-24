@@ -81,6 +81,8 @@ private:
     // flush.
     int64_t numOutputRows_ = 0;
     bool finished_ = false;
+
+    const int64_t group_limit_;
 };
 }
 }

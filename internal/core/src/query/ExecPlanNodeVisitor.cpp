@@ -271,18 +271,6 @@ ExecPlanNodeVisitor::visit(RetrievePlanNode& node) {
 
     auto active_count = segment->get_active_count(timestamp_);
 
-    // PreExecute: skip all calculation
-    if (active_count == 0 && !node.is_count_) {
-        retrieve_result_opt_ = std::move(retrieve_result);
-        return;
-    }
-
-    if (active_count == 0 && node.is_count_) {
-        retrieve_result = *(wrap_num_entities(0));
-        retrieve_result_opt_ = std::move(retrieve_result);
-        return;
-    }
-
     // Get plan
     auto plan = plan::PlanFragment(node.plannodes_);
 
@@ -306,38 +294,34 @@ void ExecPlanNodeVisitor::setupRetrieveResult(const milvus::RowVectorPtr &result
                                               const RetrievePlanNode& node,
                                               RetrieveResult& tmp_retrieve_result,
                                               const segcore::SegmentInternalInterface* segment) {
-    if (node.is_count_) {
-        retrieve_result_opt_ = std::move(query_context->get_retrieve_result());
+    AssertInfo(!result->childrens().empty(), "Result row vector must have at least one column");
+    auto first_column = std::dynamic_pointer_cast<ColumnVector>(result->child(0));
+    AssertInfo(first_column, "children inside row vector must be of column vector for now");
+    if (first_column->IsBitmap()){
+        LOG_INFO("hc===start setting up bitview");
+        BitsetTypeView view(first_column->GetRawData(), first_column->size());
+        tmp_retrieve_result.total_data_cnt_ = first_column->size();
+        tracer::AutoSpan _("Find Limit Pk", tracer::GetRootSpan());
+        auto results_pair = segment->find_first(node.limit_, view);
+        tmp_retrieve_result.result_offsets_ = std::move(results_pair.first);
+        tmp_retrieve_result.has_more_result = results_pair.second;
+        retrieve_result_opt_ = std::move(tmp_retrieve_result);
     } else {
-        AssertInfo(!result->childrens().empty(), "Result row vector must have at least one column");
-        auto first_column = std::dynamic_pointer_cast<ColumnVector>(result->child(0));
-        AssertInfo(first_column, "children inside row vector must be of column vector for now");
-        if (first_column->IsBitmap()){
-            LOG_INFO("hc===start setting up bitview");
-            BitsetTypeView view(first_column->GetRawData(), first_column->size());
-            tmp_retrieve_result.total_data_cnt_ = first_column->size();
-            tracer::AutoSpan _("Find Limit Pk", tracer::GetRootSpan());
-            auto results_pair = segment->find_first(node.limit_, view);
-            tmp_retrieve_result.result_offsets_ = std::move(results_pair.first);
-            tmp_retrieve_result.has_more_result = results_pair.second;
-            retrieve_result_opt_ = std::move(tmp_retrieve_result);
-        } else {
-            LOG_INFO("hc===start setting up group result");
-            // load data in the result vector into retrieve_result
-            auto column_count = result->childrens().size();
-            tmp_retrieve_result.field_data_.resize(column_count);
+        LOG_INFO("hc===start setting up group result");
+        // load data in the result vector into retrieve_result
+        auto column_count = result->childrens().size();
+        tmp_retrieve_result.field_data_.resize(column_count);
 
-            for(auto i = 0; i < column_count; i++) {
-                auto column_vec = std::dynamic_pointer_cast<ColumnVector>(result->child(i));
-                AssertInfo(column_vec, "children inside row vector must be of column vector for now");
-                DataArray data_array;
-                LOG_INFO("hc===try to assemble column, size:{}", column_vec->size());
-                milvus::segcore::CreateScalarDataArray(data_array, column_vec->size(), column_vec->type(), column_vec->type(), column_vec->nullCount() > 0);
-                fillDataArrayFromColumnVector(column_vec, data_array);
-                tmp_retrieve_result.field_data_[i] = std::move(data_array);
-            }
-            retrieve_result_opt_ = std::move(tmp_retrieve_result);
+        for(auto i = 0; i < column_count; i++) {
+            auto column_vec = std::dynamic_pointer_cast<ColumnVector>(result->child(i));
+            AssertInfo(column_vec, "children inside row vector must be of column vector for now");
+            DataArray data_array;
+            LOG_INFO("hc===try to assemble column, size:{}", column_vec->size());
+            milvus::segcore::CreateScalarDataArray(data_array, column_vec->size(), column_vec->type(), column_vec->type(), column_vec->nullCount() > 0);
+            fillDataArrayFromColumnVector(column_vec, data_array);
+            tmp_retrieve_result.field_data_[i] = std::move(data_array);
         }
+        retrieve_result_opt_ = std::move(tmp_retrieve_result);
     }
 }
 

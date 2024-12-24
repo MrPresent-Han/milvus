@@ -25,7 +25,8 @@ namespace milvus{
 namespace exec{
 
 struct HashLookup {
-    explicit HashLookup(const std::vector<std::unique_ptr<VectorHasher>>& hashers): hashers_(hashers){}
+    explicit HashLookup(const std::vector<std::unique_ptr<VectorHasher>>& hashers, int64_t group_limit):
+        hashers_(hashers), group_limit_(group_limit){}
 
     void reset(vector_size_t size){
         rows_.resize(size);
@@ -52,6 +53,12 @@ struct HashLookup {
     /// For groupProbe, row numbers for which a new entry was inserted (didn't
     /// exist before the groupProbe). Empty for joinProbe.
     std::vector<vector_size_t> newGroups_;
+
+    int64_t group_limit_{0};
+
+    inline bool group_enough() {
+        return newGroups_.size() >= group_limit_;
+    }
 };
 
 class BaseHashTable {

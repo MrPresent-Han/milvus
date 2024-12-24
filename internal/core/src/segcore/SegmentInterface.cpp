@@ -118,13 +118,6 @@ SegmentInternalInterface::Retrieve(tracer::TraceContext* trace_ctx,
     }
 
     results->set_all_retrieve_count(retrieve_results.total_data_cnt_);
-    if (plan->plan_node_->is_count_) {
-        AssertInfo(retrieve_results.field_data_.size() == 1,
-                   "count result should only have one column");
-        *results->add_fields_data() = retrieve_results.field_data_[0];
-        return results;
-    }
-
     results->mutable_offset()->Add(retrieve_results.result_offsets_.begin(),
                                    retrieve_results.result_offsets_.end());
     if (retrieve_results.field_data_.empty()) {
@@ -287,10 +280,24 @@ SegmentInternalInterface::get_real_count() const {
     plannode = std::make_shared<milvus::plan::MvccNode>(
         milvus::plan::GetNextPlanNodeId());
     sources = std::vector<milvus::plan::PlanNodePtr>{plannode};
-    plannode = std::make_shared<milvus::plan::CountNode>(
-        milvus::plan::GetNextPlanNodeId(), sources);
+
+    std::string agg_name = "count";
+    std::vector<plan::AggregationNode::Aggregate> aggregates;
+    {
+        auto call = std::make_shared<const expr::CallExpr>(agg_name, std::vector<expr::TypedExprPtr>{},nullptr);
+        aggregates.emplace_back(plan::AggregationNode::Aggregate{call});
+        aggregates.back().resultType_ = GetAggResultType(agg_name, DataType::NONE);
+    }
+    plannode = std::make_shared<plan::AggregationNode>(milvus::plan::GetNextPlanNodeId(),
+                                                                   milvus::plan::AggregationNode::Step::kSingle,
+                                                                   std::vector<expr::FieldAccessTypeExprPtr>{},
+                                                                   std::vector<std::string>{agg_name},
+                                                                   std::move(aggregates),
+                                                                   false,
+                                                                   1,
+                                                                   sources);
+
     plan->plan_node_->plannodes_ = plannode;
-    plan->plan_node_->is_count_ = true;
     auto res = Retrieve(nullptr, plan.get(), MAX_TIMESTAMP, INT64_MAX, false);
     AssertInfo(res->fields_data().size() == 1,
                "count result should only have one column");

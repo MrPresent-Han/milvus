@@ -477,6 +477,7 @@ public:
                     std::vector<std::string>&& aggNames,
                     std::vector<Aggregate>&& aggregates,
                     bool ignoreNullKeys,
+                    int64_t group_limit,
                     std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{});
 
 
@@ -515,6 +516,10 @@ public:
         return ignoreNullKeys_;
     }
 
+    int64_t group_limit() const {
+        return group_limit_;
+    }
+
 private:
     const Step step_;
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
@@ -523,6 +528,7 @@ private:
     const bool ignoreNullKeys_{true};
     const std::vector<PlanNodePtr> sources_;
     const RowTypePtr output_type_;
+    const int64_t group_limit_;
 };
 
 enum class ExecutionStrategy {

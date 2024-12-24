@@ -13,7 +13,8 @@ PhyAggregationNode::PhyAggregationNode(int32_t operator_id,
                                        const std::shared_ptr<const plan::AggregationNode> &node):
                                        Operator(ctx, node->output_type(), operator_id, node->id()),
                                        aggregationNode_(node),
-                                       isGlobal_(node->GroupingKeys().empty()){
+                                       isGlobal_(node->GroupingKeys().empty()),
+                                       group_limit_(node->group_limit()){
 
 }
 
@@ -63,7 +64,8 @@ void PhyAggregationNode::initialize() {
             input_type,
             std::move(hashers),
             std::move(aggregateInfos),
-            aggregationNode_->ignoreNullKeys());
+            aggregationNode_->ignoreNullKeys(),
+            aggregationNode_->group_limit());
     LOG_INFO("hc===has init AggregationNode");
     aggregationNode_.reset();
 }

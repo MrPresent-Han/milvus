@@ -26,7 +26,7 @@ func TestSegCoreAggReduceSingleColumn(t *testing.T) {
 		FieldId: 102,
 	}
 
-	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates)
+	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates, 10)
 	results := make([]*segcorepb.RetrieveResults, 2)
 	{
 		fieldData1 := &schemapb.FieldData{
@@ -118,7 +118,7 @@ func TestSegCoreAggReduceMultiColumn(t *testing.T) {
 		FieldId: 102,
 	}
 
-	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates)
+	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates, 10)
 	results := make([]*segcorepb.RetrieveResults, 2)
 	{
 		fieldData1 := &schemapb.FieldData{
@@ -253,7 +253,7 @@ func TestSegCoreAggReduceWrongRowCount(t *testing.T) {
 		FieldId: 102,
 	}
 
-	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates)
+	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates, 10)
 	results := make([]*segcorepb.RetrieveResults, 2)
 	// should report error when
 	// field data's lengths are different
@@ -331,7 +331,7 @@ func TestSegCoreAggReduceNilResult(t *testing.T) {
 		FieldId: 102,
 	}
 
-	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates)
+	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates, 10)
 	results := make([]*segcorepb.RetrieveResults, 2)
 	{
 		fieldData1 := &schemapb.FieldData{
@@ -379,7 +379,7 @@ func TestSegCoreAggReduceInnerNil(t *testing.T) {
 		FieldId: 102,
 	}
 
-	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates)
+	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates, 10)
 	results := make([]*segcorepb.RetrieveResults, 2)
 	{
 		fieldData1 := &schemapb.FieldData{
@@ -457,7 +457,7 @@ func TestSegCoreAggReduceGlobalAgg(t *testing.T) {
 		FieldId: 103,
 	}
 
-	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates)
+	aggReducer := NewSegcoreAggReducer(groupByFieldIds, aggregates, 10)
 	results := make([]*segcorepb.RetrieveResults, 2)
 	{
 		fieldData1 := &schemapb.FieldData{

@@ -15,10 +15,10 @@ type MilvusAggReducer struct {
 }
 
 func NewMilvusAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate,
-	outputMap *agg.AggregationFieldMap) *MilvusAggReducer {
+	outputMap *agg.AggregationFieldMap, groupLimit int64) *MilvusAggReducer {
 	// must ensure outputMap is not nil outside
 	return &MilvusAggReducer{
-		agg.NewGroupAggReducer(groupByFieldIds, aggregates),
+		agg.NewGroupAggReducer(groupByFieldIds, aggregates, groupLimit),
 		outputMap,
 	}
 }

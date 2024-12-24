@@ -200,7 +200,6 @@ ProtoParser::RetrievePlanNodeFromProto(
     auto plan_node = [&]() -> std::unique_ptr<RetrievePlanNode> {
         auto node = std::make_unique<RetrievePlanNode>();
         if (plan_node_proto.has_predicates()) {  // version before 2023.03.30.
-            node->is_count_ = false;
             auto& predicate_proto = plan_node_proto.predicates();
             auto expr_parser = [&]() -> plan::PlanNodePtr {
                 auto expr = ParseExprs(predicate_proto);
@@ -320,6 +319,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                                                                    std::move(agg_names),
                                                                    std::move(aggregates),
                                                                    query.ignore_null_keys(),
+                                                                   query.limit(),
                                                                    sources);
                 LOG_INFO("hc===added agg node, ignore_null_keys:{}", query.ignore_null_keys());
             }

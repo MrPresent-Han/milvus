@@ -27,6 +27,7 @@ GroupingSet::~GroupingSet(){
         delete[] global_line;
         lookup_->hits_[0] = nullptr;
     }
+    hash_table_->clear();
 }
 
 void GroupingSet::addInput(const RowVectorPtr& input) {
@@ -50,7 +51,7 @@ void GroupingSet::initializeGlobalAggregation() {
     if (globalAggregationInitialized_) {
         return;
     }
-    lookup_ = std::make_unique<HashLookup>(hashers_);
+    lookup_ = std::make_unique<HashLookup>(hashers_, group_limit_);
     lookup_->reset(1);
 
     // Row layout is:
@@ -131,7 +132,6 @@ bool GroupingSet::getOutput(milvus::RowVectorPtr &result) {
         return false;
     }
     const auto& all_rows = hash_table_->rows()->allRows();
-    DeferLambda([&](){hash_table_->clear();});
     if(!all_rows.empty()) {
         extractGroups(folly::Range<char**>(const_cast<char**>(all_rows.data()), all_rows.size()), result);
         return true;
@@ -256,7 +256,7 @@ void GroupingSet::createHashTable(){
     }
     auto& rows = *(hash_table_->rows());
     initializeAggregates(aggregates_, rows);
-    lookup_ = std::make_unique<HashLookup>(hash_table_->hashers());
+    lookup_ = std::make_unique<HashLookup>(hash_table_->hashers(), group_limit_);
 }  
 
 }

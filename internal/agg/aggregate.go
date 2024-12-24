@@ -584,13 +584,15 @@ type GroupAggReducer struct {
 	groupByFieldIds []int64
 	aggregates      []*planpb.Aggregate
 	hashValsMap     map[uint64]*Bucket
+	groupLimit      int64
 }
 
-func NewGroupAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate) *GroupAggReducer {
+func NewGroupAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate, groupLimit int64) *GroupAggReducer {
 	return &GroupAggReducer{
 		groupByFieldIds: groupByFieldIds,
 		aggregates:      aggregates,
 		hashValsMap:     make(map[uint64]*Bucket), // Initialize hashValsMap
+		groupLimit:      groupLimit,
 	}
 }
 
@@ -673,7 +675,7 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 	}
 
 	// 2. compute hash values for all rows in the result retrieved
-	totalRowCount := 0
+	var totalRowCount int64 = 0
 	for _, result := range results {
 		if result == nil {
 			return nil, fmt.Errorf("input result from any sources cannot be nil")
@@ -737,12 +739,16 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 					bucket.Accumulate(newRow, rowIdx, numGroupingKeys, aggs)
 				}
 			}
+			if totalRowCount >= reducer.groupLimit {
+				log.Info("hc===reached group limit break")
+				break
+			}
 		}
 	}
 
 	//3. assemble reduced buckets into retrievedResult
 	reducedResult := NewAggregationResult(nil)
-	reducedResult.fieldDatas = typeutil.PrepareResultFieldData(firstFieldData, int64(totalRowCount))
+	reducedResult.fieldDatas = typeutil.PrepareResultFieldData(firstFieldData, totalRowCount)
 	for _, bucket := range reducer.hashValsMap {
 		err := AssembleBucket(bucket, reducedResult.GetFieldDatas())
 		if err != nil {

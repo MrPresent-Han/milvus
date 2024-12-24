@@ -461,7 +461,7 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 
 	// global agg only return one line as result which will not incur memory risks
 	globalAgg := len(t.userAggregates) > 0 && len(t.GetGroupByFieldIds()) == 0
-	
+
 	if planparserv2.IsAlwaysTruePlan(t.plan) && t.RetrieveRequest.Limit == typeutil.Unlimited && !globalAgg {
 		return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("empty expression should be used with limit"))
 	}
@@ -493,7 +493,6 @@ func (t *queryTask) PreExecute(ctx context.Context) error {
 		return merr.WrapErrAsInputError(merr.WrapErrParameterInvalidMsg("count entities with pagination is not allowed"))
 	}
 
-	t.RetrieveRequest.IsCount = t.plan.GetQuery().GetIsCount()
 	t.RetrieveRequest.SerializedExprPlan, err = proto.Marshal(t.plan)
 	if err != nil {
 		return err

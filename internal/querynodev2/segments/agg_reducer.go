@@ -14,9 +14,9 @@ type InternalAggReducer struct {
 	groupAggReducer *agg.GroupAggReducer
 }
 
-func NewInternalAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate) *InternalAggReducer {
+func NewInternalAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate, groupLimit int64) *InternalAggReducer {
 	return &InternalAggReducer{
-		agg.NewGroupAggReducer(groupByFieldIds, aggregates),
+		agg.NewGroupAggReducer(groupByFieldIds, aggregates, groupLimit),
 	}
 }
 
@@ -29,9 +29,9 @@ type SegcoreAggReducer struct {
 	groupAggReducer *agg.GroupAggReducer
 }
 
-func NewSegcoreAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate) *SegcoreAggReducer {
+func NewSegcoreAggReducer(groupByFieldIds []int64, aggregates []*planpb.Aggregate, groupLimit int64) *SegcoreAggReducer {
 	return &SegcoreAggReducer{
-		agg.NewGroupAggReducer(groupByFieldIds, aggregates),
+		agg.NewGroupAggReducer(groupByFieldIds, aggregates, groupLimit),
 	}
 }
 

@@ -212,14 +212,9 @@ void HashTable<ignoreNullKeys>::checkSize(int32_t numNew) {
                "capacity_ {}, numDistinct {}",
                capacity_,
                numDistinct_);
-    const int64_t newNumDistinct = numNew + numDistinct_;
     if (table_ == nullptr || capacity_ == 0) {
         const auto newSize = newHashTableEntriesNumber(numDistinct_, numNew);
         allocateTables(newSize);
-    } else if (newNumDistinct > rehashSize()) {
-        const auto newCapacity =
-                milvus::bits::nextPowerOfTwo(std::max(newNumDistinct, capacity_) + 1);
-        allocateTables(newCapacity);
     }
 }
 
@@ -288,39 +283,20 @@ FOLLY_ALWAYS_INLINE void HashTable<ignoreNullKeys>::fullProbe(HashLookup &lookup
 template<bool ignoreNullKeys>
 void HashTable<ignoreNullKeys>::groupProbe(milvus::exec::HashLookup &lookup) {
     AssertInfo(hashMode_ == HashMode::kHash, "Only support kHash mode for now");
-    checkSize(lookup.rows_.size());
-    ProbeState state1;
-    ProbeState state2;
-    ProbeState state3;
-    ProbeState state4;
-    int32_t probeIdx = 0;
+    checkSize(lookup.group_limit_);
+    ProbeState state;
     int32_t numProbes = lookup.rows_.size();
     auto rows = lookup.rows_.data();
-    for(; probeIdx + 4 <= numProbes; probeIdx += 4) {
+    for(int32_t probeIdx = 0; probeIdx < numProbes; probeIdx++) {
         int32_t row = rows[probeIdx];
-        state1.preProbe(*this, lookup.hashes_[row], row);
-        row = rows[probeIdx + 1];
-        state2.preProbe(*this, lookup.hashes_[row], row);
-        row = rows[probeIdx + 2];
-        state3.preProbe(*this, lookup.hashes_[row], row);
-        row = rows[probeIdx + 3];
-        state4.preProbe(*this, lookup.hashes_[row], row);
-
-        state1.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
-        state2.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
-        state3.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
-        state4.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
-
-        fullProbe(lookup, state1, false);
-        fullProbe(lookup, state2, true);
-        fullProbe(lookup, state3, true);
-        fullProbe(lookup, state4, true);
-    }
-    for(; probeIdx < numProbes; probeIdx++) {
-        int32_t row = rows[probeIdx];
-        state1.preProbe(*this, lookup.hashes_[row], row);
-        state1.firstProbe(*this, 0);
-        fullProbe(lookup, state1, false);
+        state.preProbe(*this, lookup.hashes_[row], row);
+        state.firstProbe<ProbeState::Operation::kInsert>(*this, 0);
+        fullProbe(lookup, state, false);
+        if (lookup.group_enough()) {
+            // group count has reached group limit, exit early
+            LOG_INFO("hc===has reached group limit, exit early");
+            break;
+        }
     }
 }
 
