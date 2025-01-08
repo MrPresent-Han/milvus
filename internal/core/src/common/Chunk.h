@@ -202,16 +202,29 @@ class ArrayChunk : public Chunk {
         : Chunk(row_nums, data, size, nullable), element_type_(element_type) {
         auto null_bitmap_bytes_num = (row_nums + 7) / 8;
         offsets_lens_ =
-            reinterpret_cast<uint64_t*>(data + null_bitmap_bytes_num);
+            reinterpret_cast<uint32_t*>(data + null_bitmap_bytes_num);
         ConstructViews();
     }
 
-    SpanBase
-    Span() const;
-
     ArrayView
-    View(int64_t idx) const {
-        return views_[idx];
+    View(int idx) const {
+        int idx_off = 2 * idx;
+        auto offset = offsets_lens_[idx_off];
+        auto len = offsets_lens_[idx_off + 1];
+        auto next_offset = offsets_lens_[idx_off + 2];
+        auto data_ptr = data_ + offset;
+        uint32_t offsets_bytes_len = 0;
+        uint32_t* offsets_ptr = nullptr;
+        if (IsStringDataType(element_type_)) {
+            offsets_bytes_len = len * sizeof(uint32_t);
+            offsets_ptr = reinterpret_cast<uint32_t*>(data_ptr);
+        }
+
+        return ArrayView(data_ptr + offsets_bytes_len,
+                         len,
+                         next_offset - offset - offsets_bytes_len,
+                         element_type_,
+                         offsets_ptr);
     }
 
     void
@@ -225,8 +238,7 @@ class ArrayChunk : public Chunk {
 
  private:
     milvus::DataType element_type_;
-    uint64_t* offsets_lens_;
-    std::vector<ArrayView> views_;
+    uint32_t* offsets_lens_;
 };
 
 class SparseFloatVectorChunk : public Chunk {

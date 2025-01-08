@@ -66,12 +66,4 @@ ArrayChunk::ConstructViews() {
     }
 }
 
-SpanBase
-ArrayChunk::Span() const {
-    return SpanBase(views_.data(),
-                    nullable_ ? valid_.data() : nullptr,
-                    views_.size(),
-                    sizeof(ArrayView));
-}
-
 }  // namespace milvus

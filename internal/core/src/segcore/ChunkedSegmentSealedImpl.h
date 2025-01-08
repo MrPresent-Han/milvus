@@ -211,6 +211,9 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
     std::pair<std::vector<std::string_view>, FixedVector<bool>>
     chunk_view_impl(FieldId field_id, int64_t chunk_id) const override;
 
+    std::pair<std::vector<ArrayView>, FixedVector<bool>>
+    chunk_array_view_impl(FieldId field_id, int64_t chunk_id) const override;
+
     std::pair<std::vector<std::string_view>, FixedVector<bool>>
     chunk_view_by_offsets(FieldId field_id,
                           int64_t chunk_id,

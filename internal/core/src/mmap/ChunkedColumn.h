@@ -155,11 +155,23 @@ class ChunkedColumnBase : public ColumnBase {
                   "StringViews only supported for VariableColumn");
     }
 
+    virtual std::pair<std::vector<ArrayView>, FixedVector<bool>>
+    ArrayViews(int64_t chunk_id) const {
+        PanicInfo(ErrorCode::Unsupported,
+                  "ArrayViews only supported for ArrayChunkedColumn");
+    }
+
     virtual std::pair<std::vector<std::string_view>, FixedVector<bool>>
     ViewsByOffsets(int64_t chunk_id,
                    const FixedVector<int32_t>& offsets) const {
         PanicInfo(ErrorCode::Unsupported,
                   "viewsbyoffsets only supported for VariableColumn");
+    }
+
+    virtual std::pair<std::vector<ArrayView>, FixedVector<bool>>
+    chunk_array_view_impl(int64_t chunk_id) const {
+        PanicInfo(ErrorCode::Unsupported,
+                  "StringViews only supported for VariableColumn");
     }
 
     std::pair<size_t, size_t>
@@ -406,7 +418,13 @@ class ChunkedArrayColumn : public ChunkedColumnBase {
 
     SpanBase
     Span(int64_t chunk_id) const override {
-        return std::dynamic_pointer_cast<ArrayChunk>(chunks_[chunk_id])->Span();
+        PanicInfo(ErrorCode::NotImplemented,
+                  "span() interface is not implemented for arr chunk column");
+    }
+
+    std::pair<std::vector<ArrayView>, FixedVector<bool>>
+    chunk_array_view_impl(int64_t chunk_id) const {
+        return std::dynamic_pointer_cast<ArrayChunk>(chunks_[chunk_id])->
     }
 
     ArrayView

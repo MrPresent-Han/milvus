@@ -148,17 +148,14 @@ class SegmentInternalInterface : public SegmentInterface {
     template <typename ViewType>
     std::pair<std::vector<ViewType>, FixedVector<bool>>
     chunk_view(FieldId field_id, int64_t chunk_id) const {
-        auto [string_views, valid_data] = chunk_view_impl(field_id, chunk_id);
+
         if constexpr (std::is_same_v<ViewType, std::string_view>) {
+            auto [string_views, valid_data] = chunk_view_impl(field_id, chunk_id);
             return std::make_pair(std::move(string_views),
                                   std::move(valid_data));
-        } else {
-            std::vector<ViewType> res;
-            res.reserve(string_views.size());
-            for (const auto& view : string_views) {
-                res.emplace_back(view);
-            }
-            return std::make_pair(res, valid_data);
+        } else if constexpr (std::is_same_v<ViewType, ArrayView>){
+            auto [array_views, valid_data] = chunk_array_view_impl(field_id, chunk_id);
+            return std::make_pair(array_views, valid_data);
         }
     }
 
@@ -427,6 +424,9 @@ class SegmentInternalInterface : public SegmentInterface {
     // internal API: return chunk string views in vector
     virtual std::pair<std::vector<std::string_view>, FixedVector<bool>>
     chunk_view_impl(FieldId field_id, int64_t chunk_id) const = 0;
+
+    virtual std::pair<std::vector<ArrayView>, FixedVector<bool>>
+    chunk_array_view_impl(FieldId field_id, int64_t chunk_id) const = 0;
 
     // internal API: return buffer reference to field chunk data located from start_offset
     virtual std::pair<BufferView, FixedVector<bool>>
