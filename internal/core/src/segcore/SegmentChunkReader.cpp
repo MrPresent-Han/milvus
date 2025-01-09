@@ -151,6 +151,69 @@ SegmentChunkReader::GetChunkDataAccessor<std::string>(
     }
 }
 
+template <>
+MultipleChunkDataAccessor
+SegmentChunkReader::GetChunkDataAccessor<ArrayView>(milvus::FieldId field_id,
+                                         bool index,
+                                         int64_t &current_chunk_id,
+                                         int64_t &current_chunk_pos) const {
+    if(segment_->type() == SegmentType::Growing && !storage::MmapManager::GetInstance()
+            .GetMmapConfig()
+            .growing_enable_mmap) {
+        auto chunk_info = segment_->chunk_data<ArrayView>(field_id, current_chunk_id);
+        auto chunk_data = chunk_info.data();
+        auto chunk_valid_data = chunk_info.valid_data();
+        auto current_chunk_size =
+                segment_->chunk_size(field_id, current_chunk_id);
+        return [=, &current_chunk_id, &current_chunk_pos]() mutable -> const data_access_type {
+            if (current_chunk_pos >= current_chunk_size) {
+                current_chunk_id++;
+                current_chunk_pos = 0;
+                chunk_data =
+                        segment_
+                            ->chunk_data<ArrayView>(field_id, current_chunk_id).data();
+                chunk_valid_data =
+                        segment_
+                                ->chunk_data<ArrayView>(field_id, current_chunk_id)
+                                .valid_data();
+                current_chunk_size =
+                        segment_->chunk_size(field_id, current_chunk_id);
+            }
+            if (chunk_valid_data && !chunk_valid_data[current_chunk_pos]) {
+                current_chunk_pos++;
+                return std::nullopt;
+            }
+            return chunk_data[current_chunk_pos++];
+        };
+    } else {
+        auto chunk_info =
+                segment_->chunk_view<ArrayView>(field_id, current_chunk_id);
+        auto current_chunk_size =
+                segment_->chunk_size(field_id, current_chunk_id);
+        return [=,
+                &current_chunk_id,
+                &current_chunk_pos]() mutable -> const data_access_type {
+            if (current_chunk_pos >= current_chunk_size) {
+                current_chunk_id++;
+                current_chunk_pos = 0;
+                chunk_info = segment_->chunk_view<ArrayView>(
+                        field_id, current_chunk_id);
+                current_chunk_size =
+                        segment_->chunk_size(field_id, current_chunk_id);
+            }
+            auto chunk_data = chunk_info.first;
+            auto chunk_valid_data = chunk_info.second;
+            if (current_chunk_pos < chunk_valid_data.size() &&
+                !chunk_valid_data[current_chunk_pos]) {
+                current_chunk_pos++;
+                return std::nullopt;
+            }
+
+            return chunk_data[current_chunk_pos++];
+        };
+    }
+}
+
 MultipleChunkDataAccessor
 SegmentChunkReader::GetChunkDataAccessor(DataType data_type,
                                          FieldId field_id,
@@ -183,10 +246,15 @@ SegmentChunkReader::GetChunkDataAccessor(DataType data_type,
             return GetChunkDataAccessor<std::string>(
                 field_id, index, current_chunk_id, current_chunk_pos);
         }
+        case DataType::ARRAY: {
+            return GetChunkDataAccessor<ArrayView>(
+                    field_id, index, current_chunk_id, current_chunk_pos);
+        }
         default:
             PanicInfo(DataTypeInvalid, "unsupported data type: {}", data_type);
     }
 }
+
 
 template <typename T>
 ChunkDataAccessor
@@ -258,6 +326,39 @@ SegmentChunkReader::GetChunkDataAccessor<std::string>(FieldId field_id,
                 return std::nullopt;
             }
             return std::string(chunk_data[i]);
+        };
+    }
+}
+
+template <>
+ChunkDataAccessor
+SegmentChunkReader::GetChunkDataAccessor<ArrayView>(FieldId field_id,
+                                                    int chunk_id,
+                                                    int data_barrier) const {
+    if (segment_->type() == SegmentType::Growing &&
+        !storage::MmapManager::GetInstance()
+                .GetMmapConfig()
+                .growing_enable_mmap) {
+        auto chunk_data =
+                segment_->chunk_data<ArrayView>(field_id, chunk_id).data();
+        auto chunk_valid_data =
+                segment_->chunk_data<ArrayView>(field_id, chunk_id).valid_data();
+        return [chunk_data, chunk_valid_data](int i) -> const data_access_type {
+            if (chunk_valid_data && !chunk_valid_data[i]) {
+                return std::nullopt;
+            }
+            return chunk_data[i];
+        };
+    } else {
+        auto chunk_info =
+                segment_->chunk_view<ArrayView>(field_id, chunk_id);
+        return [chunk_data = std::move(chunk_info.first),
+                chunk_valid_data = std::move(chunk_info.second)](
+                int i) -> const data_access_type {
+            if (i < chunk_valid_data.size() && !chunk_valid_data[i]) {
+                return std::nullopt;
+            }
+            return chunk_data[i];
         };
     }
 }

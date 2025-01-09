@@ -43,27 +43,4 @@ StringChunk::ViewsByOffsets(const FixedVector<int32_t>& offsets) {
     return {ret, valid_res};
 }
 
-void
-ArrayChunk::ConstructViews() {
-    views_.reserve(row_nums_);
-
-    for (int i = 0; i < row_nums_; ++i) {
-        int offset = offsets_lens_[2 * i];
-        int next_offset = offsets_lens_[2 * (i + 1)];
-        int len = offsets_lens_[2 * i + 1];
-        auto data_ptr = data_ + offset;
-        auto offsets_bytes_len = 0;
-        uint32_t* offsets_ptr = nullptr;
-        if (IsStringDataType(element_type_)) {
-            offsets_bytes_len = len * sizeof(uint32_t);
-            offsets_ptr = reinterpret_cast<uint32_t*>(data_ptr);
-        }
-        views_.emplace_back(data_ptr + offsets_bytes_len,
-                            len,
-                            next_offset - offset - offsets_bytes_len,
-                            element_type_,
-                            offsets_ptr);
-    }
-}
-
 }  // namespace milvus

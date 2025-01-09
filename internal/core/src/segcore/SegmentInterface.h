@@ -148,9 +148,8 @@ class SegmentInternalInterface : public SegmentInterface {
     template <typename ViewType>
     std::pair<std::vector<ViewType>, FixedVector<bool>>
     chunk_view(FieldId field_id, int64_t chunk_id) const {
-
         if constexpr (std::is_same_v<ViewType, std::string_view>) {
-            auto [string_views, valid_data] = chunk_view_impl(field_id, chunk_id);
+            auto [string_views, valid_data] = chunk_string_view_impl(field_id, chunk_id);
             return std::make_pair(std::move(string_views),
                                   std::move(valid_data));
         } else if constexpr (std::is_same_v<ViewType, ArrayView>){
@@ -423,7 +422,7 @@ class SegmentInternalInterface : public SegmentInterface {
 
     // internal API: return chunk string views in vector
     virtual std::pair<std::vector<std::string_view>, FixedVector<bool>>
-    chunk_view_impl(FieldId field_id, int64_t chunk_id) const = 0;
+    chunk_string_view_impl(FieldId field_id, int64_t chunk_id) const = 0;
 
     virtual std::pair<std::vector<ArrayView>, FixedVector<bool>>
     chunk_array_view_impl(FieldId field_id, int64_t chunk_id) const = 0;

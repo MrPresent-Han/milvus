@@ -424,7 +424,7 @@ class ChunkedArrayColumn : public ChunkedColumnBase {
 
     std::pair<std::vector<ArrayView>, FixedVector<bool>>
     chunk_array_view_impl(int64_t chunk_id) const {
-        return std::dynamic_pointer_cast<ArrayChunk>(chunks_[chunk_id])->
+        return std::dynamic_pointer_cast<ArrayChunk>(chunks_[chunk_id])->Views();
     }
 
     ArrayView

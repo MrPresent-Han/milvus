@@ -203,7 +203,6 @@ class ArrayChunk : public Chunk {
         auto null_bitmap_bytes_num = (row_nums + 7) / 8;
         offsets_lens_ =
             reinterpret_cast<uint32_t*>(data + null_bitmap_bytes_num);
-        ConstructViews();
     }
 
     ArrayView
@@ -227,8 +226,15 @@ class ArrayChunk : public Chunk {
                          offsets_ptr);
     }
 
-    void
-    ConstructViews();
+    std::pair<std::vector<ArrayView>, FixedVector<bool>>
+    Views() const {
+        std::vector<ArrayView> views;
+        views.resize(row_nums_);
+        for(auto i = 0; i < row_nums_; i++) {
+            views[i] = View(i);
+        }
+        return {views, valid_};
+    }
 
     const char*
     ValueAt(int64_t idx) const override {
