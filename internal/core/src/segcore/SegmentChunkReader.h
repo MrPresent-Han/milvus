@@ -31,8 +31,7 @@ using data_access_type = std::optional<boost::variant<bool,
                                                       int64_t,
                                                       float,
                                                       double,
-                                                      std::string,
-                                                      ArrayView>>;
+                                                      std::string>>;
 
 using ChunkDataAccessor = std::function<const data_access_type(int)>;
 using MultipleChunkDataAccessor = std::function<const data_access_type()>;
@@ -129,7 +128,6 @@ class SegmentChunkReader {
                          bool index,
                          int64_t& current_chunk_id,
                          int64_t& current_chunk_pos) const;
-
 
     template <typename T>
     ChunkDataAccessor
