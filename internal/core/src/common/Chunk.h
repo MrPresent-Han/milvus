@@ -146,7 +146,7 @@ class StringChunk : public Chunk {
     }
 
     std::pair<std::vector<std::string_view>, FixedVector<bool>>
-    StringViews();
+    StringViews(std::optional<std::pair<int64_t, int64_t>> offset_len);
 
     int
     binary_search_string(std::string_view target) {
@@ -227,13 +227,23 @@ class ArrayChunk : public Chunk {
     }
 
     std::pair<std::vector<ArrayView>, FixedVector<bool>>
-    Views() const {
-        std::vector<ArrayView> views;
-        views.resize(row_nums_);
-        for(auto i = 0; i < row_nums_; i++) {
-            views[i] = View(i);
+    Views(std::optional<std::pair<int64_t, int64_t>> offset_len=std::nullopt) const{
+        auto start_offset = 0;
+        auto len = row_nums_;
+        if (offset_len.has_value()) {
+            start_offset = offset_len->first;
+            len = offset_len->second;
+            AssertInfo(start_offset >= 0 && start_offset < row_nums_, "Retrieve array views with out-of-bound offset:{}, len:{}, wrong", start_offset, len);
+            AssertInfo(len > 0 && len <= row_nums_, "Retrieve array views with out-of-bound offset:{}, len:{}, wrong", start_offset, len);
+            AssertInfo(start_offset + len <= row_nums_, "Retrieve array views with out-of-bound offset:{}, len:{}, wrong", start_offset, len);
         }
-        return {views, valid_};
+        std::vector<ArrayView> views;
+        views.reserve(len);
+        auto end_offset = start_offset + len;
+        for(auto i = start_offset; i < end_offset; i++) {
+            views.emplace_back(View(i));
+        }
+        return {std::move(views), FixedVector<bool>(valid_.begin() + start_offset, valid_.begin() + end_offset)};
     }
 
     const char*

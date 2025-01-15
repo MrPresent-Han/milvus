@@ -749,7 +749,7 @@ SegmentSealedImpl::chunk_data_impl(FieldId field_id, int64_t chunk_id) const {
 }
 
 std::pair<std::vector<std::string_view>, FixedVector<bool>>
-SegmentSealedImpl::chunk_string_view_impl(FieldId field_id, int64_t chunk_id) const {
+SegmentSealedImpl::chunk_string_view_impl(FieldId field_id, int64_t chunk_id, std::optional<std::pair<int64_t, int64_t>> offset_len = std::nullopt) const {
     std::shared_lock lck(mutex_);
     AssertInfo(get_bit(field_data_ready_bitset_, field_id),
                "Can't get bitset element at " + std::to_string(field_id.get()));
@@ -762,7 +762,7 @@ SegmentSealedImpl::chunk_string_view_impl(FieldId field_id, int64_t chunk_id) co
 }
 
 std::pair<std::vector<ArrayView>, FixedVector<bool>>
-SegmentSealedImpl::chunk_array_view_impl(FieldId field_id, int64_t chunk_id) const {
+SegmentSealedImpl::chunk_array_view_impl(FieldId field_id, int64_t chunk_id, std::optional<std::pair<int64_t, int64_t>> offset_len = std::nullopt) const {
     std::shared_lock lck(mutex_);
     AssertInfo(get_bit(field_data_ready_bitset_, field_id),
                "Can't get bitset element at " + std::to_string(field_id.get()));
