@@ -134,8 +134,11 @@ class StringChunk : public Chunk {
     StringChunk() = default;
     StringChunk(int32_t row_nums, char* data, uint64_t size, bool nullable)
         : Chunk(row_nums, data, size, nullable) {
-        auto null_bitmap_bytes_num = (row_nums + 7) / 8;
-        offsets_ = reinterpret_cast<uint64_t*>(data + null_bitmap_bytes_num);
+        auto null_bitmap_bytes_num = 0;
+        if (nullable) {
+            null_bitmap_bytes_num = (row_nums + 7) / 8;
+        }
+        offsets_ = reinterpret_cast<uint32_t*>(data + null_bitmap_bytes_num);
     }
 
     std::string_view
@@ -183,13 +186,13 @@ class StringChunk : public Chunk {
         return (*this)[idx].data();
     }
 
-    uint64_t*
+    uint32_t*
     Offsets() {
         return offsets_;
     }
 
  protected:
-    uint64_t* offsets_;
+    uint32_t* offsets_;
 };
 
 using JSONChunk = StringChunk;
