@@ -159,34 +159,42 @@ JSONChunkWriter::finish() {
 
 void
 ArrayChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
-    auto size = 0;
-
+    uint32_t size = 0;
     auto is_string = IsStringDataType(element_type_);
-    std::vector<Array> arrays;
-    std::vector<std::pair<const uint8_t*, int64_t>> null_bitmaps;
+    std::vector<ScalarArray> arrays;
+    std::vector<uint32_t> array_lens;
+    std::vector<uint32_t> array_byte_sizes;
+    std::vector<std::pair<const uint8_t*, uint32_t>> null_bitmaps;
     for (auto batch : *data) {
         auto data = batch.ValueOrDie()->column(0);
-        auto array = std::dynamic_pointer_cast<arrow::BinaryArray>(data);
-        for (int i = 0; i < array->length(); i++) {
-            auto str = array->GetView(i);
+        auto arrow_array = std::dynamic_pointer_cast<arrow::BinaryArray>(data);
+        arrays.reserve(arrays.size() + arrow_array->length());
+        array_lens.reserve(arrays.capacity());
+        array_byte_sizes.reserve(arrays.capacity());
+        for (int i = 0; i < arrow_array->length(); i++) {
+            auto str = arrow_array->GetView(i);
             ScalarArray scalar_array;
             scalar_array.ParseFromArray(str.data(), str.size());
-            auto arr = Array(scalar_array);
-            size += arr.byte_size();
-            arrays.push_back(std::move(arr));
+            auto [arr_len, arr_size] = Array::GetArrayInfoFromProto(scalar_array);
+            size += arr_size;
             if (is_string) {
                 // element offsets size
-                size += sizeof(uint32_t) * arr.length();
+                size += sizeof(uint32_t) * arr_len;
             }
+            arrays.push_back(std::move(scalar_array));
+            array_lens.push_back(arr_len);
+            array_byte_sizes.push_back(arr_size);
         }
-        row_nums_ += array->length();
-        auto null_bitmap_n = (data->length() + 7) / 8;
-        null_bitmaps.emplace_back(data->null_bitmap_data(), null_bitmap_n);
-        size += null_bitmap_n;
+        row_nums_ += arrow_array->length();
+        if (nullable_) {
+            uint32_t null_bitmap_n = (data->length() + 7) / 8;
+            null_bitmaps.emplace_back(data->null_bitmap_data(), null_bitmap_n);
+            size += null_bitmap_n;
+        }
     }
 
     // offsets + lens
-    size += sizeof(uint64_t) * (row_nums_ * 2 + 1) + MMAP_ARRAY_PADDING;
+    size += sizeof(uint32_t) * (row_nums_ * 2 + 1) + MMAP_ARRAY_PADDING;
     if (file_) {
         target_ = std::make_shared<MmapChunkTarget>(*file_, file_offset_);
     } else {
@@ -194,27 +202,22 @@ ArrayChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
     }
 
     // chunk layout: nullbitmaps, offsets, elem_off1, elem_off2, .. data1, data2, ..., datan, padding
-    for (auto [data, size] : null_bitmaps) {
-        if (data == nullptr) {
-            std::vector<uint8_t> null_bitmap(size, 0xff);
-            target_->write(null_bitmap.data(), size);
-        } else {
+    if (nullable_) {
+        for (auto [data, size] : null_bitmaps) {
+            AssertInfo(data!=nullptr, "For nullable field's chunks, null_bit_map cannot be nullptr");
             target_->write(data, size);
         }
     }
 
     int offsets_num = row_nums_ + 1;
     int len_num = row_nums_;
-    uint64_t offset_start_pos =
-        target_->tell() + sizeof(uint64_t) * (offsets_num + len_num);
-    std::vector<uint64_t> offsets(offsets_num);
-    std::vector<uint64_t> lens(len_num);
+    uint32_t offset_start_pos =
+        target_->tell() + sizeof(uint32_t) * (offsets_num + len_num);
+    std::vector<uint32_t> offsets(offsets_num);
     for (auto i = 0; i < arrays.size(); i++) {
-        auto& arr = arrays[i];
         offsets[i] = offset_start_pos;
-        lens[i] = arr.length();
-        offset_start_pos += is_string ? sizeof(uint32_t) * lens[i] : 0;
-        offset_start_pos += arr.byte_size();
+        offset_start_pos += is_string ? sizeof(uint32_t) * array_lens[i] : 0;
+        offset_start_pos += array_byte_sizes[i];
     }
     if (offsets_num > 0) {
         offsets[offsets_num - 1] = offset_start_pos;
@@ -222,19 +225,15 @@ ArrayChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
 
     for (int i = 0; i < offsets.size(); i++) {
         if (i == offsets.size() - 1) {
-            target_->write(&offsets[i], sizeof(uint64_t));
+            target_->write(&offsets[i], sizeof(uint32_t));
             break;
         }
-        target_->write(&offsets[i], sizeof(uint64_t));
-        target_->write(&lens[i], sizeof(uint64_t));
+        target_->write(&offsets[i], sizeof(uint32_t));
+        target_->write(&array_lens[i], sizeof(uint32_t));
     }
 
-    for (auto& arr : arrays) {
-        if (is_string) {
-            target_->write(arr.get_offsets_data(),
-                           arr.length() * sizeof(uint32_t));
-        }
-        target_->write(arr.data(), arr.byte_size());
+    for (auto i = 0; i < arrays.size(); i++) {
+        writeScalarArray(arrays[i], array_lens[i]);
     }
 }
 
@@ -246,6 +245,52 @@ ArrayChunkWriter::finish() {
     auto [data, size] = target_->get();
     return std::make_shared<ArrayChunk>(
         row_nums_, data, size, element_type_, nullable_);
+}
+
+void
+ArrayChunkWriter::writeScalarArray(const ScalarArray& scalarArray, uint32_t arr_len) {
+    switch(scalarArray.data_case()) {
+        case ScalarArray::kBoolData: {
+            auto bool_array = scalarArray.bool_data().data();
+            target_->write(bool_array.data(), arr_len);
+            break;
+        }
+        case ScalarArray::kIntData: {
+            auto int_array = scalarArray.int_data().data();
+            target_->write(int_array.data(), arr_len);
+            break;
+        }
+        case ScalarArray::kLongData: {
+            auto long_array = scalarArray.long_data().data();
+            target_->write(long_array.data(), arr_len);
+            break;
+        }
+        case ScalarArray::kFloatData: {
+            auto float_array = scalarArray.float_data().data();
+            target_->write(float_array.data(), arr_len);
+            break;
+        }
+        case ScalarArray::kDoubleData: {
+            auto double_array = scalarArray.double_data().data();
+            target_->write(double_array.data(), arr_len);
+            break;
+        }
+        case ScalarArray::kStringData: {
+            auto string_array = scalarArray.string_data().data();
+            uint32_t array_inner_offset = 0;
+            for (int i = 0; i < arr_len; i++) {
+                target_->write(array_inner_offset);
+                array_inner_offset+=string_array[i].size();
+            }
+            for (int i = 0; i < arr_len; i++) {
+                target_->write(string_array[i].data(), string_array[i].size());
+            }
+            break;
+        }
+        default: {
+            // empty array
+        }
+    }
 }
 
 void

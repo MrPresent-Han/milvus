@@ -29,6 +29,8 @@
 #include "simdjson/common_defs.h"
 #include "sys/mman.h"
 #include "common/Types.h"
+#include "log/Log.h"
+
 namespace milvus {
 constexpr uint64_t MMAP_STRING_PADDING = 1;
 constexpr uint64_t MMAP_ARRAY_PADDING = 1;
@@ -200,7 +202,10 @@ class ArrayChunk : public Chunk {
                milvus::DataType element_type,
                bool nullable)
         : Chunk(row_nums, data, size, nullable), element_type_(element_type) {
-        auto null_bitmap_bytes_num = (row_nums + 7) / 8;
+        auto null_bitmap_bytes_num = 0;
+        if (nullable) {
+            null_bitmap_bytes_num = (row_nums + 7) / 8;
+        }
         offsets_lens_ =
             reinterpret_cast<uint32_t*>(data + null_bitmap_bytes_num);
     }
@@ -243,7 +248,11 @@ class ArrayChunk : public Chunk {
         for(auto i = start_offset; i < end_offset; i++) {
             views.emplace_back(View(i));
         }
-        return {std::move(views), FixedVector<bool>(valid_.begin() + start_offset, valid_.begin() + end_offset)};
+        if (nullable_) {
+            FixedVector<bool> res_valid(valid_.begin() + start_offset, valid_.begin() + end_offset);
+            return {std::move(views), std::move(res_valid)};
+        }
+        return {std::move(views), {}};
     }
 
     const char*

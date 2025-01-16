@@ -424,7 +424,7 @@ class ChunkedArrayColumn : public ChunkedColumnBase {
 
     std::pair<std::vector<ArrayView>, FixedVector<bool>>
     ArrayViews(int64_t chunk_id, std::optional<std::pair<int64_t, int64_t>> offset_len=std::nullopt) const override{
-        std::dynamic_pointer_cast<ArrayChunk>(chunks_[chunk_id])->Views(offset_len);
+        return std::dynamic_pointer_cast<ArrayChunk>(chunks_[chunk_id])->Views(offset_len);
     }
 };
 }  // namespace milvus
