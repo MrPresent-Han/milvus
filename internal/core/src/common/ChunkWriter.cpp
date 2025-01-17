@@ -155,18 +155,28 @@ JSONChunkWriter::finish() {
 
 void
 ArrayChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
+    auto start_create_chunk = std::chrono::system_clock::now();
     uint32_t size = 0;
     auto is_string = IsStringDataType(element_type_);
+    std::shared_ptr<arrow::RecordBatch> batch;
+    std::vector<std::shared_ptr<arrow::RecordBatch>> array_batches;
+    while(data->ReadNext(&batch).ok() && batch!=nullptr) {
+        row_nums_ += batch->num_rows();
+        array_batches.push_back(batch);
+    }
     std::vector<ScalarArray> arrays;
     std::vector<uint32_t> array_lens;
     std::vector<uint32_t> array_byte_sizes;
+    arrays.reserve(row_nums_);
+    array_lens.reserve(row_nums_);
+    array_byte_sizes.reserve(row_nums_);
     std::vector<std::pair<const uint8_t*, uint32_t>> null_bitmaps;
-    for (auto batch : *data) {
-        auto data = batch.ValueOrDie()->column(0);
+    if(nullable_) {
+        null_bitmaps.reserve(array_batches.size());
+    }
+    for (auto batch : array_batches) {
+        auto data = batch->column(0);
         auto arrow_array = std::dynamic_pointer_cast<arrow::BinaryArray>(data);
-        arrays.reserve(arrays.size() + arrow_array->length());
-        array_lens.reserve(arrays.capacity());
-        array_byte_sizes.reserve(arrays.capacity());
         for (int i = 0; i < arrow_array->length(); i++) {
             auto str = arrow_array->GetView(i);
             ScalarArray scalar_array;
@@ -177,11 +187,10 @@ ArrayChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
                 // element offsets size
                 size += sizeof(uint32_t) * arr_len;
             }
-            arrays.push_back(std::move(scalar_array));
-            array_lens.push_back(arr_len);
-            array_byte_sizes.push_back(arr_size);
+            arrays.emplace_back(std::move(scalar_array));
+            array_lens.emplace_back(arr_len);
+            array_byte_sizes.emplace_back(arr_size);
         }
-        row_nums_ += arrow_array->length();
         if (nullable_) {
             uint32_t null_bitmap_n = (data->length() + 7) / 8;
             null_bitmaps.emplace_back(data->null_bitmap_data(), null_bitmap_n);
@@ -231,6 +240,10 @@ ArrayChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
     for (auto i = 0; i < arrays.size(); i++) {
         writeScalarArray(arrays[i], array_lens[i]);
     }
+    auto create_chunk_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now() - start_create_chunk
+    ).count();
+    LOG_INFO("hc===create_array_chunk_duration:{} ms", create_chunk_ms);
 }
 
 std::shared_ptr<Chunk>
