@@ -102,6 +102,11 @@ class File {
         return fflush(fs_);
     }
 
+    int
+    Sync() {
+        return fsync(fd_);
+    }
+
     offset_t
     Seek(offset_t offset, int whence) {
         return lseek(fd_, offset, whence);

@@ -24,15 +24,21 @@
 #include "common/VectorTrait.h"
 #include "simdjson/common_defs.h"
 #include "simdjson/padded_string.h"
+#include "log/Log.h"
 namespace milvus {
 
+using DurationType = std::chrono::duration<typename std::chrono::high_resolution_clock::rep, std::chrono::high_resolution_clock::period>;
 void
 StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
     auto size = 0;
     std::vector<std::string_view> strs;
     std::vector<std::shared_ptr<arrow::RecordBatch>> batches;
     std::vector<std::pair<const uint8_t*, int64_t>> null_bitmaps;
+    DurationType arrow_iteration_duration(0);
+    auto start_chunk = std::chrono::high_resolution_clock::now();
+    auto start_do_iteration = std::chrono::high_resolution_clock::now();
     for (auto batch : *data) {
+        arrow_iteration_duration += (std::chrono::high_resolution_clock::now() - start_do_iteration);
         auto batch_data = batch.ValueOrDie();
         batches.emplace_back(batch_data);
         auto data = batch_data->column(0);
@@ -48,6 +54,7 @@ StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
             size += null_bitmap_n;
         }
         row_nums_ += array->length();
+        start_do_iteration = std::chrono::high_resolution_clock::now();
     }
 
     size += sizeof(uint32_t) * (row_nums_ + 1) + MMAP_STRING_PADDING;
@@ -72,10 +79,16 @@ StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
     }
     offsets.push_back(offset_start_pos);
 
+    auto start_write = std::chrono::high_resolution_clock::now();
     target_->write(offsets.data(), offsets.size() * sizeof(uint32_t));
     for (auto str : strs) {
         target_->write(str.data(), str.size());
     }
+    auto write_data_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_write).count();
+    auto whole_chunk_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_chunk).count();
+    auto iteration_duration = std::chrono::duration_cast<std::chrono::milliseconds>(arrow_iteration_duration).count();
+    LOG_INFO("hc==created chunk, whole_chunk_duration:{}, arrow_iteration_duration:{}, write_data_iteration:{}, size:{}",
+             whole_chunk_duration, iteration_duration, write_data_duration, size);
 }
 
 std::shared_ptr<Chunk>
