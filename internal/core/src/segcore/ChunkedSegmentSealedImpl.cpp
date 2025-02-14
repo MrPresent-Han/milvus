@@ -252,7 +252,7 @@ ChunkedSegmentSealedImpl::LoadFieldData(const LoadFieldDataInfo& load_info) {
     // NOTE: lock only when data is ready to avoid starvation
     // only one field for now, parallel load field data in golang
     size_t num_rows = storage::GetNumRowsForLoadInfo(load_info);
-
+    auto start_load_segment = std::chrono::high_resolution_clock::now();
     for (auto& [id, info] : load_info.field_infos) {
         AssertInfo(info.row_count > 0, "The row count of field data is 0");
 
@@ -267,6 +267,7 @@ ChunkedSegmentSealedImpl::LoadFieldData(const LoadFieldDataInfo& load_info) {
 
         auto field_data_info = FieldDataInfo(
             field_id.get(), num_rows, load_info.mmap_dir_path, false);
+        auto start_load_field = std::chrono::high_resolution_clock::now();
         LOG_INFO("segment {} loads field {} with num_rows {}",
                  this->get_segment_id(),
                  field_id.get(),
@@ -280,7 +281,7 @@ ChunkedSegmentSealedImpl::LoadFieldData(const LoadFieldDataInfo& load_info) {
         pool.Submit(LoadArrowReaderFromRemote,
                     insert_files,
                     field_data_info.arrow_reader_channel);
-
+        auto after_submit = std::chrono::high_resolution_clock::now();
         LOG_INFO("segment {} submits load field {} task to thread pool",
                  this->get_segment_id(),
                  field_id.get());
@@ -292,11 +293,19 @@ ChunkedSegmentSealedImpl::LoadFieldData(const LoadFieldDataInfo& load_info) {
             MapFieldData(field_id, field_data_info);
             use_mmap = true;
         }
-        LOG_INFO("segment {} loads field {} mmap {} done",
+        auto submit_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_submit - start_load_field).count();
+        auto load_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - after_submit).count();
+        auto one_field_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_load_field).count();
+        LOG_INFO("hc===segment {} loads field {} mmap {} done, submit_duration:{}, load_duration:{}, one_field_duration:{}",
                  this->get_segment_id(),
                  field_id.get(),
-                 use_mmap);
+                 use_mmap,
+                 submit_duration,
+                 load_duration,
+                 one_field_duration);
     }
+    auto load_segment_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_load_segment).count();
+    LOG_INFO("hc===load_one_segment:{} duration:{} ms", this->get_segment_id(), load_segment_duration);
 }
 
 void
@@ -466,7 +475,7 @@ ChunkedSegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                 // stats_.mem_size += field_data->Size();
                 column->AddChunk(chunk);
             }
-
+            auto start_load_skip_index = std::chrono::high_resolution_clock::now();
             auto num_chunk = column->num_chunks();
             for (int i = 0; i < num_chunk; ++i) {
                 LoadPrimitiveSkipIndex(field_id,
@@ -476,6 +485,8 @@ ChunkedSegmentSealedImpl::LoadFieldData(FieldId field_id, FieldDataInfo& data) {
                                        column->Span(i).valid_data(),
                                        column->Span(i).row_count());
             }
+            auto load_skip_index_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_load_skip_index).count();
+            LOG_INFO("hc===field:{}, load_skip_index_duration:{}, num_chunk:{}", field_id.get(), load_skip_index_duration, num_chunk);
         }
 
         AssertInfo(column->NumRows() == num_rows,

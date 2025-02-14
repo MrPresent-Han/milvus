@@ -31,6 +31,7 @@ StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
     auto size = 0;
     std::vector<std::string> strs;
     std::vector<std::pair<const uint8_t*, int64_t>> null_bitmaps;
+    auto start_write_chunk = std::chrono::high_resolution_clock::now();
     for (auto batch : *data) {
         auto data = batch.ValueOrDie()->column(0);
         auto array = std::dynamic_pointer_cast<arrow::StringArray>(data);
@@ -44,6 +45,7 @@ StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
         size += null_bitmap_n;
         row_nums_ += array->length();
     }
+    auto after_calculate = std::chrono::high_resolution_clock::now();
     size += sizeof(uint64_t) * (row_nums_ + 1) + MMAP_STRING_PADDING;
     if (file_) {
         target_ = std::make_shared<MmapChunkTarget>(*file_, file_offset_);
@@ -61,6 +63,7 @@ StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
             target_->write(data, size);
         }
     }
+    auto after_write_null_map = std::chrono::high_resolution_clock::now();
 
     // write data
     int offset_num = row_nums_ + 1;
@@ -77,6 +80,19 @@ StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
 
     for (auto str : strs) {
         target_->write(str.data(), str.size());
+    }
+    auto after_write_data = std::chrono::high_resolution_clock::now();
+    {
+        auto calculate_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_calculate - start_write_chunk).count();
+        auto null_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_null_map - after_calculate).count();
+        auto write_data_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - after_write_null_map).count();
+        auto chunk_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - start_write_chunk).count();
+        LOG_INFO("hc===created string chunk, file:{}, chunk_duration:{}, calculate_duration:{} ms, null_duration:{} ms, write_data_duration:{} ms",
+                 file_->Path(),
+                 chunk_duration,
+                 calculate_duration,
+                 null_duration,
+                 write_data_duration);
     }
 }
 

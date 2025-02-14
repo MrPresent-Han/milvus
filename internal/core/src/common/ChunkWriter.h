@@ -21,6 +21,8 @@
 #include "common/Chunk.h"
 #include "common/EasyAssert.h"
 #include "common/FieldDataInterface.h"
+#include "log/Log.h"
+
 namespace milvus {
 
 class ChunkWriterBase {
@@ -64,9 +66,8 @@ class ChunkWriter final : public ChunkWriterBase {
     write(std::shared_ptr<arrow::RecordBatchReader> data) override {
         auto size = 0;
         auto row_nums = 0;
-
+        auto start_write_chunk = std::chrono::high_resolution_clock::now();
         auto batch_vec = data->ToRecordBatches().ValueOrDie();
-
         for (auto& batch : batch_vec) {
             row_nums += batch->num_rows();
             auto data = batch->column(0);
@@ -74,6 +75,7 @@ class ChunkWriter final : public ChunkWriterBase {
             auto null_bitmap_n = (data->length() + 7) / 8;
             size += null_bitmap_n + array->length() * dim_ * sizeof(T);
         }
+        auto after_calculate = std::chrono::high_resolution_clock::now();
 
         row_nums_ = row_nums;
         if (file_) {
@@ -94,12 +96,26 @@ class ChunkWriter final : public ChunkWriterBase {
                 target_->write(null_bitmap.data(), null_bitmap_n);
             }
         }
+        auto after_write_null_map = std::chrono::high_resolution_clock::now();
 
         for (auto& batch : batch_vec) {
             auto data = batch->column(0);
             auto array = std::dynamic_pointer_cast<ArrowType>(data);
             auto data_ptr = array->raw_values();
             target_->write(data_ptr, array->length() * dim_ * sizeof(T));
+        }
+        auto after_write_data = std::chrono::high_resolution_clock::now();
+        {
+            auto calculate_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_calculate - start_write_chunk).count();
+            auto null_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_null_map - after_calculate).count();
+            auto write_data_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - after_write_null_map).count();
+            auto chunk_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - start_write_chunk).count();
+            LOG_INFO("hc===created fixed length chunk, file:{}, chunk_duration:{}, calculate_duration:{} ms, null_duration:{} ms, write_data_duration:{} ms",
+                     file_->Path(),
+                     chunk_duration,
+                     calculate_duration,
+                     null_duration,
+                     write_data_duration);
         }
     }
 

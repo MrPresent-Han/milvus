@@ -578,11 +578,26 @@ std::unique_ptr<DataCodec>
 DownloadAndDecodeRemoteFile(ChunkManager* chunk_manager,
                             const std::string& file,
                             bool is_field_data) {
+    auto start_download = std::chrono::high_resolution_clock::now();
     auto fileSize = chunk_manager->Size(file);
+    auto after_file_size = std::chrono::high_resolution_clock::now();
     auto buf = std::shared_ptr<uint8_t[]>(new uint8_t[fileSize]);
     chunk_manager->Read(file, buf.get(), fileSize);
-
+    auto after_download = std::chrono::high_resolution_clock::now();
     auto res = DeserializeFileData(buf, fileSize, is_field_data);
+    auto after_deserialize = std::chrono::high_resolution_clock::now();
+    {
+        auto file_size_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_file_size - start_download).count();
+        auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_download - after_file_size).count();
+        auto deserialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - after_download).count();
+        auto whole_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - start_download).count();
+        LOG_INFO("hc===download index file, file:{}, whole_duration:{}, file_size_duration:{} ms, read_duration:{} ms, deserialize_duration:{} ms",
+                 file,
+                 whole_duration,
+                 file_size_duration,
+                 read_duration,
+                 deserialize_duration);
+    }
     res->SetData(buf);
     return res;
 }

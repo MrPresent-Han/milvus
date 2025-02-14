@@ -120,7 +120,11 @@ template <typename T>
 void
 VectorMemIndex<T>::LoadWithoutAssemble(const BinarySet& binary_set,
                                        const Config& config) {
+    auto start_deserialize = std::chrono::high_resolution_clock::now();
     auto stat = index_.Deserialize(binary_set, config);
+    auto deserialize_duration =
+            std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_deserialize).count();
+    LOG_INFO("hc===Deserialize vector mem index:{}", deserialize_duration);
     if (stat != knowhere::Status::success)
         PanicInfo(ErrorCode::UnexpectedError,
                   "failed to Deserialize index: {}",
