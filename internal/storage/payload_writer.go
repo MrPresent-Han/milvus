@@ -72,6 +72,7 @@ type NativePayloadWriter struct {
 	writerProps *parquet.WriterProperties
 }
 
+// hc--- prop here
 func NewPayloadWriter(colType schemapb.DataType, options ...PayloadWriterOptions) (PayloadWriterInterface, error) {
 	w := &NativePayloadWriter{
 		dataType:    colType,

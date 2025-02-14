@@ -509,7 +509,7 @@ func getFieldWriterProps(field *schemapb.FieldSchema) *parquet.WriterProperties 
 		)
 	}
 	return parquet.NewWriterProperties(
-		parquet.WithCompression(compress.Codecs.Zstd),
+		parquet.WithCompression(compress.Codecs.Uncompressed),
 		parquet.WithCompressionLevel(3),
 	)
 }

@@ -17,8 +17,11 @@
 package http
 
 import (
+	"context"
 	"embed"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/util/retry"
+	"math/rand"
 	"net/http"
 	"os"
 	"runtime"
@@ -236,16 +239,20 @@ func Register(h *Handler) {
 func ServeHTTP() {
 	registerDefaults()
 	go func() {
-		bindAddr := getHTTPAddr()
-		log.Info("management listen", zap.String("addr", bindAddr))
-		server = &http.Server{Handler: metricsServer, Addr: bindAddr, ReadTimeout: 10 * time.Second}
-		// enable mutex && block profile, sampling rate 10%
-		runtime.SetMutexProfileFraction(10)
-		runtime.SetBlockProfileRate(10)
+		retry.Do(context.Background(), func() error {
+			bindAddr := fmt.Sprintf(":%d", randomPort())
+			log.Info("try to management listen", zap.String("addr", bindAddr))
+			server = &http.Server{Handler: metricsServer, Addr: bindAddr, ReadTimeout: 10 * time.Second}
+			// enable mutex && block profile, sampling rate 10%
+			runtime.SetMutexProfileFraction(10)
+			runtime.SetBlockProfileRate(10)
 
-		if err := server.ListenAndServe(); err != nil {
-			log.Error("handle metrics failed", zap.Error(err))
-		}
+			if err := server.ListenAndServe(); err != nil {
+				log.Error("handle metrics failed", zap.Error(err))
+				return err
+			}
+			return nil
+		}, retry.Attempts(10))
 	}()
 }
 
@@ -258,4 +265,14 @@ func getHTTPAddr() string {
 	paramtable.Get().Save(paramtable.Get().CommonCfg.MetricsPort.Key, port)
 
 	return fmt.Sprintf(":%s", port)
+}
+
+// Function to generate a random port in the range [1024, 65535]
+func randomPort() int {
+	// Seed the random number generator
+	rand.Seed(time.Now().UnixNano())
+
+	// Generate a random port number between 1024 and 65535
+	port := rand.Intn(65535-1024+1) + 1024
+	return port
 }

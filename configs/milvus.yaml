@@ -427,17 +427,17 @@ queryNode:
     # 2. If set to "disable" original vector data will only be loaded into the chunk cache during search/query.
     warmup: disable
   mmap:
-    vectorField: false # Enable mmap for loading vector data
-    vectorIndex: false # Enable mmap for loading vector index
-    scalarField: false # Enable mmap for loading scalar data
-    scalarIndex: false # Enable mmap for loading scalar index
+    vectorField: true # Enable mmap for loading vector data
+    vectorIndex: true # Enable mmap for loading vector index
+    scalarField: true # Enable mmap for loading scalar data
+    scalarIndex: true # Enable mmap for loading scalar index
     chunkCache: true # Enable mmap for chunk cache (raw vector retrieving).
     # Enable memory mapping (mmap) to optimize the handling of growing raw data. 
     # By activating this feature, the memory overhead associated with newly added or modified data will be significantly minimized. 
     # However, this optimization may come at the cost of a slight decrease in query latency for the affected data segments.
     growingMmapEnabled: false
     fixedFileSizeForMmapAlloc: 1 # tmp file size for mmap chunk manager
-    maxDiskUsagePercentageForMmapAlloc: 50 # disk percentage used in mmap chunk manager
+    maxDiskUsagePercentageForMmapAlloc: 50 # disk percentage used in mmap chunk manager  
   lazyload:
     enabled: false # Enable lazyload for loading data
     waitTimeout: 30000 # max wait timeout duration in milliseconds before start to do lazyload search and retrieve
@@ -516,6 +516,8 @@ indexNode:
     clientMaxRecvSize: 536870912 # The maximum size of each RPC request that the clients on indexNode can receive, unit: byte
 
 dataCoord:
+  statsTask:
+    enable: false
   channel:
     watchTimeoutInterval: 300 # Timeout on watching channels (in seconds). Datanode tickler update watch progress will reset timeout timer.
     legacyVersionWithoutRPCWatch: 2.4.1 # Datanodes <= this version are considered as legacy nodes, which doesn't have rpc based watch(). This is only used during rolling upgrade where legacy nodes won't get new channels
@@ -524,9 +526,9 @@ dataCoord:
     checkInterval: 1 # The interval in seconds with which the channel manager advances channel states
     notifyChannelOperationTimeout: 5 # Timeout notifing channel operations (in seconds).
   segment:
-    maxSize: 1024 # The maximum size of a segment, unit: MB. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
+    maxSize: 10240 # The maximum size of a segment, unit: MB. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
     diskSegmentMaxSize: 2048 # Maximun size of a segment in MB for collection which has Disk index
-    sealProportion: 0.12 # The minimum proportion to datacoord.segment.maxSize to seal a segment. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
+    sealProportion: 1 # The minimum proportion to datacoord.segment.maxSize to seal a segment. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
     sealProportionJitter: 0.1 # segment seal proportion jitter ratio, default value 0.1(10%), if seal proportion is 12%, with jitter=0.1, the actuall applied ratio will be 10.8~12%
     assignmentExpiration: 2000 # Expiration time of the segment assignment, unit: ms
     allocLatestExpireAttempt: 200 # The time attempting to alloc latest lastExpire from rootCoord after restart
@@ -538,7 +540,7 @@ dataCoord:
     minSizeFromIdleToSealed: 16 # The min size in MB of segment which can be idle from sealed.
     # The max number of binlog (which is equal to the binlog file num of primary key) for one segment, 
     # the segment will be sealed if the number of binlog file reaches to max value.
-    maxBinlogFileNumber: 32
+    maxBinlogFileNumber: 512
     smallProportion: 0.5 # The segment is considered as "small segment" when its # of rows is smaller than
     # (smallProportion * segment max # of rows).
     # A compaction will happen on small segments if the segment after compaction will have
@@ -556,11 +558,11 @@ dataCoord:
   segmentFlushInterval: 2 # the minimal interval duration(unit: Seconds) between flusing operation on same segment
   # Switch value to control if to enable segment compaction. 
   # Compaction merges small-size segments into a large segment, and clears the entities deleted beyond the rentention duration of Time Travel.
-  enableCompaction: true
+  enableCompaction: false
   compaction:
     # Switch value to control if to enable automatic segment compaction during which data coord locates and merges compactable segments in the background.
     # This configuration takes effect only when dataCoord.enableCompaction is set as true.
-    enableAutoCompaction: true
+    enableAutoCompaction: false
     indexBasedCompaction: true
     # compaction task prioritizer, options: [default, level, mix]. 
     # default is FIFO.
@@ -570,8 +572,8 @@ dataCoord:
     taskQueueCapacity: 100000 # compaction task queue size
     rpcTimeout: 10
     maxParallelTaskNum: -1 # Deprecated, see datanode.slot.slotCap
-    dropTolerance: 86400 # Compaction task will be cleaned after finish longer than this time(in seconds)
-    gcInterval: 1800 # The time interval in seconds for compaction gc
+    dropTolerance: 60 # Compaction task will be cleaned after finish longer than this time(in seconds)
+    gcInterval: 60 # The time interval in seconds for compaction gc
     scheduleInterval: 500 # The time interval in milliseconds for scheduling compaction tasks. If the configuration setting is below 100ms, it will be ajusted upwards to 100ms
     mix:
       triggerInterval: 60 # The time interval in seconds to trigger mix compaction
@@ -610,9 +612,9 @@ dataCoord:
     memSizeEstimateMultiplier: 2 # When the memory size is not setup by index procedure, multiplier to estimate the memory size of index data
   enableGarbageCollection: true # Switch value to control if to enable garbage collection to clear the discarded data in MinIO or S3 service.
   gc:
-    interval: 3600 # The interval at which data coord performs garbage collection, unit: second.
-    missingTolerance: 86400 # The retention duration of the unrecorded binary log (binlog) files. Setting a reasonably large value for this parameter avoids erroneously deleting the newly created binlog files that lack metadata. Unit: second.
-    dropTolerance: 10800 # The retention duration of the binlog files of the deleted segments before they are cleared, unit: second.
+    interval: 30 # The interval at which data coord performs garbage collection, unit: second.
+    missingTolerance: 360 # The retention duration of the unrecorded binary log (binlog) files. Setting a reasonably large value for this parameter avoids erroneously deleting the newly created binlog files that lack metadata. Unit: second.
+    dropTolerance: 60 # The retention duration of the binlog files of the deleted segments before they are cleared, unit: second.
     removeConcurrent: 32 # number of concurrent goroutines to remove dropped s3 objects
     scanInterval: 168 # orphan file (file on oss but has not been registered on meta) on object storage garbage collection scanning interval in hours
   enableActiveStandby: false
@@ -757,7 +759,7 @@ msgChannel:
 log:
   # Milvus log level. Option: debug, info, warn, error, panic, and fatal. 
   # It is recommended to use debug level under test and development environments, and info level in production environment.
-  level: info
+  level: debug
   file:
     # Root path to the log files.
     # The default value is set empty, indicating to output log files to standard output (stdout) and standard error (stderr).

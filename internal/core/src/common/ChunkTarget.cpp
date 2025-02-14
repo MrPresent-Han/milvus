@@ -103,10 +103,6 @@ MmapChunkTarget::get() {
     write(padding, padding_size);
 
     flush();
-    // need to handle return value, no matter using sync or flush
-    auto start_sync = std::chrono::high_resolution_clock::now();
-    auto sync_ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_sync).count();
-    LOG_INFO("hc===file:{}, sync_ms:{}", file_.Path(), sync_ms);
     auto m = mmap(
         nullptr, size_, PROT_READ, MAP_SHARED, file_.Descriptor(), offset_);
     AssertInfo(m != MAP_FAILED,

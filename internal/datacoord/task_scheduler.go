@@ -155,50 +155,8 @@ func (s *taskScheduler) reloadFromMeta() {
 
 	allStatsTasks := s.meta.statsTaskMeta.GetAllTasks()
 	for taskID, t := range allStatsTasks {
-		if t.GetState() != indexpb.JobState_JobStateFinished && t.GetState() != indexpb.JobState_JobStateFailed {
-			if t.GetState() == indexpb.JobState_JobStateInProgress || t.GetState() == indexpb.JobState_JobStateRetry {
-				if t.GetState() == indexpb.JobState_JobStateInProgress || t.GetState() == indexpb.JobState_JobStateRetry {
-					exist, canDo := s.meta.CheckAndSetSegmentsCompacting(context.TODO(), []UniqueID{t.GetSegmentID()})
-					if !exist || !canDo {
-						log.Ctx(s.ctx).Warn("segment is not exist or is compacting, skip stats, but this should not have happened, try to remove the stats task",
-							zap.Int64("taskID", taskID), zap.Bool("exist", exist), zap.Bool("canDo", canDo))
-						err := s.meta.statsTaskMeta.DropStatsTask(t.GetTaskID())
-						if err == nil {
-							continue
-						}
-						log.Ctx(s.ctx).Warn("remove stats task failed, set to failed", zap.Int64("taskID", taskID), zap.Error(err))
-						t.State = indexpb.JobState_JobStateFailed
-						t.FailReason = "segment is not exist or is compacting"
-					} else {
-						if !s.compactionHandler.checkAndSetSegmentStating(t.GetInsertChannel(), t.GetSegmentID()) {
-							s.meta.SetSegmentsCompacting(context.TODO(), []UniqueID{t.GetSegmentID()}, false)
-							err := s.meta.statsTaskMeta.DropStatsTask(t.GetTaskID())
-							if err == nil {
-								continue
-							}
-							log.Ctx(s.ctx).Warn("remove stats task failed, set to failed", zap.Int64("taskID", taskID), zap.Error(err))
-							t.State = indexpb.JobState_JobStateFailed
-							t.FailReason = "segment is not exist or is l0 compacting"
-						}
-					}
-				}
-			}
-			s.enqueue(&statsTask{
-				taskID:          taskID,
-				segmentID:       t.GetSegmentID(),
-				targetSegmentID: t.GetTargetSegmentID(),
-				nodeID:          t.NodeID,
-				taskInfo: &workerpb.StatsResult{
-					TaskID:     taskID,
-					State:      t.GetState(),
-					FailReason: t.GetFailReason(),
-				},
-				queueTime:  time.Now(),
-				startTime:  time.Now(),
-				endTime:    time.Now(),
-				subJobType: t.GetSubJobType(),
-			})
-		}
+		s.meta.statsTaskMeta.DropStatsTask(t.GetTaskID())
+		log.Info("hc===remove stats task", zap.Int64("taskID", taskID))
 	}
 }
 

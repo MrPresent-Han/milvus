@@ -19,7 +19,10 @@ package storage
 import (
 	"encoding/binary"
 	"fmt"
+	"math/rand"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1089,4 +1092,157 @@ func TestAddFieldDataToPayload(t *testing.T) {
 	assert.Error(t, err)
 	err = AddFieldDataToPayload(e, schemapb.DataType_Int8Vector, &Int8VectorFieldData{[]int8{}, 4})
 	assert.Error(t, err)
+}
+
+// 模式常量
+const (
+	random = iota
+	sentence
+	constant
+)
+
+// 词库：扩展到至少200个单词
+var words = []string{
+	"hello", "world", "golang", "is", "a", "powerful", "language", "and", "easy", "to", "learn",
+	"programming", "fun", "can", "be", "creative", "learning", "software", "development",
+	"open", "source", "community", "awesome", "best", "excellent", "developer", "team", "work",
+	"innovation", "program", "debugging", "compiler", "function", "package", "array", "struct", "pointer",
+	"interface", "channel", "concurrency", "goroutine", "API", "REST", "JSON", "testing", "deployment",
+	"version", "control", "git", "branch", "merge", "pull", "push", "commit", "bug", "issue", "fix", "refactor",
+	"client", "server", "database", "SQL", "NoSQL", "query", "schema", "table", "join", "index", "transaction",
+	"security", "encryption", "hash", "salt", "token", "login", "authentication", "authorization", "session",
+	"cookie", "JWT", "protocol", "TCP", "UDP", "IP", "network", "router", "switch", "firewall", "VPN", "serverless",
+	"cloud", "AWS", "Azure", "GCP", "container", "docker", "Kubernetes", "CI/CD", "automation", "monitoring",
+	"alert", "logging", "metrics", "scalability", "performance", "load", "balancer", "cache", "queue", "message",
+	"async", "synchronous", "response", "timeout", "retry", "event", "stream", "producer", "consumer", "signal",
+	"receive", "send", "process", "error", "fail", "recover", "panic", "defer", "test", "debug", "assert", "mock",
+	"stub", "interface", "dependency", "injection", "design", "pattern", "architecture", "mvc", "microservice",
+	"monolith", "singleton", "factory", "builder", "strategy", "observer", "command", "adapter", "proxy", "bridge",
+	"decorator", "flyweight", "composite", "iterator", "state", "memento", "visitor", "mediator", "chain", "event",
+	"observer", "pubsub", "worker", "thread", "mutex", "atomic", "race", "deadlock", "livelock", "timeout", "retry",
+	"backoff", "retry", "circuit", "breaker", "transactional", "rollback", "commit", "push", "pull", "merge",
+	"refactor", "clean", "code", "quality", "best", "practice", "testing", "unit", "integration", "system", "UI",
+	"UX", "interface", "API", "authentication", "authorization", "JWT", "REST", "endpoint", "performance",
+	"load", "optimization", "latency", "throughput", "scalability", "availability", "resilience", "redundancy",
+	"failover", "backup", "recovery", "cloud", "data", "storage", "caching", "replication", "sharding", "partition",
+	"backup", "restore", "s3", "gcs", "azure", "monitoring", "alerts", "metrics", "dashboard", "logging", "trace",
+	"span", "execution", "profiling", "audit", "security", "encryption", "hashing", "key", "pair", "token",
+	"API", "token", "authorization", "session", "user", "login", "logout", "user", "register", "invite",
+	"confirmation", "reset", "password", "email", "notification", "subscription", "message", "message", "queue",
+	"send", "receive", "transmit", "broadcast", "stream", "consume", "produce", "worker", "thread",
+}
+
+// 生成字符串的方法
+func generateString(length int, mode int) string {
+	switch mode {
+	case random:
+		return generateRandomString(length)
+	case sentence:
+		return generateSentence(length)
+	case constant:
+		return generateConstantString(length)
+	}
+	return ""
+}
+
+// 生成随机字符串
+func generateRandomString(length int) string {
+	rand.Seed(time.Now().UnixNano()) // 初始化随机数种子
+	letters := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	result := make([]byte, length)
+	for i := range result {
+		result[i] = letters[rand.Intn(len(letters))]
+	}
+	return string(result)
+}
+
+// 生成一个有意义的句子
+func generateSentence(length int) string {
+	rand.Seed(time.Now().UnixNano()) // 初始化随机数种子
+	var sentence []string
+	totalLength := 0
+
+	// 根据目标长度动态生成单词
+	for {
+		// 随机选择一个单词
+		word := words[rand.Intn(len(words))]
+		wordLength := len(word)
+
+		// 如果加入这个单词后，句子长度不会超过目标长度，才加入
+		if totalLength+wordLength+len(sentence) <= length {
+			sentence = append(sentence, word)
+			totalLength += wordLength
+		} else {
+			// 如果超过长度，则跳出循环
+			break
+		}
+	}
+
+	// 组成句子并确保最后有一个句号
+	sentenceStr := strings.Join(sentence, " ") + "."
+
+	// 如果生成的句子不足目标长度，用空格补齐
+	for len(sentenceStr) < length {
+		sentenceStr += " "
+	}
+
+	return sentenceStr
+}
+
+// 生成常量字符串 "AAAAAAA"
+func generateConstantString(length int) string {
+	return strings.Repeat("A", length) // 返回长度为 `length` 的 "A" 字符串
+}
+
+func TestCodeStrings(t *testing.T) {
+	num := 1000000
+	collID := int64(1)
+	partID := int64(2)
+	segID := int64(3)
+	schema := &schemapb.CollectionSchema{
+		Fields: []*schemapb.FieldSchema{
+			{FieldID: common.RowIDField, Name: "rowid", DataType: schemapb.DataType_Int64},
+			{FieldID: common.TimeStampField, Name: "ts", DataType: schemapb.DataType_Int64},
+			{FieldID: 101, Name: "string", DataType: schemapb.DataType_String},
+		},
+	}
+	strPoolSize := 10000
+	strLen := 1000
+	strPool := make([]string, 0, strPoolSize)
+	for i := 0; i < strPoolSize; i++ {
+		strPool = append(strPool, generateString(strLen, constant))
+	}
+	chunkRowNum := 70000
+	field0 := make([]int64, 0, chunkRowNum)
+	field1 := make([]int64, 0, chunkRowNum)
+	field101 := make([]string, 0, chunkRowNum)
+	insertedRowNum := 0
+	datas := make([]*InsertData, 0)
+
+	for insertedRowNum < num {
+		for i := 0; i < chunkRowNum && i < num-insertedRowNum; i++ {
+			field0 = append(field0, int64(insertedRowNum+i))
+			field1 = append(field1, int64(insertedRowNum+i))
+			field101 = append(field101, strPool[rand.Intn(strPoolSize)%strPoolSize])
+		}
+		data := &InsertData{Data: map[int64]FieldData{
+			common.RowIDField:     &Int64FieldData{Data: field0},
+			common.TimeStampField: &Int64FieldData{Data: field1},
+			101:                   &StringFieldData{Data: field101},
+		}}
+		datas = append(datas, data)
+		insertedRowNum += len(field0)
+		field0 = field0[:0]
+		field1 = field1[:0]
+		field101 = field101[:0]
+	}
+	log.Info("hc===try to desea", zap.Int("rows:", insertedRowNum), zap.Int("chunk_count", len(datas)))
+
+	insertCodec := NewInsertCodecWithSchema(&etcdpb.CollectionMeta{ID: collID, Schema: schema})
+	start := time.Now()
+	blobs, _ := insertCodec.Serialize(partID, segID, datas...)
+	log.Info("hc===", zap.Int("blobs_length", len(blobs)), zap.Duration("sear_duration", time.Since(start)))
+	for _, blob := range blobs {
+		log.Info("hc===", zap.Int64("blob_mem_size", blob.MemorySize), zap.Int("blob_real_size", len(blob.Value)))
+	}
 }
