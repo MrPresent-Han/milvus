@@ -88,7 +88,7 @@ StringChunkWriter::write(std::shared_ptr<arrow::RecordBatchReader> data) {
         auto write_data_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - after_write_null_map).count();
         auto chunk_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - start_write_chunk).count();
         LOG_INFO("hc===created string chunk, file:{}, chunk_duration:{}, calculate_duration:{} ms, null_duration:{} ms, write_data_duration:{} ms",
-                 file_->Path(),
+                 file_==nullptr?"":file_->Path(),
                  chunk_duration,
                  calculate_duration,
                  null_duration,
