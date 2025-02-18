@@ -110,8 +110,9 @@ class ChunkWriter final : public ChunkWriterBase {
             auto null_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_null_map - after_calculate).count();
             auto write_data_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - after_write_null_map).count();
             auto chunk_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_write_data - start_write_chunk).count();
-            LOG_INFO("hc===created fixed length chunk, file:{}, chunk_duration:{}, calculate_duration:{} ms, null_duration:{} ms, write_data_duration:{} ms",
+            LOG_INFO("hc===created fixed length chunk, file:{}, size:{}, chunk_duration:{}, calculate_duration:{} ms, null_duration:{} ms, write_data_duration:{} ms",
                      file_==nullptr?"":file_->Path(),
+                     size,
                      chunk_duration,
                      calculate_duration,
                      null_duration,

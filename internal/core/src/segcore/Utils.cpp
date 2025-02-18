@@ -910,7 +910,7 @@ LoadArrowReaderFromRemote(const std::vector<std::string>& remote_files,
                     auto file_size_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_file_size - start_download).count();
                     auto read_data_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_read_file - after_file_size).count();
                     auto deserialize_data_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - after_read_file).count();
-                    LOG_INFO("hc===download file:{}, file_size_duration:{}, read_duration:{}, deserialize_duration:{}", file,
+                    LOG_INFO("hc===download file:{}, file_size:{}, file_size_duration:{}, read_duration:{}, deserialize_duration:{}", file, fileSize,
                              file_size_duration, read_data_duration, deserialize_data_duration);
                 }
                 result->SetData(buf);
