@@ -87,16 +87,20 @@ VectorDiskAnnIndex<T>::Load(milvus::tracer::TraceContext ctx,
     knowhere::Json load_config = update_load_json(config);
 
     // start read file span with active scope
+    auto cache_index_duration = 0;
+    auto index_deserialize_duration = 0;
     {
         auto read_file_span =
             milvus::tracer::StartSpan("SegCoreReadDiskIndexFile", &ctx);
         auto read_scope =
             milvus::tracer::GetTracer()->WithActiveSpan(read_file_span);
+        auto start_cache_index = std::chrono::high_resolution_clock::now();
         auto index_files =
             GetValueFromConfig<std::vector<std::string>>(config, "index_files");
         AssertInfo(index_files.has_value(),
                    "index file paths is empty when load disk ann index data");
         file_manager_->CacheIndexToDisk(index_files.value());
+        cache_index_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_cache_index).count();
         read_file_span->End();
     }
 
@@ -105,12 +109,14 @@ VectorDiskAnnIndex<T>::Load(milvus::tracer::TraceContext ctx,
         milvus::tracer::StartSpan("SegCoreEngineLoadDiskIndex", &ctx);
     auto engine_scope =
         milvus::tracer::GetTracer()->WithActiveSpan(span_load_engine);
+    auto start_deserialize_index = std::chrono::high_resolution_clock::now();
     auto stat = index_.Deserialize(knowhere::BinarySet(), load_config);
+    index_deserialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_deserialize_index).count();
+    LOG_INFO("hc===loaded vector index, cache_index_duration:{}, index_deserialize_duration:{}", cache_index_duration, index_deserialize_duration);
     if (stat != knowhere::Status::success)
         PanicInfo(ErrorCode::UnexpectedError,
                   "failed to Deserialize index, " + KnowhereStatusString(stat));
     span_load_engine->End();
-
     SetDim(index_.Dim());
 }
 
