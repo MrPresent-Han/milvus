@@ -261,7 +261,8 @@ DiskFileManagerImpl::CacheIndexToDisk(
     for (auto& slices : index_slices) {
         std::sort(slices.second.begin(), slices.second.end());
     }
-
+    auto write_index_file_duration = 0;
+    auto index_whole_size = 0;
     for (auto& slices : index_slices) {
         auto prefix = slices.first;
         auto local_index_file_name =
@@ -276,8 +277,10 @@ DiskFileManagerImpl::CacheIndexToDisk(
         batch_remote_files.reserve(slices.second.size());
 
         uint64_t max_parallel_degree =
-            uint64_t(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE);
+            uint64_t(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE) * 2;
 
+        auto write_index_slice_file_duration = 0;
+        auto write_index_slice_size = 0;
         auto appendIndexFiles = [&]() {
             auto index_chunks = GetObjectData(rcm_.get(), batch_remote_files);
             for (auto& chunk : index_chunks) {
@@ -285,7 +288,10 @@ DiskFileManagerImpl::CacheIndexToDisk(
                 auto index_size = index_data->DataSize();
                 auto chunk_data = reinterpret_cast<uint8_t*>(
                     const_cast<void*>(index_data->Data()));
+                auto start_deserialize_index = std::chrono::high_resolution_clock::now();
                 file.Write(chunk_data, index_size);
+                write_index_slice_size += index_size;
+                write_index_slice_file_duration += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_deserialize_index).count();
             }
             batch_remote_files.clear();
         };
@@ -301,8 +307,17 @@ DiskFileManagerImpl::CacheIndexToDisk(
         if (batch_remote_files.size() > 0) {
             appendIndexFiles();
         }
+        LOG_INFO("hc==WriteIndexSliceToDisk=write index file:{}, duration:{}, index_chunk_number:{}, index_slice_size:{}",
+                 local_index_file_name,
+                 write_index_slice_file_duration,
+                 slices.second.size(),
+                 write_index_slice_size);
         local_paths_.emplace_back(local_index_file_name);
+        write_index_file_duration += write_index_slice_file_duration;
+        index_whole_size += write_index_slice_size;
     }
+    LOG_INFO("hc==WriteOneIndex write_index_file_duration:{}, slices_number:{}, index_whole_size:{}",
+             write_index_file_duration, index_slices.size(), index_whole_size);
 }
 
 void
