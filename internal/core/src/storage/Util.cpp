@@ -656,6 +656,7 @@ GetObjectData(ChunkManager* remote_chunk_manager,
     for (auto& file : remote_files) {
         futures.emplace_back(pool.Submit(
             DownloadAndDecodeRemoteFile, remote_chunk_manager, file, true));
+        LOG_INFO("hc===submitting remote file:{}, high priority pool stats:{}", file, pool.Stats());
     }
     return futures;
 }

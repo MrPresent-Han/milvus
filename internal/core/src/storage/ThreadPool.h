@@ -111,6 +111,13 @@ class ThreadPool {
     void
     FinishThreads();
 
+    std::string
+    Stats() {
+        return fmt::format(
+                "Pool_name:{}, idle_threads_size_: {}, current_threads_size_: {}, min_threads_size_: {}, max_threads_size_: {}, work_queue_size:{}, threads_size:{}",
+                name_, idle_threads_size_, current_threads_size_, min_threads_size_, max_threads_size_, work_queue_.size(), threads_.size());
+    }
+
  public:
     int min_threads_size_;
     int idle_threads_size_;

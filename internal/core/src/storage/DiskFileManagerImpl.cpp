@@ -276,9 +276,6 @@ DiskFileManagerImpl::CacheIndexToDisk(
         std::vector<std::string> batch_remote_files;
         batch_remote_files.reserve(slices.second.size());
 
-        uint64_t max_parallel_degree =
-            uint64_t(DEFAULT_FIELD_MAX_MEMORY_LIMIT / FILE_SLICE_SIZE) * 2;
-
         auto write_index_slice_file_duration = 0;
         auto write_index_slice_size = 0;
         auto appendIndexFiles = [&]() {
@@ -299,10 +296,6 @@ DiskFileManagerImpl::CacheIndexToDisk(
         for (int& iter : slices.second) {
             auto origin_file = prefix + "_" + std::to_string(iter);
             batch_remote_files.push_back(origin_file);
-
-            if (batch_remote_files.size() == max_parallel_degree) {
-                appendIndexFiles();
-            }
         }
         if (batch_remote_files.size() > 0) {
             appendIndexFiles();
