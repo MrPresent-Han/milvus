@@ -229,6 +229,24 @@ BaseEventData::BaseEventData(BinlogReaderPtr reader,
 }
 
 std::vector<uint8_t>
+BaseEventData::SerializeWithPayload() {
+    auto data_type = payload_reader->column_data_type();
+    std::shared_ptr<PayloadWriter> payload_writer;
+    auto dim = payload_reader->get_dim();
+    auto nullable = payload_reader->nullable();
+    if (IsVectorDataType(data_type) &&
+        !IsSparseFloatVectorDataType(data_type)) {
+        payload_writer = std::make_unique<PayloadWriter>(
+                data_type, dim, nullable);
+        LOG_INFO("hc===created payload_writer, data type:{}, dim:{}}", data_type, dim);
+    } else {
+        payload_writer = std::make_unique<PayloadWriter>(
+                data_type, nullable);
+    }
+
+}
+
+std::vector<uint8_t>
 BaseEventData::Serialize() {
     auto data_type = field_data->get_data_type();
     std::shared_ptr<PayloadWriter> payload_writer;

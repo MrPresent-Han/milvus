@@ -88,6 +88,9 @@ struct BaseEventData {
 
     std::vector<uint8_t>
     Serialize();
+
+    std::vector<uint8_t>
+    SerializeWithPayload();
 };
 
 struct DescriptorEvent {

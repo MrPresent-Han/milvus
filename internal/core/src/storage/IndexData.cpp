@@ -47,6 +47,47 @@ IndexData::Serialize(StorageType medium) {
 }
 
 std::vector<uint8_t>
+IndexData::serialize_to_remote_file_with_payload() {
+    AssertInfo(payload_reader_ != nullptr, "cannot serialize index data into remote files for empty payload data");
+    //1. set up descriptor_event
+    DescriptorEvent descriptor_event;
+    auto& des_event_data = descriptor_event.event_data;
+    auto& des_fix_part = des_event_data.fix_part;
+    des_fix_part.collection_id = field_data_meta_->collection_id;
+    des_fix_part.partition_id = field_data_meta_->partition_id;
+    des_fix_part.segment_id = field_data_meta_->segment_id;
+    des_fix_part.field_id = field_data_meta_->field_id;
+    des_fix_part.start_timestamp = time_range_.first;
+    des_fix_part.end_timestamp = time_range_.second;
+    des_fix_part.data_type = field_data_meta_->field_schema.data_type();
+    des_event_data.extras[ORIGIN_SIZE_KEY] =
+            std::to_string(payload_reader_->get_length());
+    // index data are all set by uint8_t, so the length is equivalent to byte size
+    des_event_data.extras[INDEX_BUILD_ID_KEY] =
+            std::to_string(index_meta_->build_id);
+    auto& des_event_header = descriptor_event.event_header;
+    des_event_header.timestamp_ = 0;
+    auto des_event_bytes = descriptor_event.Serialize();
+
+    //2. set up index event
+    IndexEvent index_event;
+    index_event.event_offset = des_event_bytes.size();
+    auto& index_event_data = index_event.event_data;
+    index_event_data.start_timestamp = time_range_.first;
+    index_event_data.end_timestamp = time_range_.second;
+    index_event_data.payload_reader = payload_reader_;
+
+    auto& index_event_header = index_event.event_header;
+    index_event_header.event_type_ = EventType::IndexFileEvent;
+    index_event_header.timestamp_ = 0;
+    auto index_event_bytes = index_event.Serialize();
+    des_event_bytes.insert(des_event_bytes.end(),
+                           index_event_bytes.begin(),
+                           index_event_bytes.end());
+    return des_event_bytes;
+}
+
+std::vector<uint8_t>
 IndexData::serialize_to_remote_file() {
     AssertInfo(field_data_meta_.has_value(), "field data not exist");
     AssertInfo(index_meta_.has_value(), "index meta not exist");

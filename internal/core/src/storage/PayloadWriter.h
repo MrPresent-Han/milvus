@@ -47,11 +47,6 @@ class PayloadWriter {
     const std::vector<uint8_t>&
     get_payload_buffer() const;
 
-    int
-    get_payload_length() const {
-        return rows_;
-    }
-
  private:
     void
     init_dimension(int dim);

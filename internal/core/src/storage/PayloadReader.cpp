@@ -30,7 +30,7 @@ PayloadReader::PayloadReader(const uint8_t* data,
                              DataType data_type,
                              bool nullable,
                              bool is_field_data)
-    : column_type_(data_type), nullable_(nullable) {
+    : column_type_(data_type), nullable_(nullable), length_(length) {
     auto input = std::make_shared<arrow::io::BufferReader>(data, length);
     init(input, is_field_data);
 }

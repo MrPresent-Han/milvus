@@ -49,6 +49,9 @@ class IndexData : public DataCodec {
     serialize_to_remote_file();
 
     std::vector<uint8_t>
+    serialize_to_remote_file_with_payload();
+
+    std::vector<uint8_t>
     serialize_to_local_file();
 
  private:
