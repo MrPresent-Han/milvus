@@ -114,6 +114,7 @@ add_vector_payload(std::shared_ptr<arrow::ArrayBuilder> builder,
     auto binary_builder =
         std::dynamic_pointer_cast<arrow::FixedSizeBinaryBuilder>(builder);
     auto ast = binary_builder->AppendValues(values, length);
+    LOG_INFO("hc===add_vector_payload, length:{}", length);
     AssertInfo(
         ast.ok(), "append value to arrow builder failed: {}", ast.ToString());
 }
@@ -611,7 +612,32 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
                           FieldDataMeta field_meta,
                           std::string object_key) {
     // index not use valid_data, so no need to set nullable==true
-    auto field_data = CreateFieldData(DataType::INT8, false);
+    FieldDataPtr field_data = nullptr;
+    switch (index_meta.field_type) {
+        case DataType::VECTOR_FLOAT:
+            field_data = CreateFieldData(DataType::VECTOR_FLOAT, false);
+            LOG_INFO("hc===created index field data in vector float type, segment id:{}, object_key:{}, batch_size:{}",
+                     index_meta.segment_id, object_key, batch_size);
+            break;
+        case DataType::VECTOR_BINARY:
+            field_data = CreateFieldData(DataType::VECTOR_BINARY, false);
+            break;
+        case DataType::VECTOR_BFLOAT16:
+            field_data = CreateFieldData(DataType::VECTOR_BFLOAT16, false);
+            break;
+        case DataType::VECTOR_FLOAT16:
+            field_data = CreateFieldData(DataType::VECTOR_FLOAT16, false);
+            break;
+        case DataType::VECTOR_INT8:
+            field_data = CreateFieldData(DataType::VECTOR_INT8, false);
+            break;
+        case DataType::VECTOR_SPARSE_FLOAT:
+            field_data = CreateFieldData(DataType::VECTOR_SPARSE_FLOAT, false);
+            break;
+        default:
+            field_data = CreateFieldData(DataType::INT8, false);
+            break;
+    }
     field_data->FillFieldData(buf, batch_size);
     auto indexData = std::make_shared<IndexData>(field_data);
     indexData->set_index_meta(index_meta);

@@ -234,8 +234,11 @@ BaseEventData::Serialize() {
     std::shared_ptr<PayloadWriter> payload_writer;
     if (IsVectorDataType(data_type) &&
         !IsSparseFloatVectorDataType(data_type)) {
+        //hc--- this branch should be and not be executed
         payload_writer = std::make_unique<PayloadWriter>(
             data_type, field_data->get_dim(), field_data->IsNullable());
+        LOG_INFO("hc===created payload_writer, data type:{}, dim:{}, num_rows:{}",
+                 field_data->get_data_type(), field_data->get_dim(), field_data->get_num_rows());
     } else {
         payload_writer = std::make_unique<PayloadWriter>(
             data_type, field_data->IsNullable());

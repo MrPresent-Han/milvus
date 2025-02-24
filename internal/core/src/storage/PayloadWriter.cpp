@@ -38,7 +38,7 @@ PayloadWriter::PayloadWriter(const DataType column_type, int dim, bool nullable)
     AssertInfo(nullable == false, "only scalcar type support null now");
     init_dimension(dim);
 }
-
+//hc---
 void
 PayloadWriter::init_dimension(int dim) {
     if (dimension_.has_value()) {
