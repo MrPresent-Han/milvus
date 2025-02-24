@@ -88,7 +88,6 @@ VectorDiskAnnIndex<T>::Load(milvus::tracer::TraceContext ctx,
 
     // start read file span with active scope
     auto cache_index_duration = 0;
-    auto index_deserialize_duration = 0;
     {
         auto read_file_span =
             milvus::tracer::StartSpan("SegCoreReadDiskIndexFile", &ctx);
@@ -111,7 +110,7 @@ VectorDiskAnnIndex<T>::Load(milvus::tracer::TraceContext ctx,
         milvus::tracer::GetTracer()->WithActiveSpan(span_load_engine);
     auto start_deserialize_index = std::chrono::high_resolution_clock::now();
     auto stat = index_.Deserialize(knowhere::BinarySet(), load_config);
-    index_deserialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_deserialize_index).count();
+    auto index_deserialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_deserialize_index).count();
     LOG_INFO("hc===loaded vector index, cache_index_duration:{}, index_deserialize_duration:{}", cache_index_duration, index_deserialize_duration);
     if (stat != knowhere::Status::success)
         PanicInfo(ErrorCode::UnexpectedError,

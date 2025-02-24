@@ -243,16 +243,81 @@ BaseEventData::SerializeWithPayload() {
         payload_writer = std::make_unique<PayloadWriter>(
                 data_type, nullable);
     }
+    switch (data_type) {
+        case DataType::VARCHAR:
+        case DataType::STRING: {
+            for (size_t offset = 0; offset < payload_reader->get_length();
+                 ++offset) {
+                auto str = static_cast<const std::string*>(
+                        field_data->RawValue(offset));
+                auto size = field_data->is_valid(offset) ? str->size() : -1;
+                payload_writer->add_one_string_payload(str->c_str(), size);
+            }
+            break;
+        }
+        case DataType::ARRAY: {
+            for (size_t offset = 0; offset < field_data->get_num_rows();
+                 ++offset) {
+                auto array =
+                        static_cast<const Array*>(field_data->RawValue(offset));
+                auto array_string = array->output_data().SerializeAsString();
+                auto size =
+                        field_data->is_valid(offset) ? array_string.size() : -1;
 
+                payload_writer->add_one_binary_payload(
+                        reinterpret_cast<const uint8_t*>(array_string.c_str()),
+                        size);
+            }
+            break;
+        }
+        case DataType::JSON: {
+            for (size_t offset = 0; offset < field_data->get_num_rows();
+                 ++offset) {
+                auto string_view =
+                        static_cast<const Json*>(field_data->RawValue(offset))
+                                ->data();
+                auto size =
+                        field_data->is_valid(offset) ? string_view.size() : -1;
+                payload_writer->add_one_binary_payload(
+                        reinterpret_cast<const uint8_t*>(
+                                std::string(string_view).c_str()),
+                        size);
+            }
+            break;
+        }
+        case DataType::VECTOR_SPARSE_FLOAT: {
+            for (size_t offset = 0; offset < field_data->get_num_rows();
+                 ++offset) {
+                auto row =
+                        static_cast<const knowhere::sparse::SparseRow<float>*>(
+                                field_data->RawValue(offset));
+                payload_writer->add_one_binary_payload(
+                        static_cast<const uint8_t*>(row->data()),
+                        row->data_byte_size());
+            }
+            break;
+        }
+        default: {
+            auto payload =
+                    Payload{data_type,
+                            static_cast<const uint8_t*>(field_data->Data()),
+                            field_data->ValidData(),
+                            field_data->get_num_rows(),
+                            field_data->get_dim(),
+                            field_data->IsNullable()};
+            payload_writer->add_payload(payload);
+        }
+    }
 }
 
 std::vector<uint8_t>
 BaseEventData::Serialize() {
+    auto start_serialize_index = std::chrono::high_resolution_clock::now();
     auto data_type = field_data->get_data_type();
     std::shared_ptr<PayloadWriter> payload_writer;
     if (IsVectorDataType(data_type) &&
         !IsSparseFloatVectorDataType(data_type)) {
-        //hc--- this branch should be and not be executed
+        //hc--- this branch should be but not be executed
         payload_writer = std::make_unique<PayloadWriter>(
             data_type, field_data->get_dim(), field_data->IsNullable());
         LOG_INFO("hc===created payload_writer, data type:{}, dim:{}, num_rows:{}",
@@ -338,7 +403,8 @@ BaseEventData::Serialize() {
     memcpy(res.data() + offset, &end_timestamp, sizeof(end_timestamp));
     offset += sizeof(end_timestamp);
     memcpy(res.data() + offset, payload_buffer.data(), payload_buffer.size());
-
+    auto serialize_index_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_serialize_index).count();
+    LOG_INFO("hc===got serialized res_size:{}, serialize_index_duration:{} ms", res.size(), serialize_index_duration);
     return res;
 }
 
