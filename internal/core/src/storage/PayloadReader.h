@@ -53,14 +53,42 @@ class PayloadReader {
         return arrow_reader_;
     }
 
+    int
+    get_length() const {
+        return length_;
+    }
+
+    DataType
+    column_data_type() const {
+        return column_type_;
+    }
+
+    int
+    get_dim() const {
+        return dim_;
+    }
+
+    bool
+    nullable() const {
+        return nullable_;
+    }
+
+    const uint8_t*
+    data() const {
+        return data_;
+    }
+
  private:
     DataType column_type_;
     int dim_;
     bool nullable_;
     FieldDataPtr field_data_;
+    int length_;
 
     std::shared_ptr<parquet::arrow::FileReader> arrow_reader_;
     std::shared_ptr<arrow::RecordBatchReader> record_batch_reader_;
+
+    const uint8_t* data_;
 };
 
 }  // namespace milvus::storage

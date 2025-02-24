@@ -284,6 +284,9 @@ CreateArrowBuilder(DataType data_type) {
         case DataType::VECTOR_SPARSE_FLOAT: {
             return std::make_shared<arrow::BinaryBuilder>();
         }
+        case DataType::BINARY: {
+            return std::make_shared<arrow::BinaryBuilder>();
+        }
         default: {
             PanicInfo(
                 DataTypeInvalid, "unsupported numeric data type {}", data_type);
@@ -372,6 +375,9 @@ CreateArrowSchema(DataType data_type, bool nullable) {
             return arrow::schema(
                 {arrow::field("val", arrow::binary(), nullable)});
         }
+        case DataType::BINARY:
+            return arrow::schema(
+                    {arrow::field("val", arrow::binary(), nullable)});
         default: {
             PanicInfo(
                 DataTypeInvalid, "unsupported numeric data type {}", data_type);
@@ -612,34 +618,8 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
                           FieldDataMeta field_meta,
                           std::string object_key) {
     // index not use valid_data, so no need to set nullable==true
-    FieldDataPtr field_data = nullptr;
-    switch (index_meta.field_type) {
-        case DataType::VECTOR_FLOAT:
-            field_data = CreateFieldData(DataType::VECTOR_FLOAT, false);
-            LOG_INFO("hc===created index field data in vector float type, segment id:{}, object_key:{}, batch_size:{}",
-                     index_meta.segment_id, object_key, batch_size);
-            break;
-        case DataType::VECTOR_BINARY:
-            field_data = CreateFieldData(DataType::VECTOR_BINARY, false);
-            break;
-        case DataType::VECTOR_BFLOAT16:
-            field_data = CreateFieldData(DataType::VECTOR_BFLOAT16, false);
-            break;
-        case DataType::VECTOR_FLOAT16:
-            field_data = CreateFieldData(DataType::VECTOR_FLOAT16, false);
-            break;
-        case DataType::VECTOR_INT8:
-            field_data = CreateFieldData(DataType::VECTOR_INT8, false);
-            break;
-        case DataType::VECTOR_SPARSE_FLOAT:
-            field_data = CreateFieldData(DataType::VECTOR_SPARSE_FLOAT, false);
-            break;
-        default:
-            field_data = CreateFieldData(DataType::INT8, false);
-            break;
-    }
-    field_data->FillFieldData(buf, batch_size);
-    auto indexData = std::make_shared<IndexData>(field_data);
+    std::shared_ptr<PayloadReader> reader = std::make_shared<PayloadReader>(buf, batch_size, DataType::BINARY, false, false);
+    auto indexData = std::make_shared<IndexData>(reader);
     indexData->set_index_meta(index_meta);
     indexData->SetFieldDataMeta(field_meta);
     auto serialized_index_data = indexData->serialize_to_remote_file();
