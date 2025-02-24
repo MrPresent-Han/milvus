@@ -612,7 +612,7 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
                           FieldDataMeta field_meta,
                           std::string object_key) {
     // index not use valid_data, so no need to set nullable==true
-    FieldDataPtr field_data = nullptr;
+    /*FieldDataPtr field_data = nullptr;
     switch (index_meta.field_type) {
         case DataType::VECTOR_FLOAT:
             field_data = CreateFieldData(DataType::VECTOR_FLOAT, false);
@@ -639,7 +639,13 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
             break;
     }
     field_data->FillFieldData(buf, batch_size);
-    auto indexData = std::make_shared<IndexData>(field_data);
+    auto indexData = std::make_shared<IndexData>(field_data);*/
+    std::shared_ptr<PayloadReader> payload_data = std::make_shared<PayloadReader>(buf,
+                                                                                  batch_size,
+                                                                                  index_meta.field_type,
+                                                                                  false,
+                                                                                  false);
+    auto indexData = std::make_shared<IndexData>(payload_data);
     indexData->set_index_meta(index_meta);
     indexData->SetFieldDataMeta(field_meta);
     auto serialized_index_data = indexData->serialize_to_remote_file();

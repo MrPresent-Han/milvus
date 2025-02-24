@@ -31,6 +31,10 @@ class IndexData : public DataCodec {
         : DataCodec(data, CodecType::IndexDataType) {
     }
 
+    explicit IndexData(std::shared_ptr<PayloadReader> reader): DataCodec(reader, CodecType::IndexDataType) {
+
+    }
+
     std::vector<uint8_t>
     Serialize(StorageType medium) override;
 
