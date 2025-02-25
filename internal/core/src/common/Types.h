@@ -275,7 +275,7 @@ IsArrayDataType(DataType data_type) {
 
 inline bool
 IsBinaryDataType(DataType data_type) {
-    return IsJsonDataType(data_type) || IsArrayDataType(data_type);
+    return IsJsonDataType(data_type) || IsArrayDataType(data_type) || data_type == DataType::BINARY;
 }
 
 inline bool

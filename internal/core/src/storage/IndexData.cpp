@@ -48,7 +48,7 @@ IndexData::Serialize(StorageType medium) {
 
 std::vector<uint8_t>
 IndexData::serialize_to_remote_file() {
-    AssertInfo(payload_reader_ != nullptr, "cannot serialize index data into remote files for empty payload data");
+    AssertInfo(index_slice_.has_value(), "index slice should have value for index data");
     //1. set up descriptor_event
     DescriptorEvent descriptor_event;
     auto& des_event_data = descriptor_event.event_data;
@@ -61,7 +61,7 @@ IndexData::serialize_to_remote_file() {
     des_fix_part.end_timestamp = time_range_.second;
     des_fix_part.data_type = field_data_meta_->field_schema.data_type();
     des_event_data.extras[ORIGIN_SIZE_KEY] =
-            std::to_string(payload_reader_->get_length());
+            std::to_string(index_slice_->size_);
     des_event_data.extras[INDEX_BUILD_ID_KEY] =
             std::to_string(index_meta_->build_id);
     auto& des_event_header = descriptor_event.event_header;
@@ -74,7 +74,7 @@ IndexData::serialize_to_remote_file() {
     auto& index_event_data = index_event.event_data;
     index_event_data.start_timestamp = time_range_.first;
     index_event_data.end_timestamp = time_range_.second;
-    index_event_data.payload_reader = payload_reader_;
+    index_event_data.slice_ = index_slice_.value();
 
     auto& index_event_header = index_event.event_header;
     index_event_header.event_type_ = EventType::IndexFileEvent;

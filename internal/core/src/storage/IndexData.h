@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "storage/DataCodec.h"
+#include "storage/Types.h"
 
 namespace milvus::storage {
 
@@ -31,7 +32,7 @@ class IndexData : public DataCodec {
         : DataCodec(data, CodecType::IndexDataType) {
     }
 
-    explicit IndexData(std::shared_ptr<PayloadReader> reader): DataCodec(reader, CodecType::IndexDataType){
+    explicit IndexData(Slice index_slice): DataCodec(index_slice, CodecType::IndexDataType)  {
     }
 
     std::vector<uint8_t>

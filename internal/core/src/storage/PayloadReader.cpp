@@ -76,16 +76,24 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
     AssertInfo(st.ok(), "get record batch reader");
 
     if (is_field_data) {
-        field_data_ =
-            CreateFieldData(column_type_, nullable_, dim_, total_num_rows);
-        for (arrow::Result<std::shared_ptr<arrow::RecordBatch>> maybe_batch :
-             *rb_reader) {
-            AssertInfo(maybe_batch.ok(), "get batch record success");
-            auto array = maybe_batch.ValueOrDie()->column(column_index);
-            // to read
-            field_data_->FillFieldData(array);
+        if (column_type_ == milvus::DataType::BINARY) {
+            std::shared_ptr<arrow::RecordBatch> record_batch;
+            rb_reader->ReadNext(&record_batch);
+            auto binary_array =
+                    std::static_pointer_cast<arrow::BinaryArray>(record_batch->column(column_index));
+
+        } else {
+            field_data_ =
+                    CreateFieldData(column_type_, nullable_, dim_, total_num_rows);
+            for (arrow::Result<std::shared_ptr<arrow::RecordBatch>> maybe_batch :
+                    *rb_reader) {
+                AssertInfo(maybe_batch.ok(), "get batch record success");
+                auto array = maybe_batch.ValueOrDie()->column(column_index);
+                // to read
+                field_data_->FillFieldData(array);
+            }
+            AssertInfo(field_data_->IsFull(), "field data hasn't been filled done");
         }
-        AssertInfo(field_data_->IsFull(), "field data hasn't been filled done");
     } else {
         arrow_reader_ = std::move(arrow_reader);
         record_batch_reader_ = std::move(rb_reader);

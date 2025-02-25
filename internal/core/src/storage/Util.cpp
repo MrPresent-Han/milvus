@@ -618,8 +618,9 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
                           FieldDataMeta field_meta,
                           std::string object_key) {
     // index not use valid_data, so no need to set nullable==true
-    std::shared_ptr<PayloadReader> reader = std::make_shared<PayloadReader>(buf, batch_size, DataType::BINARY, false, false);
-    auto indexData = std::make_shared<IndexData>(reader);
+    // for index slice, no parquet encoding is needed, directly use binary type
+    Slice index_slice = {buf, batch_size, false};
+    auto indexData = std::make_shared<IndexData>(index_slice);
     indexData->set_index_meta(index_meta);
     indexData->SetFieldDataMeta(field_meta);
     auto serialized_index_data = indexData->serialize_to_remote_file();
@@ -653,6 +654,7 @@ EncodeAndUploadFieldSlice(ChunkManager* chunk_manager,
     return std::make_pair(std::move(object_key), serialized_inserted_data_size);
 }
 
+//hc---key function for loading
 std::vector<std::future<std::unique_ptr<DataCodec>>>
 GetObjectData(ChunkManager* remote_chunk_manager,
               const std::vector<std::string>& remote_files) {

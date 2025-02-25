@@ -26,7 +26,7 @@
 namespace milvus::storage {
 
 // deserialize remote insert and index file
-std::unique_ptr<DataCodec>
+std::unique_ptr<DataCodec>//hc---load key funciton
 DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
     DescriptorEvent descriptor_event(reader);
     auto data_type =

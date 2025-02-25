@@ -29,7 +29,7 @@ class InsertData : public DataCodec {
     explicit InsertData(FieldDataPtr data)
         : DataCodec(data, CodecType::InsertDataType) {
     }
-    //hc--can we use this constructor
+
     explicit InsertData(std::shared_ptr<PayloadReader> payload_reader)
         : DataCodec(payload_reader, CodecType::InsertDataType) {
     }

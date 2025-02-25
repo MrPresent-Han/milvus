@@ -41,6 +41,9 @@ class DataCodec {
         : codec_type_(type), payload_reader_(std::move(reader)) {
     }
 
+    explicit DataCodec(Slice index_slice, CodecType type): index_slice_(index_slice), codec_type_(type) {
+    }
+
     virtual ~DataCodec() = default;
 
     // Serialized data can be written directly to remote or local disk
@@ -97,6 +100,7 @@ class DataCodec {
     FieldDataPtr field_data_;
     std::shared_ptr<PayloadReader> payload_reader_;
     std::shared_ptr<uint8_t[]> data_;
+    std::optional<Slice> index_slice_;
 };
 
 // Deserialize the data stream of the file obtained from remote or local

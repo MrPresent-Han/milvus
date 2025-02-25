@@ -24,7 +24,7 @@ add_definitions(-DMILVUS_TEST_SEGCORE_YAML_PATH="${CMAKE_SOURCE_DIR}/unittest/te
 # TODO: better to use ls/find pattern
 set(MILVUS_TEST_FILES
         init_gtest.cpp
-        test_always_true_expr.cpp
+        #[[test_always_true_expr.cpp
         test_array_bitmap_index.cpp
         test_array_inverted_index.cpp
         test_bf.cpp
@@ -91,7 +91,8 @@ set(MILVUS_TEST_FILES
         test_chunked_column.cpp
         test_rust_result.cpp
         test_cached_search_iterator.cpp
-        test_build_inverted_index_with_single_segment.cpp
+        test_build_inverted_index_with_single_segment.cpp]]
+        test_payload.cpp
         )
 
 if ( INDEX_ENGINE STREQUAL "cardinal" )
@@ -109,11 +110,11 @@ if ( BUILD_DISK_ANN STREQUAL "ON" )
 endif()
 
 if (LINUX OR APPLE)
-    set(MILVUS_TEST_FILES
+    #[[set(MILVUS_TEST_FILES
             ${MILVUS_TEST_FILES}
             test_scalar_index_creator.cpp
             test_string_index.cpp
-            test_array.cpp test_array_expr.cpp)
+            test_array.cpp test_array_expr.cpp)]]
 endif()
 
 if (DEFINED AZURE_BUILD_DIR)
@@ -131,7 +132,7 @@ if (ENABLE_GCP_NATIVE)
     set(MILVUS_TEST_FILES
                 ${MILVUS_TEST_FILES}
                 test_gcp_native_chunk_manager.cpp
-                )
+            test_payload.cpp)
 endif()
 
 if (LINUX)

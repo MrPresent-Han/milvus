@@ -22,6 +22,7 @@
 
 #include "common/FieldData.h"
 #include "storage/PayloadStream.h"
+#include "storage/Types.h"
 
 namespace milvus::storage {
 
@@ -89,6 +90,8 @@ class PayloadReader {
     std::shared_ptr<arrow::RecordBatchReader> record_batch_reader_;
 
     const uint8_t* data_;
+
+    std::optional<Slice> slice_;
 };
 
 }  // namespace milvus::storage

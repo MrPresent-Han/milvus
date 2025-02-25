@@ -230,16 +230,12 @@ BaseEventData::BaseEventData(BinlogReaderPtr reader,
 
 std::vector<uint8_t>
 BaseEventData::Serialize() {
-    if (payload_reader!=nullptr) {
+    if (slice_.has_value()) {
         auto start_serialize_index = std::chrono::high_resolution_clock::now();
-        LOG_INFO("hc===serialized event using payload");
-        auto data_type = payload_reader->column_data_type();
         auto payload_writer = std::make_unique<PayloadWriter>(
-                data_type, false);
-        AssertInfo(data_type==DataType::BINARY, "Serialize with payload must be binary type");
-        payload_writer->add_one_binary_payload(static_cast<const uint8_t*>(payload_reader->data()), payload_reader->get_length());
+                milvus::DataType::BINARY, false);
+        payload_writer->add_one_binary_payload(slice_.value().data_, slice_.value().size_);
         payload_writer->finish();
-
         auto payload_buffer = payload_writer->get_payload_buffer();
         auto len =
                 sizeof(start_timestamp) + sizeof(end_timestamp) + payload_buffer.size();

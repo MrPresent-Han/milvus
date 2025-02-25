@@ -221,3 +221,15 @@ struct fmt::formatter<milvus::storage::StorageType> : formatter<string_view> {
         return formatter<string_view>::format("unknown", ctx);
     }
 };
+
+struct Slice {
+    uint8_t* data_;
+    int64_t size_;
+    bool own_{false};
+    ~Slice(){
+        if(own_ && data_) {
+            delete[] data_;
+            data_ = nullptr;
+        }
+    }
+};
