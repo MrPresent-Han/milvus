@@ -32,7 +32,8 @@ class IndexData : public DataCodec {
         : DataCodec(data, CodecType::IndexDataType) {
     }
 
-    explicit IndexData(Slice index_slice): DataCodec(index_slice, CodecType::IndexDataType)  {
+    explicit IndexData(Slice& index_slice): DataCodec(CodecType::IndexDataType)  {
+        index_slice_ = index_slice;
     }
 
     std::vector<uint8_t>
@@ -51,9 +52,23 @@ class IndexData : public DataCodec {
     std::vector<uint8_t>
     serialize_to_local_file();
 
+    const uint8_t*
+    IndexBin() {
+        AssertInfo(index_slice_.has_value(), "failed to get index slice from null value index_bin_");
+        auto index_slice = index_slice_.value();
+        return index_slice.Data();
+    }
+
+    int64_t
+    IndexBinSize(){
+        AssertInfo(index_slice_.has_value(), "failed to get index bin from null value index_bin_");
+        return index_slice_.value().Size();
+    }
+
  private:
     std::optional<FieldDataMeta> field_data_meta_;
     std::optional<IndexMeta> index_meta_;
+    std::optional<Slice> index_slice_;
 };
 
 }  // namespace milvus::storage

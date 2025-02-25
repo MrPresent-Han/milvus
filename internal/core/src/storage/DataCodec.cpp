@@ -81,8 +81,9 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
                     field_data->Size());
                 field_data = new_field_data;
             }
-
             auto index_data = std::make_unique<IndexData>(field_data);
+
+
             index_data->SetFieldDataMeta(data_meta);
             IndexMeta index_meta;
             index_meta.segment_id = data_meta.segment_id;

@@ -41,7 +41,7 @@ class DataCodec {
         : codec_type_(type), payload_reader_(std::move(reader)) {
     }
 
-    explicit DataCodec(Slice index_slice, CodecType type): index_slice_(index_slice), codec_type_(type) {
+    explicit DataCodec(CodecType type): codec_type_(type) {
     }
 
     virtual ~DataCodec() = default;
@@ -97,10 +97,10 @@ class DataCodec {
  protected:
     CodecType codec_type_;
     std::pair<Timestamp, Timestamp> time_range_;
+
     FieldDataPtr field_data_;
     std::shared_ptr<PayloadReader> payload_reader_;
-    std::shared_ptr<uint8_t[]> data_;
-    std::optional<Slice> index_slice_;
+    std::shared_ptr<uint8_t[]> data_;  // raw data in the parquet file
 };
 
 // Deserialize the data stream of the file obtained from remote or local

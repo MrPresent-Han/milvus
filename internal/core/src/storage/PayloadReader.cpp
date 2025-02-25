@@ -81,7 +81,7 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
             rb_reader->ReadNext(&record_batch);
             auto binary_array =
                     std::static_pointer_cast<arrow::BinaryArray>(record_batch->column(column_index));
-
+            binary_array.
         } else {
             field_data_ =
                     CreateFieldData(column_type_, nullable_, dim_, total_num_rows);

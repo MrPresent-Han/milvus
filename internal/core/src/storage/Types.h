@@ -223,13 +223,29 @@ struct fmt::formatter<milvus::storage::StorageType> : formatter<string_view> {
 };
 
 struct Slice {
-    uint8_t* data_;
-    int64_t size_;
-    bool own_{false};
-    ~Slice(){
-        if(own_ && data_) {
-            delete[] data_;
-            data_ = nullptr;
-        }
+public:
+    // Case 1: Non-owning constructor
+    explicit Slice(const uint8_t* data, int64_t length)
+            : data_non_owning_(data), size_(length) {
+        AssertInfo(data!= nullptr, "Data pointer for slice cannot be null.");
     }
+
+    // Case 2: Owning constructor
+    explicit Slice(std::shared_ptr<uint8_t[]> data, int64_t length)
+            : data_(data), size_(length) {
+        AssertInfo(data!= nullptr, "Data pointer for slice cannot be null.");
+    }
+
+    int64_t Size() const { return size_; }
+
+    const uint8_t* Data() const {
+        if (data_non_owning_) return data_non_owning_;
+        if (data_) return data_.get();
+        return nullptr;
+    }
+
+private:
+    std::shared_ptr<uint8_t[]> data_;  // Only used when owning the data
+    const uint8_t* data_non_owning_;   // Only used when not owning the data
+    int64_t size_;
 };

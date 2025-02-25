@@ -281,10 +281,14 @@ DiskFileManagerImpl::CacheIndexToDisk(
         auto appendIndexFiles = [&]() {
             auto index_chunks = GetObjectData(rcm_.get(), batch_remote_files);
             for (auto& chunk : index_chunks) {
-                auto index_data = chunk.get()->GetFieldData();
-                auto index_size = index_data->DataSize();
-                auto chunk_data = reinterpret_cast<uint8_t*>(
-                    const_cast<void*>(index_data->Data()));
+                std::unique_ptr<DataCodec> data_codec_chunk = chunk.get();
+                IndexData* index_chunk = dynamic_cast<IndexData*>(data_codec_chunk.get());
+                AssertInfo(index_chunk!=nullptr, "CacheIndex should get non-null index chunk");
+
+                // prepare data
+                auto index_size = index_chunk->IndexBinSize();
+                auto chunk_data = index_chunk->IndexBin();
+
                 auto start_deserialize_index = std::chrono::high_resolution_clock::now();
                 file.Write(chunk_data, index_size);
                 write_index_slice_size += index_size;
