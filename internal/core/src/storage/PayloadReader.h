@@ -83,7 +83,6 @@ class PayloadReader {
 
     std::shared_ptr<parquet::arrow::FileReader> arrow_reader_;
     std::shared_ptr<arrow::RecordBatchReader> record_batch_reader_;
-
     std::optional<Slice> slice_;
 };
 

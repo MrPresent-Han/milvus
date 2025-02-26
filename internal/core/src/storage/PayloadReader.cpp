@@ -30,7 +30,8 @@ PayloadReader::PayloadReader(const uint8_t* data,
                              DataType data_type,
                              bool nullable,
                              bool is_field_data)
-    : column_type_(data_type), nullable_(nullable), length_(length), data_(data) {
+    : column_type_(data_type), nullable_(nullable), length_(length){
+    LOG_INFO("hc===init PayloadReader, length:{}", length);
     auto input = std::make_shared<arrow::io::BufferReader>(data, length);
     init(input, is_field_data);
 }
@@ -38,6 +39,7 @@ PayloadReader::PayloadReader(const uint8_t* data,
 void
 PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
                     bool is_field_data) {
+    LOG_INFO("hc===start to init payloadReader");
     arrow::MemoryPool* pool = arrow::default_memory_pool();
 
     // Configure general Parquet reader settings
@@ -59,7 +61,7 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
     std::unique_ptr<parquet::arrow::FileReader> arrow_reader;
     st = reader_builder.Build(&arrow_reader);
     AssertInfo(st.ok(), "build file reader");
-
+    LOG_INFO("hc===set up arrow read");
     int64_t column_index = 0;
     auto file_meta = arrow_reader->parquet_reader()->metadata();
 
@@ -74,7 +76,6 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
     std::shared_ptr<::arrow::RecordBatchReader> rb_reader;
     st = arrow_reader->GetRecordBatchReader(&rb_reader);
     AssertInfo(st.ok(), "get record batch reader");
-
     if (is_field_data) {
         if (column_type_ == milvus::DataType::BINARY) {
             LOG_INFO("hc===init payloadreader in binary type");

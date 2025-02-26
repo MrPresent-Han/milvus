@@ -159,15 +159,15 @@ func (h *ServerHandler) GetQueryVChanPositions(channel RWChannel, partitionIDs .
 		}
 		validSegmentInfos[s.GetID()] = s
 
-		if s.GetIsInvisible() && s.GetCreatedByCompaction() {
+		/*if s.GetIsInvisible() && s.GetCreatedByCompaction() {
 			// skip invisible compaction segments
 			continue
-		}
+		}*/
 
 		switch {
 		case s.GetState() == commonpb.SegmentState_Dropped:
 			droppedIDs.Insert(s.GetID())
-		case !isFlushState(s.GetState()) || s.GetIsInvisible():
+		case !isFlushState(s.GetState()):
 			growingIDs.Insert(s.GetID())
 		case s.GetLevel() == datapb.SegmentLevel_L0:
 			levelZeroIDs.Insert(s.GetID())

@@ -18,6 +18,7 @@
 #include "common/EasyAssert.h"
 #include "common/Consts.h"
 #include "storage/Event.h"
+#include "log/Log.h"
 
 namespace milvus::storage {
 
@@ -60,6 +61,12 @@ IndexData::serialize_to_remote_file() {
     des_fix_part.start_timestamp = time_range_.first;
     des_fix_part.end_timestamp = time_range_.second;
     des_fix_part.data_type = field_data_meta_->field_schema.data_type();
+    for (auto i = int8_t(EventType::DescriptorEvent);
+         i < int8_t(EventType::EventTypeEnd);
+         i++) {
+        des_event_data.post_header_lengths.push_back(
+                GetEventFixPartSize(EventType(i)));
+    }
     des_event_data.extras[ORIGIN_SIZE_KEY] =
             std::to_string(index_slice_.value().Size());
     des_event_data.extras[INDEX_BUILD_ID_KEY] =
@@ -67,6 +74,7 @@ IndexData::serialize_to_remote_file() {
     auto& des_event_header = descriptor_event.event_header;
     des_event_header.timestamp_ = 0;
     auto des_event_bytes = descriptor_event.Serialize();
+    auto des_size = des_event_bytes.size();
 
     //2. set up index event
     IndexEvent index_event;
@@ -83,6 +91,7 @@ IndexData::serialize_to_remote_file() {
     des_event_bytes.insert(des_event_bytes.end(),
                            index_event_bytes.begin(),
                            index_event_bytes.end());
+    LOG_INFO("hc, index_data_des_size:{}, index_data_size:{}", des_size, index_event_bytes.size());
     return des_event_bytes;
 }
 

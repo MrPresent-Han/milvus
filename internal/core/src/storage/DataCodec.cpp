@@ -68,6 +68,7 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
                 IndexEventData(reader, event_data_length, data_type, nullable);
             auto index_slice = index_event_data.slice_;
             AssertInfo(index_slice.has_value(), "index_slice should have value for index data");
+            LOG_INFO("hc===got index_slice, slice_size:{}", index_slice.value().Size());
             auto index_data = std::make_unique<IndexData>(index_slice.value());
             index_data->SetFieldDataMeta(data_meta);
             IndexMeta index_meta;

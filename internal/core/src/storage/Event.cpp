@@ -146,6 +146,12 @@ DescriptorEventDataFixPart::Serialize() {
 
 DescriptorEventData::DescriptorEventData(BinlogReaderPtr reader) {
     fix_part = DescriptorEventDataFixPart(reader);
+    LOG_INFO("hc===fix_part.colId:{}, seg_id:{}, fid:{}, st_ts{}, datatype_:{}",
+             fix_part.collection_id,
+             fix_part.segment_id,
+             fix_part.field_id,
+             fix_part.start_timestamp,
+             fix_part.data_type);
     for (auto i = static_cast<int8_t>(EventType::DescriptorEvent);
          i < static_cast<int8_t>(EventType::EventTypeEnd);
          i++) {
@@ -153,15 +159,18 @@ DescriptorEventData::DescriptorEventData(BinlogReaderPtr reader) {
     }
     auto ast =
         reader->Read(post_header_lengths.size(), post_header_lengths.data());
+
+    LOG_INFO("hc===before read extra_length, tell:{}", reader->Tell());
     assert(ast.ok());
     ast = reader->Read(sizeof(extra_length), &extra_length);
     assert(ast.ok());
     extra_bytes = std::vector<uint8_t>(extra_length);
     ast = reader->Read(extra_length, extra_bytes.data());
     assert(ast.ok());
-
+    LOG_INFO("hc===before parse extrabytes, extra_length:{}", extra_length);
     nlohmann::json json =
         nlohmann::json::parse(extra_bytes.begin(), extra_bytes.end());
+    LOG_INFO("hc===after parse extrabytes");
     if (json.contains(ORIGIN_SIZE_KEY)) {
         extras[ORIGIN_SIZE_KEY] =
             static_cast<std::string>(json[ORIGIN_SIZE_KEY]);
@@ -178,6 +187,7 @@ DescriptorEventData::DescriptorEventData(BinlogReaderPtr reader) {
 std::vector<uint8_t>
 DescriptorEventData::Serialize() {
     auto fix_part_data = fix_part.Serialize();
+
     nlohmann::json extras_json;
     for (auto v : extras) {
         if (v.first == NULLABLE) {
@@ -190,8 +200,12 @@ DescriptorEventData::Serialize() {
     extra_length = extras_string.size();
     extra_bytes =
         std::vector<uint8_t>(extras_string.begin(), extras_string.end());
+
+    LOG_INFO("hc===extras_string:{}, extra_length:{}， post_header_lengths.size()：{}, fix_part_data.size:{}",
+             extras_string, extra_length, post_header_lengths.size(), fix_part_data.size());
     auto len = fix_part_data.size() + post_header_lengths.size() +
                sizeof(extra_length) + extra_length;
+
     std::vector<uint8_t> res(len);
     int offset = 0;
     memcpy(res.data() + offset, fix_part_data.data(), fix_part_data.size());
@@ -220,6 +234,7 @@ BaseEventData::BaseEventData(BinlogReaderPtr reader,
     int payload_length =
         event_length - sizeof(start_timestamp) - sizeof(end_timestamp);
     auto res = reader->Read(payload_length);
+    LOG_INFO("hc===init event data, payload_length:{}, start_timestamp:{}, end_timestamp:{}", payload_length, start_timestamp, end_timestamp);
     AssertInfo(res.first.ok(), "read payload failed");
     payload_reader = std::make_shared<PayloadReader>(
         res.second.get(), payload_length, data_type, nullable, is_field_data);
@@ -404,7 +419,7 @@ DescriptorEvent::Serialize() {
     memcpy(res.data() + offset, data.data(), data_size);
     offset += data_size;
     event_header.next_position_ = offset;
-
+    LOG_INFO("hc===DescriptorEvent, header_size:{}, data_size:{}, MAGIC_NUM_size:{}", header_size, data_size, sizeof(MAGIC_NUM));
     return res;
 }
 

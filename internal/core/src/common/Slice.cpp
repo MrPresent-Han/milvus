@@ -112,6 +112,7 @@ AppendSliceMeta(BinarySet& binarySet, const Config& meta_info) {
     memcpy(meta_data.get(), meta_str.data(), meta_len);
     meta_data[meta_len] = 0;
     binarySet.Append(INDEX_FILE_SLICE_META, meta_data, meta_len + 1);
+    LOG_INFO("hc===append slice_meta:{}, size:{}", INDEX_FILE_SLICE_META, meta_len + 1);
 }
 
 BinaryPtr

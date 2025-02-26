@@ -112,7 +112,7 @@ VectorMemIndex<T>::Serialize(const Config& config) {
                   "failed to serialize index: {}",
                   KnowhereStatusString(stat));
     Disassemble(ret);
-
+    //hc---slice the index and keep slice_meta
     return ret;
 }
 
@@ -536,33 +536,37 @@ void VectorMemIndex<T>::LoadFromFile(const Config& config) {
             0, slice_meta_filepath.find_last_of('/') + 1);
         std::vector<std::string> batch{};
         batch.reserve(parallel_degree);
-
-        auto result = file_manager_->LoadIndexToMemory({slice_meta_filepath});
-        auto raw_slice_meta = result[INDEX_FILE_SLICE_META];
+        LOG_INFO("hc===LoadIndexDataToMemory:{}", slice_meta_filepath);
+        auto result = file_manager_->LoadIndexDataToMemory({slice_meta_filepath});
+        auto raw_slice_meta = result.find(INDEX_FILE_SLICE_META);
+        AssertInfo(raw_slice_meta!=result.end(), "Failed to get slice_meta data");
+        LOG_INFO("hc===start to parse slice_meta, slice_meta:{}", slice_meta_filepath);
         Config meta_data = Config::parse(
-            std::string(static_cast<const char*>(raw_slice_meta->Data()),
-                        raw_slice_meta->Size()));
-
+            std::string(reinterpret_cast<const char*>(raw_slice_meta->second.Data()),
+                        raw_slice_meta->second.Size()));
+        LOG_INFO("hc===finish parsing slice_meta, slice_meta:{}", slice_meta_filepath);
         for (auto& item : meta_data[META]) {
             std::string prefix = item[NAME];
             int slice_num = item[SLICE_NUM];
             auto total_len = static_cast<size_t>(item[TOTAL_LEN]);
             auto HandleBatch = [&](int index) {
                 auto start_load2_mem = std::chrono::system_clock::now();
-                auto batch_data = file_manager_->LoadIndexToMemory(batch);
+                auto batch_data = file_manager_->LoadIndexDataToMemory(batch);
                 load_duration_sum +=
                     (std::chrono::system_clock::now() - start_load2_mem);
                 for (int j = index - batch.size() + 1; j <= index; j++) {
                     std::string file_name = GenSlicedFileName(prefix, j);
-                    AssertInfo(batch_data.find(file_name) != batch_data.end(),
+                    auto iter = batch_data.find(file_name);
+                    AssertInfo(iter != batch_data.end(),
                                "lost index slice data");
-                    auto data = batch_data[file_name];
+                    auto index_slice = iter->second;
                     auto start_write_file = std::chrono::system_clock::now();
-                    auto written = file.Write(data->Data(), data->Size());
+                    auto written = file.Write(index_slice.Data(), index_slice.Size());
                     write_disk_duration_sum +=
                         (std::chrono::system_clock::now() - start_write_file);
+                    LOG_INFO("hc====written index_slice_file:{}, size:{}", file_name, index_slice.Size());
                     AssertInfo(
-                        written == data->Size(),
+                        written == index_slice.Size(),
                         fmt::format("failed to write index data to disk {}: {}",
                                     filepath->data(),
                                     strerror(errno)));

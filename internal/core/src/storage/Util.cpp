@@ -589,8 +589,10 @@ DownloadAndDecodeRemoteFile(ChunkManager* chunk_manager,
     auto fileSize = chunk_manager->Size(file);
     auto after_file_size = std::chrono::high_resolution_clock::now();
     auto buf = std::shared_ptr<uint8_t[]>(new uint8_t[fileSize]);
+    LOG_INFO("hc===start to read, file:{}, fileSize:{}", file, fileSize);
     chunk_manager->Read(file, buf.get(), fileSize);
     auto after_download = std::chrono::high_resolution_clock::now();
+    LOG_INFO("hc===start to DeserializeFileData, file:{}, fileSize:{}", file, fileSize);
     auto res = DeserializeFileData(buf, fileSize, is_field_data);
     auto after_deserialize = std::chrono::high_resolution_clock::now();
     {
@@ -598,7 +600,7 @@ DownloadAndDecodeRemoteFile(ChunkManager* chunk_manager,
         auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_download - after_file_size).count();
         auto deserialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - after_download).count();
         auto whole_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - start_download).count();
-        LOG_INFO("hc===download index file, file:{}, file_size:{}, whole_duration:{}, file_size_duration:{} ms, read_duration:{} ms, deserialize_duration:{} ms",
+        LOG_INFO("hc===download file, file:{}, file_size:{}, whole_duration:{}, file_size_duration:{} ms, read_duration:{} ms, deserialize_duration:{} ms",
                  file,
                  fileSize,
                  whole_duration,
@@ -625,6 +627,7 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
     indexData->SetFieldDataMeta(field_meta);
     auto serialized_index_data = indexData->serialize_to_remote_file();
     auto serialized_index_size = serialized_index_data.size();
+    LOG_INFO("hc==encoded file:{}, serialized_index_size:{}", object_key, serialized_index_size);
     chunk_manager->Write(
         object_key, serialized_index_data.data(), serialized_index_size);
     return std::make_pair(std::move(object_key), serialized_index_size);
@@ -664,7 +667,6 @@ GetObjectData(ChunkManager* remote_chunk_manager,
     for (auto& file : remote_files) {
         futures.emplace_back(pool.Submit(
             DownloadAndDecodeRemoteFile, remote_chunk_manager, file, true));
-        LOG_INFO("hc===submitting remote file:{}, high priority pool stats:{}", file, pool.Stats());
     }
     return futures;
 }
