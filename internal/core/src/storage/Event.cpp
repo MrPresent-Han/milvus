@@ -234,7 +234,7 @@ BaseEventData::Serialize() {
         auto start_serialize_index = std::chrono::high_resolution_clock::now();
         auto payload_writer = std::make_unique<PayloadWriter>(
                 milvus::DataType::BINARY, false);
-        payload_writer->add_one_binary_payload(slice_.value().data_, slice_.value().size_);
+        payload_writer->add_one_binary_payload(slice_.value().Data(), slice_.value().Size());
         payload_writer->finish();
         auto payload_buffer = payload_writer->get_payload_buffer();
         auto len =

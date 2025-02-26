@@ -619,7 +619,7 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
                           std::string object_key) {
     // index not use valid_data, so no need to set nullable==true
     // for index slice, no parquet encoding is needed, directly use binary type
-    Slice index_slice = {buf, batch_size, false};
+    Slice index_slice(buf, batch_size);
     auto indexData = std::make_shared<IndexData>(index_slice);
     indexData->set_index_meta(index_meta);
     indexData->SetFieldDataMeta(field_meta);

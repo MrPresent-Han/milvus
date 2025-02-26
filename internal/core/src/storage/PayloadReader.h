@@ -74,11 +74,6 @@ class PayloadReader {
         return nullable_;
     }
 
-    const uint8_t*
-    data() const {
-        return data_;
-    }
-
  private:
     DataType column_type_;
     int dim_;
@@ -88,8 +83,6 @@ class PayloadReader {
 
     std::shared_ptr<parquet::arrow::FileReader> arrow_reader_;
     std::shared_ptr<arrow::RecordBatchReader> record_batch_reader_;
-
-    const uint8_t* data_;
 
     std::optional<Slice> slice_;
 };

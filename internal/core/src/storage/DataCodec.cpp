@@ -66,24 +66,9 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
                 header.event_length_ - GetEventHeaderSize(header);
             auto index_event_data =
                 IndexEventData(reader, event_data_length, data_type, nullable);
-            auto field_data = index_event_data.field_data;
-            // for compatible with golang indexcode.Serialize, which set dataType to String
-            if (data_type == DataType::STRING) {
-                AssertInfo(field_data->get_data_type() == DataType::STRING,
-                           "wrong index type in index binlog file");
-                AssertInfo(
-                    field_data->get_num_rows() == 1,
-                    "wrong length of string num in old index binlog file");
-                auto new_field_data = CreateFieldData(DataType::INT8, nullable);
-                new_field_data->FillFieldData(
-                    (*static_cast<const std::string*>(field_data->RawValue(0)))
-                        .c_str(),
-                    field_data->Size());
-                field_data = new_field_data;
-            }
-            auto index_data = std::make_unique<IndexData>(field_data);
-
-
+            auto index_slice = index_event_data.slice_;
+            AssertInfo(index_slice.has_value(), "index_slice should have value for index data");
+            auto index_data = std::make_unique<IndexData>(index_slice.value());
             index_data->SetFieldDataMeta(data_meta);
             IndexMeta index_meta;
             index_meta.segment_id = data_meta.segment_id;

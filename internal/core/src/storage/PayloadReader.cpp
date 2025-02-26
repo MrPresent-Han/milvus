@@ -77,11 +77,17 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
 
     if (is_field_data) {
         if (column_type_ == milvus::DataType::BINARY) {
+            LOG_INFO("hc===init payloadreader in binary type");
             std::shared_ptr<arrow::RecordBatch> record_batch;
             rb_reader->ReadNext(&record_batch);
-            auto binary_array =
-                    std::static_pointer_cast<arrow::BinaryArray>(record_batch->column(column_index));
-            binary_array.
+            std::shared_ptr<arrow::Array> array = record_batch->column(column_index);
+            AssertInfo(array->type_id()==arrow::Type::BINARY, "inconsistent array type for reading slice");
+            auto binary_array = std::dynamic_pointer_cast<arrow::BinaryArray>(array);
+            int array_length = 0;
+            const uint8_t* array_data = binary_array->GetValue(0, &array_length);
+            AssertInfo(array_data!=nullptr && array_length>0, "Invalid binary from payload");
+            std::shared_ptr<uint8_t[]> copied_data = std::shared_ptr<uint8_t[]>(new uint8_t[array_length]);
+            slice_ = Slice(copied_data, array_length);
         } else {
             field_data_ =
                     CreateFieldData(column_type_, nullable_, dim_, total_num_rows);

@@ -61,7 +61,7 @@ IndexData::serialize_to_remote_file() {
     des_fix_part.end_timestamp = time_range_.second;
     des_fix_part.data_type = field_data_meta_->field_schema.data_type();
     des_event_data.extras[ORIGIN_SIZE_KEY] =
-            std::to_string(index_slice_->size_);
+            std::to_string(index_slice_.value().Size());
     des_event_data.extras[INDEX_BUILD_ID_KEY] =
             std::to_string(index_meta_->build_id);
     auto& des_event_header = descriptor_event.event_header;

@@ -288,11 +288,11 @@ DiskFileManagerImpl::CacheIndexToDisk(
                 // prepare data
                 auto index_size = index_chunk->IndexBinSize();
                 auto chunk_data = index_chunk->IndexBin();
-
-                auto start_deserialize_index = std::chrono::high_resolution_clock::now();
+                LOG_INFO("hc===got index chunk, chunk_size:{}", index_size);
+                auto start_write_index = std::chrono::high_resolution_clock::now();
                 file.Write(chunk_data, index_size);
                 write_index_slice_size += index_size;
-                write_index_slice_file_duration += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_deserialize_index).count();
+                write_index_slice_file_duration += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_write_index).count();
             }
             batch_remote_files.clear();
         };
