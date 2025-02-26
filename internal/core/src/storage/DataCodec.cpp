@@ -47,7 +47,7 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
                 header.event_length_ - GetEventHeaderSize(header);
             auto insert_event_data = InsertEventData(
                 reader, event_data_length, data_type, nullable, is_field_data);
-
+            LOG_INFO("hc===finish init insert data, is_field_data:{}", is_field_data);
             std::unique_ptr<InsertData> insert_data;
             if (is_field_data) {
                 insert_data =
@@ -59,6 +59,7 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
             insert_data->SetFieldDataMeta(data_meta);
             insert_data->SetTimestamps(insert_event_data.start_timestamp,
                                        insert_event_data.end_timestamp);
+            LOG_INFO("hc===finish deserialize insert data");
             return insert_data;
         }
         case EventType::IndexFileEvent: {
@@ -70,6 +71,7 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
             AssertInfo(index_slice.has_value(), "index_slice should have value for index data");
             LOG_INFO("hc===got index_slice, slice_size:{}", index_slice.value().Size());
             auto index_data = std::make_unique<IndexData>(index_slice.value());
+            LOG_INFO("hc===got index_slice, slice_size:{}, non-null:{}", index_data->IndexBinSize(), index_data->IndexBin()!= nullptr);
             index_data->SetFieldDataMeta(data_meta);
             IndexMeta index_meta;
             index_meta.segment_id = data_meta.segment_id;

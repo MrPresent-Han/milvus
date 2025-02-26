@@ -540,7 +540,8 @@ void VectorMemIndex<T>::LoadFromFile(const Config& config) {
         auto result = file_manager_->LoadIndexDataToMemory({slice_meta_filepath});
         auto raw_slice_meta = result.find(INDEX_FILE_SLICE_META);
         AssertInfo(raw_slice_meta!=result.end(), "Failed to get slice_meta data");
-        LOG_INFO("hc===start to parse slice_meta, slice_meta:{}", slice_meta_filepath);
+        LOG_INFO("hc===start to parse slice_meta, slice_meta:{}, slice_data:{}, slice_size:{}", slice_meta_filepath,
+                 raw_slice_meta->second.Data()!= nullptr, raw_slice_meta->second.Size());
         Config meta_data = Config::parse(
             std::string(reinterpret_cast<const char*>(raw_slice_meta->second.Data()),
                         raw_slice_meta->second.Size()));

@@ -97,7 +97,11 @@ MemFileManagerImpl::LoadIndexDataToMemory(const std::vector<std::string> &remote
                 remote_files[idx].substr(remote_files[idx].find_last_of('/') + 1);
         std::unique_ptr<DataCodec> index_codec = index_datas[idx].get();
         IndexData* index_data = dynamic_cast<IndexData*>(index_codec.get());
-        file_to_index_slice.emplace(file_name, Slice(index_data->IndexBin(), index_data->IndexBinSize()));
+        AssertInfo(index_data->IndexSlice().has_value(), "Non-avaliable index slice");
+        file_to_index_slice.emplace(file_name, index_data->IndexSlice().value());
+        LOG_INFO("hc===put file_to_index_slice:{}, non-null:{}, size:{}", file_name, index_data->IndexBin()!=nullptr, index_data->IndexBinSize());
+        auto iter = file_to_index_slice.find(file_name);
+        LOG_INFO("hc===put file_to_index_slice:{}, non-null:{}, size:{}", file_name, iter->second.Data()!=nullptr, iter->second.Size());
     }
     return file_to_index_slice;
 }

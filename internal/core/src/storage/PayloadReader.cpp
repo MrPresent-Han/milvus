@@ -84,12 +84,19 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
             std::shared_ptr<arrow::Array> array = record_batch->column(column_index);
             AssertInfo(array->type_id()==arrow::Type::BINARY, "inconsistent array type for reading slice");
             auto binary_array = std::dynamic_pointer_cast<arrow::BinaryArray>(array);
-            int array_length = 0;
-            const uint8_t* array_data = binary_array->GetValue(0, &array_length);
-            AssertInfo(array_data!=nullptr && array_length>0, "Invalid binary from payload");
+
+            // get the first array
+            auto array_length = 0;
+            const uint8_t* first_binary_slice = binary_array->GetValue(0, &array_length);
+            AssertInfo(first_binary_slice!=nullptr && array_length>0, "Invalid binary from payload");
+
             std::shared_ptr<uint8_t[]> copied_data = std::shared_ptr<uint8_t[]>(new uint8_t[array_length]);
+            std::memcpy(copied_data.get(), first_binary_slice, array_length);
             slice_ = Slice(copied_data, array_length);
+            LOG_INFO("hc===set up init payloadreader in binary type, slice_pointer:{}, slice_size:{}, array_length:{}",
+                     slice_.value().Data()!=nullptr, slice_.value().Size(), array_length);
         } else {
+            LOG_INFO("hc===init payloadreader in non-binary type with fieldData");
             field_data_ =
                     CreateFieldData(column_type_, nullable_, dim_, total_num_rows);
             for (arrow::Result<std::shared_ptr<arrow::RecordBatch>> maybe_batch :
@@ -100,6 +107,7 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
                 field_data_->FillFieldData(array);
             }
             AssertInfo(field_data_->IsFull(), "field data hasn't been filled done");
+            LOG_INFO("hc===finish init payloadreader in non-binary type with fieldData");
         }
     } else {
         arrow_reader_ = std::move(arrow_reader);

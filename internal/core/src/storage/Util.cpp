@@ -600,7 +600,8 @@ DownloadAndDecodeRemoteFile(ChunkManager* chunk_manager,
         auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_download - after_file_size).count();
         auto deserialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - after_download).count();
         auto whole_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - start_download).count();
-        LOG_INFO("hc===download file, file:{}, file_size:{}, whole_duration:{}, file_size_duration:{} ms, read_duration:{} ms, deserialize_duration:{} ms",
+        LOG_INFO("hc===download file, file:{}, file_size:{}, whole_duration:{}, "
+                 "file_size_duration:{} ms, read_duration:{} ms, deserialize_duration:{} ms,",
                  file,
                  fileSize,
                  whole_duration,

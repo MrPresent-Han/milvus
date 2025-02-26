@@ -44,6 +44,11 @@ class PayloadReader {
         return field_data_;
     }
 
+    std::optional<Slice>
+    get_slice() const {
+        return slice_;
+    }
+
     std::shared_ptr<arrow::RecordBatchReader>
     get_reader() {
         return record_batch_reader_;

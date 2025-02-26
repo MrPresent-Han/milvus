@@ -118,7 +118,7 @@ DescriptorEventDataFixPart::DescriptorEventDataFixPart(BinlogReaderPtr reader) {
     ast = reader->Read(sizeof(data_type), &data_type);
     assert(ast.ok());
 }
-
+//hc--fixPart
 std::vector<uint8_t>
 DescriptorEventDataFixPart::Serialize() {
     auto fix_part_size = sizeof(collection_id) + sizeof(partition_id) +
@@ -238,8 +238,10 @@ BaseEventData::BaseEventData(BinlogReaderPtr reader,
     AssertInfo(res.first.ok(), "read payload failed");
     payload_reader = std::make_shared<PayloadReader>(
         res.second.get(), payload_length, data_type, nullable, is_field_data);
+    LOG_INFO("hc===finish init payload, payload_length:{}, start_timestamp:{}, end_timestamp:{}", payload_length, start_timestamp, end_timestamp);
     if (is_field_data) {
         field_data = payload_reader->get_field_data();
+        slice_ = payload_reader->get_slice();
     }
 }
 

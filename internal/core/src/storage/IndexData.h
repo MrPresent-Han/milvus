@@ -65,6 +65,11 @@ class IndexData : public DataCodec {
         return index_slice_.value().Size();
     }
 
+    std::optional<Slice>
+    IndexSlice() const {
+        return index_slice_;
+    }
+
  private:
     std::optional<FieldDataMeta> field_data_meta_;
     std::optional<IndexMeta> index_meta_;

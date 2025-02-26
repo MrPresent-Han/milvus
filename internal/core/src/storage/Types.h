@@ -239,8 +239,8 @@ public:
     int64_t Size() const { return size_; }
 
     const uint8_t* Data() const {
-        if (data_non_owning_) return data_non_owning_;
         if (data_) return data_.get();
+        if (data_non_owning_) return data_non_owning_;
         return nullptr;
     }
 
