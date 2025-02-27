@@ -76,6 +76,7 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
     AssertInfo(st.ok(), "get record batch reader");
 
     if (is_field_data) {
+        auto start_init_field_data = std::chrono::high_resolution_clock::now();
         field_data_ =
             CreateFieldData(column_type_, nullable_, dim_, total_num_rows);
         for (arrow::Result<std::shared_ptr<arrow::RecordBatch>> maybe_batch :
@@ -85,6 +86,9 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
             // to read
             field_data_->FillFieldData(array);
         }
+        auto init_fd_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_init_field_data).count();
+        LOG_INFO("hc===set up fieldata payloadreader, init_fd_duration:{}, fd_data_size:{}",
+                 init_fd_duration, field_data_->Size());
         AssertInfo(field_data_->IsFull(), "field data hasn't been filled done");
     } else {
         arrow_reader_ = std::move(arrow_reader);

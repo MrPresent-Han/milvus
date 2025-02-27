@@ -580,11 +580,29 @@ std::unique_ptr<DataCodec>
 DownloadAndDecodeRemoteFile(ChunkManager* chunk_manager,
                             const std::string& file,
                             bool is_field_data) {
+    auto start_download = std::chrono::high_resolution_clock::now();
     auto fileSize = chunk_manager->Size(file);
+    auto after_file_size = std::chrono::high_resolution_clock::now();
     auto buf = std::shared_ptr<uint8_t[]>(new uint8_t[fileSize]);
+    LOG_INFO("hc===start to read, file:{}, fileSize:{}", file, fileSize);
     chunk_manager->Read(file, buf.get(), fileSize);
-
+    auto after_download = std::chrono::high_resolution_clock::now();
     auto res = DeserializeFileData(buf, fileSize, is_field_data);
+    auto after_deserialize = std::chrono::high_resolution_clock::now();
+    {
+        auto file_size_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_file_size - start_download).count();
+        auto read_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_download - after_file_size).count();
+        auto deserialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - after_download).count();
+        auto whole_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - start_download).count();
+        LOG_INFO("hc===download file, file:{}, file_size:{}, whole_duration:{}, "
+                 "file_size_duration:{} ms, read_duration:{} ms, deserialize_duration:{} ms,",
+                 file,
+                 fileSize,
+                 whole_duration,
+                 file_size_duration,
+                 read_duration,
+                 deserialize_duration);
+    }
     res->SetData(buf);
     return res;
 }
@@ -602,10 +620,17 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
     auto indexData = std::make_shared<IndexData>(field_data);
     indexData->set_index_meta(index_meta);
     indexData->SetFieldDataMeta(field_meta);
+    auto start_serialize = std::chrono::high_resolution_clock::now();
     auto serialized_index_data = indexData->serialize_to_remote_file();
     auto serialized_index_size = serialized_index_data.size();
+    auto after_serialize = std::chrono::high_resolution_clock::now();
+
     chunk_manager->Write(
         object_key, serialized_index_data.data(), serialized_index_size);
+    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - after_serialize).count();
+    auto serialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_serialize - start_serialize).count();
+    LOG_INFO("hc==encoded file:{}, serialized_index_size:{}, serialize_duration:{}, write_duration:{}",
+             object_key, serialized_index_size, serialize_duration, write_duration);
     return std::make_pair(std::move(object_key), serialized_index_size);
 }
 
