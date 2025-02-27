@@ -79,6 +79,7 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
     if (is_field_data) {
         if (column_type_ == milvus::DataType::BINARY) {
             LOG_INFO("hc===init payloadreader in binary type");
+            auto start_init_binary = std::chrono::high_resolution_clock::now();
             std::shared_ptr<arrow::RecordBatch> record_batch;
             rb_reader->ReadNext(&record_batch);
             std::shared_ptr<arrow::Array> array = record_batch->column(column_index);
@@ -93,8 +94,9 @@ PayloadReader::init(std::shared_ptr<arrow::io::BufferReader> input,
             std::shared_ptr<uint8_t[]> copied_data = std::shared_ptr<uint8_t[]>(new uint8_t[array_length]);
             std::memcpy(copied_data.get(), first_binary_slice, array_length);
             slice_ = Slice(copied_data, array_length);
-            LOG_INFO("hc===set up init payloadreader in binary type, slice_pointer:{}, slice_size:{}, array_length:{}",
-                     slice_.value().Data()!=nullptr, slice_.value().Size(), array_length);
+            auto init_binary_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_init_binary).count();
+            LOG_INFO("hc===set up binary payloadreader, init_binary_duration:{}, slice_size:{}, array_length:{}",
+                     init_binary_duration, slice_.value().Size(), array_length);
         } else {
             LOG_INFO("hc===init payloadreader in non-binary type with fieldData");
             field_data_ =

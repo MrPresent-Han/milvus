@@ -626,11 +626,18 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
     auto indexData = std::make_shared<IndexData>(index_slice);
     indexData->set_index_meta(index_meta);
     indexData->SetFieldDataMeta(field_meta);
+
+    auto start_serialize = std::chrono::high_resolution_clock::now();
     auto serialized_index_data = indexData->serialize_to_remote_file();
     auto serialized_index_size = serialized_index_data.size();
-    LOG_INFO("hc==encoded file:{}, serialized_index_size:{}", object_key, serialized_index_size);
+    auto after_serialize = std::chrono::high_resolution_clock::now();
+
     chunk_manager->Write(
         object_key, serialized_index_data.data(), serialized_index_size);
+    auto write_duration = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - after_serialize).count();
+    auto serialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_serialize - start_serialize).count();
+    LOG_INFO("hc==encoded file:{}, serialized_index_size:{}, serialize_duration:{}, write_duration:{}",
+             object_key, serialized_index_size, serialize_duration, write_duration);
     return std::make_pair(std::move(object_key), serialized_index_size);
 }
 
