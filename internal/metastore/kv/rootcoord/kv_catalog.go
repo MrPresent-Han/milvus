@@ -129,9 +129,9 @@ func (kc *Catalog) CreateDatabase(ctx context.Context, db *model.Database, ts ty
 	return kc.Snapshot.Save(ctx, key, string(v), ts)
 }
 
-func (kc *Catalog) AlterDatabase(ctx context.Context, newColl *model.Database, ts typeutil.Timestamp) error {
-	key := BuildDatabaseKey(newColl.ID)
-	dbInfo := model.MarshalDatabaseModel(newColl)
+func (kc *Catalog) AlterDatabase(ctx context.Context, newDB *model.Database, ts typeutil.Timestamp) error {
+	key := BuildDatabaseKey(newDB.ID)
+	dbInfo := model.MarshalDatabaseModel(newDB)
 	v, err := proto.Marshal(dbInfo)
 	if err != nil {
 		return err
