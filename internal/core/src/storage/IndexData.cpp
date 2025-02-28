@@ -49,50 +49,110 @@ IndexData::Serialize(StorageType medium) {
 
 std::vector<uint8_t>
 IndexData::serialize_to_remote_file() {
-    AssertInfo(index_slice_.has_value(), "index slice should have value for index data");
-    //1. set up descriptor_event
-    DescriptorEvent descriptor_event;
-    auto& des_event_data = descriptor_event.event_data;
-    auto& des_fix_part = des_event_data.fix_part;
-    des_fix_part.collection_id = field_data_meta_->collection_id;
-    des_fix_part.partition_id = field_data_meta_->partition_id;
-    des_fix_part.segment_id = field_data_meta_->segment_id;
-    des_fix_part.field_id = field_data_meta_->field_id;
-    des_fix_part.start_timestamp = time_range_.first;
-    des_fix_part.end_timestamp = time_range_.second;
-    des_fix_part.data_type = milvus::proto::schema::DataType::Binary;
-    for (auto i = int8_t(EventType::DescriptorEvent);
-         i < int8_t(EventType::EventTypeEnd);
-         i++) {
-        des_event_data.post_header_lengths.push_back(
-                GetEventFixPartSize(EventType(i)));
+    if (index_slice_.has_value()) {
+        AssertInfo(index_slice_.has_value(), "index slice should have value for index data");
+        //1. set up descriptor_event
+        DescriptorEvent descriptor_event;
+        auto& des_event_data = descriptor_event.event_data;
+        auto& des_fix_part = des_event_data.fix_part;
+        des_fix_part.collection_id = field_data_meta_->collection_id;
+        des_fix_part.partition_id = field_data_meta_->partition_id;
+        des_fix_part.segment_id = field_data_meta_->segment_id;
+        des_fix_part.field_id = field_data_meta_->field_id;
+        des_fix_part.start_timestamp = time_range_.first;
+        des_fix_part.end_timestamp = time_range_.second;
+        des_fix_part.data_type = milvus::proto::schema::DataType::Binary;
+        for (auto i = int8_t(EventType::DescriptorEvent);
+             i < int8_t(EventType::EventTypeEnd);
+             i++) {
+            des_event_data.post_header_lengths.push_back(
+                    GetEventFixPartSize(EventType(i)));
+        }
+        des_event_data.extras[ORIGIN_SIZE_KEY] =
+                std::to_string(index_slice_.value().Size());
+        des_event_data.extras[INDEX_BUILD_ID_KEY] =
+                std::to_string(index_meta_->build_id);
+        auto& des_event_header = descriptor_event.event_header;
+        des_event_header.timestamp_ = 0;
+        auto des_event_bytes = descriptor_event.Serialize();
+        auto des_size = des_event_bytes.size();
+
+        //2. set up index event
+        IndexEvent index_event;
+        index_event.event_offset = des_event_bytes.size();
+        auto& index_event_data = index_event.event_data;
+        index_event_data.start_timestamp = time_range_.first;
+        index_event_data.end_timestamp = time_range_.second;
+        index_event_data.slice_ = index_slice_.value();
+
+        auto& index_event_header = index_event.event_header;
+        index_event_header.event_type_ = EventType::IndexFileEvent;
+        index_event_header.timestamp_ = 0;
+        auto index_event_bytes = index_event.Serialize();
+        des_event_bytes.insert(des_event_bytes.end(),
+                               index_event_bytes.begin(),
+                               index_event_bytes.end());
+        LOG_INFO("hc, index_data_des_size:{}, index_data_size:{}", des_size, index_event_bytes.size());
+        return des_event_bytes;
+    } else {
+        AssertInfo(field_data_meta_.has_value(), "field data not exist");
+        AssertInfo(index_meta_.has_value(), "index meta not exist");
+        AssertInfo(field_data_ != nullptr, "empty field data");
+
+        DataType data_type = field_data_->get_data_type();
+
+        // create descriptor event
+        DescriptorEvent descriptor_event;
+        auto& des_event_data = descriptor_event.event_data;
+        auto& des_fix_part = des_event_data.fix_part;
+        des_fix_part.collection_id = field_data_meta_->collection_id;
+        des_fix_part.partition_id = field_data_meta_->partition_id;
+        des_fix_part.segment_id = field_data_meta_->segment_id;
+        des_fix_part.field_id = field_data_meta_->field_id;
+        des_fix_part.start_timestamp = time_range_.first;
+        des_fix_part.end_timestamp = time_range_.second;
+        des_fix_part.data_type = milvus::proto::schema::DataType(data_type);
+        for (auto i = int8_t(EventType::DescriptorEvent);
+             i < int8_t(EventType::EventTypeEnd);
+             i++) {
+            des_event_data.post_header_lengths.push_back(
+                    GetEventFixPartSize(EventType(i)));
+        }
+        des_event_data.extras[ORIGIN_SIZE_KEY] =
+                std::to_string(field_data_->Size());
+        des_event_data.extras[INDEX_BUILD_ID_KEY] =
+                std::to_string(index_meta_->build_id);
+
+        auto& des_event_header = descriptor_event.event_header;
+        // TODO :: set timestamp
+        des_event_header.timestamp_ = 0;
+
+        // serialize descriptor event data
+        auto des_event_bytes = descriptor_event.Serialize();
+
+        // create index event
+        IndexEvent index_event;
+        index_event.event_offset = des_event_bytes.size();
+        auto& index_event_data = index_event.event_data;
+        index_event_data.start_timestamp = time_range_.first;
+        index_event_data.end_timestamp = time_range_.second;
+        index_event_data.field_data = field_data_;
+
+        auto& index_event_header = index_event.event_header;
+        index_event_header.event_type_ = EventType::IndexFileEvent;
+        // TODO :: set timestamps
+        index_event_header.timestamp_ = 0;
+
+        // serialize insert event
+        auto index_event_bytes = index_event.Serialize();
+
+        des_event_bytes.insert(des_event_bytes.end(),
+                               index_event_bytes.begin(),
+                               index_event_bytes.end());
+
+        return des_event_bytes;
     }
-    des_event_data.extras[ORIGIN_SIZE_KEY] =
-            std::to_string(index_slice_.value().Size());
-    des_event_data.extras[INDEX_BUILD_ID_KEY] =
-            std::to_string(index_meta_->build_id);
-    auto& des_event_header = descriptor_event.event_header;
-    des_event_header.timestamp_ = 0;
-    auto des_event_bytes = descriptor_event.Serialize();
-    auto des_size = des_event_bytes.size();
 
-    //2. set up index event
-    IndexEvent index_event;
-    index_event.event_offset = des_event_bytes.size();
-    auto& index_event_data = index_event.event_data;
-    index_event_data.start_timestamp = time_range_.first;
-    index_event_data.end_timestamp = time_range_.second;
-    index_event_data.slice_ = index_slice_.value();
-
-    auto& index_event_header = index_event.event_header;
-    index_event_header.event_type_ = EventType::IndexFileEvent;
-    index_event_header.timestamp_ = 0;
-    auto index_event_bytes = index_event.Serialize();
-    des_event_bytes.insert(des_event_bytes.end(),
-                           index_event_bytes.begin(),
-                           index_event_bytes.end());
-    LOG_INFO("hc, index_data_des_size:{}, index_data_size:{}", des_size, index_event_bytes.size());
-    return des_event_bytes;
 }
 
 // Just for test
