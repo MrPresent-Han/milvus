@@ -28,6 +28,8 @@
 #include "storage/PayloadReader.h"
 #include "storage/PayloadWriter.h"
 #include "log/Log.h"
+#include <iostream>
+#include <fstream>
 
 namespace milvus::storage {
 
@@ -236,37 +238,49 @@ BaseEventData::BaseEventData(BinlogReaderPtr reader,
     auto res = reader->Read(payload_length);
     LOG_INFO("hc===init event data, payload_length:{}, start_timestamp:{}, end_timestamp:{}", payload_length, start_timestamp, end_timestamp);
     AssertInfo(res.first.ok(), "read payload failed");
-    payload_reader = std::make_shared<PayloadReader>(
+    if (data_type==milvus::DataType::BINARY) {
+       auto slice_data = std::shared_ptr<uint8_t[]>(new uint8_t[payload_length]);
+       std::memcpy(slice_data.get(), res.second.get(), payload_length);
+       slice_ = Slice(slice_data, payload_length);
+    } else {
+        payload_reader = std::make_shared<PayloadReader>(
         res.second.get(), payload_length, data_type, nullable, is_field_data);
-    LOG_INFO("hc===finish init payload, payload_length:{}, start_timestamp:{}, end_timestamp:{}", payload_length, start_timestamp, end_timestamp);
-    if (is_field_data) {
-        field_data = payload_reader->get_field_data();
-        slice_ = payload_reader->get_slice();
-    }
+        LOG_INFO("hc===finish init payload, payload_length:{}, start_timestamp:{}, end_timestamp:{}", payload_length, start_timestamp, end_timestamp);
+        if (is_field_data) {
+            field_data = payload_reader->get_field_data();
+            slice_ = payload_reader->get_slice();
+        }
+    } 
 }
 
 std::vector<uint8_t>
 BaseEventData::Serialize() {
     if (slice_.has_value()) {
-        auto start_serialize_index = std::chrono::high_resolution_clock::now();
-        auto payload_writer = std::make_unique<PayloadWriter>(
-                milvus::DataType::BINARY, false);
-        payload_writer->add_one_binary_payload(slice_.value().Data(), slice_.value().Size());
-        payload_writer->finish();
-        auto payload_buffer = payload_writer->get_payload_buffer();
+        // auto start_serialize_index = std::chrono::high_resolution_clock::now();
+        // auto payload_writer = std::make_unique<PayloadWriter>(
+        //        milvus::DataType::BINARY, false);
+        // payload_writer->add_one_binary_payload(slice_.value().Data(), slice_.value().Size());
+        // payload_writer->finish();
+        // auto payload_buffer = payload_writer->get_payload_buffer();
+        //{
+        //    std::cout << "hc==payload_buffer_size:" << payload_buffer.size() << std::endl;
+        //    std::ofstream pq_file("/tmp/test-load/pq_binary.out", std::ios::binary);
+        //    pq_file.write(reinterpret_cast<const char*>(payload_buffer.data()), payload_buffer.size());
+        //    pq_file.close();
+        //    std::cout << "hc==has written binary pq file size:" << payload_buffer.size() << std::endl;
+        //}
+        auto payload_size = slice_.value().Size();
+        auto payload_data = slice_.value().Data();
         auto len =
-                sizeof(start_timestamp) + sizeof(end_timestamp) + payload_buffer.size();
+                sizeof(start_timestamp) + sizeof(end_timestamp) + payload_size;
         std::vector<uint8_t> res(len);
         int offset = 0;
         memcpy(res.data() + offset, &start_timestamp, sizeof(start_timestamp));
         offset += sizeof(start_timestamp);
         memcpy(res.data() + offset, &end_timestamp, sizeof(end_timestamp));
         offset += sizeof(end_timestamp);
-        memcpy(res.data() + offset, payload_buffer.data(), payload_buffer.size());
-        auto serialize_index_duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::high_resolution_clock::now() - start_serialize_index).count();
-        LOG_INFO("hc===got serialized res_size:{}, serialize_index_duration:{} ms", res.size(),
-                 serialize_index_duration);
+        memcpy(res.data() + offset, payload_data, payload_size);
+        LOG_INFO("hc===got serialized index_data:{}", res.size());
         return res;
     } else {
         auto start_serialize_index = std::chrono::high_resolution_clock::now();
@@ -337,6 +351,7 @@ BaseEventData::Serialize() {
                 break;
             }
             default: {
+                std::cout << "hc==field_data num rows: " << field_data->get_num_rows() << std::endl;
                 auto payload =
                         Payload{data_type,
                                 static_cast<const uint8_t *>(field_data->Data()),
@@ -350,6 +365,14 @@ BaseEventData::Serialize() {
 
         payload_writer->finish();
         auto payload_buffer = payload_writer->get_payload_buffer();
+        // {
+        //     std::cout << "hc==payload_buffer_size:" << payload_buffer.size() << std::endl;
+        //     std::ofstream pq_file("/tmp/test-load/pq.out", std::ios::binary);
+        //     pq_file.write(reinterpret_cast<const char*>(payload_buffer.data()), payload_buffer.size());
+        //     pq_file.close();
+        //     std::cout << "hc==has written pq file size:" << payload_buffer.size() << std::endl;
+        // }
+
         auto len =
                 sizeof(start_timestamp) + sizeof(end_timestamp) + payload_buffer.size();
         std::vector<uint8_t> res(len);

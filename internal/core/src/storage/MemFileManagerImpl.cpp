@@ -100,8 +100,6 @@ MemFileManagerImpl::LoadIndexDataToMemory(const std::vector<std::string> &remote
         AssertInfo(index_data->IndexSlice().has_value(), "Non-avaliable index slice");
         file_to_index_slice.emplace(file_name, index_data->IndexSlice().value());
         LOG_INFO("hc===put file_to_index_slice:{}, non-null:{}, size:{}", file_name, index_data->IndexBin()!=nullptr, index_data->IndexBinSize());
-        auto iter = file_to_index_slice.find(file_name);
-        LOG_INFO("hc===put file_to_index_slice:{}, non-null:{}, size:{}", file_name, iter->second.Data()!=nullptr, iter->second.Size());
     }
     return file_to_index_slice;
 }

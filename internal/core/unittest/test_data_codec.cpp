@@ -708,6 +708,62 @@ TEST(storage, IndexDataBinary) {
     }
 }
 
+TEST(storage, IndexDataBinaryDeserialize) {
+    const char* size_env = std::getenv("TEST_SIZE");
+    int size = size_env ? std::stoi(size_env) : 1024 * 1024 * 100;
+    const char* random_env = std::getenv("RANDOM");
+    int use_random = random_env ? std::stoi(random_env) : 1;
+    const char* round_env = std::getenv("ROUND");
+    int round = round_env ? std::stoi(round_env) : 100;
+
+    std::cout << "test_size:" << size << ", use_random:" << use_random << ", round:" << round <<std::endl;
+    uint64_t seed = 42;
+    std::default_random_engine random(seed);
+    std::vector<uint8_t> data;
+    data.reserve(size);
+    for(auto i = 0; i < size; i++) {
+        if (use_random==1) {
+            data.emplace_back(random()%256);
+        } else {
+            data.emplace_back(i%256);
+        }
+    }
+    // index slice encoding and decoding
+    {
+        Slice slice(data.data(), size);
+        storage::IndexData index_data(slice);
+        storage::FieldDataMeta field_data_meta{100, 101, 102, 103};
+        index_data.SetFieldDataMeta(field_data_meta);
+        index_data.SetTimestamps(0, 100);
+        storage::IndexMeta index_meta{102, 103, 104, 1};
+        index_data.set_index_meta(index_meta);
+        auto deserialize_duration = 0;
+        auto start_serialize = std::chrono::high_resolution_clock::now();
+        auto serialized_bytes = index_data.Serialize(storage::StorageType::Remote);
+        auto after_serialize = std::chrono::high_resolution_clock::now();
+        auto serialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_serialize - start_serialize).count();
+        auto serialized_size = serialized_bytes.size();
+        for (auto i = 0; i < round; i++) {
+            auto start_deserialize = std::chrono::high_resolution_clock::now();
+            std::shared_ptr<uint8_t[]> serialized_data_ptr(serialized_bytes.data(),
+                                                           [&](uint8_t *) {});
+            // deserialize
+            auto new_index_data_codec = storage::DeserializeFileData(serialized_data_ptr,
+                                                                     serialized_bytes.size());
+            auto after_deserialize = std::chrono::high_resolution_clock::now();
+            ASSERT_EQ(new_index_data_codec->GetCodecType(), storage::IndexDataType);
+            ASSERT_EQ(new_index_data_codec->GetTimeRage(),
+                      std::make_pair(Timestamp(0), Timestamp(100)));
+            storage::IndexData* new_index_data = dynamic_cast<storage::IndexData*>(new_index_data_codec.get());
+            ASSERT_TRUE(new_index_data != nullptr);
+            ASSERT_TRUE(new_index_data->IndexSlice().has_value());
+            deserialize_duration += std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - start_deserialize).count();
+        }
+        std::cout << "binary_serialize_duration:" << serialize_duration << ", serialized_size:" << serialized_size
+                  << ", deserialize_duration:" << deserialize_duration << std::endl;
+    }
+}
+
 TEST(storage, IndexDataInt8) {
     const char* size_env = std::getenv("TEST_SIZE");
     int size = size_env ? std::stoi(size_env) : 1024 * 1024 * 100;
@@ -731,8 +787,6 @@ TEST(storage, IndexDataInt8) {
     {
         auto field_data =
                 milvus::storage::CreateFieldData(storage::DataType::INT8, false);
-        field_data->FillFieldData(data.data(), data.size());
-        milvus::storage::CreateFieldData(storage::DataType::INT8, false);
         field_data->FillFieldData(data.data(), data.size());
         storage::IndexData index_data(field_data);
         storage::FieldDataMeta field_data_meta{100, 101, 102, 103};
@@ -762,6 +816,61 @@ TEST(storage, IndexDataInt8) {
         }
         std::cout << "int8_serialize_duration:" << serialize_duration << ", serialized_size:" << serialized_size
             << ", deserialize_duration:" << deserialize_duration << std::endl;
+    }
+}
+
+TEST(storage, IndexDataInt8Deserailize) {
+    const char* size_env = std::getenv("TEST_SIZE");
+    int size = size_env ? std::stoi(size_env) : 1024 * 1024 * 100;
+    const char* random_env = std::getenv("RANDOM");
+    int use_random = random_env ? std::stoi(random_env) : 1;
+    const char* round_env = std::getenv("ROUND");
+    int round = round_env ? std::stoi(round_env) : 100;
+
+    std::cout << "test_size:" << size << ", use_random:" << use_random << ", round:" << round <<std::endl;
+    uint64_t seed = 42;
+    std::default_random_engine random(seed);
+    std::vector<uint8_t> data;
+    data.reserve(size);
+    for(auto i = 0; i < size; i++) {
+        if (use_random==1) {
+            data.emplace_back(random()%256);
+        } else {
+            data.emplace_back(i%256);
+        }
+    }
+    {
+        auto field_data = milvus::storage::CreateFieldData(storage::DataType::INT8, false);
+        field_data->FillFieldData(data.data(), data.size());
+        storage::IndexData index_data(field_data);
+        storage::FieldDataMeta field_data_meta{100, 101, 102, 103};
+        index_data.SetFieldDataMeta(field_data_meta);
+        index_data.SetTimestamps(0, 100);
+        storage::IndexMeta index_meta{102, 103, 104, 1};
+        index_data.set_index_meta(index_meta);
+
+        auto deserialize_duration = 0;
+        auto start_serialize = std::chrono::high_resolution_clock::now();
+        auto serialized_bytes = index_data.Serialize(storage::StorageType::Remote);
+        auto after_serialize = std::chrono::high_resolution_clock::now();
+        auto serialize_duration = std::chrono::duration_cast<std::chrono::milliseconds>(after_serialize - start_serialize).count();
+        auto serialized_size = serialized_bytes.size();
+
+        for (auto i = 0; i < round; i++) {
+            auto start_deserialize = std::chrono::high_resolution_clock::now();
+            std::shared_ptr<uint8_t[]> serialized_data_ptr(serialized_bytes.data(),
+                                                           [&](uint8_t*) {});
+            // deserialize
+            auto new_index_data_codec = storage::DeserializeFileData(serialized_data_ptr,
+                                                                     serialized_bytes.size());
+            auto after_deserialize = std::chrono::high_resolution_clock::now();
+            ASSERT_EQ(new_index_data_codec->GetCodecType(), storage::IndexDataType);
+            ASSERT_EQ(new_index_data_codec->GetTimeRage(),
+                      std::make_pair(Timestamp(0), Timestamp(100)));
+            deserialize_duration += std::chrono::duration_cast<std::chrono::milliseconds>(after_deserialize - start_deserialize).count();
+        }
+        std::cout << "int8_serialize_duration:" << serialize_duration << ", serialized_size:" << serialized_size
+                  << ", deserialize_duration:" << deserialize_duration << std::endl;
     }
 }
 
