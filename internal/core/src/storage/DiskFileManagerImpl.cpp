@@ -269,8 +269,8 @@ DiskFileManagerImpl::CacheIndexToDisk(
             GetLocalIndexObjectPrefix() +
             prefix.substr(prefix.find_last_of('/') + 1);
         local_chunk_manager->CreateFile(local_index_file_name);
-        auto file =
-            File::Open(local_index_file_name, O_CREAT | O_RDWR | O_TRUNC);
+        /*auto file =
+            File::Open(local_index_file_name, O_CREAT | O_RDWR | O_TRUNC);*/
 
         // Get the remote files
         std::vector<std::string> batch_remote_files;
@@ -284,13 +284,12 @@ DiskFileManagerImpl::CacheIndexToDisk(
                 std::unique_ptr<DataCodec> data_codec_chunk = chunk.get();
                 IndexData* index_chunk = dynamic_cast<IndexData*>(data_codec_chunk.get());
                 AssertInfo(index_chunk!=nullptr, "CacheIndex should get non-null index chunk");
-
                 // prepare data
                 auto index_size = index_chunk->IndexBinSize();
                 auto chunk_data = index_chunk->IndexBin();
                 LOG_INFO("hc===got index chunk, chunk_size:{}", index_size);
                 auto start_write_index = std::chrono::high_resolution_clock::now();
-                file.Write(chunk_data, index_size);
+                //file.Write(chunk_data, index_size);
                 write_index_slice_size += index_size;
                 write_index_slice_file_duration += std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_write_index).count();
             }
