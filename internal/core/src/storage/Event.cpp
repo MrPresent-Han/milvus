@@ -75,15 +75,15 @@ GetEventFixPartSize(EventType event_type) {
                       fmt::format("unsupported event type {}", event_type));
     }
 }
-
+//hc--cancel 
 EventHeader::EventHeader(BinlogReaderPtr reader) {
-    auto ast = reader->Read(sizeof(timestamp_), &timestamp_);
+    auto ast = reader->ReadSingleValue<uint64_t>(timestamp_);
     assert(ast.ok());
-    ast = reader->Read(sizeof(event_type_), &event_type_);
+    ast = reader->ReadSingleValue<EventType>(event_type_);
     assert(ast.ok());
-    ast = reader->Read(sizeof(event_length_), &event_length_);
+    ast = reader->ReadSingleValue<int32_t>(event_length_);
     assert(ast.ok());
-    ast = reader->Read(sizeof(next_position_), &next_position_);
+    ast = reader->ReadSingleValue<int32_t>(next_position_);
     assert(ast.ok());
 }
 
@@ -105,19 +105,19 @@ EventHeader::Serialize() {
 }
 
 DescriptorEventDataFixPart::DescriptorEventDataFixPart(BinlogReaderPtr reader) {
-    auto ast = reader->Read(sizeof(collection_id), &collection_id);
+    auto ast = reader->ReadSingleValue<int64_t>(collection_id);
     assert(ast.ok());
-    ast = reader->Read(sizeof(partition_id), &partition_id);
+    ast = reader->ReadSingleValue<int64_t>(partition_id);
     assert(ast.ok());
-    ast = reader->Read(sizeof(segment_id), &segment_id);
+    ast = reader->ReadSingleValue<int64_t>(segment_id);
     assert(ast.ok());
-    ast = reader->Read(sizeof(field_id), &field_id);
+    ast = reader->ReadSingleValue<int64_t>(field_id);
     assert(ast.ok());
-    ast = reader->Read(sizeof(start_timestamp), &start_timestamp);
+    ast = reader->ReadSingleValue<Timestamp>(start_timestamp);
     assert(ast.ok());
-    ast = reader->Read(sizeof(end_timestamp), &end_timestamp);
+    ast = reader->ReadSingleValue<Timestamp>(end_timestamp);
     assert(ast.ok());
-    ast = reader->Read(sizeof(data_type), &data_type);
+    ast = reader->ReadSingleValue<milvus::proto::schema::DataType>(data_type);
     assert(ast.ok());
 }
 //hc--fixPart
@@ -161,18 +161,14 @@ DescriptorEventData::DescriptorEventData(BinlogReaderPtr reader) {
     }
     auto ast =
         reader->Read(post_header_lengths.size(), post_header_lengths.data());
-
-    LOG_INFO("hc===before read extra_length, tell:{}", reader->Tell());
     assert(ast.ok());
     ast = reader->Read(sizeof(extra_length), &extra_length);
     assert(ast.ok());
     extra_bytes = std::vector<uint8_t>(extra_length);
     ast = reader->Read(extra_length, extra_bytes.data());
     assert(ast.ok());
-    LOG_INFO("hc===before parse extrabytes, extra_length:{}", extra_length);
     nlohmann::json json =
         nlohmann::json::parse(extra_bytes.begin(), extra_bytes.end());
-    LOG_INFO("hc===after parse extrabytes");
     if (json.contains(ORIGIN_SIZE_KEY)) {
         extras[ORIGIN_SIZE_KEY] =
             static_cast<std::string>(json[ORIGIN_SIZE_KEY]);
@@ -228,24 +224,21 @@ BaseEventData::BaseEventData(BinlogReaderPtr reader,
                              DataType data_type,
                              bool nullable,
                              bool is_field_data) {
-    auto ast = reader->Read(sizeof(start_timestamp), &start_timestamp);
+    auto ast = reader->ReadSingleValue<Timestamp>(start_timestamp);
     AssertInfo(ast.ok(), "read start timestamp failed");
-    ast = reader->Read(sizeof(end_timestamp), &end_timestamp);
+    ast = reader->ReadSingleValue<Timestamp>(end_timestamp);
     AssertInfo(ast.ok(), "read end timestamp failed");
 
     int payload_length =
         event_length - sizeof(start_timestamp) - sizeof(end_timestamp);
     auto res = reader->Read(payload_length);
-    LOG_INFO("hc===init event data, payload_length:{}, start_timestamp:{}, end_timestamp:{}", payload_length, start_timestamp, end_timestamp);
     AssertInfo(res.first.ok(), "read payload failed");
+
     if (data_type==milvus::DataType::BINARY) {
-       auto slice_data = std::shared_ptr<uint8_t[]>(new uint8_t[payload_length]);
-       std::memcpy(slice_data.get(), res.second.get(), payload_length);
-       slice_ = Slice(slice_data, payload_length);
+       slice_ = Slice(res.second.get(), payload_length);
     } else {
         payload_reader = std::make_shared<PayloadReader>(
         res.second.get(), payload_length, data_type, nullable, is_field_data);
-        LOG_INFO("hc===finish init payload, payload_length:{}, start_timestamp:{}, end_timestamp:{}", payload_length, start_timestamp, end_timestamp);
         if (is_field_data) {
             field_data = payload_reader->get_field_data();
             slice_ = payload_reader->get_slice();

@@ -88,18 +88,18 @@ MemFileManagerImpl::LoadFile(const std::string& filename) noexcept {
     return true;
 }
 
-std::map<std::string, Slice>
+std::map<std::string, std::unique_ptr<DataCodec>>
 MemFileManagerImpl::LoadIndexDataToMemory(const std::vector<std::string> &remote_files) {
-    std::map<std::string, Slice> file_to_index_slice;
+    std::map<std::string, std::unique_ptr<DataCodec>> file_to_index_slice;
     auto index_datas = GetObjectData(rcm_.get(), remote_files);
     for (size_t idx = 0; idx < remote_files.size(); ++idx) {
         auto file_name =
                 remote_files[idx].substr(remote_files[idx].find_last_of('/') + 1);
         std::unique_ptr<DataCodec> index_codec = index_datas[idx].get();
-        IndexData* index_data = dynamic_cast<IndexData*>(index_codec.get());
-        AssertInfo(index_data->IndexSlice().has_value(), "Non-avaliable index slice");
-        file_to_index_slice.emplace(file_name, index_data->IndexSlice().value());
-        LOG_INFO("hc===put file_to_index_slice:{}, non-null:{}, size:{}", file_name, index_data->IndexBin()!=nullptr, index_data->IndexBinSize());
+        /*IndexData* index_data = dynamic_cast<IndexData*>(index_codec.get());
+        AssertInfo(index_data->IndexSlice().has_value(), "Non-avaliable index slice");*/
+        //LOG_INFO("hc===put file_to_index_slice:{}, non-null:{}, size:{}", file_name, index_data->IndexBin()!=nullptr, index_data->IndexBinSize());
+        file_to_index_slice.emplace(file_name, std::move(index_codec));
     }
     return file_to_index_slice;
 }

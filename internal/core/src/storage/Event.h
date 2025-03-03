@@ -35,6 +35,8 @@ struct EventHeader {
     EventType event_type_;
     int32_t event_length_;
     int32_t next_position_;
+    static constexpr int header_size = sizeof(EventType) + sizeof(milvus::Timestamp) +
+           sizeof(int32_t) + sizeof(int32_t);
 
     EventHeader() = default;
     explicit EventHeader(BinlogReaderPtr reader);

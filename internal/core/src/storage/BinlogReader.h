@@ -41,6 +41,18 @@ class BinlogReader {
         return tell_;
     }
 
+    template <typename T>
+    SegcoreError
+    ReadSingleValue(T& val){
+        auto needed_size = sizeof(T);
+        if (needed_size > size_ - tell_) {
+            return SegcoreError(milvus::UnexpectedError, "out range of binlog data");
+        }
+        val = *reinterpret_cast<T*>(data_.get() + tell_);
+        tell_ += needed_size;
+        return SegcoreError(milvus::Success, "");
+    }
+
  private:
     std::shared_ptr<uint8_t[]> data_;
     int64_t size_;

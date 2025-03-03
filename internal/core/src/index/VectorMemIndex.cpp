@@ -540,12 +540,16 @@ void VectorMemIndex<T>::LoadFromFile(const Config& config) {
         auto result = file_manager_->LoadIndexDataToMemory({slice_meta_filepath});
         auto raw_slice_meta = result.find(INDEX_FILE_SLICE_META);
         AssertInfo(raw_slice_meta!=result.end(), "Failed to get slice_meta data");
+        auto index_data = dynamic_cast<storage::IndexData*>(raw_slice_meta->second.get());
+        AssertInfo(index_data->IndexSlice().has_value(), "Failed to get slice_meta data");
+        auto slice_meta_slice = index_data->IndexSlice().value();
         LOG_INFO("hc===start to parse slice_meta, slice_meta:{}, slice_data:{}, slice_size:{}", slice_meta_filepath,
-                 raw_slice_meta->second.Data()!= nullptr, raw_slice_meta->second.Size());
+                 slice_meta_slice.Data()!= nullptr, slice_meta_slice.Size());
         Config meta_data = Config::parse(
-            std::string(reinterpret_cast<const char*>(raw_slice_meta->second.Data()),
-                        raw_slice_meta->second.Size()));
+            std::string(reinterpret_cast<const char*>(slice_meta_slice.Data()), slice_meta_slice.Size()));
         LOG_INFO("hc===finish parsing slice_meta, slice_meta:{}", slice_meta_filepath);
+
+
         for (auto& item : meta_data[META]) {
             std::string prefix = item[NAME];
             int slice_num = item[SLICE_NUM];
@@ -560,14 +564,16 @@ void VectorMemIndex<T>::LoadFromFile(const Config& config) {
                     auto iter = batch_data.find(file_name);
                     AssertInfo(iter != batch_data.end(),
                                "lost index slice data");
-                    auto index_slice = iter->second;
+                    auto index_data_codec = std::move(iter->second);
+                    auto index_data_slice = dynamic_cast<storage::IndexData*>(index_data_codec.get());
+                    AssertInfo(index_data_slice->IndexSlice().has_value(), "Failed to get index slice data");
                     auto start_write_file = std::chrono::system_clock::now();
-                    auto written = file.Write(index_slice.Data(), index_slice.Size());
+                    auto written = file.Write(index_data_slice->IndexSlice().value().Data(), index_data_slice->IndexSlice().value().Size());
                     write_disk_duration_sum +=
                         (std::chrono::system_clock::now() - start_write_file);
-                    LOG_INFO("hc====written index_slice_file:{}, size:{}", file_name, index_slice.Size());
+                    LOG_INFO("hc====written index_slice_file:{}, size:{}", file_name, index_data_slice->IndexBinSize());
                     AssertInfo(
-                        written == index_slice.Size(),
+                        written == index_data_slice->IndexSlice().value().Size(),
                         fmt::format("failed to write index data to disk {}: {}",
                                     filepath->data(),
                                     strerror(errno)));

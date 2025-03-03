@@ -64,16 +64,14 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
         }
         case EventType::IndexFileEvent: {
             auto event_data_length =
-                header.event_length_ - GetEventHeaderSize(header);
+                header.event_length_ - EventHeader::header_size;
             auto index_event_data =
                 IndexEventData(reader, event_data_length, data_type, nullable);
 
             if (index_event_data.slice_.has_value()) {
                 auto index_slice = index_event_data.slice_;
                 AssertInfo(index_slice.has_value(), "index_slice should have value for index data");
-                LOG_INFO("hc===got index_slice, slice_size:{}", index_slice.value().Size());
                 auto index_data = std::make_unique<IndexData>(index_slice.value());
-                LOG_INFO("hc===got index_slice, slice_size:{}, non-null:{}", index_data->IndexBinSize(), index_data->IndexBin()!= nullptr);
                 index_data->SetFieldDataMeta(data_meta);
                 IndexMeta index_meta;
                 index_meta.segment_id = data_meta.segment_id;
