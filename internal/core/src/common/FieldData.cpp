@@ -23,6 +23,7 @@
 #include "common/FieldDataInterface.h"
 #include "common/Json.h"
 #include "simdjson/padded_string.h"
+#include "log/Log.h"
 
 namespace milvus {
 
@@ -211,12 +212,13 @@ FieldDataImpl<Type, is_type_entire_row>::FillFieldData(
                     values.data(), array->null_bitmap_data(), element_count);
             }
             return FillFieldData(values.data(), element_count);
-        }
+        }//hc---fill array data
         case DataType::ARRAY: {
             auto array_array =
                 std::dynamic_pointer_cast<arrow::BinaryArray>(array);
             std::vector<Array> values(element_count);
             int null_number = 0;
+            proto::schema::ScalarField::DataCase scalar_type = proto::schema::ScalarField::DataCase::DATA_NOT_SET;
             for (size_t index = 0; index < element_count; ++index) {
                 ScalarArray field_data;
                 if (array_array->GetString(index) == "") {
@@ -226,8 +228,33 @@ FieldDataImpl<Type, is_type_entire_row>::FillFieldData(
                 auto success =
                     field_data.ParseFromString(array_array->GetString(index));
                 AssertInfo(success, "parse from string failed");
+                if (index == 0) {
+                    scalar_type = field_data.data_case();
+                } else if (scalar_type != field_data.data_case()) {
+                    LOG_WARN("hc===inconsistent scalar type inside proto array, i_type:{}, scalar_type:{}",
+                             field_data.data_case(), scalar_type);
+                }
                 values[index] = Array(field_data);
             }
+            LOG_INFO("hc===inconsistent scalar type inside proto array, scalar_type:{}", scalar_type);
+
+            //hc===log for filling array data
+            DataType arrays_type = DataType::NONE;
+            bool all_consistent = true;
+            for(auto i = 0; i < element_count; i++) {
+                if (i == 0) {
+                    arrays_type = values[i].get_element_type();
+                } else {
+                    if (values[i].get_element_type() != arrays_type) {
+                        LOG_INFO("hc===inconsistent element type inside array, i_type:{}, arrays_type:{}",
+                                 values[i].get_element_type(), arrays_type);
+                        all_consistent = false;
+                        break;
+                    }
+                }
+            }
+            LOG_INFO("hc=== element type in array whether all_consistent:{}, arrays_type:{}", all_consistent, arrays_type);
+
             if (nullable_) {
                 return FillFieldData(
                     values.data(), array->null_bitmap_data(), element_count);

@@ -197,10 +197,20 @@ VariableLengthChunk<Array>::set(const Array* src,
     }
     auto buf = (char*)mcm->Allocate(mmap_descriptor_, total_size);
     AssertInfo(buf != nullptr, "failed to allocate memory from mmap_manager.");
+    //hc---element type
+    DataType element_type = DataType::NONE;
+    if (length > 0) {
+        element_type = src[0].get_element_type();
+    }
+    LOG_INFO("hc==Got element type for array:{}", element_type);
+
     for (auto i = 0, offset = 0; i < length; i++) {
         auto data_size = src[i].byte_size() + padding_size;
         char* data_ptr = buf + offset;
         std::copy(src[i].data(), src[i].data() + src[i].byte_size(), data_ptr);
+        if (src[i].get_element_type()==DataType::NONE || src[i].get_element_type() != element_type) {
+            LOG_INFO("hc==Got wrong element type for array:{}, first_element_type is:{}", src[i].get_element_type(), element_type);
+        }
         data_[i + begin] = ArrayView(data_ptr,
                                      data_size,
                                      src[i].get_element_type(),
@@ -208,5 +218,6 @@ VariableLengthChunk<Array>::set(const Array* src,
         offset += data_size;
     }
 }
+//hc---add log here
 
 }  // namespace milvus

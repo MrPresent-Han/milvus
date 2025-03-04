@@ -112,7 +112,7 @@ class Array {
                 break;
             }
             default: {
-                // empty array
+                PanicInfo(DataTypeInvalid, "Cannot init an array with unknown scalar type:" + field_data.data_case());
             }
         }
     }
