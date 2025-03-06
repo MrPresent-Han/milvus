@@ -428,10 +428,10 @@ queryNode:
     # 2. If set to "disable" original vector data will only be loaded into the chunk cache during search/query.
     warmup: disable
   mmap:
-    vectorField: false # Enable mmap for loading vector data
-    vectorIndex: false # Enable mmap for loading vector index
-    scalarField: false # Enable mmap for loading scalar data
-    scalarIndex: false # Enable mmap for loading scalar index
+    vectorField: true # Enable mmap for loading vector data
+    vectorIndex: true # Enable mmap for loading vector index
+    scalarField: true # Enable mmap for loading scalar data
+    scalarIndex: true # Enable mmap for loading scalar index
     chunkCache: true # Enable mmap for chunk cache (raw vector retrieving).
     # Enable memory mapping (mmap) to optimize the handling of growing raw data. 
     # By activating this feature, the memory overhead associated with newly added or modified data will be significantly minimized. 
@@ -505,7 +505,7 @@ indexCoord:
 
 indexNode:
   scheduler:
-    buildParallel: 1
+    buildParallel: 5
   enableDisk: true # enable index node build disk vector index
   maxDiskUsagePercentage: 95
   ip:  # TCP/IP address of indexNode. If not specified, use the first unicastable address
@@ -517,6 +517,8 @@ indexNode:
     clientMaxRecvSize: 536870912 # The maximum size of each RPC request that the clients on indexNode can receive, unit: byte
 
 dataCoord:
+  statsTask:
+    enable: false
   channel:
     watchTimeoutInterval: 300 # Timeout on watching channels (in seconds). Datanode tickler update watch progress will reset timeout timer.
     legacyVersionWithoutRPCWatch: 2.4.1 # Datanodes <= this version are considered as legacy nodes, which doesn't have rpc based watch(). This is only used during rolling upgrade where legacy nodes won't get new channels
@@ -525,9 +527,9 @@ dataCoord:
     checkInterval: 1 # The interval in seconds with which the channel manager advances channel states
     notifyChannelOperationTimeout: 5 # Timeout notifing channel operations (in seconds).
   segment:
-    maxSize: 1024 # The maximum size of a segment, unit: MB. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
+    maxSize: 2048 # The maximum size of a segment, unit: MB. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
     diskSegmentMaxSize: 2048 # Maximun size of a segment in MB for collection which has Disk index
-    sealProportion: 0.12 # The minimum proportion to datacoord.segment.maxSize to seal a segment. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
+    sealProportion: 1 # The minimum proportion to datacoord.segment.maxSize to seal a segment. datacoord.segment.maxSize and datacoord.segment.sealProportion together determine if a segment can be sealed.
     sealProportionJitter: 0.1 # segment seal proportion jitter ratio, default value 0.1(10%), if seal proportion is 12%, with jitter=0.1, the actuall applied ratio will be 10.8~12%
     assignmentExpiration: 2000 # Expiration time of the segment assignment, unit: ms
     allocLatestExpireAttempt: 200 # The time attempting to alloc latest lastExpire from rootCoord after restart
@@ -539,7 +541,7 @@ dataCoord:
     minSizeFromIdleToSealed: 16 # The min size in MB of segment which can be idle from sealed.
     # The max number of binlog (which is equal to the binlog file num of primary key) for one segment, 
     # the segment will be sealed if the number of binlog file reaches to max value.
-    maxBinlogFileNumber: 32
+    maxBinlogFileNumber: 256
     smallProportion: 0.5 # The segment is considered as "small segment" when its # of rows is smaller than
     # (smallProportion * segment max # of rows).
     # A compaction will happen on small segments if the segment after compaction will have
