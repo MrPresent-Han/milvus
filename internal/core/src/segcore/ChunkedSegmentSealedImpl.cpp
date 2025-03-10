@@ -93,7 +93,7 @@ ChunkedSegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
     AssertInfo(info.index_params.count("metric_type"),
                "Can't get metric_type in index_params");
     auto metric_type = info.index_params.at("metric_type");
-    auto row_count = info.index->Count();
+    /*auto row_count = info.index->Count();
     AssertInfo(row_count > 0, "Index count is 0");
 
     std::unique_lock lck(mutex_);
@@ -111,7 +111,7 @@ ChunkedSegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
     LOG_INFO(
         "Before setting field_bit for field index, fieldID:{}. segmentID:{}, ",
         info.field_id,
-        id_);
+        id_);*/
     if (get_bit(field_data_ready_bitset_, field_id)) {
         fields_.erase(field_id);
         set_bit(field_data_ready_bitset_, field_id, false);
@@ -119,12 +119,12 @@ ChunkedSegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
         set_bit(binlog_index_bitset_, field_id, false);
         vector_indexings_.drop_field_indexing(field_id);
     }
-    update_row_count(row_count);
+    /*update_row_count(row_count);
     vector_indexings_.append_field_indexing(
         field_id,
         metric_type,
         std::move(const_cast<LoadIndexInfo&>(info).index));
-    set_bit(index_ready_bitset_, field_id, true);
+    set_bit(index_ready_bitset_, field_id, true);*/
     LOG_INFO("Has load vec index done, fieldID:{}. segmentID:{}, ",
              info.field_id,
              id_);
