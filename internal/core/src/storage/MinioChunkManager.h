@@ -30,6 +30,7 @@
 #include <aws/core/http/standard/StandardHttpRequest.h>
 #include <aws/core/utils/logging/FormattedLogSystem.h>
 #include <aws/s3/S3Client.h>
+#include <aws/s3-crt/S3CrtClient.h>
 #include <fmt/core.h>
 #include <google/cloud/credentials.h>
 #include <google/cloud/internal/oauth2_credentials.h>
@@ -213,23 +214,44 @@ class MinioChunkManager : public ChunkManager {
     ShutdownSDKAPI();
     void
     BuildS3Client(const StorageConfig& storage_config,
-                  const Aws::Client::ClientConfiguration& config);
+                  const Aws::S3Crt::ClientConfiguration& config);
     void
     BuildAliyunCloudClient(const StorageConfig& storage_config,
-                           const Aws::Client::ClientConfiguration& config);
+                           const Aws::S3Crt::ClientConfiguration& config);
     void
     BuildGoogleCloudClient(const StorageConfig& storage_config,
-                           const Aws::Client::ClientConfiguration& config);
+                           const Aws::S3Crt::ClientConfiguration& config);
 
  protected:
     void
     BuildAccessKeyClient(const StorageConfig& storage_config,
-                         const Aws::Client::ClientConfiguration& config);
+                         const Aws::S3Crt::ClientConfiguration& config);
+
+    template<typename CredentialProviderType>
+    void
+    BuildIAMClient(const StorageConfig& storage_config, const Aws::S3Crt::ClientConfiguration& config, const char * description) {
+        auto provider =
+                Aws::MakeShared<CredentialProviderType>(description);
+        auto aws_credentials = provider->GetAWSCredentials();
+        AssertInfo(!aws_credentials.GetAWSAccessKeyId().empty(),
+                   "if use iam, access key id should not be empty");
+        AssertInfo(!aws_credentials.GetAWSSecretKey().empty(),
+                   "if use iam, secret key should not be empty");
+        AssertInfo(!aws_credentials.GetSessionToken().empty(),
+                   "if use iam, token should not be empty");
+
+        crt_client_ = std::make_shared<Aws::S3Crt::S3CrtClient>(
+                provider,
+                config,
+                Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+                storage_config.useVirtualHost);
+    }
 
     Aws::SDKOptions sdk_options_;
     static std::atomic<size_t> init_count_;
     static std::mutex client_mutex_;
     std::shared_ptr<Aws::S3::S3Client> client_;
+    std::shared_ptr<Aws::S3Crt::S3CrtClient> crt_client_;
     std::string default_bucket_name_;
     std::string remote_root_path_;
 };
