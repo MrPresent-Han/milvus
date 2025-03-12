@@ -19,26 +19,30 @@
 #include <fstream>
 #include <aws/core/auth/AWSCredentials.h>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
-#include <aws/core/auth/STSCredentialsProvider.h>
 #include <aws/core/utils/logging/ConsoleLogSystem.h>
 #include <aws/s3/model/CreateBucketRequest.h>
 #include <aws/s3/model/DeleteBucketRequest.h>
 #include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/GetObjectRequest.h>
-#include <aws/s3/model/HeadBucketRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
 #include <aws/s3/model/PutObjectRequest.h>
-
+#include <aws/s3-crt/model/HeadBucketRequest.h>
+#include <aws/s3-crt/model/CreateBucketRequest.h>
+#include <aws/s3-crt/model/DeleteBucketRequest.h>
+#include <aws/s3-crt/model/HeadObjectRequest.h>
+#include <aws/s3-crt/model/DeleteObjectRequest.h>
+#include <aws/s3-crt/model/PutObjectRequest.h>
+#include <aws/s3-crt/model/GetObjectRequest.h>
+#include <aws/s3-crt/model/ListObjectsRequest.h>
 #include "storage/AliyunSTSClient.h"
 #include "storage/AliyunCredentialsProvider.h"
-#include "storage/TencentCloudSTSClient.h"
 #include "storage/TencentCloudCredentialsProvider.h"
 #include "monitor/prometheus_client.h"
 #include "common/EasyAssert.h"
 #include "log/Log.h"
 #include "signal.h"
-#include "common/Consts.h"
+#include <aws/core/Globals.h>
 
 namespace milvus::storage {
 
@@ -87,11 +91,14 @@ generateConfig(const StorageConfig& storage_config) {
         s3CrtConfig.scheme = Aws::Http::Scheme::HTTPS;
     } else {
         s3CrtConfig.scheme = Aws::Http::Scheme::HTTP;
+        s3CrtConfig.tlsConnectionOptions = nullptr;
     }
 
     if (!storage_config.region.empty()) {
         s3CrtConfig.region = ConvertToAwsString(storage_config.region);
     }
+    s3CrtConfig.throughputTargetGbps = 10;
+    s3CrtConfig.partSize = 8 * 1024 * 1024;
     return s3CrtConfig;
 }
 
@@ -260,11 +267,11 @@ MinioChunkManager::BuildAccessKeyClient(
     // hc--init crt client
     Aws::Auth::AWSCredentials credentials(ConvertToAwsString(storage_config.access_key_id),
                                           ConvertToAwsString(storage_config.access_key_value));
-    Aws::S3Crt::ClientConfiguration s3CrtConfig;
-    s3CrtConfig.region = config.region;
-    s3CrtConfig.throughputTargetGbps = 10;  // ✅ 调高吞吐量
-    s3CrtConfig.partSize = 8 * 1024 * 1024;
-    crt_client_ = std::make_shared<Aws::S3Crt::S3CrtClient>(credentials, s3CrtConfig, Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, storage_config.useVirtualHost);
+    LOG_INFO("hc===start to create s3_crt_client_1");
+    crt_client_ = Aws::MakeShared<Aws::S3Crt::S3CrtClient>("S3-Crt-client", credentials, config,
+                                                           Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never,
+                                                           storage_config.useVirtualHost);
+    LOG_INFO("hc===finished created s3_crt_client");
 }
 
 void
@@ -326,9 +333,10 @@ MinioChunkManager::MinioChunkManager(const StorageConfig& storage_config)
 
     // The ClientConfiguration default constructor will take a long time.
     // For more details, please refer to https://github.com/aws/aws-sdk-cpp/issues/1440
-    static Aws::S3Crt::ClientConfiguration g_config;
-
     Aws::S3Crt::ClientConfiguration s3CrtConfig = generateConfig(storage_config);
+    if(!storage_config.useSSL){
+        Aws::SetDefaultTlsConnectionOptions(nullptr);
+    }
 
     if (storageType == RemoteStorageType::S3) {
         BuildS3Client(storage_config, s3CrtConfig);
@@ -388,19 +396,19 @@ MinioChunkManager::Write(const std::string& filepath,
 
 bool
 MinioChunkManager::BucketExists(const std::string& bucket_name) {
-    Aws::S3::Model::HeadBucketRequest request;
+    Aws::S3Crt::Model::HeadBucketRequest request;
     request.SetBucket(bucket_name.c_str());
 
-    auto outcome = client_->HeadBucket(request);
+    auto outcome = crt_client_->HeadBucket(request);
 
     if (!outcome.IsSuccess()) {
         const auto& err = outcome.GetError();
         auto error_type = err.GetErrorType();
         // only throw if the error is not nosuchbucket
         // if bucket not exist, HeadBucket return errorType RESOURCE_NOT_FOUND
-        if (error_type != Aws::S3::S3Errors::NO_SUCH_BUCKET &&
-            error_type != Aws::S3::S3Errors::RESOURCE_NOT_FOUND) {
-            ThrowS3Error("BucketExists", err, "params, bucket={}", bucket_name);
+        if (error_type != Aws::S3Crt::S3CrtErrors::NO_SUCH_BUCKET &&
+            error_type != Aws::S3Crt::S3CrtErrors::RESOURCE_NOT_FOUND) {
+            ThrowS3CrtError("BucketExists", err, "params, bucket={}", bucket_name);
         }
         return false;
     }
@@ -410,11 +418,11 @@ MinioChunkManager::BucketExists(const std::string& bucket_name) {
 std::vector<std::string>
 MinioChunkManager::ListBuckets() {
     std::vector<std::string> buckets;
-    auto outcome = client_->ListBuckets();
+    auto outcome = crt_client_->ListBuckets();
 
     if (!outcome.IsSuccess()) {
         const auto& err = outcome.GetError();
-        ThrowS3Error("ListBuckets", err, "params");
+        ThrowS3CrtError("ListBuckets", err, "params");
     }
     for (auto&& b : outcome.GetResult().GetBuckets()) {
         buckets.emplace_back(b.GetName());
@@ -424,16 +432,16 @@ MinioChunkManager::ListBuckets() {
 
 bool
 MinioChunkManager::CreateBucket(const std::string& bucket_name) {
-    Aws::S3::Model::CreateBucketRequest request;
+    Aws::S3Crt::Model::CreateBucketRequest request;
     request.SetBucket(bucket_name.c_str());
 
-    auto outcome = client_->CreateBucket(request);
+    auto outcome = crt_client_->CreateBucket(request);
 
     if (!outcome.IsSuccess()) {
         const auto& err = outcome.GetError();
         if (err.GetErrorType() !=
-            Aws::S3::S3Errors::BUCKET_ALREADY_OWNED_BY_YOU) {
-            ThrowS3Error("CreateBucket", err, "params, bucket={}", bucket_name);
+            Aws::S3Crt::S3CrtErrors::BUCKET_ALREADY_OWNED_BY_YOU) {
+            ThrowS3CrtError("CreateBucket", err, "params, bucket={}", bucket_name);
         }
         return false;
     }
@@ -442,17 +450,17 @@ MinioChunkManager::CreateBucket(const std::string& bucket_name) {
 
 bool
 MinioChunkManager::DeleteBucket(const std::string& bucket_name) {
-    Aws::S3::Model::DeleteBucketRequest request;
+    Aws::S3Crt::Model::DeleteBucketRequest request;
     request.SetBucket(bucket_name.c_str());
 
-    auto outcome = client_->DeleteBucket(request);
+    auto outcome = crt_client_->DeleteBucket(request);
 
     if (!outcome.IsSuccess()) {
         const auto& err = outcome.GetError();
         auto error_type = err.GetErrorType();
-        if (error_type != Aws::S3::S3Errors::NO_SUCH_BUCKET &&
-            error_type != Aws::S3::S3Errors::RESOURCE_NOT_FOUND) {
-            ThrowS3Error("DeleteBucket", err, "params, bucket={}", bucket_name);
+        if (error_type != Aws::S3Crt::S3CrtErrors::NO_SUCH_BUCKET &&
+            error_type != Aws::S3Crt::S3CrtErrors::RESOURCE_NOT_FOUND) {
+            ThrowS3CrtError("DeleteBucket", err, "params, bucket={}", bucket_name);
         }
         return false;
     }
@@ -462,12 +470,12 @@ MinioChunkManager::DeleteBucket(const std::string& bucket_name) {
 bool
 MinioChunkManager::ObjectExists(const std::string& bucket_name,
                                 const std::string& object_name) {
-    Aws::S3::Model::HeadObjectRequest request;
+    Aws::S3Crt::Model::HeadObjectRequest request;
     request.SetBucket(bucket_name.c_str());
     request.SetKey(object_name.c_str());
 
     auto start = std::chrono::system_clock::now();
-    auto outcome = client_->HeadObject(request);
+    auto outcome = crt_client_->HeadObject(request);
     monitor::internal_storage_request_latency_stat.Observe(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now() - start)
@@ -477,7 +485,7 @@ MinioChunkManager::ObjectExists(const std::string& bucket_name,
         const auto& err = outcome.GetError();
         if (!IsNotFound(err.GetErrorType())) {
             monitor::internal_storage_op_count_stat_fail.Increment();
-            ThrowS3Error("ObjectExists",
+            ThrowS3CrtError("ObjectExists",
                          err,
                          "params, bucket={}, object={}",
                          bucket_name,
@@ -493,12 +501,12 @@ MinioChunkManager::ObjectExists(const std::string& bucket_name,
 uint64_t
 MinioChunkManager::GetObjectSize(const std::string& bucket_name,
                                  const std::string& object_name) {
-    Aws::S3::Model::HeadObjectRequest request;
+    Aws::S3Crt::Model::HeadObjectRequest request;
     request.SetBucket(bucket_name.c_str());
     request.SetKey(object_name.c_str());
 
     auto start = std::chrono::system_clock::now();
-    auto outcome = client_->HeadObject(request);
+    auto outcome = crt_client_->HeadObject(request);
     monitor::internal_storage_request_latency_stat.Observe(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now() - start)
@@ -506,7 +514,7 @@ MinioChunkManager::GetObjectSize(const std::string& bucket_name,
     if (!outcome.IsSuccess()) {
         monitor::internal_storage_op_count_stat_fail.Increment();
         const auto& err = outcome.GetError();
-        ThrowS3Error("GetObjectSize",
+        ThrowS3CrtError("GetObjectSize",
                      err,
                      "params, bucket={}, object={}",
                      bucket_name,
@@ -519,12 +527,12 @@ MinioChunkManager::GetObjectSize(const std::string& bucket_name,
 bool
 MinioChunkManager::DeleteObject(const std::string& bucket_name,
                                 const std::string& object_name) {
-    Aws::S3::Model::DeleteObjectRequest request;
+    Aws::S3Crt::Model::DeleteObjectRequest request;
     request.SetBucket(bucket_name.c_str());
     request.SetKey(object_name.c_str());
 
     auto start = std::chrono::system_clock::now();
-    auto outcome = client_->DeleteObject(request);
+    auto outcome = crt_client_->DeleteObject(request);
     monitor::internal_storage_request_latency_remove.Observe(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now() - start)
@@ -534,7 +542,7 @@ MinioChunkManager::DeleteObject(const std::string& bucket_name,
         const auto& err = outcome.GetError();
         if (!IsNotFound(err.GetErrorType())) {
             monitor::internal_storage_op_count_remove_fail.Increment();
-            ThrowS3Error("DeleteObject",
+            ThrowS3CrtError("DeleteObject",
                          err,
                          "params, bucket={}, object={}",
                          bucket_name,
@@ -552,7 +560,7 @@ MinioChunkManager::PutObjectBuffer(const std::string& bucket_name,
                                    const std::string& object_name,
                                    void* buf,
                                    uint64_t size) {
-    Aws::S3::Model::PutObjectRequest request;
+    Aws::S3Crt::Model::PutObjectRequest request;
     request.SetBucket(bucket_name.c_str());
     request.SetKey(object_name.c_str());
 
@@ -563,7 +571,7 @@ MinioChunkManager::PutObjectBuffer(const std::string& bucket_name,
     request.SetBody(input_data);
 
     auto start = std::chrono::system_clock::now();
-    auto outcome = client_->PutObject(request);
+    auto outcome = crt_client_->PutObject(request);
     monitor::internal_storage_request_latency_put.Observe(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now() - start)
@@ -573,7 +581,7 @@ MinioChunkManager::PutObjectBuffer(const std::string& bucket_name,
     if (!outcome.IsSuccess()) {
         monitor::internal_storage_op_count_put_fail.Increment();
         const auto& err = outcome.GetError();
-        ThrowS3Error("PutObjectBuffer",
+        ThrowS3CrtError("PutObjectBuffer",
                      err,
                      "params, bucket={}, object={}",
                      bucket_name,
@@ -627,10 +635,11 @@ MinioChunkManager::GetObjectBuffer(const std::string& bucket_name,
                                    const std::string& object_name,
                                    void* buf,
                                    uint64_t size) {
-    Aws::S3::Model::GetObjectRequest request;
+    Aws::S3Crt::Model::GetObjectRequest request;
     request.SetBucket(bucket_name.c_str());
     request.SetKey(object_name.c_str());
 
+    /*
     request.SetResponseStreamFactory([buf, size]() {
     // For macOs, pubsetbuf interface not implemented
 #ifdef __linux__
@@ -642,9 +651,9 @@ MinioChunkManager::GetObjectBuffer(const std::string& bucket_name,
             "AwsResponseStream", static_cast<char*>(buf), size));
 #endif
         return stream.release();
-    });
+    });*/
     auto start = std::chrono::system_clock::now();
-    auto outcome = client_->GetObject(request);
+    auto outcome = crt_client_->GetObject(request);
     monitor::internal_storage_request_latency_get.Observe(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now() - start)
@@ -654,7 +663,7 @@ MinioChunkManager::GetObjectBuffer(const std::string& bucket_name,
     if (!outcome.IsSuccess()) {
         monitor::internal_storage_op_count_get_fail.Increment();
         const auto& err = outcome.GetError();
-        ThrowS3Error("GetObjectBuffer",
+        ThrowS3CrtError("GetObjectBuffer",
                      err,
                      "params, bucket={}, object={}",
                      bucket_name,
@@ -668,14 +677,14 @@ std::vector<std::string>
 MinioChunkManager::ListObjects(const std::string& bucket_name,
                                const std::string& prefix) {
     std::vector<std::string> objects_vec;
-    Aws::S3::Model::ListObjectsRequest request;
+    Aws::S3Crt::Model::ListObjectsRequest request;
     request.WithBucket(bucket_name);
     if (prefix != "") {
         request.SetPrefix(prefix);
     }
 
     auto start = std::chrono::system_clock::now();
-    auto outcome = client_->ListObjects(request);
+    auto outcome = crt_client_->ListObjects(request);
     monitor::internal_storage_request_latency_list.Observe(
         std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::system_clock::now() - start)
@@ -684,7 +693,7 @@ MinioChunkManager::ListObjects(const std::string& bucket_name,
     if (!outcome.IsSuccess()) {
         monitor::internal_storage_op_count_list_fail.Increment();
         const auto& err = outcome.GetError();
-        ThrowS3Error("ListObjects",
+        ThrowS3CrtError("ListObjects",
                      err,
                      "params, bucket={}, prefix={}",
                      bucket_name,
@@ -703,6 +712,9 @@ AwsChunkManager::AwsChunkManager(const StorageConfig& storage_config) {
     remote_root_path_ = storage_config.root_path;
 
     InitSDKAPIDefault(storage_config.log_level);
+    if(!storage_config.useSSL){
+        Aws::SetDefaultTlsConnectionOptions(nullptr);
+    }
 
     Aws::S3Crt::ClientConfiguration config = generateConfig(storage_config);
     if (storage_config.useIAM) {

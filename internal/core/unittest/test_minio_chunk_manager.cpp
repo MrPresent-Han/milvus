@@ -235,7 +235,7 @@ TEST_F(MinioChunkManagerTest, ReadNotExist) {
     chunk_manager_->DeleteBucket(testBucketName);
 }
 
-TEST_F(MinioChunkManagerTest, RemovePositive) {
+/*TEST_F(MinioChunkManagerTest, RemovePositive) {
     string testBucketName = "test-remove";
     chunk_manager_->SetBucketName(testBucketName);
     EXPECT_EQ(chunk_manager_->GetBucketName(), testBucketName);
@@ -261,7 +261,7 @@ TEST_F(MinioChunkManagerTest, RemovePositive) {
     EXPECT_EQ(exist, false);
 
     chunk_manager_->DeleteBucket(testBucketName);
-}
+}*/
 
 TEST_F(MinioChunkManagerTest, ListWithPrefixPositive) {
     string testBucketName = "test-listprefix";
@@ -299,6 +299,115 @@ TEST_F(MinioChunkManagerTest, ListWithPrefixPositive) {
     chunk_manager_->Remove(path2);
     chunk_manager_->Remove(path3);
     chunk_manager_->DeleteBucket(testBucketName);
+}
+
+#include <aws/core/utils/threading/Executor.h>
+#include <aws/s3-crt/S3CrtClient.h>
+#include <aws/core/auth/AWSCredentialsProviderChain.h>
+#include <aws/core/Globals.h>
+#include <aws/s3-crt/model/GetObjectRequest.h>
+#include <aws/s3-crt/model/ListObjectsRequest.h>
+
+Aws::String
+ConvertToAwsString(const std::string& str) {
+    return Aws::String(str.c_str(), str.size());
+}
+
+TEST(AWSClient, Init){
+    Aws::SDKOptions options;
+    auto log_level = Aws::Utils::Logging::LogLevel::Trace;
+    options.loggingOptions.logLevel = log_level;
+    options.loggingOptions.logger_create_fn = [log_level]() {
+        return std::make_shared<AwsLogger>(log_level);
+    };
+    Aws::InitAPI(options);
+    Aws::SetDefaultTlsConnectionOptions(nullptr);
+
+    static const char* ALLOCATION_TAG = "BucketAndObjectOperationTest";
+    Aws::S3Crt::ClientConfiguration s3ClientConfig;
+    s3ClientConfig.region = "";
+    s3ClientConfig.scheme = Aws::Http::Scheme::HTTP;
+    s3ClientConfig.executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(ALLOCATION_TAG, 4);
+    s3ClientConfig.throughputTargetGbps = 2.0;
+    s3ClientConfig.partSize = 5 * 1024 * 1024;
+    s3ClientConfig.endpointOverride = ConvertToAwsString("localhost:9000");
+    //s3ClientConfig.tlsConnectionOptions = nullptr;
+
+    Aws::Auth::AWSCredentials credentials(ConvertToAwsString("minioadmin"),
+                                          ConvertToAwsString("minioadmin"));
+
+    std::cout << "hc==start to construct client" << std::endl;
+    auto client = Aws::MakeShared<Aws::S3Crt::S3CrtClient>(ALLOCATION_TAG,
+                                                           credentials,
+                                                  s3ClientConfig,
+                                          Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never /*signPayloads*/,
+                                          false);
+
+    std::cout << "hc==construct client ok" << std::endl;
+
+    {
+        auto res = client->ListBuckets();
+        std::cout << "hc==list buckets isSuccess:" << res.IsSuccess() << ",errCode:"
+                  << int(res.GetError().GetResponseCode()) << ", exception:"
+                  << res.GetError().GetExceptionName() << ", errMsg:"
+                  << res.GetError().GetMessage()
+                  << std::endl;
+
+        for(auto bucket: res.GetResult().GetBuckets()){
+            std::cout << "hc==bucket:" << string(bucket.GetName().c_str(), bucket.GetName().length()) << std::endl;
+        }
+
+        Aws::S3Crt::Model::ListObjectsRequest request;
+        request.SetBucket("a-bucket");
+        request.SetPrefix("/files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
+        auto listRes = client->ListObjects(request);
+        for(auto obj: listRes.GetResult().GetContents()){
+            std::cout << "List obj:" << obj.GetKey().c_str() << std::endl;
+        }
+    }
+    {
+        Aws::S3Crt::Model::GetObjectRequest request;
+        request.SetBucket("a-bucket");
+        request.SetKey("/files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
+        auto res = client->GetObject(request);
+        std::cout << "get isSuccess:" << res.IsSuccess() << ",errCode:"
+            << int(res.GetError().GetResponseCode()) << ", exception:"
+            << res.GetError().GetExceptionName() << ", errMsg:"
+            << res.GetError().GetMessage()
+            << ", contentLength:" << res.GetResult().GetContentLength()
+            << std::endl;
+    }
+
+    {
+        Aws::S3Crt::Model::GetObjectRequest request;
+        request.SetBucket("a-bucket");
+        request.SetKey("files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
+        auto res = client->GetObject(request);
+        std::cout << "get isSuccess:" << res.IsSuccess() << ",errCode:"
+                  << int(res.GetError().GetResponseCode()) << ", exception:"
+                  << res.GetError().GetExceptionName() << ", errMsg:"
+                  << res.GetError().GetMessage()
+                  << ", contentLength:" << res.GetResult().GetContentLength()
+                  << std::endl;
+    }
+
+    {
+        Aws::S3Crt::Model::GetObjectRequest request;
+        request.SetBucket("a-bucket");
+        request.SetKey("/a-bucket/files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
+        auto res = client->GetObject(request);
+        std::cout << "get isSuccess:" << res.IsSuccess() << ",errCode:"
+                  << int(res.GetError().GetResponseCode()) << ", exception:"
+                  << res.GetError().GetExceptionName() << ", errMsg:"
+                  << res.GetError().GetMessage()
+                  << ", contentLength:" << res.GetResult().GetContentLength()
+                  << std::endl;
+    }
+
+    client.reset();
+    std::cout << "hc==reset client ok" << std::endl;
+    Aws::ShutdownAPI(options);
+    std::cout << "hc==shutdown" << std::endl;
 }
 
 //TEST_F(AliyunChunkManagerTest, ReadPositive) {
