@@ -307,6 +307,7 @@ TEST_F(MinioChunkManagerTest, ListWithPrefixPositive) {
 #include <aws/core/Globals.h>
 #include <aws/s3-crt/model/GetObjectRequest.h>
 #include <aws/s3-crt/model/ListObjectsRequest.h>
+#include "segcore/segcore_init_c.h"
 
 Aws::String
 ConvertToAwsString(const std::string& str) {
@@ -314,6 +315,7 @@ ConvertToAwsString(const std::string& str) {
 }
 
 TEST(AWSClient, Init){
+    SegcoreInit("/home/hanchun/Documents/project/milvus-master-temp/milvus/configs/glog.conf");
     Aws::SDKOptions options;
     auto log_level = Aws::Utils::Logging::LogLevel::Trace;
     options.loggingOptions.logLevel = log_level;
@@ -325,13 +327,12 @@ TEST(AWSClient, Init){
 
     static const char* ALLOCATION_TAG = "BucketAndObjectOperationTest";
     Aws::S3Crt::ClientConfiguration s3ClientConfig;
-    s3ClientConfig.region = "";
+    s3ClientConfig.region = "us-east-1";
     s3ClientConfig.scheme = Aws::Http::Scheme::HTTP;
     s3ClientConfig.executor = Aws::MakeShared<Aws::Utils::Threading::PooledThreadExecutor>(ALLOCATION_TAG, 4);
     s3ClientConfig.throughputTargetGbps = 2.0;
     s3ClientConfig.partSize = 5 * 1024 * 1024;
-    s3ClientConfig.endpointOverride = ConvertToAwsString("localhost:9000");
-    //s3ClientConfig.tlsConnectionOptions = nullptr;
+    s3ClientConfig.endpointOverride = ConvertToAwsString("http://minio.local:9000");
 
     Aws::Auth::AWSCredentials credentials(ConvertToAwsString("minioadmin"),
                                           ConvertToAwsString("minioadmin"));
@@ -340,7 +341,7 @@ TEST(AWSClient, Init){
     auto client = Aws::MakeShared<Aws::S3Crt::S3CrtClient>(ALLOCATION_TAG,
                                                            credentials,
                                                   s3ClientConfig,
-                                          Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never /*signPayloads*/,
+                                          Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Always /*signPayloads*/,
                                           false);
 
     std::cout << "hc==construct client ok" << std::endl;
@@ -359,18 +360,20 @@ TEST(AWSClient, Init){
 
         Aws::S3Crt::Model::ListObjectsRequest request;
         request.SetBucket("a-bucket");
-        request.SetPrefix("/files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
+        request.SetPrefix("files/insert_log/456616016241632061/456616016241632062/456616016241632078/1/456616016241430263");
         auto listRes = client->ListObjects(request);
         for(auto obj: listRes.GetResult().GetContents()){
-            std::cout << "List obj:" << obj.GetKey().c_str() << std::endl;
+            std::cout << "hc==List obj:" << obj.GetKey().c_str() << std::endl;
         }
     }
     {
+        Aws::String objectKey = "files/insert_log/456616016241632061/456616016241632062/456616016241632078/1/456616016241430263";
+        Aws::String encodedKey = Aws::Utils::StringUtils::URLEncode(objectKey.c_str());
         Aws::S3Crt::Model::GetObjectRequest request;
         request.SetBucket("a-bucket");
-        request.SetKey("/files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
+        request.SetKey(encodedKey);
         auto res = client->GetObject(request);
-        std::cout << "get isSuccess:" << res.IsSuccess() << ",errCode:"
+        std::cout << "hc==get isSuccess:" << res.IsSuccess() << ",errCode:"
             << int(res.GetError().GetResponseCode()) << ", exception:"
             << res.GetError().GetExceptionName() << ", errMsg:"
             << res.GetError().GetMessage()
@@ -378,37 +381,36 @@ TEST(AWSClient, Init){
             << std::endl;
     }
 
-    {
-        Aws::S3Crt::Model::GetObjectRequest request;
-        request.SetBucket("a-bucket");
-        request.SetKey("files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
-        auto res = client->GetObject(request);
-        std::cout << "get isSuccess:" << res.IsSuccess() << ",errCode:"
-                  << int(res.GetError().GetResponseCode()) << ", exception:"
-                  << res.GetError().GetExceptionName() << ", errMsg:"
-                  << res.GetError().GetMessage()
-                  << ", contentLength:" << res.GetResult().GetContentLength()
-                  << std::endl;
-    }
-
-    {
-        Aws::S3Crt::Model::GetObjectRequest request;
-        request.SetBucket("a-bucket");
-        request.SetKey("/a-bucket/files/insert_log/456596706196990538/456596706196990539/456596706197190555/101/456596706197190562");
-        auto res = client->GetObject(request);
-        std::cout << "get isSuccess:" << res.IsSuccess() << ",errCode:"
-                  << int(res.GetError().GetResponseCode()) << ", exception:"
-                  << res.GetError().GetExceptionName() << ", errMsg:"
-                  << res.GetError().GetMessage()
-                  << ", contentLength:" << res.GetResult().GetContentLength()
-                  << std::endl;
-    }
-
     client.reset();
-    std::cout << "hc==reset client ok" << std::endl;
     Aws::ShutdownAPI(options);
-    std::cout << "hc==shutdown" << std::endl;
 }
+
+    /*
+     * {
+        Aws::S3Crt::Model::GetObjectRequest request;
+        request.SetBucket("a-bucket");
+        request.SetKey("/files/insert_log/456616016241632061/456616016241632062/456616016241632078/1/456616016241430263");
+        auto size = 128;
+        std::vector<uint8_t> buf(size);
+        char* buf_data = reinterpret_cast<char*>(buf.data());
+        request.SetResponseStreamFactory([buf_data, size]() {
+            std::cout << "hc===write stream is called" << std::endl;
+            std::unique_ptr<Aws::StringStream> stream(
+                    Aws::New<Aws::StringStream>(""));
+            auto str_buf = stream->rdbuf();
+            auto str = str_buf->str();
+            std::cout << "hc===data in content.size: " << str.size() << ", str:" << str << std::endl;
+            return stream.release();
+        });
+        auto res = client->GetObject(request);
+        std::cout << "hc===get isSuccess:" << res.IsSuccess() << ",errCode:"
+                  << int(res.GetError().GetResponseCode()) << ", exception:"
+                  << res.GetError().GetExceptionName() << ", errMsg:"
+                  << res.GetError().GetMessage()
+                  << ", contentLength:" << res.GetResult().GetContentLength()
+                  << std::endl;
+    }
+     * */
 
 //TEST_F(AliyunChunkManagerTest, ReadPositive) {
 //    string testBucketName = "vdc-infra-poc";
