@@ -375,6 +375,7 @@ message SegmentLoadInfo {
     map<int64, data.TextIndexStats> textStatsLogs = 20;
     repeated data.FieldBinlog bm25logs = 21;
     map<int64, data.JsonKeyStats> jsonKeyStatsLogs = 22;
+    bool recovering = 23;
 }
 
 message FieldIndexInfo {
@@ -416,7 +417,6 @@ message LoadSegmentsRequest {
     LoadScope load_scope = 12;
     repeated index.IndexInfo index_info_list = 13;
     bool lazy_load = 14;
-    bool recovering = 15;
 }
 
 message ReleaseSegmentsRequest {

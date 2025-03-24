@@ -367,6 +367,10 @@ func NewSegmentTask(ctx context.Context,
 	}, nil
 }
 
+func (task *SegmentTask) Recovering() bool {
+	return task.recovering
+}
+
 func (task *SegmentTask) SegmentID() typeutil.UniqueID {
 	return task.segmentID
 }

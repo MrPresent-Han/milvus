@@ -951,7 +951,7 @@ func (s *LocalSegment) LoadDeltaData(ctx context.Context, deltaData *storage.Del
 
 func GetCLoadInfoWithFunc(ctx context.Context,
 	fieldSchema *schemapb.FieldSchema,
-	s *querypb.SegmentLoadInfo,
+	loadInfo *querypb.SegmentLoadInfo,
 	indexInfo *querypb.FieldIndexInfo,
 	f func(c *LoadIndexInfo) error,
 ) error {
@@ -985,9 +985,9 @@ func GetCLoadInfoWithFunc(ctx context.Context,
 	enableMmap := isIndexMmapEnable(fieldSchema, indexInfo)
 
 	indexInfoProto := &cgopb.LoadIndexInfo{
-		CollectionID:       s.GetCollectionID(),
-		PartitionID:        s.GetPartitionID(),
-		SegmentID:          s.GetSegmentID(),
+		CollectionID:       loadInfo.GetCollectionID(),
+		PartitionID:        loadInfo.GetPartitionID(),
+		SegmentID:          loadInfo.GetSegmentID(),
 		Field:              fieldSchema,
 		EnableMmap:         enableMmap,
 		MmapDirPath:        paramtable.Get().QueryNodeCfg.MmapDirPath.GetValue(),
@@ -999,6 +999,7 @@ func GetCLoadInfoWithFunc(ctx context.Context,
 		IndexEngineVersion: indexInfo.GetCurrentIndexVersion(),
 		IndexStoreVersion:  indexInfo.GetIndexStoreVersion(),
 		IndexFileSize:      indexInfo.GetIndexSize(),
+		Recovering:         loadInfo.GetRecovering(),
 	}
 
 	// 2.
