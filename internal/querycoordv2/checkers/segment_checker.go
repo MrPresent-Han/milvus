@@ -128,7 +128,7 @@ func (c *SegmentChecker) checkReplica(ctx context.Context, replica *meta.Replica
 	ret := make([]task.Task, 0)
 
 	// compare with targets to find the lack and redundancy of segments
-	lacks, recovering, redundancies := c.getSealedSegmentDiff(ctx, replica.GetCollectionID(), replica.GetID())
+	lacks, recovering, redundancies := c.getSealedSegmentDiff(ctx, replica.GetCollectionID(), replica.GetID(), replica.IsRecovering())
 	// loadCtx := trace.ContextWithSpan(context.Background(), c.meta.GetCollection(replica.CollectionID).LoadSpan)
 	tasks := c.createSegmentLoadTasks(c.getTraceCtx(ctx, replica.GetCollectionID()), lacks, recovering, replica)
 	task.SetReason("lacks of segment", tasks...)
@@ -230,6 +230,7 @@ func (c *SegmentChecker) getSealedSegmentDiff(
 	ctx context.Context,
 	collectionID int64,
 	replicaID int64,
+	replicaIsRecovering bool,
 ) (toLoad []*datapb.SegmentInfo, recovering []bool, toRelease []*meta.Segment) {
 	replica := c.meta.Get(ctx, replicaID)
 	if replica == nil {
@@ -287,7 +288,7 @@ func (c *SegmentChecker) getSealedSegmentDiff(
 	for _, segment := range nextTargetMap {
 		if isSegmentLack(segment) {
 			toLoad = append(toLoad, segment)
-			recovering = append(recovering, false)
+			recovering = append(recovering, false || replicaIsRecovering)
 			// for segments lacked due to normal target advance, we load them under normal mode
 		}
 	}

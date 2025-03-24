@@ -142,7 +142,7 @@ VectorDiskAnnIndex<T>::Build(const Config& config) {
     AssertInfo(insert_files.has_value(),
                "insert file paths is empty when build disk ann index");
     auto local_data_path =
-        file_manager_->CacheRawDataToDisk<T>(insert_files.value());
+        file_manager_->CacheRawDataToDisk<T>(insert_files.value(), config[milvus::THREAD_POOL_PRIORITY]);
     build_config[DISK_ANN_RAW_DATA_PATH] = local_data_path;
 
     auto local_index_path_prefix = file_manager_->GetLocalIndexObjectPrefix();
