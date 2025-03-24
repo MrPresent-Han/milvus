@@ -128,7 +128,7 @@ func (c *SegmentChecker) checkReplica(ctx context.Context, replica *meta.Replica
 	ret := make([]task.Task, 0)
 
 	// compare with targets to find the lack and redundancy of segments
-	lacks, redundancies := c.getSealedSegmentDiff(ctx, replica.GetCollectionID(), replica.GetID())
+	lacks, recovering, redundancies := c.getSealedSegmentDiff(ctx, replica.GetCollectionID(), replica.GetID())
 	// loadCtx := trace.ContextWithSpan(context.Background(), c.meta.GetCollection(replica.CollectionID).LoadSpan)
 	tasks := c.createSegmentLoadTasks(c.getTraceCtx(ctx, replica.GetCollectionID()), lacks, replica)
 	task.SetReason("lacks of segment", tasks...)
@@ -230,7 +230,7 @@ func (c *SegmentChecker) getSealedSegmentDiff(
 	ctx context.Context,
 	collectionID int64,
 	replicaID int64,
-) (toLoad []*datapb.SegmentInfo, toRelease []*meta.Segment) {
+) (toLoad []*datapb.SegmentInfo, recovering []bool, toRelease []*meta.Segment) {
 	replica := c.meta.Get(ctx, replicaID)
 	if replica == nil {
 		log.Info("replica does not exist, skip it")
@@ -287,6 +287,8 @@ func (c *SegmentChecker) getSealedSegmentDiff(
 	for _, segment := range nextTargetMap {
 		if isSegmentLack(segment) {
 			toLoad = append(toLoad, segment)
+			recovering = append(recovering, false)
+			// for segments lacked due to normal target advance, we load them under normal mode
 		}
 	}
 
@@ -299,6 +301,8 @@ func (c *SegmentChecker) getSealedSegmentDiff(
 
 		if isSegmentLack(segment) {
 			toLoad = append(toLoad, segment)
+			recovering = append(recovering, true)
+			// for segments lacked due to node down, we need to load it under recovering mode
 		}
 	}
 
@@ -409,9 +413,14 @@ func (c *SegmentChecker) filterSegmentInUse(ctx context.Context, replica *meta.R
 	return filtered
 }
 
-func (c *SegmentChecker) createSegmentLoadTasks(ctx context.Context, segments []*datapb.SegmentInfo, replica *meta.Replica) []task.Task {
+func (c *SegmentChecker) createSegmentLoadTasks(ctx context.Context, segments []*datapb.SegmentInfo, recovering []bool, replica *meta.Replica) []task.Task {
 	if len(segments) == 0 {
 		return nil
+	}
+	//set up recover map
+	recoverMap := make(map[int64]bool, len(recovering))
+	for i, segment := range segments {
+		recoverMap[segment.GetID()] = recovering[i]
 	}
 
 	isLevel0 := segments[0].GetLevel() == datapb.SegmentLevel_L0
@@ -445,11 +454,12 @@ func (c *SegmentChecker) createSegmentLoadTasks(ctx context.Context, segments []
 		shardPlans := c.getBalancerFunc().AssignSegment(ctx, replica.GetCollectionID(), segmentInfos, rwNodes, true)
 		for i := range shardPlans {
 			shardPlans[i].Replica = replica
+			shardPlans[i].Recovering = recoverMap[shardPlans[i].Segment.GetID()]
 		}
 		plans = append(plans, shardPlans...)
 	}
 
-	return balance.CreateSegmentTasksFromPlans(ctx, c.ID(), Params.QueryCoordCfg.SegmentTaskTimeout.GetAsDuration(time.Millisecond), plans, replica.IsRecovering())
+	return balance.CreateSegmentTasksFromPlans(ctx, c.ID(), Params.QueryCoordCfg.SegmentTaskTimeout.GetAsDuration(time.Millisecond), plans)
 }
 
 func (c *SegmentChecker) createSegmentReduceTasks(ctx context.Context, segments []*meta.Segment, replica *meta.Replica, scope querypb.DataScope) []task.Task {

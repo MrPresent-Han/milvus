@@ -361,8 +361,9 @@ func NewSegmentTask(ctx context.Context,
 	base := newBaseTask(ctx, source, collectionID, replica, shard, fmt.Sprintf("SegmentTask-%s-%d", actions[0].Type().String(), segmentID))
 	base.actions = actions
 	return &SegmentTask{
-		baseTask:  base,
-		segmentID: segmentID,
+		baseTask:   base,
+		segmentID:  segmentID,
+		recovering: recovering,
 	}, nil
 }
 
