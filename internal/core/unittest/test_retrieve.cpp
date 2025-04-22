@@ -567,3 +567,51 @@ TEST_P(RetrieveTest, Delete) {
         }
     }
 }
+
+TEST_P(RetrieveTest, ChunkBound) {
+    //1. set schema
+    auto DIM = 3;
+    auto schema = std::make_shared<Schema>();
+    auto fid_64 = schema->AddDebugField("i64", DataType::INT64);
+    auto fid_vec =
+            schema->AddDebugField("vector_64", data_type, DIM, metric_type);
+    auto fid_str =
+            schema->AddDebugField("varchar", DataType::VARCHAR);
+    auto fid_ts = schema->AddDebugField("Timestamp", DataType::INT64);
+    schema->set_primary_field_id(fid_64);
+
+    //2. set up data for segment
+    int64_t N = 100;
+    SetDefaultExecEvalExprBatchSize(N);
+    int64_t row_num = 2 * N;
+    auto dataset = DataGen(schema, N);
+    auto segment = CreateSealedSegment(schema);
+    SealedLoadFieldData(dataset, *segment);
+    auto i64_col = dataset.get_col<int64_t>(fid_64);
+    auto ts_col = dataset.get_col<int64_t>(fid_ts);
+
+    //3. set up plans
+    auto plan = std::make_unique<query::RetrievePlan>(*schema);
+    std::vector<proto::plan::GenericValue> values;
+    {
+        for (int i = 0; i < req_size; ++i) {
+            proto::plan::GenericValue val;
+            val.set_int64_val(i64_col[i]);
+            values.push_back(val);
+        }
+    }
+    auto term_expr = std::make_shared<milvus::expr::TermFilterExpr>(
+            milvus::expr::ColumnInfo(
+                    fid_64, DataType::INT64, std::vector<std::string>()),
+            values);
+    plan->plan_node_ = std::make_unique<query::RetrievePlanNode>();
+    plan->plan_node_->plannodes_ =
+            milvus::test::CreateRetrievePlanByExpr(term_expr);
+    std::vector<FieldId> target_offsets{fid_ts, fid_64, fid_vec};
+    plan->field_ids_ = target_offsets;
+
+    //4. check query result
+    auto retrieve_results =
+            RetrieveUsingDefaultOutputSize(segment.get(), plan.get(), 100);
+    Assert(retrieve_results->fields_data_size() == target_offsets.size());
+}
