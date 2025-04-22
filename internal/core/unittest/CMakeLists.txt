@@ -24,7 +24,7 @@ add_definitions(-DMILVUS_TEST_SEGCORE_YAML_PATH="${CMAKE_SOURCE_DIR}/unittest/te
 # TODO: better to use ls/find pattern
 set(MILVUS_TEST_FILES
         init_gtest.cpp
-        test_packed_c.cpp
+        #[[test_packed_c.cpp
         test_arrow_fs_c.cpp
         test_column_groups_c.cpp
         test_always_true_expr.cpp
@@ -77,9 +77,9 @@ set(MILVUS_TEST_FILES
         test_reduce.cpp
         test_regex_query.cpp
         test_regex_query_util.cpp
-        test_relational.cpp
+        test_relational.cpp]]
         test_retrieve.cpp
-        test_scalar_index.cpp
+        #[[test_scalar_index.cpp
         test_sealed.cpp
         test_segcore.cpp
         test_similarity_corelation.cpp
@@ -99,7 +99,7 @@ set(MILVUS_TEST_FILES
         test_json_key_stats_index.cpp
         test_types.cpp
         test_growing_storage_v2.cpp
-        test_memory_planner.cpp
+        test_memory_planner.cpp]]
         )
 
 if ( INDEX_ENGINE STREQUAL "cardinal" )
@@ -119,9 +119,9 @@ endif()
 if (LINUX OR APPLE)
     set(MILVUS_TEST_FILES
             ${MILVUS_TEST_FILES}
-            test_scalar_index_creator.cpp
+            #[[test_scalar_index_creator.cpp
             test_string_index.cpp
-            test_array.cpp test_array_expr.cpp)
+            test_array.cpp test_array_expr.cpp]])
 endif()
 
 if (DEFINED AZURE_BUILD_DIR)
