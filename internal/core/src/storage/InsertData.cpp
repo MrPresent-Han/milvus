@@ -58,8 +58,6 @@ InsertData::serialize_to_remote_file() {
     des_fix_part.partition_id = field_data_meta_->partition_id;
     des_fix_part.segment_id = field_data_meta_->segment_id;
     des_fix_part.field_id = field_data_meta_->field_id;
-    des_fix_part.start_timestamp = time_range_.first;
-    des_fix_part.end_timestamp = time_range_.second;
     des_fix_part.data_type = milvus::proto::schema::DataType(data_type);
     for (auto i = int8_t(EventType::DescriptorEvent);
          i < int8_t(EventType::EventTypeEnd);
@@ -81,8 +79,6 @@ InsertData::serialize_to_remote_file() {
     InsertEvent insert_event;
     insert_event.event_offset = des_event_bytes.size();
     auto& insert_event_data = insert_event.event_data;
-    insert_event_data.start_timestamp = time_range_.first;
-    insert_event_data.end_timestamp = time_range_.second;
     insert_event_data.payload_reader = payload_reader_;
 
     auto& insert_event_header = insert_event.event_header;

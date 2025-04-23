@@ -28,11 +28,11 @@ namespace milvus::storage {
 class IndexData : public DataCodec {
  public:
     explicit IndexData(std::shared_ptr<PayloadReader>& payload_reader)
-        : DataCodec(payload_reader, CodecType::IndexDataType) {
+        : DataCodec(payload_reader) {
     }
 
     explicit IndexData(const uint8_t* payload_data, int64_t length)
-        : DataCodec(payload_data, length, CodecType::IndexDataType) {
+        : DataCodec(payload_data, length) {
     }
 
     std::vector<uint8_t>
@@ -50,6 +50,13 @@ class IndexData : public DataCodec {
 
     std::vector<uint8_t>
     serialize_to_local_file();
+
+private:
+    std::vector<uint8_t>
+    serialize_to_no_header_index_file();
+
+    std::vector<uint8_t>
+    serialize_to_header_index_file();
 
  private:
     std::optional<FieldDataMeta> field_data_meta_;

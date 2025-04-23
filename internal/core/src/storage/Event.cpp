@@ -382,7 +382,7 @@ DescriptorEvent::Serialize() {
     event_header.event_length_ = GetEventHeaderSize(event_header) + data_size;
     auto header = event_header.Serialize();
     int header_size = header.size();
-
+    //hc--MAGIC_NUM从这里写入
     int len = header_size + data_size + sizeof(MAGIC_NUM);
     std::vector<uint8_t> res(len);
     int offset = 0;

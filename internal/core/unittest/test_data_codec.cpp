@@ -48,9 +48,6 @@ TEST(storage, InsertDataBool) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::BOOL);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -80,9 +77,6 @@ TEST(storage, InsertDataBoolNullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::BOOL);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -115,9 +109,6 @@ TEST(storage, InsertDataInt8) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT8);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -146,9 +137,6 @@ TEST(storage, InsertDataInt8Nullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT8);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -179,9 +167,6 @@ TEST(storage, InsertDataInt16) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT16);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -210,9 +195,6 @@ TEST(storage, InsertDataInt16Nullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT16);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -243,9 +225,6 @@ TEST(storage, InsertDataInt32) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT32);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -274,9 +253,6 @@ TEST(storage, InsertDataInt32Nullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT32);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -307,9 +283,6 @@ TEST(storage, InsertDataInt64) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT64);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -338,9 +311,6 @@ TEST(storage, InsertDataInt64Nullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::INT64);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -372,9 +342,6 @@ TEST(storage, InsertDataString) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::VARCHAR);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -408,9 +375,6 @@ TEST(storage, InsertDataStringNullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::STRING);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -444,9 +408,6 @@ TEST(storage, InsertDataFloat) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::FLOAT);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -475,9 +436,6 @@ TEST(storage, InsertDataFloatNullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::FLOAT);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -507,9 +465,6 @@ TEST(storage, InsertDataDouble) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::DOUBLE);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -538,9 +493,6 @@ TEST(storage, InsertDataDoubleNullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::DOUBLE);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -572,9 +524,6 @@ TEST(storage, InsertDataFloatVector) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::VECTOR_FLOAT);
     ASSERT_EQ(new_payload->get_num_rows(), data.size() / DIM);
@@ -606,9 +555,6 @@ TEST(storage, InsertDataSparseFloat) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_TRUE(new_payload->get_data_type() ==
                 storage::DataType::VECTOR_SPARSE_FLOAT);
@@ -647,9 +593,6 @@ TEST(storage, InsertDataBinaryVector) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::VECTOR_BINARY);
     ASSERT_EQ(new_payload->get_num_rows(), data.size() * 8 / DIM);
@@ -678,9 +621,6 @@ TEST(storage, InsertDataFloat16Vector) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::VECTOR_FLOAT16);
     ASSERT_EQ(new_payload->get_num_rows(), data.size() / DIM);
@@ -706,9 +646,6 @@ TEST(storage, IndexData) {
                                                    [&](uint8_t*) {});
     auto new_index_data = storage::DeserializeFileData(serialized_data_ptr,
                                                        serialized_bytes.size());
-    ASSERT_EQ(new_index_data->GetCodecType(), storage::IndexDataType);
-    ASSERT_EQ(new_index_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     ASSERT_TRUE(new_index_data->HasBinaryPayload());
     std::vector<uint8_t> new_data(data.size());
     memcpy(new_data.data(),
@@ -742,9 +679,6 @@ TEST(storage, InsertDataStringArray) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::ARRAY);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -789,9 +723,6 @@ TEST(storage, InsertDataStringArrayNullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::ARRAY);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -827,9 +758,6 @@ TEST(storage, InsertDataJsonNullable) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::JSON);
     ASSERT_EQ(new_payload->get_num_rows(), data.size());
@@ -857,9 +785,6 @@ TEST(storage, InsertDataJsonFillWithNull) {
                                                    [&](uint8_t*) {});
     auto new_insert_data = storage::DeserializeFileData(
         serialized_data_ptr, serialized_bytes.size());
-    ASSERT_EQ(new_insert_data->GetCodecType(), storage::InsertDataType);
-    ASSERT_EQ(new_insert_data->GetTimeRage(),
-              std::make_pair(Timestamp(0), Timestamp(100)));
     auto new_payload = new_insert_data->GetFieldData();
     ASSERT_EQ(new_payload->get_data_type(), storage::DataType::JSON);
     ASSERT_EQ(new_payload->get_num_rows(), size);

@@ -33,14 +33,11 @@ namespace milvus::storage {
 
 class DataCodec {
  public:
-    explicit DataCodec(std::shared_ptr<PayloadReader>& reader, CodecType type)
-        : codec_type_(type), payload_reader_(std::move(reader)) {
+    explicit DataCodec(std::shared_ptr<PayloadReader>& reader): payload_reader_(std::move(reader)) {
     }
 
     explicit DataCodec(const uint8_t* payload_data,
-                       int64_t length,
-                       CodecType type)
-        : codec_type_(type) {
+                       int64_t length){
         payload_reader_ = std::make_shared<PayloadReader>(
             payload_data, length, DataType::NONE, false, false);
     }
@@ -53,23 +50,6 @@ class DataCodec {
 
     virtual void
     SetFieldDataMeta(const FieldDataMeta& meta) = 0;
-
-    void
-    SetTimestamps(Timestamp start_timestamp, Timestamp end_timestamp) {
-        // if milvus version <= 2.2.5
-        // assert(start_timestamp <= end_timestamp) condition may not be satisfied
-        time_range_ = std::make_pair(start_timestamp, end_timestamp);
-    }
-
-    std::pair<Timestamp, Timestamp>
-    GetTimeRage() const {
-        return time_range_;
-    }
-
-    CodecType
-    GetCodecType() const {
-        return codec_type_;
-    }
 
     DataType
     GetDataType() {
@@ -133,9 +113,6 @@ class DataCodec {
     }
 
  protected:
-    CodecType codec_type_;
-    std::pair<Timestamp, Timestamp> time_range_;
-
     std::shared_ptr<PayloadReader> payload_reader_;
     std::shared_ptr<uint8_t[]> data_;
     //the shared ptr to keep the original input data alive for zero-copy target

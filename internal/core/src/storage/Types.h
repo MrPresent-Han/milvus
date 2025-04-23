@@ -73,6 +73,12 @@ enum CodecType {
     IndexDataType = 2,
 };
 
+enum IndexFormatType {
+    INT8_ENCODING = 0,
+    NONE_ENCODING = 1,
+    NONE_HEADER = 2,
+};
+
 // index meta information corresponding to index file data
 struct IndexMeta {
     int64_t segment_id;
@@ -84,6 +90,7 @@ struct IndexMeta {
     DataType field_type;
     int64_t dim;
     bool index_non_encoding;
+    IndexFormatType index_format_type;
 };
 
 struct StorageConfig {

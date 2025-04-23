@@ -52,8 +52,6 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
             insert_data =
                 std::make_unique<InsertData>(insert_event_data.payload_reader);
             insert_data->SetFieldDataMeta(data_meta);
-            insert_data->SetTimestamps(insert_event_data.start_timestamp,
-                                       insert_event_data.end_timestamp);
             return insert_data;
         }
         case EventType::IndexFileEvent: {
@@ -93,8 +91,6 @@ DeserializeRemoteFileData(BinlogReaderPtr reader, bool is_field_data) {
             index_meta.build_id = std::stol(
                 std::any_cast<std::string>(extras[INDEX_BUILD_ID_KEY]));
             index_data->set_index_meta(index_meta);
-            index_data->SetTimestamps(index_event_data.start_timestamp,
-                                      index_event_data.end_timestamp);
             return index_data;
         }
         default:

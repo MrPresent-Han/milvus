@@ -646,6 +646,7 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
     auto serialized_index_size = serialized_index_data.size();
     chunk_manager->Write(
         object_key, serialized_index_data.data(), serialized_index_size);
+    LOG_INFO("hc===write seriliazed_index_data_size:{}, buf_size:{}", serialized_index_size, batch_size);
     return std::make_pair(std::move(object_key), serialized_index_size);
 }
 

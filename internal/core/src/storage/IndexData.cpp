@@ -47,9 +47,17 @@ IndexData::Serialize(StorageType medium) {
 }
 
 std::vector<uint8_t>
-IndexData::serialize_to_remote_file() {
+IndexData::serialize_to_no_header_index_file() {
+    std::vector<uint8_t> res(payload_reader_->get_payload_size());
+    memcpy(res.data(), payload_reader_->get_payload_data(), payload_reader_->get_payload_size());
+    return res;//keep this mem copy for time being
+}
+
+std::vector<uint8_t>
+IndexData::serialize_to_header_index_file() {
     AssertInfo(field_data_meta_.has_value(), "field data meta not exist");
     AssertInfo(index_meta_.has_value(), "index meta not exist");
+
     // create descriptor event
     DescriptorEvent descriptor_event;
     auto& des_event_data = descriptor_event.event_data;
@@ -58,23 +66,21 @@ IndexData::serialize_to_remote_file() {
     des_fix_part.partition_id = field_data_meta_->partition_id;
     des_fix_part.segment_id = field_data_meta_->segment_id;
     des_fix_part.field_id = field_data_meta_->field_id;
-    des_fix_part.start_timestamp = time_range_.first;
-    des_fix_part.end_timestamp = time_range_.second;
     des_fix_part.data_type = index_meta_->index_non_encoding
-                                 ? milvus::proto::schema::DataType(
-                                       milvus::proto::schema::DataType::None)
-                                 : milvus::proto::schema::DataType(
-                                       payload_reader_->get_payload_datatype());
+                             ? milvus::proto::schema::DataType(
+                    milvus::proto::schema::DataType::None)
+                             : milvus::proto::schema::DataType(
+                    payload_reader_->get_payload_datatype());
     for (auto i = int8_t(EventType::DescriptorEvent);
          i < int8_t(EventType::EventTypeEnd);
          i++) {
         des_event_data.post_header_lengths.push_back(
-            GetEventFixPartSize(EventType(i)));
+                GetEventFixPartSize(EventType(i)));
     }
     des_event_data.extras[ORIGIN_SIZE_KEY] =
-        std::to_string(payload_reader_->get_payload_size());
+            std::to_string(payload_reader_->get_payload_size());
     des_event_data.extras[INDEX_BUILD_ID_KEY] =
-        std::to_string(index_meta_->build_id);
+            std::to_string(index_meta_->build_id);
     auto& des_event_header = descriptor_event.event_header;
     // TODO :: set timestamp
     des_event_header.timestamp_ = 0;
@@ -85,8 +91,6 @@ IndexData::serialize_to_remote_file() {
     IndexEvent index_event;
     index_event.event_offset = des_event_bytes.size();
     auto& index_event_data = index_event.event_data;
-    index_event_data.start_timestamp = time_range_.first;
-    index_event_data.end_timestamp = time_range_.second;
     index_event_data.payload_reader = payload_reader_;
 
     auto& index_event_header = index_event.event_header;
@@ -100,6 +104,16 @@ IndexData::serialize_to_remote_file() {
                            index_event_bytes.begin(),
                            index_event_bytes.end());
     return des_event_bytes;
+}
+
+std::vector<uint8_t>
+IndexData::serialize_to_remote_file() {
+    AssertInfo(index_meta_.has_value(), "index meta not exist");
+    if(index_meta_->index_format_type == NONE_HEADER) {
+        return serialize_to_no_header_index_file();
+    } else {
+        return serialize_to_header_index_file();
+    }
 }
 
 // Just for test
