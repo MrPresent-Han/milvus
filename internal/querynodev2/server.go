@@ -24,7 +24,7 @@ package querynodev2
 #include "segcore/segcore_init_c.h"
 #include "common/init_c.h"
 #include "exec/expression/function/init_c.h"
-
+#include "storage/storage_c.h"
 */
 import "C"
 
@@ -186,6 +186,20 @@ func (node *QueryNode) Register() error {
 	return nil
 }
 
+func ResizeHighPriorityPool(evt *config.Event) {
+	if evt.HasUpdated {
+		pt := paramtable.Get()
+		newSize := pt.CommonCfg.HighPriorityThreadPoolSize.GetAsInt()
+		C.ResizeTheadPoolSize(C.int64_t(0), C.int64_t(newSize))
+	}
+}
+
+func (node *QueryNode) RegisterSegcoreConfigWatcher() {
+	pt := paramtable.Get()
+	pt.Watch(pt.CommonCfg.HighPriorityThreadPoolSize.Key,
+		config.NewHandler("qn.threadpool.highPriorityPoolSize", ResizeHighPriorityPool))
+}
+
 // InitSegcore set init params of segCore, such as chunckRows, SIMD type...
 func (node *QueryNode) InitSegcore() error {
 	cGlogConf := C.CString(path.Join(paramtable.GetBaseTable().GetConfigDir(), paramtable.DefaultGlogConf))
@@ -220,6 +234,7 @@ func (node *QueryNode) InitSegcore() error {
 	C.InitMiddlePriorityThreadCoreCoefficient(cMiddlePriorityThreadCoreCoefficient)
 	cLowPriorityThreadCoreCoefficient := C.int64_t(paramtable.Get().CommonCfg.LowPriorityThreadCoreCoefficient.GetAsInt64())
 	C.InitLowPriorityThreadCoreCoefficient(cLowPriorityThreadCoreCoefficient)
+	node.RegisterSegcoreConfigWatcher()
 
 	cCPUNum := C.int(hardware.GetCPUNum())
 	C.InitCpuNum(cCPUNum)

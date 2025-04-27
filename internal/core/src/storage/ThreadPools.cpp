@@ -53,4 +53,21 @@ ThreadPools::GetThreadPool(milvus::ThreadPoolPriority priority) {
     }
 }
 
+void
+ThreadPools::ResizeThreadPool(milvus::ThreadPoolPriority priority, int64_t size) {
+    if(size < 1) {
+        LOG_ERROR("Failed to resize thread pool with size:{}, must not be less than 1", size);
+        return;
+    }
+    std::unique_lock<std::shared_mutex> lock(mutex_);
+    auto iter = thread_pool_map.find(priority);
+    if(iter==thread_pool_map.end()) {
+        LOG_ERROR("Failed to resize thread pool with priority:{}, not found", priority);
+        return;
+    }
+    iter->second->min_threads_size_ = size;
+    iter->second->max_threads_size_ = size;
+    LOG_INFO("Has resized thread pool with priority:{}, new min/max size:{} no return value", priority, size);
+}
+
 }  // namespace milvus

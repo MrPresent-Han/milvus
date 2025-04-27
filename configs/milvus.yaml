@@ -830,6 +830,8 @@ common:
     highPriority: 10 # This parameter specify how many times the number of threads is the number of cores in high priority pool
     middlePriority: 5 # This parameter specify how many times the number of threads is the number of cores in middle priority pool
     lowPriority: 1 # This parameter specify how many times the number of threads is the number of cores in low priority pool
+  threadCore:
+    highPrioritySize: 10 # This parameter specify the min/max thread count in the high priority pool in the segcore
   buildIndexThreadPoolRatio: 0.75
   DiskIndex:
     MaxDegree: 56

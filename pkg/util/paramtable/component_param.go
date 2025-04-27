@@ -225,6 +225,7 @@ type commonConfig struct {
 	HighPriorityThreadCoreCoefficient   ParamItem `refreshable:"false"`
 	MiddlePriorityThreadCoreCoefficient ParamItem `refreshable:"false"`
 	LowPriorityThreadCoreCoefficient    ParamItem `refreshable:"false"`
+	HighPriorityThreadPoolSize          ParamItem `refreshable:"true"`
 	EnableMaterializedView              ParamItem `refreshable:"false"`
 	BuildIndexThreadPoolRatio           ParamItem `refreshable:"false"`
 	MaxDegree                           ParamItem `refreshable:"true"`
@@ -623,6 +624,16 @@ This configuration is only used by querynode and indexnode, it selects CPU instr
 		Export: true,
 	}
 	p.HighPriorityThreadCoreCoefficient.Init(base.mgr)
+
+	p.HighPriorityThreadPoolSize = ParamItem{
+		Key:          "common.threadCore.highPrioritySize",
+		Version:      "2.0.0",
+		DefaultValue: strconv.Itoa(DefaultHighPriorityThreadCoreCoefficient),
+		Doc: "This parameter specify the min/max thread count " +
+			"in the high priority pool in the segcore",
+		Export: true,
+	}
+	p.HighPriorityThreadPoolSize.Init(base.mgr)
 
 	p.MiddlePriorityThreadCoreCoefficient = ParamItem{
 		Key:          "common.threadCoreCoefficient.middlePriority",

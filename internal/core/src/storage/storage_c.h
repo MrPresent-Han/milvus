@@ -36,6 +36,9 @@ InitMmapManager(CMmapConfig c_mmap_config);
 void
 CleanRemoteChunkManagerSingleton();
 
+void
+ResizeTheadPoolSize(int64_t priority, int64_t size);
+
 #ifdef __cplusplus
 };
 #endif

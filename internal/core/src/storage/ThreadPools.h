@@ -33,6 +33,9 @@ class ThreadPools {
     static ThreadPool&
     GetThreadPool(ThreadPoolPriority priority);
 
+    static void
+    ResizeThreadPool(ThreadPoolPriority priority, int64_t size);
+
     ~ThreadPools() {
         ShutDown();
     }
