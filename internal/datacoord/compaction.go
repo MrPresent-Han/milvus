@@ -110,7 +110,7 @@ func (sna *SlotBasedNodeAssigner) assign(t CompactionTask) bool {
 
 	nodeID, useSlot := sna.pickAnyNode(t)
 	if nodeID == NullNodeID {
-		logger.RatedWarn(10, "cannot find datanode for compaction task",
+		logger.Warn("cannot find datanode for compaction task",
 			zap.Int64("required", t.GetSlotUsage()), zap.Any("available", sna.slots))
 		return false
 	}
@@ -396,6 +396,10 @@ func (c *compactionPlanHandler) schedule(assigner NodeAssigner) []CompactionTask
 			}
 		}
 		c.executingTasks[t.GetTaskProto().GetPlanID()] = t
+		log.Info("hc==added task into executing queue",
+			zap.Int64("planID", t.GetTaskProto().GetPlanID()),
+			zap.Int64("nodeID", t.GetTaskProto().GetNodeID()),
+			zap.String("channel", t.GetTaskProto().GetChannel()))
 		c.executingGuard.Unlock()
 		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", NullNodeID), t.GetTaskProto().GetType().String(), metrics.Pending).Dec()
 		metrics.DataCoordCompactionTaskNum.WithLabelValues(fmt.Sprintf("%d", t.GetTaskProto().GetNodeID()), t.GetTaskProto().GetType().String(), metrics.Executing).Inc()

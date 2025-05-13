@@ -86,11 +86,12 @@ func (t *l0CompactionTask) Process() bool {
 }
 
 func (t *l0CompactionTask) processPipelining() bool {
+	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("nodeID", t.GetTaskProto().GetNodeID()))
 	if t.NeedReAssignNodeID() {
+		log.Warn("hc===failed to process pipelining, need reassign node")
 		return false
 	}
 
-	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("nodeID", t.GetTaskProto().GetNodeID()))
 	plan, err := t.BuildCompactionRequest()
 	if err != nil {
 		log.Warn("l0CompactionTask failed to build compaction request", zap.Error(err))
@@ -121,6 +122,7 @@ func (t *l0CompactionTask) processPipelining() bool {
 	}
 
 	t.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_executing))
+	log.Warn("hc===finish updating task from pipelining to executing")
 	return false
 }
 
@@ -279,7 +281,15 @@ func (t *l0CompactionTask) PreparePlan() bool {
 		return info.GetID()
 	})
 	exist, hasStating := t.meta.CheckSegmentsStating(context.TODO(), sealedSegmentIDs)
-	return exist && !hasStating
+	prepared := exist && !hasStating
+
+	log.Info("hc==l0CompactionTask failed to prepare for",
+		zap.Bool("exist", exist),
+		zap.Bool("hasStating", hasStating),
+		zap.Int64("planID", t.GetTaskProto().GetPlanID()),
+		zap.Int64("nodeID", t.GetTaskProto().GetNodeID()),
+		zap.String("channel", t.GetTaskProto().GetChannel()))
+	return prepared
 }
 
 func (t *l0CompactionTask) BuildCompactionRequest() (*datapb.CompactionPlan, error) {
