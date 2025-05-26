@@ -158,7 +158,7 @@ MemFileManagerImpl::cache_row_data_to_memory_internal(const Config& config) {
     std::vector<FieldDataPtr> field_datas;
 
     auto FetchRawData = [&]() {
-        auto raw_datas = GetObjectData(rcm_.get(), batch_files);
+        auto raw_datas = GetObjectData(rcm_.get(), batch_files, milvus::PriorityForLoad(priority));
         for (auto& data : raw_datas) {
             field_datas.emplace_back(data.get()->GetFieldData());
         }

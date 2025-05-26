@@ -150,7 +150,7 @@ TextMatchIndex::Load(const Config& config) {
         std::vector<std::string> file;
         file.push_back(*it);
         files_value.erase(it);
-        auto index_datas = mem_file_manager_->LoadIndexToMemory(file, config[milvus::L]);
+        auto index_datas = mem_file_manager_->LoadIndexToMemory(file, config[milvus::LOAD_PRIORITY]);
         BinarySet binary_set;
         AssembleIndexDatas(index_datas, binary_set);
         auto index_valid_data = binary_set.GetByName("index_null_offset");
