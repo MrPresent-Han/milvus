@@ -63,7 +63,7 @@ ChunkTranslator::ChunkTranslator(
 
 std::unique_ptr<milvus::Chunk>
 ChunkTranslator::load_chunk(milvus::cachinglayer::cid_t cid) {
-    auto& pool = ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
+    auto& pool = ThreadPools::GetThreadPool(PriorityForLoad(load_priority));
     auto channel = std::make_shared<ArrowReaderChannel>();
     pool.Submit(LoadArrowReaderFromRemote,
                 std::vector<std::string>{files_and_rows_[cid].first},

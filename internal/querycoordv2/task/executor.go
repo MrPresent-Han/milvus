@@ -19,6 +19,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus/pkg/v2/common"
 	"sync"
 	"time"
 
@@ -193,7 +194,7 @@ func (ex *Executor) loadSegment(task *SegmentTask, step int) error {
 		return err
 	}
 
-	loadInfo, indexInfos, err := ex.getLoadInfo(ctx, task.CollectionID(), action.SegmentID, channel)
+	loadInfo, indexInfos, err := ex.getLoadInfo(ctx, task.CollectionID(), action.SegmentID, channel, task.LoadPriority())
 	if err != nil {
 		return err
 	}
@@ -564,7 +565,7 @@ func (ex *Executor) setDistribution(task *LeaderTask, step int) error {
 		return err
 	}
 
-	loadInfo, indexInfo, err := ex.getLoadInfo(ctx, task.CollectionID(), action.SegmentID(), channel)
+	loadInfo, indexInfo, err := ex.getLoadInfo(ctx, task.CollectionID(), action.SegmentID(), channel, commonpb.LoadPriority_LOW)
 	if err != nil {
 		return err
 	}
@@ -695,7 +696,7 @@ func (ex *Executor) getMetaInfo(ctx context.Context, task Task) (*milvuspb.Descr
 	return collectionInfo, loadMeta, channel, nil
 }
 
-func (ex *Executor) getLoadInfo(ctx context.Context, collectionID, segmentID int64, channel *meta.DmChannel) (*querypb.SegmentLoadInfo, []*indexpb.IndexInfo, error) {
+func (ex *Executor) getLoadInfo(ctx context.Context, collectionID, segmentID int64, channel *meta.DmChannel, priority commonpb.LoadPriority) (*querypb.SegmentLoadInfo, []*indexpb.IndexInfo, error) {
 	log := log.Ctx(ctx)
 	segmentInfos, err := ex.broker.GetSegmentInfo(ctx, segmentID)
 	if err != nil || len(segmentInfos) == 0 {
@@ -736,6 +737,9 @@ func (ex *Executor) getLoadInfo(ctx context.Context, collectionID, segmentID int
 			}
 		}
 		segmentIndex.IndexParams = funcutil.Map2KeyValuePair(params)
+		segmentIndex.IndexParams = append(segmentIndex.IndexParams,
+			&commonpb.KeyValuePair{Key: common.LoadPriorityKey, Value: priority.String()})
+		log.Info("hc===appended load priority:", zap.String("load priority", priority.String()))
 	}
 
 	loadInfo := utils.PackSegmentLoadInfo(segment, channel.GetSeekPosition(), indexes[segment.GetID()])

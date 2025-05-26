@@ -19,6 +19,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -324,17 +325,19 @@ func (task *baseTask) Name() string {
 type SegmentTask struct {
 	*baseTask
 
-	segmentID typeutil.UniqueID
+	segmentID    typeutil.UniqueID
+	loadPriority commonpb.LoadPriority
 }
 
 // NewSegmentTask creates a SegmentTask with actions,
 // all actions must process the same segment,
 // empty actions is not allowed
-func NewSegmentTask(ctx context.Context,
+func NewSegmentTask(ctx context.Context, //hc---change calling to this method
 	timeout time.Duration,
 	source Source,
 	collectionID typeutil.UniqueID,
 	replica *meta.Replica,
+	loadPriority commonpb.LoadPriority,
 	actions ...Action,
 ) (*SegmentTask, error) {
 	if len(actions) == 0 {
@@ -359,9 +362,14 @@ func NewSegmentTask(ctx context.Context,
 	base := newBaseTask(ctx, source, collectionID, replica, shard, fmt.Sprintf("SegmentTask-%s-%d", actions[0].Type().String(), segmentID))
 	base.actions = actions
 	return &SegmentTask{
-		baseTask:  base,
-		segmentID: segmentID,
+		baseTask:     base,
+		segmentID:    segmentID,
+		loadPriority: loadPriority,
 	}, nil
+}
+
+func (task *SegmentTask) LoadPriority() commonpb.LoadPriority {
+	return task.loadPriority
 }
 
 func (task *SegmentTask) SegmentID() typeutil.UniqueID {
@@ -377,7 +385,7 @@ func (task *SegmentTask) Name() string {
 }
 
 func (task *SegmentTask) String() string {
-	return fmt.Sprintf("%s [segmentID=%d]", task.baseTask.String(), task.segmentID)
+	return fmt.Sprintf("%s [segmentID=%d][loadPriority=%d]", task.baseTask.String(), task.segmentID, task.loadPriority)
 }
 
 func (task *SegmentTask) MarshalJSON() ([]byte, error) {

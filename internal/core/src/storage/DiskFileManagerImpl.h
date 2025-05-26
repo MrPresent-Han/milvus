@@ -103,13 +103,14 @@ class DiskFileManagerImpl : public FileManagerImpl {
     }
 
     void
-    CacheIndexToDisk(const std::vector<std::string>& remote_files);
+    CacheIndexToDisk(const std::vector<std::string>& remote_files, milvus::proto::common::LoadPriority priority);
 
     void
-    CacheTextLogToDisk(const std::vector<std::string>& remote_files);
+    CacheTextLogToDisk(const std::vector<std::string>& remote_files, milvus::proto::common::LoadPriority priority);
 
     void
-    CacheJsonKeyIndexToDisk(const std::vector<std::string>& remote_files);
+    CacheJsonKeyIndexToDisk(const std::vector<std::string>& remote_files,
+                            milvus::proto::common::LoadPriority priority);
 
     void
     AddBatchIndexFiles(const std::string& local_file_name,
@@ -160,7 +161,9 @@ class DiskFileManagerImpl : public FileManagerImpl {
     void
     CacheIndexToDiskInternal(
         const std::vector<std::string>& remote_files,
-        const std::function<std::string()>& get_local_index_prefix);
+        const std::function<std::string()>& get_local_index_prefix,
+        milvus::proto::common::LoadPriority priority =
+    milvus::proto::common::LoadPriority::LOW);
 
     template <typename DataType>
     std::string

@@ -7,6 +7,7 @@ package segcore
 import "C"
 
 import (
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"unsafe"
 
 	"github.com/cockroachdb/errors"
@@ -38,6 +39,7 @@ type LoadFieldDataRequest struct {
 	MMapDir        string
 	RowCount       int64
 	StorageVersion int64
+	LoadPriority   commonpb.LoadPriority
 }
 
 type LoadFieldDataInfo struct {
@@ -83,6 +85,7 @@ func (req *LoadFieldDataRequest) getCLoadFieldDataRequest() (result *cLoadFieldD
 		defer C.free(unsafe.Pointer(mmapDir))
 		C.AppendMMapDirPath(cLoadFieldDataInfo, mmapDir)
 	}
+	C.SetLoadPriority(cLoadFieldDataInfo, C.int32_t(req.LoadPriority))
 	return &cLoadFieldDataRequest{
 		cLoadFieldDataInfo: cLoadFieldDataInfo,
 	}, nil

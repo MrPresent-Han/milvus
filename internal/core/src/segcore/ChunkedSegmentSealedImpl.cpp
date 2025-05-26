@@ -129,7 +129,7 @@ ChunkedSegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
         set_bit(binlog_index_bitset_, field_id, false);
         vector_indexings_.drop_field_indexing(field_id);
     }
-    vector_indexings_.append_field_indexing(
+    vector_indexings_.append_field_indexing(//hc---truly load
         field_id,
         metric_type,
         std::move(const_cast<LoadIndexInfo&>(info).cache_index));
@@ -289,7 +289,8 @@ ChunkedSegmentSealedImpl::load_column_group_data_internal(
                 insert_files,
                 info.enable_mmap,
                 row_group_meta_list,
-                field_id_list);
+                field_id_list,
+                load_info.load_priority);
 
         auto chunked_column_group =
             std::make_shared<ChunkedColumnGroup>(std::move(translator));
@@ -335,7 +336,7 @@ ChunkedSegmentSealedImpl::load_field_data_internal(
             field_data_info.arrow_reader_channel->set_capacity(parallel_degree *
                                                                2);
             auto& pool =
-                ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
+                ThreadPools::GetThreadPool(PriorityForLoad(load_info.load_priority));
             pool.Submit(LoadArrowReaderFromRemote,
                         insert_files,
                         field_data_info.arrow_reader_channel);

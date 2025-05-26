@@ -303,6 +303,8 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
 
         auto config = milvus::index::ParseConfigFromIndexParams(
             load_index_info->index_params);
+        auto load_priority_str = to_string(config[milvus::LOAD_PRIORITY]);
+        config[milvus::LOAD_PRIORITY] = milvus::PriorityForLoad(load_priority_str);
 
         // Config should have value for milvus::index::SCALAR_INDEX_ENGINE_VERSION for production calling chain.
         // Use value_or(1) for unit test without setting this value
@@ -322,12 +324,13 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
         milvus::tracer::SetRootSpan(span);
 
         LOG_INFO(
-            "[collection={}][segment={}][field={}][enable_mmap={}] load index "
+            "[collection={}][segment={}][field={}][enable_mmap={}][load_priority={}] load index "
             "{}",
             load_index_info->collection_id,
             load_index_info->segment_id,
             load_index_info->field_id,
             load_index_info->enable_mmap,
+            load_priority_str,
             load_index_info->index_id);
 
         // get index type

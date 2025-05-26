@@ -22,11 +22,27 @@
 
 namespace milvus {
 
+constexpr const char* LOAD_PRIORITY = "load_priority";
+
 enum ThreadPoolPriority {
     HIGH = 0,
     MIDDLE = 1,
     LOW = 2,
 };
+
+inline ThreadPoolPriority
+PriorityForLoad(milvus::proto::common::LoadPriority priority) {
+    return priority == milvus::proto::common::LoadPriority::HIGH
+           ? ThreadPoolPriority::HIGH
+           : ThreadPoolPriority::LOW;
+}
+
+inline ThreadPoolPriority
+PriorityForLoad(std::string priority_str) {
+    return priority_str == "low"
+           ? ThreadPoolPriority::LOW
+           : ThreadPoolPriority::HIGH;
+}
 
 class ThreadPools {
  public:

@@ -198,7 +198,7 @@ VectorMemIndex<T>::Load(milvus::tracer::TraceContext ctx,
                     batch.push_back(index_file_prefix + file_name);
                 }
 
-                auto batch_data = file_manager_->LoadIndexToMemory(batch);
+                auto batch_data = file_manager_->LoadIndexToMemory(batch, config[milvus::LOAD_PRIORITY]);
                 int64_t payload_size = 0;
                 index_data_codecs.insert({prefix, IndexDataCodec{}});
                 auto& index_data_codec = index_data_codecs.at(prefix);
@@ -225,7 +225,7 @@ VectorMemIndex<T>::Load(milvus::tracer::TraceContext ctx,
         if (!pending_index_files.empty()) {
             auto result =
                 file_manager_->LoadIndexToMemory(std::vector<std::string>(
-                    pending_index_files.begin(), pending_index_files.end()));
+                    pending_index_files.begin(), pending_index_files.end()), config[milvus::LOAD_PRIORITY]);
             for (auto&& index_data : result) {
                 auto prefix = index_data.first;
                 index_data_codecs.insert({prefix, IndexDataCodec{}});
