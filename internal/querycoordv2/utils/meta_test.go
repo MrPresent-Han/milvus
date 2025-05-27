@@ -18,6 +18,7 @@ package utils
 
 import (
 	"context"
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -122,7 +123,7 @@ func TestSpawnReplicasWithRG(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := SpawnReplicasWithRG(ctx, tt.args.m, tt.args.collection, tt.args.resourceGroups, tt.args.replicaNumber, nil)
+			got, err := SpawnReplicasWithRG(ctx, tt.args.m, tt.args.collection, tt.args.resourceGroups, tt.args.replicaNumber, nil, commonpb.LoadPriority_LOW)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("SpawnReplicasWithRG() error = %v, wantErr %v", err, tt.wantErr)
 				return

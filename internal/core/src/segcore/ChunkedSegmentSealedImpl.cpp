@@ -336,10 +336,10 @@ ChunkedSegmentSealedImpl::load_field_data_internal(
             field_data_info.arrow_reader_channel->set_capacity(parallel_degree *
                                                                2);
             auto& pool =
-                ThreadPools::GetThreadPool(PriorityForLoad(load_info.load_priority));
+                ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
             pool.Submit(LoadArrowReaderFromRemote,
                         insert_files,
-                        field_data_info.arrow_reader_channel);
+                        field_data_info.arrow_reader_channel, load_info.load_priority);
 
             LOG_INFO("segment {} submits load field {} task to thread pool",
                      this->get_segment_id(),

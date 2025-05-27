@@ -427,7 +427,7 @@ LoadTextIndex(CSegmentInterface c_segment,
             files.push_back(f);
         }
         config["index_files"] = files;
-
+        config[milvus::LOAD_PRIORITY] = info_proto->load_priority();
         milvus::storage::FileManagerContext ctx(
             field_meta, index_meta, remote_chunk_manager);//hc---load text index
 
@@ -480,7 +480,7 @@ LoadJsonKeyIndex(CTraceContext c_trace,
             files.push_back(f);
         }
         config["index_files"] = files;
-
+        config[milvus::LOAD_PRIORITY] = info_proto->load_priority();
         milvus::storage::FileManagerContext file_ctx(
             field_meta, index_meta, remote_chunk_manager);
 

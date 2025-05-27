@@ -37,11 +37,11 @@ PriorityForLoad(milvus::proto::common::LoadPriority priority) {
            : ThreadPoolPriority::LOW;
 }
 
-inline ThreadPoolPriority
+inline milvus::proto::common::LoadPriority
 PriorityForLoad(std::string priority_str) {
     return priority_str == "low"
-           ? ThreadPoolPriority::LOW
-           : ThreadPoolPriority::HIGH;
+           ? milvus::proto::common::LoadPriority::LOW
+           :  milvus::proto::common::LoadPriority::HIGH;
 }
 
 class ThreadPools {

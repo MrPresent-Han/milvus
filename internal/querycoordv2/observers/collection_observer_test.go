@@ -18,6 +18,7 @@ package observers
 
 import (
 	"context"
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"testing"
 	"time"
 
@@ -494,7 +495,8 @@ func (suite *CollectionObserverSuite) loadAll() {
 func (suite *CollectionObserverSuite) load(collection int64) {
 	ctx := suite.ctx
 	// Mock meta data
-	replicas, err := suite.meta.ReplicaManager.Spawn(ctx, collection, map[string]int{meta.DefaultResourceGroupName: int(suite.replicaNumber[collection])}, nil)
+	replicas, err := suite.meta.ReplicaManager.Spawn(ctx, collection, map[string]int{meta.DefaultResourceGroupName: int(suite.replicaNumber[collection])},
+		nil, commonpb.LoadPriority_LOW)
 	suite.NoError(err)
 	for _, replica := range replicas {
 		replica.AddRWNode(suite.nodes...)
