@@ -39,7 +39,7 @@ struct LoadFieldDataInfo {
     std::string mmap_dir_path = "";
     int64_t storage_version = 0;
     milvus::proto::common::LoadPriority load_priority =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
 };
 
 struct LoadDeletedRecordInfo {

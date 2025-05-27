@@ -303,8 +303,15 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
 
         auto config = milvus::index::ParseConfigFromIndexParams(
             load_index_info->index_params);
-        auto load_priority_str = to_string(config[milvus::LOAD_PRIORITY]);
-        config[milvus::LOAD_PRIORITY] = milvus::PriorityForLoad(load_priority_str);
+        auto load_priority_str =
+            config[milvus::LOAD_PRIORITY].get<std::string>();
+        auto priority_for_load = milvus::PriorityForLoad(load_priority_str);
+        config[milvus::LOAD_PRIORITY] = priority_for_load;
+        LOG_INFO(
+            "hc===:load_priority_str:{}, priority_for_load:{}, load_p_v:{}",
+            load_priority_str,
+            to_string(priority_for_load),
+            config.dump());
 
         // Config should have value for milvus::index::SCALAR_INDEX_ENGINE_VERSION for production calling chain.
         // Use value_or(1) for unit test without setting this value
@@ -324,7 +331,8 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
         milvus::tracer::SetRootSpan(span);
 
         LOG_INFO(
-            "[collection={}][segment={}][field={}][enable_mmap={}][load_priority={}] load index "
+            "[collection={}][segment={}][field={}][enable_mmap={}][load_"
+            "priority={}] load index "
             "{}",
             load_index_info->collection_id,
             load_index_info->segment_id,
@@ -395,6 +403,8 @@ AppendIndexV2(CTraceContext c_trace, CLoadIndexInfo c_load_index_info) {
             load_index_info->index->Load(ctx, config);
         } else {
             // use cache layer to load vector/scalar index
+            LOG_INFO("constructed SealedIndexTranslator with config: {}",
+                     config.dump());
             std::unique_ptr<
                 milvus::cachinglayer::Translator<milvus::index::IndexBase>>
                 translator =

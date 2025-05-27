@@ -129,7 +129,7 @@ ChunkedSegmentSealedImpl::LoadVecIndex(const LoadIndexInfo& info) {
         set_bit(binlog_index_bitset_, field_id, false);
         vector_indexings_.drop_field_indexing(field_id);
     }
-    vector_indexings_.append_field_indexing(//hc---truly load
+    vector_indexings_.append_field_indexing(  //hc---truly load
         field_id,
         metric_type,
         std::move(const_cast<LoadIndexInfo&>(info).cache_index));
@@ -339,7 +339,8 @@ ChunkedSegmentSealedImpl::load_field_data_internal(
                 ThreadPools::GetThreadPool(milvus::ThreadPoolPriority::MIDDLE);
             pool.Submit(LoadArrowReaderFromRemote,
                         insert_files,
-                        field_data_info.arrow_reader_channel, load_info.load_priority);
+                        field_data_info.arrow_reader_channel,
+                        load_info.load_priority);
 
             LOG_INFO("segment {} submits load field {} task to thread pool",
                      this->get_segment_id(),

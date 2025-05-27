@@ -704,11 +704,11 @@ func separateIndexAndBinlog(loadInfo *querypb.SegmentLoadInfo) (map[int64]*Index
 }
 
 func separateLoadInfoV2(loadInfo *querypb.SegmentLoadInfo, schema *schemapb.CollectionSchema) (
-	map[int64]*IndexedFieldInfo, // indexed info
-	[]*datapb.FieldBinlog, // fields info
+	map[int64]*IndexedFieldInfo,      // indexed info
+	[]*datapb.FieldBinlog,            // fields info
 	map[int64]*datapb.TextIndexStats, // text indexed info
-	map[int64]struct{}, // unindexed text fields
-	map[int64]*datapb.JsonKeyStats, // json key stats info
+	map[int64]struct{},               // unindexed text fields
+	map[int64]*datapb.JsonKeyStats,   // json key stats info
 ) {
 	fieldID2IndexInfo := make(map[int64][]*querypb.FieldIndexInfo)
 	for _, indexInfo := range loadInfo.IndexInfos {
@@ -1702,7 +1702,8 @@ func (loader *segmentLoader) LoadIndex(ctx context.Context,
 	defer metrics.QueryNodeLoadIndexLatency.WithLabelValues(fmt.Sprint(paramtable.GetNodeID())).Observe(float64(tr.ElapseSpan().Milliseconds()))
 	for _, loadInfo := range infos {
 		fieldIDs := typeutil.NewSet(lo.Map(loadInfo.GetIndexInfos(), func(info *querypb.FieldIndexInfo, _ int) int64 { return info.GetFieldID() })...)
-		fieldInfos := lo.SliceToMap(lo.Filter(loadInfo.GetBinlogPaths(), func(info *datapb.FieldBinlog, _ int) bool { return fieldIDs.Contain(info.GetFieldID()) }),
+		fieldInfos := lo.SliceToMap(lo.Filter(loadInfo.GetBinlogPaths(),
+			func(info *datapb.FieldBinlog, _ int) bool { return fieldIDs.Contain(info.GetFieldID()) }),
 			func(info *datapb.FieldBinlog) (int64, *datapb.FieldBinlog) { return info.GetFieldID(), info })
 
 		for _, info := range loadInfo.GetIndexInfos() {

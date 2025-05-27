@@ -100,7 +100,8 @@ class GroupChunkTranslator
     std::vector<milvus::GroupChunk*> group_chunks_;
     int64_t timestamp_offet_;
     bool use_mmap_;
-    milvus::proto::common::LoadPriority load_priority_{milvus::proto::common::LoadPriority::HIGH};
+    milvus::proto::common::LoadPriority load_priority_{
+        milvus::proto::common::LoadPriority::HIGH};
 };
 
 }  // namespace milvus::segcore::storagev2translator

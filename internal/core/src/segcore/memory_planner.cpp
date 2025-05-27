@@ -168,7 +168,8 @@ LoadWithStrategy(const std::vector<std::string>& remote_files,
             "Number of remote files must match number of row group lists");
         auto fs = milvus_storage::ArrowFileSystemSingleton::GetInstance()
                       .GetArrowFileSystem();
-        auto& pool = ThreadPools::GetThreadPool(milvus::PriorityForLoad(priority));
+        auto& pool =
+            ThreadPools::GetThreadPool(milvus::PriorityForLoad(priority));
 
         for (size_t file_idx = 0; file_idx < remote_files.size(); ++file_idx) {
             const auto& file = remote_files[file_idx];

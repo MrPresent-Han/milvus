@@ -95,7 +95,7 @@ TEST_F(DiskAnnFileManagerTest, AddFilePositiveParallel) {
         remote_files.emplace_back(file2size.first);
     }
     diskAnnFileManager->CacheIndexToDisk(
-            remote_files, milvus::proto::common::LoadPriority::HIGH);
+        remote_files, milvus::proto::common::LoadPriority::HIGH);
     auto local_files = diskAnnFileManager->GetLocalFilePaths();
     for (auto& file : local_files) {
         auto file_size = lcm->Size(file);

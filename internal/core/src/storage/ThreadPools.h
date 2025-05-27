@@ -33,15 +33,20 @@ enum ThreadPoolPriority {
 inline ThreadPoolPriority
 PriorityForLoad(milvus::proto::common::LoadPriority priority) {
     return priority == milvus::proto::common::LoadPriority::HIGH
-           ? ThreadPoolPriority::HIGH
-           : ThreadPoolPriority::LOW;
+               ? ThreadPoolPriority::HIGH
+               : ThreadPoolPriority::LOW;
 }
 
 inline milvus::proto::common::LoadPriority
-PriorityForLoad(std::string priority_str) {
-    return priority_str == "low"
-           ? milvus::proto::common::LoadPriority::LOW
-           :  milvus::proto::common::LoadPriority::HIGH;
+PriorityForLoad(const std::string& priority_str) {
+    LOG_INFO(
+        "priority_str={} len={}", priority_str.c_str(), priority_str.size());
+    if (priority_str == "LOW") {
+        LOG_INFO("hc===return LOW PriorityForLoad");
+        return milvus::proto::common::LoadPriority::LOW;
+    }
+    LOG_INFO("hc===return HIGH PriorityForLoad");
+    return milvus::proto::common::LoadPriority::HIGH;
 }
 
 class ThreadPools {

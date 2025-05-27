@@ -147,9 +147,10 @@ EncodeAndUploadIndexSlice(ChunkManager* chunk_manager,
                           std::string object_key);
 
 std::vector<std::future<std::unique_ptr<DataCodec>>>
-GetObjectData(ChunkManager* remote_chunk_manager,
-              const std::vector<std::string>& remote_files,
-              milvus::ThreadPoolPriority priority = milvus::ThreadPoolPriority::HIGH);
+GetObjectData(
+    ChunkManager* remote_chunk_manager,
+    const std::vector<std::string>& remote_files,
+    milvus::ThreadPoolPriority priority = milvus::ThreadPoolPriority::HIGH);
 
 std::vector<FieldDataPtr>
 GetFieldDatasFromStorageV2(std::vector<std::vector<std::string>>& remote_files,

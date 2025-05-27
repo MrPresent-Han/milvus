@@ -34,9 +34,10 @@ using SealedIndexingEntryPtr = std::shared_ptr<SealedIndexingEntry>;
 
 struct SealedIndexingRecord {
     void
-    append_field_indexing(FieldId field_id,
-                          const MetricType& metric_type,
-                          index::CacheIndexBasePtr indexing) {//hc---truly append index
+    append_field_indexing(
+        FieldId field_id,
+        const MetricType& metric_type,
+        index::CacheIndexBasePtr indexing) {  //hc---truly append index
         auto ptr = std::make_unique<SealedIndexingEntry>();
         ptr->indexing_ = std::move(indexing);
         ptr->metric_type_ = metric_type;

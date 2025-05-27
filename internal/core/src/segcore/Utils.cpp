@@ -898,7 +898,8 @@ LoadArrowReaderFromRemote(const std::vector<std::string>& remote_files,
     try {
         auto rcm = storage::RemoteChunkManagerSingleton::GetInstance()
                        .GetRemoteChunkManager();
-        auto& pool = ThreadPools::GetThreadPool(milvus::PriorityForLoad(priority));
+        auto& pool =
+            ThreadPools::GetThreadPool(milvus::PriorityForLoad(priority));
 
         std::vector<std::future<std::shared_ptr<milvus::ArrowDataWrapper>>>
             futures;
@@ -935,7 +936,8 @@ LoadFieldDatasFromRemote(const std::vector<std::string>& remote_files,
     try {
         auto rcm = storage::RemoteChunkManagerSingleton::GetInstance()
                        .GetRemoteChunkManager();
-        auto& pool = ThreadPools::GetThreadPool(milvus::PriorityForLoad(priority));
+        auto& pool =
+            ThreadPools::GetThreadPool(milvus::PriorityForLoad(priority));
 
         std::vector<std::future<FieldDataPtr>> futures;
         futures.reserve(remote_files.size());

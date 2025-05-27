@@ -86,6 +86,6 @@ LoadWithStrategy(const std::vector<std::string>& remote_files,
                  const std::vector<std::vector<int64_t>>& row_group_lists,
                  const std::shared_ptr<arrow::Schema> schema = nullptr,
                  milvus::proto::common::LoadPriority priority =
-                 milvus::proto::common::LoadPriority::HIGH);
+                     milvus::proto::common::LoadPriority::HIGH);
 
 }  // namespace milvus::segcore

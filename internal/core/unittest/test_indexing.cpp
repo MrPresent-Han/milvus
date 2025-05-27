@@ -500,7 +500,7 @@ TEST_P(IndexTest, BuildAndQuery) {
     load_conf = generate_load_conf(index_type, metric_type, 0);
     load_conf["index_files"] = index_files;
     load_conf[milvus::LOAD_PRIORITY] =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
     ASSERT_NO_THROW(vec_index->Load(milvus::tracer::TraceContext{}, load_conf));
     EXPECT_EQ(vec_index->Count(), NB);
     if (!is_sparse) {
@@ -572,7 +572,7 @@ TEST_P(IndexTest, Mmap) {
     load_conf["index_files"] = index_files;
     load_conf["mmap_filepath"] = "mmap/test_index_mmap_" + index_type;
     load_conf[milvus::LOAD_PRIORITY] =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
     vec_index->Load(milvus::tracer::TraceContext{}, load_conf);
     EXPECT_EQ(vec_index->Count(), NB);
     EXPECT_EQ(vec_index->GetDim(), is_sparse ? kTestSparseDim : DIM);
@@ -629,7 +629,7 @@ TEST_P(IndexTest, GetVector) {
 
     vec_index = dynamic_cast<milvus::index::VectorIndex*>(new_index.get());
     load_conf[milvus::LOAD_PRIORITY] =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
     vec_index->Load(milvus::tracer::TraceContext{}, load_conf);
     if (!is_sparse) {
         EXPECT_EQ(vec_index->GetDim(), DIM);
@@ -731,7 +731,7 @@ TEST_P(IndexTest, GetVector_EmptySparseVector) {
     load_conf = generate_load_conf(index_type, metric_type, 0);
     load_conf["index_files"] = index_files;
     load_conf[milvus::LOAD_PRIORITY] =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
     vec_index = dynamic_cast<milvus::index::VectorIndex*>(new_index.get());
     vec_index->Load(milvus::tracer::TraceContext{}, load_conf);
     EXPECT_EQ(vec_index->Count(), NB);
@@ -816,7 +816,7 @@ TEST(Indexing, SearchDiskAnnWithInvalidParam) {
     auto load_conf = generate_load_conf(index_type, metric_type, NB);
     load_conf["index_files"] = index_files;
     load_conf[milvus::LOAD_PRIORITY] =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
     vec_index->Load(milvus::tracer::TraceContext{}, load_conf);
     EXPECT_EQ(vec_index->Count(), NB);
 
@@ -902,7 +902,7 @@ TEST(Indexing, SearchDiskAnnWithFloat16) {
     auto load_conf = generate_load_conf<float16>(index_type, metric_type, NB);
     load_conf["index_files"] = index_files;
     load_conf[milvus::LOAD_PRIORITY] =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
     vec_index->Load(milvus::tracer::TraceContext{}, load_conf);
     EXPECT_EQ(vec_index->Count(), NB);
 
@@ -987,7 +987,7 @@ TEST(Indexing, SearchDiskAnnWithBFloat16) {
     auto load_conf = generate_load_conf<bfloat16>(index_type, metric_type, NB);
     load_conf["index_files"] = index_files;
     load_conf[milvus::LOAD_PRIORITY] =
-            milvus::proto::common::LoadPriority::HIGH;
+        milvus::proto::common::LoadPriority::HIGH;
     vec_index->Load(milvus::tracer::TraceContext{}, load_conf);
     EXPECT_EQ(vec_index->Count(), NB);
 

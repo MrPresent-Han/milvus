@@ -224,6 +224,8 @@ DiskFileManagerImpl::CacheIndexToDiskInternal(
     const std::vector<std::string>& remote_files,
     const std::function<std::string()>& get_local_index_prefix,
     milvus::proto::common::LoadPriority priority) {
+    LOG_INFO("hc===CacheIndexToDiskInternal, with priority:{}",
+             to_string(priority));
     auto local_chunk_manager =
         LocalChunkManagerSingleton::GetInstance().GetChunkManager();
 
@@ -264,7 +266,9 @@ DiskFileManagerImpl::CacheIndexToDiskInternal(
 
         auto appendIndexFiles = [&]() {
             auto index_chunks_futures =
-                GetObjectData(rcm_.get(), batch_remote_files, milvus::PriorityForLoad(priority));
+                GetObjectData(rcm_.get(),
+                              batch_remote_files,
+                              milvus::PriorityForLoad(priority));
             for (auto& chunk_future : index_chunks_futures) {
                 auto chunk_codec = chunk_future.get();
                 file.Write(chunk_codec->PayloadData(),
@@ -293,7 +297,9 @@ DiskFileManagerImpl::CacheIndexToDisk(
     const std::vector<std::string>& remote_files,
     milvus::proto::common::LoadPriority priority) {
     return CacheIndexToDiskInternal(
-        remote_files, [this]() { return GetLocalIndexObjectPrefix(); }, priority);
+        remote_files,
+        [this]() { return GetLocalIndexObjectPrefix(); },
+        priority);
 }
 
 void
@@ -309,7 +315,9 @@ DiskFileManagerImpl::CacheJsonKeyIndexToDisk(
     const std::vector<std::string>& remote_files,
     milvus::proto::common::LoadPriority priority) {
     return CacheIndexToDiskInternal(
-        remote_files, [this]() { return GetLocalJsonKeyIndexPrefix(); }, priority);
+        remote_files,
+        [this]() { return GetLocalJsonKeyIndexPrefix(); },
+        priority);
 }
 
 template <typename DataType>

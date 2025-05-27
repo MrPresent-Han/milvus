@@ -354,6 +354,7 @@ func (c *SegmentChecker) createSegmentLoadTasks(ctx context.Context, segments []
 		shardPlans := c.getBalancerFunc().AssignSegment(ctx, replica.GetCollectionID(), segmentInfos, rwNodes, true)
 		for i := range shardPlans {
 			shardPlans[i].Replica = replica
+			shardPlans[i].LoadPriority = replica.LoadPriority()
 		}
 		plans = append(plans, shardPlans...)
 	}
