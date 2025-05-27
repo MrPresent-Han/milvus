@@ -353,7 +353,7 @@ DiskFileManagerImpl::cache_raw_data_to_disk_internal(const Config& config) {
     int64_t write_offset = sizeof(num_rows) + sizeof(dim);
 
     auto FetchRawData = [&]() {
-        auto field_datas = GetObjectData(rcm_.get(), batch_files, milvus::PriorityForLoad(priority));
+        auto field_datas = GetObjectData(rcm_.get(), batch_files);
         int batch_size = batch_files.size();
         for (int i = 0; i < batch_size; i++) {
             auto field_data = field_datas[i].get()->GetFieldData();

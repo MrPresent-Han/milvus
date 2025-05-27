@@ -371,6 +371,7 @@ func (c *SegmentChecker) createSegmentReduceTasks(ctx context.Context, segments 
 			c.ID(),
 			s.GetCollectionID(),
 			replica,
+			replica.LoadPriority(),
 			action,
 		)
 		if err != nil {

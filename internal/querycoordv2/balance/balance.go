@@ -19,6 +19,7 @@ package balance
 import (
 	"context"
 	"fmt"
+	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"sort"
 
 	"github.com/blang/semver/v4"
@@ -39,6 +40,7 @@ type SegmentAssignPlan struct {
 	FromScore    int64
 	ToScore      int64
 	SegmentScore int64
+	LoadPriority commonpb.LoadPriority
 }
 
 func (segPlan *SegmentAssignPlan) String() string {
