@@ -822,7 +822,7 @@ func getExpandedSize(size int64) int64 {
 func canTriggerSortCompaction(segment *SegmentInfo) bool {
 	return segment.GetState() == commonpb.SegmentState_Flushed &&
 		segment.GetLevel() != datapb.SegmentLevel_L0 &&
-		!segment.GetIsSorted() &&
+		!segment.GetIsSorted() && //hc---Note is sorted
 		!segment.GetIsImporting() &&
 		!segment.isCompacting
 }

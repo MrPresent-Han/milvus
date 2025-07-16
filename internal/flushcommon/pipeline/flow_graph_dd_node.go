@@ -261,7 +261,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				zap.Int32("msgType", int32(msg.Type())),
 				zap.Uint64("timetick", flushMsg.FlushMessage.TimeTick()),
 			)
-			logger.Info("receive flush message")
+			logger.Info("receive flush message") //hc---handle flush here
 			if err := ddn.msgHandler.HandleFlush(flushMsg.FlushMessage); err != nil {
 				logger.Warn("handle flush message failed", zap.Error(err))
 			} else {

@@ -130,7 +130,7 @@ func (t *SyncTask) Run(ctx context.Context) (err error) {
 		err := merr.WrapErrSegmentNotFound(t.segmentID)
 		return err
 	}
-
+	//hc---handle sync here
 	switch segmentInfo.GetStorageVersion() {
 	case storage.StorageV2:
 		writer := NewBulkPackWriterV2(t.metacache, t.schema, t.chunkManager, t.allocator, t.syncBufferSize,

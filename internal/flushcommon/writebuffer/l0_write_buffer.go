@@ -153,6 +153,7 @@ func (wb *l0WriteBuffer) dispatchDeleteMsgsWithoutFilter(deleteMsgs []*msgstream
 	}
 }
 
+// hc---only l0 write buffer need to handle buffer data here
 func (wb *l0WriteBuffer) BufferData(insertData []*InsertData, deleteMsgs []*msgstream.DeleteMsg, startPos, endPos *msgpb.MsgPosition) error {
 	wb.mut.Lock()
 	defer wb.mut.Unlock()
@@ -206,6 +207,7 @@ func (wb *l0WriteBuffer) BufferData(insertData []*InsertData, deleteMsgs []*msgs
 }
 
 // bufferInsert function InsertMsg into bufferred InsertData and returns primary key field data for future usage.
+// hc---record pk range for every segment
 func (wb *l0WriteBuffer) bufferInsert(inData *InsertData, startPos, endPos *msgpb.MsgPosition) error {
 	wb.CreateNewGrowingSegment(inData.partitionID, inData.segmentID, startPos)
 	segBuf := wb.getOrCreateBuffer(inData.segmentID)

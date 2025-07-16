@@ -214,6 +214,7 @@ func (m *bufferManager) FlushChannel(ctx context.Context, channel string, flushT
 	return nil
 }
 
+// hc---handle buffer data here
 // BufferData put data into channel write buffer.
 func (m *bufferManager) BufferData(channel string, insertData []*InsertData, deleteMsgs []*msgstream.DeleteMsg, startPos, endPos *msgpb.MsgPosition) error {
 	buf, loaded := m.buffers.Get(channel)
