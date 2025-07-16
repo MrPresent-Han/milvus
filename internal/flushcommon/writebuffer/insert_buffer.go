@@ -76,6 +76,7 @@ type InsertBuffer struct {
 
 	buffers     []*storage.InsertData
 	statsBuffer *statsBuffer
+	pkStats     *storage.PrimaryKeyStats
 }
 
 func NewInsertBuffer(sch *schemapb.CollectionSchema) (*InsertBuffer, error) {
@@ -104,6 +105,17 @@ func NewInsertBuffer(sch *schemapb.CollectionSchema) (*InsertBuffer, error) {
 	if len(sch.GetFunctions()) > 0 {
 		ib.statsBuffer = newStatsBuffer()
 	}
+
+	var pkFieldID int64
+	for _, field := range sch.GetFields() {
+		if field.GetIsPrimaryKey() {
+			pkFieldID = field.GetFieldID()
+			break
+		}
+	}
+	ib.pkStats = &storage.PrimaryKeyStats{
+		FieldID: pkFieldID,
+	}
 	return ib, nil
 }
 
@@ -127,6 +139,14 @@ func (ib *InsertBuffer) YieldStats() map[int64]*storage.BM25Stats {
 	return ib.statsBuffer.yieldBuffer()
 }
 
+func (ib *InsertBuffer) YieldPKStats() *storage.PrimaryKeyStats {
+	log.Info("hc===insert buffer YieldPKStats", zap.Any("pkStats", ib.pkStats))
+	if ib.pkStats == nil {
+		return nil
+	}
+	return ib.pkStats
+}
+
 func (ib *InsertBuffer) Buffer(inData *InsertData, startPos, endPos *msgpb.MsgPosition) int64 {
 	bufferedSize := int64(0)
 	for idx, data := range inData.data {
@@ -141,6 +161,8 @@ func (ib *InsertBuffer) Buffer(inData *InsertData, startPos, endPos *msgpb.MsgPo
 	if inData.bm25Stats != nil {
 		ib.statsBuffer.Buffer(inData.bm25Stats)
 	}
+	ib.pkStats.UpdateMinMax(inData.minPk)
+	ib.pkStats.UpdateMinMax(inData.maxPk)
 
 	return bufferedSize
 }

@@ -82,6 +82,7 @@ func (wb *l0WriteBuffer) dispatchDeleteMsgs(groups []*InsertData, deleteMsgs []*
 	}
 
 	// transform pk to primary key
+	// hc---pks here transform pk to primary key
 	pksInDeleteMsgs := lo.Map(deleteMsgs, func(delMsg *msgstream.DeleteMsg, _ int) []storage.PrimaryKey {
 		return storage.ParseIDs2PrimaryKeys(delMsg.GetPrimaryKeys())
 	})
@@ -211,7 +212,7 @@ func (wb *l0WriteBuffer) BufferData(insertData []*InsertData, deleteMsgs []*msgs
 func (wb *l0WriteBuffer) bufferInsert(inData *InsertData, startPos, endPos *msgpb.MsgPosition) error {
 	wb.CreateNewGrowingSegment(inData.partitionID, inData.segmentID, startPos)
 	segBuf := wb.getOrCreateBuffer(inData.segmentID)
-
+	//hc--- buffer insert data here
 	totalMemSize := segBuf.insertBuffer.Buffer(inData, startPos, endPos)
 	wb.metaCache.UpdateSegments(metacache.SegmentActions(
 		metacache.UpdateBufferedRows(segBuf.insertBuffer.rows),

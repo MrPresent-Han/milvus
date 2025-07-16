@@ -81,7 +81,7 @@ func (b *brokerMetaWriter) UpdateSync(ctx context.Context, pack *SyncTask) error
 	}
 
 	getBinlogNum := func(fBinlog *datapb.FieldBinlog) int { return len(fBinlog.GetBinlogs()) }
-	log.Info("SaveBinlogPath",
+	log.Info("hc===SaveBinlogPath",
 		zap.Int64("SegmentID", pack.segmentID),
 		zap.Int64("CollectionID", pack.collectionID),
 		zap.Int64("ParitionID", pack.partitionID),
@@ -92,8 +92,9 @@ func (b *brokerMetaWriter) UpdateSync(ctx context.Context, pack *SyncTask) error
 		zap.Int("deltalogNum", lo.SumBy(deltaFieldBinlogs, getBinlogNum)),
 		zap.Int("bm25logNum", lo.SumBy(deltaBm25StatsBinlogs, getBinlogNum)),
 		zap.String("vChannelName", pack.channelName),
+		zap.Any("pkStats", pack.pack.pkStats),
 	)
-
+	//hc---3 update save segment info here
 	req := &datapb.SaveBinlogPathsRequest{
 		Base: commonpbutil.NewMsgBase(
 			commonpbutil.WithMsgType(0),
@@ -116,6 +117,7 @@ func (b *brokerMetaWriter) UpdateSync(ctx context.Context, pack *SyncTask) error
 		Channel:        pack.channelName,
 		SegLevel:       pack.level,
 		StorageVersion: segment.GetStorageVersion(),
+		PkStats:        pack.pack.pkStats.ToPrimaryKeyStatsPb(),
 	}
 	err := retry.Handle(ctx, func() (bool, error) {
 		err := b.broker.SaveBinlogPaths(ctx, req)

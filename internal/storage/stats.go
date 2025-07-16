@@ -33,6 +33,8 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
+
+	datapb "github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 )
 
 // PrimaryKeyStats contains rowsWithToken data for pk column
@@ -200,6 +202,36 @@ func (stats *PrimaryKeyStats) UpdateMinMax(pk PrimaryKey) {
 	} else if stats.MaxPk.LT(pk) {
 		stats.MaxPk = pk
 	}
+}
+
+func (stats *PrimaryKeyStats) ToPrimaryKeyStatsPb() *datapb.PkStats {
+	pkStats := &datapb.PkStats{}
+
+	// MinPk
+	switch stats.MinPk.Type() {
+	case schemapb.DataType_Int64:
+		pkStats.MinPk = &datapb.PkStats_Int64Min{
+			Int64Min: stats.MinPk.GetValue().(int64),
+		}
+	case schemapb.DataType_VarChar:
+		pkStats.MinPk = &datapb.PkStats_StrMin{
+			StrMin: stats.MinPk.GetValue().(string),
+		}
+	}
+
+	// MaxPk
+	switch stats.MaxPk.Type() {
+	case schemapb.DataType_Int64:
+		pkStats.MaxPk = &datapb.PkStats_Int64Max{
+			Int64Max: stats.MaxPk.GetValue().(int64),
+		}
+	case schemapb.DataType_VarChar:
+		pkStats.MaxPk = &datapb.PkStats_StrMax{
+			StrMax: stats.MaxPk.GetValue().(string),
+		}
+	}
+
+	return pkStats
 }
 
 func NewPrimaryKeyStats(fieldID, pkType, rowNum int64) (*PrimaryKeyStats, error) {

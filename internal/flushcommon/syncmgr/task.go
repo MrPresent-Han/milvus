@@ -175,7 +175,7 @@ func (t *SyncTask) Run(ctx context.Context) (err error) {
 	}
 
 	t.pack.ReleaseData()
-
+	//hc--- update segment info here
 	actions := []metacache.SegmentAction{metacache.FinishSyncing(t.batchRows)}
 	if t.pack.isFlush {
 		actions = append(actions, metacache.UpdateState(commonpb.SegmentState_Flushed))

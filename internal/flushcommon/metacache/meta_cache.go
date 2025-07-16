@@ -73,6 +73,7 @@ func NewBM25StatsFactory(vchannel *datapb.SegmentInfo) *SegmentBM25Stats {
 	return NewEmptySegmentBM25Stats()
 }
 
+// hc--- segment meta cache here
 type metaCacheImpl struct {
 	collectionID int64
 	vChannelName string

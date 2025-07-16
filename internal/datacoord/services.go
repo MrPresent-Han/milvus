@@ -601,8 +601,8 @@ func (s *Server) SaveBinlogPaths(ctx context.Context, req *datapb.SaveBinlogPath
 		UpdateStartPosition(req.GetStartPositions()),
 		UpdateCheckPointOperator(req.GetSegmentID(), req.GetCheckPoints()),
 		UpdateAsDroppedIfEmptyWhenFlushing(req.GetSegmentID()),
+		UpdatePKStats(req.GetSegmentID(), req.GetPkStats()),
 	)
-
 	// Update segment info in memory and meta.
 	if err := s.meta.UpdateSegmentsInfo(ctx, operators...); err != nil {
 		log.Error("save binlog and checkpoints failed", zap.Error(err))
@@ -610,10 +610,11 @@ func (s *Server) SaveBinlogPaths(ctx context.Context, req *datapb.SaveBinlogPath
 	}
 
 	s.meta.SetLastWrittenTime(req.GetSegmentID())
-	log.Info("SaveBinlogPaths sync segment with meta",
+	log.Info("hc===SaveBinlogPaths sync segment with meta",
 		zap.Any("binlogs", req.GetField2BinlogPaths()),
 		zap.Any("deltalogs", req.GetDeltalogs()),
 		zap.Any("statslogs", req.GetField2StatslogPaths()),
+		zap.Any("pkStats", req.GetPkStats()),
 	)
 
 	if req.GetSegLevel() == datapb.SegmentLevel_L0 {

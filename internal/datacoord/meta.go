@@ -1141,6 +1141,19 @@ func UpdateAsDroppedIfEmptyWhenFlushing(segmentID int64) UpdateOperator {
 	}
 }
 
+func UpdatePKStats(segmentID int64, pkStats *datapb.PkStats) UpdateOperator {
+	return func(modPack *updateSegmentPack) bool {
+		segment := modPack.Get(segmentID)
+		if segment == nil {
+			log.Ctx(context.TODO()).Warn("meta update: update pk stats failed - segment not found",
+				zap.Int64("segmentID", segmentID))
+			return false
+		}
+		segment.PkStats = pkStats
+		return true
+	}
+}
+
 // updateSegmentsInfo update segment infos
 // will exec all operators, and update all changed segments
 func (m *meta) UpdateSegmentsInfo(ctx context.Context, operators ...UpdateOperator) error {

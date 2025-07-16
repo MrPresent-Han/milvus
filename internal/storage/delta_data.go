@@ -226,6 +226,7 @@ func (dl *DeleteLog) UnmarshalJSON(data []byte) error {
 
 // DeleteData saves each entity delete message represented as <primarykey,timestamp> map.
 // timestamp represents the time when this instance was deleted
+// hc---pks here
 type DeleteData struct {
 	Pks      []PrimaryKey // primary keys
 	Tss      []Timestamp  // timestamps

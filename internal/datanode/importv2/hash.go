@@ -65,7 +65,7 @@ func HashData(task Task, rows *storage.InsertData) (HashedData, error) {
 	if err != nil {
 		return nil, err
 	}
-
+	//hc--- append single row here
 	for i := 0; i < rows.GetRowNum(); i++ {
 		row := rows.GetRow(i)
 		p1, p2 := f1(row[id1]), f2(row[id2])

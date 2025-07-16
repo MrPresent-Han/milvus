@@ -136,5 +136,6 @@ func NewSegmentInfo(info *datapb.SegmentInfo, bfs pkoracle.PkStat, bm25Stats *Se
 		bfs:              bfs,
 		bm25stats:        bm25Stats,
 		storageVersion:   info.GetStorageVersion(),
+		//hc--- may need to add pkStats here
 	}
 }

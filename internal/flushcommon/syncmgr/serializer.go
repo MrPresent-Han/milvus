@@ -42,6 +42,7 @@ type SyncPack struct {
 	insertData []*storage.InsertData
 	deltaData  *storage.DeleteData
 	bm25Stats  map[int64]*storage.BM25Stats
+	pkStats    *storage.PrimaryKeyStats
 
 	// statistics
 	tsFrom        typeutil.Timestamp
@@ -141,6 +142,11 @@ func (p *SyncPack) WithErrorHandler(handler func(err error)) *SyncPack {
 
 func (p *SyncPack) WithDataSource(source string) *SyncPack {
 	p.dataSource = source
+	return p
+}
+
+func (p *SyncPack) WithPKStats(pkStats *storage.PrimaryKeyStats) *SyncPack {
+	p.pkStats = pkStats
 	return p
 }
 

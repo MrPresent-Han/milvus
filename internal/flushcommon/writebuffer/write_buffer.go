@@ -3,6 +3,7 @@ package writebuffer
 import (
 	"context"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/cockroachdb/errors"
@@ -310,7 +311,7 @@ func (wb *writeBufferBase) syncSegments(ctx context.Context, segmentIDs []int64)
 				log.Fatal("failed to get sync task", zap.Int64("segmentID", segmentID), zap.Error(err))
 			}
 		}
-
+		//hc--- sync data here
 		future, err := wb.syncMgr.SyncData(ctx, syncTask, func(err error) error {
 			if wb.taskObserverCallback != nil {
 				wb.taskObserverCallback(syncTask, err)
@@ -371,19 +372,19 @@ func (wb *writeBufferBase) getOrCreateBuffer(segmentID int64) *segmentBuffer {
 	return buffer
 }
 
-func (wb *writeBufferBase) yieldBuffer(segmentID int64) ([]*storage.InsertData, map[int64]*storage.BM25Stats, *storage.DeleteData, *schemapb.CollectionSchema, *TimeRange, *msgpb.MsgPosition) {
+func (wb *writeBufferBase) yieldBuffer(segmentID int64) ([]*storage.InsertData, map[int64]*storage.BM25Stats, *storage.DeleteData, *schemapb.CollectionSchema, *TimeRange, *msgpb.MsgPosition, *storage.PrimaryKeyStats) {
 	buffer, ok := wb.buffers[segmentID]
 	if !ok {
-		return nil, nil, nil, nil, nil, nil
+		return nil, nil, nil, nil, nil, nil, nil
 	}
 
 	// remove buffer and move it to sync manager
 	delete(wb.buffers, segmentID)
 	start := buffer.EarliestPosition()
 	timeRange := buffer.GetTimeRange()
-	insert, bm25, delta, schema := buffer.Yield()
+	insert, bm25, delta, schema, pkStats := buffer.Yield()
 
-	return insert, bm25, delta, schema, timeRange, start
+	return insert, bm25, delta, schema, timeRange, start, pkStats
 }
 
 type InsertData struct {
@@ -400,6 +401,8 @@ type InsertData struct {
 
 	intPKTs map[int64]int64
 	strPKTs map[string]int64
+	minPk   storage.PrimaryKey
+	maxPk   storage.PrimaryKey
 }
 
 func NewInsertData(segmentID, partitionID int64, cap int, pkType schemapb.DataType) *InsertData {
@@ -431,21 +434,42 @@ func (id *InsertData) Append(data *storage.InsertData, pkFieldData storage.Field
 	switch id.pkType {
 	case schemapb.DataType_Int64:
 		pks := pkFieldData.GetDataRows().([]int64)
+		var minInt64Pk int64 = math.MaxInt64
+		var maxInt64Pk int64 = math.MinInt64
 		for idx, pk := range pks {
 			ts, ok := id.intPKTs[pk]
 			if !ok || timestamps[idx] < ts {
 				id.intPKTs[pk] = timestamps[idx]
 			}
+			if pk < minInt64Pk {
+				minInt64Pk = pk
+			}
+			if pk > maxInt64Pk {
+				maxInt64Pk = pk
+			}
 		}
+		id.minPk = storage.NewInt64PrimaryKey(minInt64Pk)
+		id.maxPk = storage.NewInt64PrimaryKey(maxInt64Pk)
 	case schemapb.DataType_VarChar:
 		pks := pkFieldData.GetDataRows().([]string)
+		var minStrPk string = ""
+		var maxStrPk string = ""
 		for idx, pk := range pks {
 			ts, ok := id.strPKTs[pk]
 			if !ok || timestamps[idx] < ts {
 				id.strPKTs[pk] = timestamps[idx]
 			}
+			if minStrPk == "" || pk < minStrPk {
+				minStrPk = pk
+			}
+			if maxStrPk == "" || pk > maxStrPk {
+				maxStrPk = pk
+			}
 		}
+		id.minPk = storage.NewVarCharPrimaryKey(minStrPk)
+		id.maxPk = storage.NewVarCharPrimaryKey(maxStrPk)
 	}
+	log.Info("hc===append insert data pkStats", zap.Any("minPk", id.minPk), zap.Any("maxPk", id.maxPk))
 }
 
 func (id *InsertData) GetSegmentID() int64 {
@@ -543,7 +567,8 @@ func (wb *writeBufferBase) getSyncTask(ctx context.Context, segmentID int64) (sy
 	var totalMemSize float64 = 0
 	var tsFrom, tsTo uint64
 
-	insert, bm25, delta, schema, timeRange, startPos := wb.yieldBuffer(segmentID)
+	insert, bm25, delta, schema, timeRange, startPos, pkStats := wb.yieldBuffer(segmentID)
+	log.Info("hc===write buffer pkStats", zap.Any("pkStats", pkStats))
 	if timeRange != nil {
 		tsFrom, tsTo = timeRange.timestampMin, timeRange.timestampMax
 	}
@@ -569,6 +594,7 @@ func (wb *writeBufferBase) getSyncTask(ctx context.Context, segmentID int64) (sy
 	pack := &syncmgr.SyncPack{}
 	pack.WithInsertData(insert).
 		WithDeleteData(delta).
+		WithPKStats(pkStats).
 		WithCollectionID(wb.collectionID).
 		WithPartitionID(segmentInfo.PartitionID()).
 		WithChannelName(wb.channelName).
@@ -709,32 +735,7 @@ func PrepareInsert(collSchema *schemapb.CollectionSchema, pkField *schemapb.Fiel
 			if tsFieldData.RowNum() != data.GetRowNum() {
 				return nil, merr.WrapErrServiceInternal("timestamp column row num not match")
 			}
-
-			timestamps := tsFieldData.GetDataRows().([]int64)
-
-			switch pkField.GetDataType() {
-			case schemapb.DataType_Int64:
-				pks := pkFieldData.GetDataRows().([]int64)
-				for idx, pk := range pks {
-					ts, ok := inData.intPKTs[pk]
-					if !ok || timestamps[idx] < ts {
-						inData.intPKTs[pk] = timestamps[idx]
-					}
-				}
-			case schemapb.DataType_VarChar:
-				pks := pkFieldData.GetDataRows().([]string)
-				for idx, pk := range pks {
-					ts, ok := inData.strPKTs[pk]
-					if !ok || timestamps[idx] < ts {
-						inData.strPKTs[pk] = timestamps[idx]
-					}
-				}
-			}
-
-			inData.data = append(inData.data, data)
-			inData.pkField = append(inData.pkField, pkFieldData)
-			inData.tsField = append(inData.tsField, tsFieldData)
-			inData.rowNum += int64(data.GetRowNum())
+			inData.Append(data, pkFieldData, tsFieldData)
 		}
 		result = append(result, inData)
 	}

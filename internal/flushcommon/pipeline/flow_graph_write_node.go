@@ -82,6 +82,7 @@ func (wNode *writeNode) Operate(in []Msg) []Msg {
 	start, end := fgMsg.StartPositions[0], fgMsg.EndPositions[0]
 
 	if fgMsg.InsertData == nil {
+		log.Info("hc===prepare insert data")
 		insertData, err := writebuffer.PrepareInsert(wNode.metacache.Schema(), wNode.pkField, fgMsg.InsertMessages)
 		if err != nil {
 			log.Error("failed to prepare data", zap.Error(err))

@@ -158,7 +158,7 @@ func (impl *shardInterceptor) handleInsertMessage(ctx context.Context, msg messa
 			// because the shard manager use the interface, txn is a struct,
 			// so we need to check nil before the assignment.
 			req.TxnSession = session
-		}
+		} //hc---assign segment here
 		result, err := impl.shardManager.AssignSegment(req)
 		if errors.IsAny(err, shards.ErrTimeTickTooOld, shards.ErrWaitForNewSegment, shards.ErrFencedAssign) {
 			// 1. time tick is too old for segment assignment.
