@@ -12,7 +12,6 @@
 
 #include "common/Types.h"
 #include "plan/PlanNode.h"
-#include "expr/FunctionSignature.h"
 #include "plan/PlanNode.h"
 #include "exec/QueryContext.h"
 #include <folly/Synchronized.h>
@@ -30,9 +29,6 @@ class Aggregate {
     // Byte position of null flag in group row.
     int32_t nullByte_;
     uint8_t nullMask_;
-    // Byte position of the initialized flag in group row.
-    int32_t initializedByte_;
-    uint8_t initializedMask_;
     // Offset of fixed length accumulator state in group row.
     int32_t offset_;
     // Offset of uint32_t row byte size of row. 0 if there are no
@@ -53,20 +49,16 @@ class Aggregate {
     create(const std::string& name,
            plan::AggregationNode::Step step,
            const std::vector<DataType>& argTypes,
-           const QueryConfig& query_config);
+           const QueryConfig& query_config);//hc---the meaning for argTypes?
 
     void
     setOffsets(int32_t offset,
                int32_t nullByte,
                uint8_t nullMask,
-               int32_t initializedByte,
-               int8_t initializedMask,
                int32_t rowSizeOffset) {
         setOffsetsInternal(offset,
                            nullByte,
                            nullMask,
-                           initializedByte,
-                           initializedMask,
                            rowSizeOffset);
     }
 
@@ -74,19 +66,15 @@ class Aggregate {
     initializeNewGroups(char** groups,
                         folly::Range<const vector_size_t*> indices) {
         initializeNewGroupsInternal(groups, indices);
-        for (auto index : indices) {
-            groups[index][initializedByte_] |= initializedMask_;
-        }
     }
 
     virtual void
     addSingleGroupRawInput(char* group,
-                           const TargetBitmapView& activeRows,
                            const std::vector<VectorPtr>& input) = 0;
 
     virtual void
     addRawInput(char** groups,
-                const TargetBitmapView& activeRows,
+                int32_t numGroups,
                 const std::vector<VectorPtr>& input) = 0;
 
     virtual void
@@ -138,8 +126,6 @@ class Aggregate {
     setOffsetsInternal(int32_t offset,
                        int32_t nullByte,
                        uint8_t nullMask,
-                       int32_t initializedByte,
-                       uint8_t initializedMask,
                        int32_t rowSizeOffset);
 
     virtual void
@@ -173,20 +159,14 @@ class Aggregate {
 };
 
 using AggregateFunctionFactory = std::function<std::unique_ptr<Aggregate>(
-    plan::AggregationNode::Step step,
     const std::vector<DataType>& argTypes,
     const QueryConfig& config)>;
-
-struct AggregateFunctionEntry {
-    std::vector<expr::AggregateFunctionSignaturePtr> signatures;
-    AggregateFunctionFactory factory;
-};
 
 const AggregateFunctionEntry*
 getAggregateFunctionEntry(const std::string& name);
 
 using AggregateFunctionMap = folly::Synchronized<
-    std::unordered_map<std::string, AggregateFunctionEntry>>;
+    std::unordered_map<std::string, AggregateFunctionFactory>>;
 
 AggregateFunctionMap&
 aggregateFunctions();
@@ -199,12 +179,7 @@ aggregateFunctions();
 void
 registerAggregateFunction(
     const std::string& name,
-    const std::vector<std::shared_ptr<expr::AggregateFunctionSignature>>&
-        signatures,
     const AggregateFunctionFactory& factory);
-
-bool
-isPartialOutput(milvus::plan::AggregationNode::Step step);
 
 }  // namespace exec
 }  // namespace milvus

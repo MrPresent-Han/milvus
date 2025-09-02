@@ -22,21 +22,18 @@ namespace milvus {
 namespace exec {
 
 RowContainer::RowContainer(const std::vector<DataType>& keyTypes,
-                           const std::vector<Accumulator>& accumulators,
-                           bool ignoreNullKeys)
+                           const std::vector<Accumulator>& accumulators)
     : keyTypes_(keyTypes),
-      accumulators_(accumulators),
-      ignoreNullKeys_(ignoreNullKeys) {
+      accumulators_(accumulators) {
     int32_t offset = 0;
-    int32_t nullOffset = 0;
     bool isVariableWidth = false;
     int idx = 0;
-    for (auto& type : keyTypes_) {
+    for (auto type : keyTypes_) {
         bool varLength = !IsFixedSizeType(type);
         isVariableWidth |= varLength;
         if (varLength) {
-            variable_offsets.emplace_back(offset);
-            variable_idxes.emplace_back(idx);
+            variable_offsets_.emplace_back(offset);
+            variable_idxes_.emplace_back(idx);
         }
         offsets_.push_back(offset);
         if (type == DataType::VARCHAR || type == DataType::STRING) {
@@ -44,42 +41,17 @@ RowContainer::RowContainer(const std::vector<DataType>& keyTypes,
         } else {
             offset += GetDataTypeSize(type, 1);
         }
-        nullOffsets_.push_back(nullOffset);
-        if (!ignoreNullKeys_) {
-            ++nullOffset;
-        }
         idx++;
     }
-    // Make offset at least sizeof pointer so that there is space for a
-    // free list next pointer below the bit at 'freeFlagOffset_'.
-    offset = std::max<int32_t>(offset, sizeof(void*));
     const int32_t firstAggregateOffset = offset;
-    if (!accumulators.empty()) {
-        // This moves nullOffset to the start of the next byte.
-        // This is to guarantee the null and initialized bits for an aggregate
-        // always appear in the same byte.
-        nullOffset = (nullOffset + 7) & -8;
-    }
     for (const auto& accumulator : accumulators) {
-        // Initialized bit.  Set when the accumulator is initialized.
-        nullOffsets_.push_back(nullOffset);
-        ++nullOffset;
-        // Null bit.
-        nullOffsets_.push_back(nullOffset);
-        ++nullOffset;
         isVariableWidth |= !accumulator.isFixedSize();
         alignment_ = combineAlignments(accumulator.alignment(), alignment_);
     }
 
-    // Free flag.
-    nullOffsets_.push_back(nullOffset);
-    freeFlagOffset_ = nullOffset + firstAggregateOffset * 8;
-    ++nullOffset;
     // Add 1 to the last null offset to get the number of bits.
-    flagBytes_ = milvus::bits::nBytes(nullOffsets_.back() + 1);
-    for (auto i = 0; i < nullOffsets_.size(); i++) {
-        nullOffsets_[i] += firstAggregateOffset * 8;
-    }
+    auto null_bit_count = keyTypes_.size() + accumulators.size();
+    flagBytes_ = milvus::bits::nBytes(null_bit_count);
     offset += flagBytes_;
 
     for (const auto& accumulator : accumulators) {
@@ -87,34 +59,15 @@ RowContainer::RowContainer(const std::vector<DataType>& keyTypes,
         offsets_.push_back(offset);
         offset += accumulator.fixedWidthSize();
     }
+    AssertInfo(offsets_.size() == keyTypes_.size() + accumulators.size(), 
+        "wrong size of offsets in RowContainer");   
     if (isVariableWidth) {
         rowSizeOffset_ = offset;
         offset += sizeof(uint32_t);
     }
     fixedRowSize_ = milvus::bits::roundUp(offset, alignment_);
-
-    // A distinct hash table has no aggregates and if the hash table has
-    // no nulls, it may be that there are no null flags.
-    if (!nullOffsets_.empty()) {
-        // All flags like free and null flags for keys and non-keys
-        // start as 0. This is also used to mark aggregates as uninitialized on row
-        // creation.
-        initialNulls_.resize(flagBytes_, 0x0);
-    }
-    size_t nullOffsetsPos = 0;
-    uint16_t column_sum = keyTypes_.size() + accumulators.size();
     for (auto i = 0; i < offsets_.size(); i++) {
-        rowColumns_.emplace_back(offsets_[i],
-                                 (!ignoreNullKeys_ || i >= keyTypes_.size())
-                                     ? nullOffsets_[nullOffsetsPos]
-                                     : RowColumn::kNotNullOffset);
-        // offsets_ contains the offsets for keys, then accumulators
-        // This captures the case where i is the index of an accumulator.
-        if (!accumulators.empty() && i >= keyTypes_.size() && i < column_sum) {
-            nullOffsetsPos += kNumAccumulatorFlags;
-        } else {
-            ++nullOffsetsPos;
-        }
+        rowColumns_.emplace_back(offsets_[i], firstAggregateOffset * 8 + i);
     }
 }
 
@@ -142,26 +95,17 @@ RowContainer::store(const milvus::ColumnVectorPtr& column_data,
                     int32_t column_index) {
     auto numKeys = keyTypes_.size();
     bool isKey = column_index < numKeys;
-    if (isKey && ignoreNullKeys_) {
-        MILVUS_DYNAMIC_TYPE_DISPATCH(storeNoNulls,
-                                     keyTypes_[column_index],
-                                     column_data,
-                                     index,
-                                     row,
-                                     offsets_[column_index]);
-    } else {
-        AssertInfo(isKey || accumulators_.empty(),
-                   "Should only store into rows for key");
-        auto rowColumn = rowColumns_[column_index];
-        MILVUS_DYNAMIC_TYPE_DISPATCH(storeWithNull,
-                                     keyTypes_[column_index],
-                                     column_data,
-                                     index,
-                                     row,
-                                     rowColumn.offset(),
-                                     rowColumn.nullByte(),
-                                     rowColumn.nullMask());
-    }
+    AssertInfo(isKey || accumulators_.empty(),
+                "Should only store into rows for key");
+    auto rowColumn = rowColumns_[column_index];
+    MILVUS_DYNAMIC_TYPE_DISPATCH(storeWithNull,
+                                    keyTypes_[column_index],
+                                    column_data,
+                                    index,
+                                    row,
+                                    rowColumn.offset(),
+                                    rowColumn.nullByte(),
+                                    rowColumn.nullMask());
 }
 
 Accumulator::Accumulator(bool isFixedSize, int32_t fixedSize, int32_t alignment)

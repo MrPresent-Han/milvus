@@ -57,9 +57,6 @@ class Accumulator {
 /// a column inside a RowContainer.
 class RowColumn {
  public:
-    /// Used as null offset for a non-null column.
-    static constexpr int32_t kNotNullOffset = -1;
-
     RowColumn(int32_t offset, int32_t nullOffset)
         : packedOffsets_(PackOffsets(offset, nullOffset)) {
     }
@@ -79,25 +76,9 @@ class RowColumn {
         return packedOffsets_ & 0xff;
     }
 
-    int32_t
-    initializedByte() const {
-        return nullByte();
-    }
-
-    int32_t
-    initializedMask() const {
-        return nullMask() << 1;
-    }
-
  private:
     static uint64_t
     PackOffsets(int32_t offset, int32_t nullOffset) {
-        if (nullOffset == kNotNullOffset) {
-            // If the column is not nullable, The low word is 0, meaning
-            // that a null check will AND 0 to the 0th byte of the row,
-            // which is always false and always safe to do.
-            return static_cast<uint64_t>(offset) << 32;
-        }
         return (1UL << (nullOffset & 7)) | ((nullOffset & ~7UL) << 5) |
                static_cast<uint64_t>(offset) << 32;
     }
@@ -108,12 +89,7 @@ class RowColumn {
 class RowContainer {
  public:
     RowContainer(const std::vector<DataType>& keyTypes,
-                 const std::vector<Accumulator>& accumulators,
-                 bool ignoreNullKeys);
-
-    // The number of flags (bits) per accumulator, one for null and one for
-    // initialized.
-    static constexpr size_t kNumAccumulatorFlags = 2;
+                 const std::vector<Accumulator>& accumulators);
 
     /// Allocates a new row and initializes possible aggregates to null.
     char*
@@ -170,7 +146,7 @@ class RowContainer {
                   vector_size_t index) {
         if constexpr (Type == DataType::NONE || Type == DataType::ROW ||
                       Type == DataType::JSON || Type == DataType::ARRAY) {
-            PanicInfo(DataTypeInvalid,
+            ThrowInfo(DataTypeInvalid,
                       "Cannot support complex data type:[ROW/JSON/ARRAY] in "
                       "rows container for now");
         } else {
@@ -203,26 +179,19 @@ class RowContainer {
         return equalsNoNulls<Type>(row, offset, column, index);
     }
 
-    template <bool mayHaveNulls>
     inline bool
     equals(const char* row,
            RowColumn column,
            const ColumnVectorPtr& column_data,
            vector_size_t index) {
-        auto type = column_data->type();
-        if constexpr (mayHaveNulls) {
-            return MILVUS_DYNAMIC_TYPE_DISPATCH(equalsWithNulls,
-                                                type,
-                                                row,
-                                                column.offset(),
-                                                column.nullByte(),
-                                                column.nullMask(),
-                                                column_data,
-                                                index);
-        } else {
-            return MILVUS_DYNAMIC_TYPE_DISPATCH(
-                equalsNoNulls, type, row, column.offset(), column_data, index);
-        }
+        return MILVUS_DYNAMIC_TYPE_DISPATCH(equalsWithNulls,
+                                            column_data->type(),
+                                            row,
+                                            column.offset(),
+                                            column.nullByte(),
+                                            column.nullMask(),
+                                            column_data,
+                                            index);
     }
 
     /// Stores the 'index'th value in 'columnVector' into 'row' at 'columnIndex'.
@@ -244,7 +213,7 @@ class RowContainer {
         static std::string* null_string_val_ptr = &null_string_val;
         if constexpr (Type == DataType::NONE || Type == DataType::ROW ||
                       Type == DataType::JSON || Type == DataType::ARRAY) {
-            PanicInfo(DataTypeInvalid,
+            ThrowInfo(DataTypeInvalid,
                       "Cannot support complex data type:[ROW/JSON/ARRAY] in "
                       "rows container for now");
         } else {
@@ -272,7 +241,7 @@ class RowContainer {
         using T = typename milvus::TypeTraits<Type>::NativeType;
         if constexpr (Type == DataType::NONE || Type == DataType::ROW ||
                       Type == DataType::JSON || Type == DataType::ARRAY) {
-            PanicInfo(DataTypeInvalid,
+            ThrowInfo(DataTypeInvalid,
                       "Cannot support complex data type:[ROW/JSON/ARRAY] in "
                       "rows container for now");
         } else {
@@ -369,7 +338,7 @@ class RowContainer {
         result->resize(numRows + resultOffset);
         if constexpr (Type == DataType::ROW || Type == DataType::JSON ||
                       Type == DataType::ARRAY || Type == DataType::NONE) {
-            PanicInfo(DataTypeInvalid,
+            ThrowInfo(DataTypeInvalid,
                       "Not Support Extract types:[ROW/JSON/ARRAY/NONE]");
         } else {
             using T = typename milvus::TypeTraits<Type>::NativeType;
@@ -430,29 +399,12 @@ class RowContainer {
     nullMask(int32_t nullOffset) {
         return 1 << (nullOffset & 7);
     }
-    // Only accumulators have initialized flags. accumulatorFlagsOffset is the
-    // offset at which the flags for an accumulator begin. Currently this is the
-    // null flag, followed by the initialized flag.  So it's equivalent to the
-    // nullOffset.
-
-    // It's guaranteed that the flags for an accumulator appear in the same byte.
-    static inline int32_t
-    initializedByte(int32_t accumulatorFlagsOffset) {
-        return nullByte(accumulatorFlagsOffset);
-    }
-
-    // accumulatorFlagsOffset is the offset at which the flags for an accumulator
-    // begin.
-    static inline int32_t
-    initializedMask(int32_t accumulatorFlagsOffset) {
-        return nullMask(accumulatorFlagsOffset) << 1;
-    }
-
+    
     void
     clear() {
         for (auto row : rows_) {
-            for (auto i = 0; i < variable_offsets.size(); i++) {
-                auto& off = variable_offsets[i];
+            for (auto i = 0; i < variable_offsets_.size(); i++) {
+                auto& off = variable_offsets_[i];
                 auto& row_col = columnAt(variable_idxes[i]);
                 bool isStrNull =
                     isNullAt(row, row_col.nullByte(), row_col.nullMask());
@@ -473,30 +425,19 @@ class RowContainer {
 
  private:
     const std::vector<DataType> keyTypes_;
-    std::vector<int> variable_offsets{};
-    std::vector<int> variable_idxes{};
-    const bool ignoreNullKeys_;
+    std::vector<int> variable_offsets_{};
+    std::vector<int> variable_idxes_{};
     std::vector<uint32_t> offsets_;
-    std::vector<uint32_t> nullOffsets_;
-
     std::vector<RowColumn> rowColumns_;
 
     // How many bytes do the flags (null, free) occupy.
     uint32_t fixedRowSize_;
     uint32_t flagBytes_;
 
-    // Bit position of free bit.
-    uint32_t freeFlagOffset_ = 0;
+    // for rows containing variable width fields, we store row size at the end of the row
     uint32_t rowSizeOffset_ = 0;
-
     int alignment_ = 1;
-
-    // Copied over the null bits of each row on initialization. Keys are
-    // not null, aggregates are null.
-    std::vector<uint8_t> initialNulls_;
-
     std::vector<Accumulator> accumulators_;
-
     uint64_t numRows_ = 0;
     std::vector<char*> rows_{};
 };

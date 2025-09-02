@@ -30,11 +30,9 @@ class GroupingSet {
     GroupingSet(const RowTypePtr& input_type,
                 std::vector<std::unique_ptr<VectorHasher>>&& hashers,
                 std::vector<AggregateInfo>&& aggregates,
-                bool ignoreNullKeys,
                 int64_t group_limit)
         : hashers_(std::move(hashers)),
           aggregates_(std::move(aggregates)),
-          ignoreNullKeys_(ignoreNullKeys),
           group_limit_(group_limit) {
         isGlobal_ = hashers_.empty();
     }
@@ -82,7 +80,6 @@ class GroupingSet {
 
  private:
     bool isGlobal_;
-    const bool ignoreNullKeys_;
     const int64_t group_limit_;
 
     std::vector<std::unique_ptr<VectorHasher>> hashers_;
@@ -92,13 +89,7 @@ class GroupingSet {
     std::vector<VectorPtr> tempVectors_;
     std::unique_ptr<BaseHashTable> hash_table_;
     std::unique_ptr<HashLookup> lookup_;
-    TargetBitmap active_rows_;
-
     uint64_t numInputRows_ = 0;
-
-    // Boolean indicating whether accumulators for a global aggregation (i.e.
-    // aggregation with no grouping keys) have been initialized.
-    bool globalAggregationInitialized_{false};
 };
 
 }  // namespace exec

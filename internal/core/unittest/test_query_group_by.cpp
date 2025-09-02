@@ -141,7 +141,7 @@ execPlan(std::shared_ptr<Task>& task) {
                         std::dynamic_pointer_cast<ColumnVector>(ret->child(i));
                     ret_column_vector->append(*column_vec);
                 } else {
-                    PanicInfo(UnexpectedError, "expr return type not matched");
+                    ThrowInfo(UnexpectedError, "expr return type not matched");
                 }
             }
         } else {
@@ -577,7 +577,7 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
     auto actual_count = output_column->ValueAt<int64_t>(0);
     std::cout << "count:" << actual_count << std::endl;
     EXPECT_EQ(num_rows_, actual_count);
-    // count(*) will always get all results' count no matter nullable or ignoreNullKeys
+    // count(*) will always get all results' count no matter nullable or not
 }
 
 // Test count(*) when activeCount is zero

@@ -36,8 +36,6 @@ GroupingSet::~GroupingSet() {
 void
 GroupingSet::addInput(const RowVectorPtr& input) {
     auto numRows = input->size();
-    active_rows_.resize(numRows);
-    active_rows_.set();
     numInputRows_ += numRows;
     if (isGlobal_) {
         addGlobalAggregationInput(input);
@@ -48,14 +46,11 @@ GroupingSet::addInput(const RowVectorPtr& input) {
 
 void
 GroupingSet::initializeGlobalAggregation() {
-    if (globalAggregationInitialized_) {
-        return;
-    }
     lookup_ = std::make_unique<HashLookup>(hashers_, group_limit_);
     lookup_->reset(1);
 
     // Row layout is:
-    //  - alternating null flag, intialized flag - one bit per flag, one pair per
+    //  - alternating null flag - one bit per flag, one pair per
     //                                             aggregation,
     //  - uint32_t row size,
     //  - fixed-width accumulators - one per aggregate
@@ -66,8 +61,7 @@ GroupingSet::initializeGlobalAggregation() {
 
     // Allocate space for the null and initialized flags.
     size_t numAggregates = aggregates_.size();
-    int32_t rowSizeOffset = milvus::bits::nBytes(
-        numAggregates * RowContainer::kNumAccumulatorFlags);
+    int32_t rowSizeOffset = milvus::bits::nBytes(numAggregates);
     int32_t offset = rowSizeOffset + sizeof(int32_t);
     int32_t accumulatorFlagsOffset = 0;
     int32_t alignment = 1;
@@ -81,11 +75,9 @@ GroupingSet::initializeGlobalAggregation() {
             offset,
             RowContainer::nullByte(accumulatorFlagsOffset),
             RowContainer::nullMask(accumulatorFlagsOffset),
-            RowContainer::initializedByte(accumulatorFlagsOffset),
-            RowContainer::initializedMask(accumulatorFlagsOffset),
             rowSizeOffset);
         offset += accumulator.fixedWidthSize();
-        accumulatorFlagsOffset += RowContainer::kNumAccumulatorFlags;
+        accumulatorFlagsOffset += 1;
         alignment =
             RowContainer::combineAlignments(accumulator.alignment(), alignment);
     }
@@ -98,7 +90,6 @@ GroupingSet::initializeGlobalAggregation() {
         aggregate.function_->initializeNewGroups(lookup_->hits_.data(),
                                                  singleGroup);
     }
-    globalAggregationInitialized_ = true;
 }
 
 void
@@ -108,8 +99,7 @@ GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input) {
     for (auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
         populateTempVectors(i, input);
-        TargetBitmapView active_views(active_rows_);
-        function->addSingleGroupRawInput(group, active_views, tempVectors_);
+        function->addSingleGroupRawInput(group, tempVectors_);
     }
     tempVectors_.clear();
 }
@@ -190,13 +180,7 @@ GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
         createHashTable();
     }
     ensureInputFits(input);
-    hash_table_->prepareForGroupProbe(
-        *lookup_, input, active_rows_, ignoreNullKeys_);
-    if (lookup_->rows_.empty()) {
-        // No rows to probe. Can happen when ignoreNullKeys_ is true and all rows
-        // have null keys.
-        return;
-    }
+    hash_table_->prepareForGroupProbe(*lookup_, input);
     hash_table_->groupProbe(*lookup_);
     auto* groups = lookup_->hits_.data();
     const auto& newGroups = lookup_->newGroups_;
@@ -205,12 +189,8 @@ GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
         if (!newGroups.empty()) {
             function->initializeNewGroups(groups, newGroups);
         }
-        if (!active_rows_.any()) {
-            continue;
-        }
         populateTempVectors(i, input);
-        TargetBitmapView active_views(active_rows_);
-        function->addRawInput(groups, active_views, tempVectors_);
+        function->addRawInput(groups, tempVectors_);
     }
     tempVectors_.clear();
 }
@@ -246,8 +226,6 @@ initializeAggregates(const std::vector<AggregateInfo>& aggregates,
         function->setOffsets(rowColumn.offset(),
                              rowColumn.nullByte(),
                              rowColumn.nullMask(),
-                             rowColumn.initializedByte(),
-                             rowColumn.initializedMask(),
                              rows.rowSizeOffset());
         i++;
     }
@@ -255,13 +233,8 @@ initializeAggregates(const std::vector<AggregateInfo>& aggregates,
 
 void
 GroupingSet::createHashTable() {
-    if (ignoreNullKeys_) {
-        hash_table_ = std::make_unique<HashTable<true>>(std::move(hashers_),
-                                                        accumulators());
-    } else {
-        hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_),
+    hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_),
                                                          accumulators());
-    }
     auto& rows = *(hash_table_->rows());
     initializeAggregates(aggregates_, rows);
     lookup_ =

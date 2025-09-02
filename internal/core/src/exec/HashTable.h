@@ -138,14 +138,11 @@ class BaseHashTable {
 
     /// Populates 'hashes' and 'rows' fields in 'lookup' in preparation for
     /// 'groupProbe' call. Rehashes the table if necessary. Uses lookup.hashes to
-    /// decode grouping keys from 'input'. If 'ignoreNullKeys_' is true, updates
-    /// 'rows' to remove entries with null grouping keys. After this call, 'rows'
-    /// may have no entries selected.
+    /// decode grouping keys from 'input'. 
     void
     prepareForGroupProbe(HashLookup& lookup,
                          const RowVectorPtr& input,
-                         TargetBitmap& activeRows,
-                         bool nullableKeys);
+                         TargetBitmap& activeRows);
 
     /// Finds or creates a group for each key in 'lookup'. The keys are
     /// returned in 'lookup.hits'.
@@ -162,7 +159,6 @@ class BaseHashTable {
 
 class ProbeState;
 
-template <bool ignoreNullKeys>
 class HashTable : public BaseHashTable {
  public:
     HashTable(std::vector<std::unique_ptr<VectorHasher>>&& hashers,
@@ -173,8 +169,7 @@ class HashTable : public BaseHashTable {
             keyTypes.push_back(hasher->ChannelDataType());
         }
         hashMode_ = HashMode::kHash;
-        rows_ = std::make_unique<RowContainer>(
-            keyTypes, accumulators, ignoreNullKeys);
+        rows_ = std::make_unique<RowContainer>(keyTypes, accumulators);
     };
 
     ~HashTable() override {
@@ -289,13 +284,13 @@ class HashTable : public BaseHashTable {
     allocateTables(uint64_t size);
 
     void
-    fullProbe(HashLookup& lookup, ProbeState& state, bool extraCheck);
+    fullProbe(HashLookup& lookup, ProbeState& state);
 
     void
     clear(bool freeTable = false) override;
 
     void
-    checkSize(int32_t numNew);
+    checkSizeAndAllocateTable(int32_t numNew);
 
     // Returns the number of entries after which the table gets rehashed.
     static uint64_t

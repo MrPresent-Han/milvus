@@ -498,9 +498,9 @@ class RescoresNode : public PlanNode {
                 sources_{std::move(sources)} {
         }
 
-        DataType
+        RowTypePtr
         output_type() const override {
-            return DataType::INT64;
+            return std::make_shared<const RowType>(std::vector<std::string>{"scores"}, std::vector<milvus::DataType>{DataType::INT64});
         }
 
         std::vector<PlanNodePtr>
@@ -531,17 +531,6 @@ class RescoresNode : public PlanNode {
 
 class AggregationNode : public PlanNode {
  public:
-    enum class Step {
-        // raw input in - partial result out
-        kPartial,
-        // partial result in - final result out
-        kFinal,
-        // partial result in - partial result out
-        kIntermediate,
-        // raw input in - final result out
-        kSingle
-    };
-
     struct Aggregate {
         /// Function name and input column names.
         expr::CallExprPtr call_;
@@ -560,11 +549,9 @@ class AggregationNode : public PlanNode {
 
     AggregationNode(
         const PlanNodeId& id,
-        Step step,
         std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
         std::vector<std::string>&& aggNames,
         std::vector<Aggregate>&& aggregates,
-        bool ignoreNullKeys,
         int64_t group_limit,
         std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{});
 
@@ -598,27 +585,15 @@ class AggregationNode : public PlanNode {
         return aggregates_;
     }
 
-    Step
-    step() const {
-        return step_;
-    }
-
-    bool
-    ignoreNullKeys() const {
-        return ignoreNullKeys_;
-    }
-
     int64_t
     group_limit() const {
         return group_limit_;
     }
 
  private:
-    const Step step_;
     const std::vector<expr::FieldAccessTypeExprPtr> groupingKeys_;
     const std::vector<std::string> aggregateNames_;
     const std::vector<Aggregate> aggregates_;
-    const bool ignoreNullKeys_{true};
     const std::vector<PlanNodePtr> sources_;
     const RowTypePtr output_type_;
     const int64_t group_limit_;
