@@ -54,14 +54,13 @@ class SimpleNumericAggregate : public exec::Aggregate {
               typename UpdateSingleValue>
     void
     updateGroups(char** groups,
-                int32_t numGroups,
                  const VectorPtr& vector,
                  UpdateSingleValue updateSingleValue) {
         auto column_data = std::dynamic_pointer_cast<ColumnVector>(vector);
         AssertInfo(
             column_data != nullptr,
             "input column data for upgrading groups should not be nullptr");
-        for (auto i = 0; i < numGroups; i++) {
+        for (auto i = 0; i < column_data->size(); i++) {
             if (column_data->ValidAt(i)) {
                 updateNonNullValue<tableHasNulls, TData>(
                     groups[i],

@@ -38,19 +38,15 @@ class CountAggregate : public SimpleNumericAggregate<bool, int64_t, int64_t> {
 
     void
     addRawInput(char** groups,
-                int32_t numGroups,
                 const std::vector<VectorPtr>& input) override {
         ColumnVectorPtr input_column = nullptr;
-        AssertInfo(input.empty() || input.size() == 1,
+        AssertInfo(input.size() == 1,
                    fmt::format("input column count for count aggregation "
-                               "must be one or zero for now, but got:{}",
+                               "must be one , but got:{}",
                                input.size()));
-        if (input.size() == 1) {
-            input_column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
-        }
-        for (auto i = 0; i < numGroups; i++) {
-            if ((input_column && input_column->ValidAt(i)) ||
-                !input_column) {
+        input_column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
+        for (auto i = 0; i < input_column->size(); i++) {
+            if ((input_column && input_column->ValidAt(i))) {
                 addToGroup(groups[i], 1);
             }
         }
@@ -69,18 +65,11 @@ class CountAggregate : public SimpleNumericAggregate<bool, int64_t, int64_t> {
             auto cnt = view.size() - view.count();
             addToGroup(group, cnt);
         } else {
-            auto start = -1;
-            do {
-                auto next_active_idx = activeRows.find_next(start);
-                if (!next_active_idx.has_value()) {
-                    break;
-                }
-                auto active_idx = next_active_idx.value();
-                if (column->ValidAt(active_idx)) {
+            for (auto i = 0; i < column->size(); i++) {
+                if (column->ValidAt(i)) {
                     addToGroup(group, 1);
                 }
-                start = active_idx;
-            } while (true);
+            }
         }
     }
 

@@ -74,7 +74,6 @@ class Aggregate {
 
     virtual void
     addRawInput(char** groups,
-                int32_t numGroups,
                 const std::vector<VectorPtr>& input) = 0;
 
     virtual void
