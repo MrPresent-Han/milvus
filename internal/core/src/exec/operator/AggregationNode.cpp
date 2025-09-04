@@ -53,17 +53,6 @@ PhyAggregationNode::AddInput(RowVectorPtr& input) {
     numInputRows_ += input->size();
 }
 
-void
-PhyAggregationNode::prepareOutput(vector_size_t size) {
-    if (output_) {
-        VectorPtr new_output = std::move(output_);
-        BaseVector::prepareForReuse(new_output, size);
-        output_ = std::static_pointer_cast<RowVector>(new_output);
-    } else {
-        output_ = std::make_shared<RowVector>(output_type_, size);
-    }
-}
-
 RowVectorPtr
 PhyAggregationNode::GetOutput() {
     if (finished_ || !no_more_input_) {
@@ -72,7 +61,7 @@ PhyAggregationNode::GetOutput() {
     }
     DeferLambda([&]() { finished_ = true; });
     const auto outputRowCount = isGlobal_ ? 1 : grouping_set_->outputRowCount();
-    prepareOutput(outputRowCount);
+    output_ = std::make_shared<RowVector>(output_type_, size);
     const bool hasData = grouping_set_->getOutput(output_);
     if (!hasData) {
         return nullptr;

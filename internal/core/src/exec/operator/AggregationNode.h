@@ -69,9 +69,6 @@ class PhyAggregationNode : public Operator {
     }
 
  private:
-    void
-    prepareOutput(vector_size_t size);
-
     RowVectorPtr output_;
     std::unique_ptr<GroupingSet> grouping_set_;
     std::shared_ptr<const plan::AggregationNode> aggregationNode_;
