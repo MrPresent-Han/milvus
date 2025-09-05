@@ -79,39 +79,6 @@ empty_search_result(int64_t num_queries) {
     return final_result;
 }
 
-/*BitsetType
-ExecPlanNodeVisitor::ExecuteTask(
-    plan::PlanFragment& plan,
-    std::shared_ptr<milvus::exec::QueryContext> query_context) {
-    LOG_DEBUG("plannode: {}, active_count: {}, timestamp: {}",
-              plan.plan_node_->ToString(),
-              query_context->get_active_count(),
-              query_context->get_query_timestamp());
-    auto task =
-        milvus::exec::Task::Create(DEFAULT_TASK_ID, plan, 0, query_context);
-    int64_t processed_num = 0;
-    BitsetType bitset_holder;
-    for (;;) {
-        auto result = task->Next();
-        if (!result) {
-            Assert(processed_num == query_context->get_active_count());
-            break;
-        }
-        auto childrens = result->childrens();
-        AssertInfo(childrens.size() == 1,
-                   "plannode result vector's children size not equal one");
-        LOG_DEBUG("output result length:{}", childrens[0]->size());
-        if (auto vec = std::dynamic_pointer_cast<ColumnVector>(childrens[0])) {
-            processed_num += vec->size();
-            BitsetTypeView view(vec->GetRawData(), vec->size());
-            bitset_holder.append(view);
-        } else {
-            ThrowInfo(UnexpectedError, "expr return type not matched");
-        }
-    }
-    return bitset_holder;
-}*/
-
 RowVectorPtr
 ExecPlanNodeVisitor::ExecuteTask(
     plan::PlanFragment& plan,
