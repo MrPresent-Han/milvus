@@ -451,7 +451,6 @@ func (node *QueryNode) InitSegcore() error {
 
 	// init paramtable change callback for core related config
 	initcore.SetupCoreConfigChangelCallback()
-	initcore.InitAggregationFunctions()
 	return initcore.InitPluginLoader()
 }
 
