@@ -29,7 +29,6 @@ using namespace milvus::segcore;
 using namespace milvus::exec;
 
 TEST(DeleteMVCC, common_case) {
-    registerAllAggregateFunctions();
     auto schema = std::make_shared<Schema>();
     auto pk = schema->AddDebugField("pk", DataType::INT64);
     schema->set_primary_field_id(pk);

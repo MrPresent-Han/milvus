@@ -60,12 +60,7 @@ registerSum(const std::string& name) {
                               GetDataTypeName(inputType));
             }
         });
-};
-
-void
-registerSumAggregate(const std::string& prefix) {
-    registerSum<SumAggregate>(kSum);
     LOG_INFO("Registered Sum Aggregate Function");
-}
+};
 }  // namespace exec
 }  // namespace milvus

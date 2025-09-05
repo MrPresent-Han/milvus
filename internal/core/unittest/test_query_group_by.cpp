@@ -39,7 +39,6 @@ class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
  protected:
     void
     SetUp() override {
-        registerAllAggregateFunctions();
         schema_ = std::make_shared<Schema>();
         auto vec_fid = schema_->AddDebugField(
             "fakevec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);

@@ -77,6 +77,9 @@ class FunctionFactory {
     RegisterFilterFunction(std::string func_name,
                            std::vector<DataType> func_param_type_list,
                            FilterFunctionPtr func);
+                           
+    void
+    RegisterAggregateFunction(const std::string& func_name);
 
     const FilterFunctionPtr
     GetFilterFunction(const FilterFunctionRegisterKey& func_sig) const;

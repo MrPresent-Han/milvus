@@ -1409,7 +1409,6 @@ TEST(CApiTest, GetRowCountTest) {
 }
 
 TEST(CApiTest, GetRealCount) {
-    registerAllAggregateFunctions();
     auto collection = NewCollection(get_default_schema_config().c_str());
     CSegmentInterface segment;
     auto status = NewSegment(collection, Growing, -1, &segment, false);
@@ -4107,7 +4106,6 @@ TEST(CApiTest, SealedSegment_search_float_With_Expr_Predicate_Range) {
 }
 
 TEST(CApiTest, GrowingSegment_Load_Field_Data) {
-    registerAllAggregateFunctions();
     auto schema = std::make_shared<Schema>();
     schema->AddField(
         FieldName("RowID"), FieldId(0), DataType::INT64, false, std::nullopt);

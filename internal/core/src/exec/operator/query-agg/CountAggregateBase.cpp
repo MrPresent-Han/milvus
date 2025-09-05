@@ -24,11 +24,5 @@ registerCount(const std::string name) {
             return std::make_unique<CountAggregate>();
         });
 }
-
-void
-registerCountAggregate(const std::string& prefix) {
-    registerCount(prefix + KCount);
-    LOG_INFO("Registered Count Aggregate Function");
-}
 }  // namespace exec
 }  // namespace milvus

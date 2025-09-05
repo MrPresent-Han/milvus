@@ -452,10 +452,6 @@ func InitInterminIndexConfig(params *paramtable.ComponentParam) error {
 	return HandleCStatus(&status, "InitInterminIndexConfig failed")
 }
 
-func InitAggregationFunctions() {
-	C.RegisterAggregationFunctions()
-}
-
 func CleanRemoteChunkManager() {
 	C.CleanRemoteChunkManagerSingleton()
 }

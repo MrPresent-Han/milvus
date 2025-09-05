@@ -325,7 +325,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                 project_name_list.reserve(group_by_field_count);
                 project_type_list.reserve(group_by_field_count);
 
-                std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;//hc---what is FieldAccessTypeExprPtr
+                std::vector<expr::FieldAccessTypeExprPtr> groupingKeys;
                 groupingKeys.reserve(group_by_field_count);
                 auto insert_project_field_if_not_exist =
                     [&](FieldId& field_id,
