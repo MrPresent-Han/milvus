@@ -90,5 +90,7 @@ class CountAggregate : public SimpleNumericAggregate<bool, int64_t, int64_t> {
     }
 };
 
+void registerCount(const std::string& name);
+
 }  // namespace exec
 }  // namespace milvus

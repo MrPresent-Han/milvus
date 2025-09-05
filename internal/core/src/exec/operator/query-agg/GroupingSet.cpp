@@ -148,21 +148,22 @@ GroupingSet::ensureInputFits(const RowVectorPtr& input) {
 
 void
 GroupingSet::extractGroups(const milvus::RowVectorPtr& result) {
-    const auto& groups = hash_table_->rows()->allRows();
+    RowContainer* rows = hash_table_->rows();
+    const auto& groups = rows->allRows();
     if (groups.empty()) {
         return;
     }
     result->resize(groups.size());
-    RowContainer* rows = hash_table_->rows();
     auto totalKeys = rows->KeyTypes().size();
+    auto groups_range = folly::Range<char**>(const_cast<char**>(groups.data()), groups.size());
     for (auto i = 0; i < totalKeys; i++) {
         auto keyVector = result->child(i);
-        rows->extractColumn(groups.data(), groups.size(), i, keyVector);
+        rows->extractColumn(groups_range.data(), groups_range.size(), i, keyVector);
     }
     for (auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
         auto aggregateVector = result->child(totalKeys + i);
-        function->extractValues(groups.data(), groups.size(), &aggregateVector);
+        function->extractValues(groups_range.data(), groups_range.size(), &aggregateVector);
     }
 }
 
@@ -228,7 +229,7 @@ initializeAggregates(const std::vector<AggregateInfo>& aggregates,
 
 void
 GroupingSet::createHashTable() {
-    hash_table_ = std::make_unique<HashTable<false>>(std::move(hashers_),
+    hash_table_ = std::make_unique<HashTable>(std::move(hashers_),
                                                          accumulators());
     auto& rows = *(hash_table_->rows());
     initializeAggregates(aggregates_, rows);

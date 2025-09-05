@@ -16,7 +16,7 @@ namespace milvus {
 namespace exec {
 
 void
-registerCount(const std::string name) {
+registerCount(const std::string& name) {
     exec::registerAggregateFunction(
         name,
         [name](const std::vector<DataType>& /*argumentTypes*/,

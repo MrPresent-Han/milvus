@@ -25,7 +25,6 @@ package initcore
 #include "segcore/segcore_init_c.h"
 #include "storage/storage_c.h"
 #include "segcore/arrow_fs_c.h"
-#include "exec/operator/init_c.h"
 */
 import "C"
 

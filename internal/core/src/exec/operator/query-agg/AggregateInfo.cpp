@@ -27,7 +27,6 @@ toAggregateInfo(const plan::AggregationNode& aggregationNode,
     aggregates.reserve(numAggregates);
     const auto& inputType = aggregationNode.sources()[0]->output_type();
     const auto& outputType = aggregationNode.output_type();
-    const auto step = aggregationNode.step();
 
     for (auto i = 0; i < numAggregates; i++) {
         const auto& aggregate = aggregationNode.aggregates()[i];

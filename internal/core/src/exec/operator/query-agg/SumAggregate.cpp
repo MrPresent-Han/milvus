@@ -15,7 +15,6 @@
 // limitations under the License.
 
 #include "SumAggregateBase.h"
-#include "RegisterAggregateFunctions.h"
 
 namespace milvus {
 namespace exec {
@@ -60,7 +59,14 @@ registerSum(const std::string& name) {
                               GetDataTypeName(inputType));
             }
         });
-    LOG_INFO("Registered Sum Aggregate Function");
 };
+
+
+void
+registerSumAggregate() {
+    registerSum<SumAggregate>(milvus::KSum);
+    LOG_INFO("Registered Sum Aggregate Function");
+}
+
 }  // namespace exec
 }  // namespace milvus

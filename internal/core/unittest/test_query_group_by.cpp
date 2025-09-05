@@ -255,7 +255,6 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
         std::move(groupingKeys),
         std::vector<std::string>{"sum"},
         std::move(aggregates),
-        ignore_null_keys,
         num_rows_,
         sources);
 
@@ -281,7 +280,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
             // all columns in the returned row vector should be the same size
         }
     }
-    if (nullable && ignore_null_keys) {
+    if (nullable) {
         EXPECT_TRUE(size <= 5);
     } else if (!nullable) {
         EXPECT_TRUE(size == 5);
@@ -308,7 +307,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
 
 TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto [nullable, ignore_null_keys] = GetParam();
+    auto nullable = GetParam();
     //set up mvcc_node + project_node + agg_node
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
         milvus::plan::GetNextPlanNodeId(), sources);
@@ -364,7 +363,6 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
         std::move(groupingKeys),
         std::vector<std::string>{"sum", "sum"},
         std::move(aggregates),
-        ignore_null_keys,
         num_rows_,
         sources);
 
@@ -390,7 +388,7 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
             // all columns in the returned row vector should be the same size
         }
     }
-    if (nullable && ignore_null_keys) {
+    if (nullable) {
         EXPECT_TRUE(size <= 5);
     } else if (!nullable) {
         EXPECT_EQ(size, 5);
@@ -421,7 +419,7 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
 
 TEST_P(QueryAggTest, CountAggTest) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto [nullable, ignore_null_keys] = GetParam();
+    auto nullable = GetParam();
     //set up mvcc_node + project_node + agg_node
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
         milvus::plan::GetNextPlanNodeId(), sources);
@@ -470,7 +468,6 @@ TEST_P(QueryAggTest, CountAggTest) {
         std::move(groupingKeys),
         std::vector<std::string>{agg_name, agg_name},
         std::move(aggregates),
-        ignore_null_keys,
         num_rows_,
         sources);
 
@@ -496,7 +493,7 @@ TEST_P(QueryAggTest, CountAggTest) {
             // all columns in the returned row vector should be the same size
         }
     }
-    if (nullable && ignore_null_keys) {
+    if (nullable) {
         EXPECT_TRUE(size <= 5);
     } else if (!nullable) {
         EXPECT_EQ(size, 5);
@@ -527,7 +524,7 @@ TEST_P(QueryAggTest, CountAggTest) {
 
 TEST_P(QueryAggTest, GlobalCountAggTest) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto [nullable, ignore_null_keys] = GetParam();
+    auto nullable = GetParam();
     //set up mvcc_node + agg_node: global aggregation no need project column
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
         milvus::plan::GetNextPlanNodeId(), sources);
@@ -547,7 +544,6 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
         std::vector<expr::FieldAccessTypeExprPtr>{},
         std::vector<std::string>{agg_name},
         std::move(aggregates),
-        ignore_null_keys,
         num_rows_,
         sources);
 
@@ -575,7 +571,7 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
 // Test count(*) when activeCount is zero
 TEST_P(QueryAggTest, GlobalCountEmptyTest) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto [nullable, ignore_null_keys] = GetParam();
+    auto nullable = GetParam();
     //set up mvcc_node + agg_node: global aggregation no need project column
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
         milvus::plan::GetNextPlanNodeId(), sources);
@@ -595,7 +591,6 @@ TEST_P(QueryAggTest, GlobalCountEmptyTest) {
         std::vector<expr::FieldAccessTypeExprPtr>{},
         std::vector<std::string>{agg_name},
         std::move(aggregates),
-        ignore_null_keys,
         num_rows_,
         sources);
 
@@ -621,7 +616,7 @@ TEST_P(QueryAggTest, GlobalCountEmptyTest) {
 
 TEST_P(QueryAggTest, AggLimitTest) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto [nullable, ignore_null_keys] = GetParam();
+    auto nullable = GetParam();
     //set up mvcc_node + project_node + agg_node
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
         milvus::plan::GetNextPlanNodeId(), sources);
@@ -651,7 +646,6 @@ TEST_P(QueryAggTest, AggLimitTest) {
         std::move(groupingKeys),
         std::vector<std::string>{},
         std::move(aggregates),
-        ignore_null_keys,
         group_limit,
         sources);
 

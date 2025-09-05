@@ -73,8 +73,8 @@ FunctionFactory::RegisterFilterFunction(
 
 void
 FunctionFactory::RegisterAggregateFunction() {
-    milvus::exec::registerCount(milvus::kCount);
-    milvus::exec::registerSum(milvus::kSum);
+    milvus::exec::registerCount(milvus::KCount);
+    milvus::exec::registerSumAggregate();
 }
 
 const FilterFunctionPtr

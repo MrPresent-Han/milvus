@@ -34,6 +34,7 @@
 #include "knowhere/expected.h"
 #include "knowhere/sparse_utils.h"
 #include "simdjson.h"
+#include "common/Utils.h"
 
 namespace milvus {
 #define FIELD_DATA(data_array, type) \
@@ -380,14 +381,14 @@ checkedMultiply(const T& a, const T& b, const char* typeName = "integer") {
     return result;
 }
 
-const char* const kSum = "sum";
+const char* const KSum = "sum";
 const char* const KMin = "min";
 const char* const KMax = "max";
 const char* const KCount = "count";
 
 inline DataType
 GetAggResultType(std::string func_name, DataType input_type) {
-    if (func_name == kSum) {
+    if (func_name == KSum) {
         switch (input_type) {
             case DataType::INT8:
             case DataType::INT16:

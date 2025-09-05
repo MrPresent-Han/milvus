@@ -44,7 +44,7 @@ Aggregate::create(const std::string& name,
                   const std::vector<DataType>& argTypes,
                   const QueryConfig& query_config) {
     if (auto func = getAggregateFunctionEntry(name)) {
-        return func->factory(argTypes, query_config);
+        return (*func)(argTypes, query_config);
     }
     ThrowInfo(UnexpectedError, "Aggregate function not registered: {}", name);
 }

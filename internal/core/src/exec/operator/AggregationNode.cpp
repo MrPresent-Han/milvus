@@ -23,7 +23,7 @@ PhyAggregationNode::PhyAggregationNode(
     int32_t operator_id,
     milvus::exec::DriverContext* ctx,
     const std::shared_ptr<const plan::AggregationNode>& node)
-    : Operator(ctx, node->output_type(), operator_id, node->id()),
+    : Operator(ctx, node->output_type(), operator_id, node->id(), "AggregationNode"),
       aggregationNode_(node),
       isGlobal_(node->GroupingKeys().empty()),
       group_limit_(node->group_limit()) {
@@ -61,7 +61,7 @@ PhyAggregationNode::GetOutput() {
     }
     DeferLambda([&]() { finished_ = true; });
     const auto outputRowCount = isGlobal_ ? 1 : grouping_set_->outputRowCount();
-    output_ = std::make_shared<RowVector>(output_type_, size);
+    output_ = std::make_shared<RowVector>(output_type_, outputRowCount);
     const bool hasData = grouping_set_->getOutput(output_);
     if (!hasData) {
         return nullptr;
