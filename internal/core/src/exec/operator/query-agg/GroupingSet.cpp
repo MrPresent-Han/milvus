@@ -106,7 +106,6 @@ GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input) {
 
 bool
 GroupingSet::getGlobalAggregationOutput(milvus::RowVectorPtr& result) {
-    initializeGlobalAggregation();
     AssertInfo(lookup_->hits_.size() == 1,
                "GlobalAggregation should have exactly one output line");
     auto groups = lookup_->hits_.data();
@@ -123,14 +122,10 @@ GroupingSet::getOutput(milvus::RowVectorPtr& result) {
     if (isGlobal_) {
         return getGlobalAggregationOutput(result);
     }
-    if (hash_table_ == nullptr) {
-        return false;
-    }
+    AssertInfo(hash_table_ != nullptr, "hash_table_ should not be nullptr for non-global aggregation");
     const auto& all_rows = hash_table_->rows()->allRows();
     if (!all_rows.empty()) {
-        extractGroups(folly::Range<char**>(const_cast<char**>(all_rows.data()),
-                                           all_rows.size()),
-                      result);
+        extractGroups(result);
         return true;
     }
     return false;
@@ -152,8 +147,8 @@ GroupingSet::ensureInputFits(const RowVectorPtr& input) {
 }
 
 void
-GroupingSet::extractGroups(folly::Range<char**> groups,
-                           const milvus::RowVectorPtr& result) {
+GroupingSet::extractGroups(const milvus::RowVectorPtr& result) {
+    const auto& groups = hash_table_->rows()->allRows();
     if (groups.empty()) {
         return;
     }

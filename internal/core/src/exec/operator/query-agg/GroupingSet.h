@@ -67,7 +67,7 @@ class GroupingSet {
     getOutput(RowVectorPtr& result);
 
     void
-    extractGroups(folly::Range<char**> groups, const RowVectorPtr& result);
+    extractGroups(const RowVectorPtr& result);
 
     void
     populateTempVectors(int32_t aggregateIndex, const RowVectorPtr& input);

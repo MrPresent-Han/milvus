@@ -265,7 +265,6 @@ class RowContainer {
                            int32_t offset,
                            int32_t nullByte,
                            uint8_t nullMask,
-                           int32_t resultOffset,
                            const VectorPtr& result) {
         auto maxRows = numRows + resultOffset;
         AssertInfo(maxRows == result->size(),
@@ -278,7 +277,7 @@ class RowContainer {
             "Input column to extract result must be of ColumnVector type");
         for (auto i = 0; i < numRows; i++) {
             const char* row = rows[i];
-            auto resultIndex = resultOffset + i;
+            auto resultIndex = i;
             if (row == nullptr || isNullAt(row, nullByte, nullMask)) {
                 result_column_vec->nullAt(resultIndex);
             } else {
@@ -333,9 +332,8 @@ class RowContainer {
     extractColumnTypedInternal(const char* const* rows,
                                int32_t numRows,
                                RowColumn column,
-                               int32_t resultOffset,
                                const VectorPtr& result) {
-        result->resize(numRows + resultOffset);
+        result->resize(numRows);
         if constexpr (Type == DataType::ROW || Type == DataType::JSON ||
                       Type == DataType::ARRAY || Type == DataType::NONE) {
             ThrowInfo(DataTypeInvalid,
@@ -364,17 +362,15 @@ class RowContainer {
     extractColumnTyped(const char* const* rows,
                        int32_t numRows,
                        RowColumn column,
-                       int32_t resultOffset,
                        const VectorPtr& result) {
         extractColumnTypedInternal<Type>(
-            rows, numRows, column, resultOffset, result);
+            rows, numRows, column, result);
     }
 
     static void
     extractColumn(const char* const* rows,
                   int32_t num_rows,
                   RowColumn column,
-                  vector_size_t result_offset,
                   const VectorPtr& result);
 
     void
@@ -382,7 +378,7 @@ class RowContainer {
                   int32_t numRows,
                   int32_t column_idx,
                   const VectorPtr& result) {
-        extractColumn(rows, numRows, columnAt(column_idx), 0, result);
+        extractColumn(rows, numRows, columnAt(column_idx), result);
     }
 
     const std::vector<char*>&
@@ -446,14 +442,12 @@ inline void
 RowContainer::extractColumn(const char* const* rows,
                             int32_t num_rows,
                             milvus::exec::RowColumn column,
-                            milvus::vector_size_t result_offset,
                             const milvus::VectorPtr& result) {
     MILVUS_DYNAMIC_TYPE_DISPATCH(extractColumnTyped,
                                  result->type(),
                                  rows,
                                  num_rows,
                                  column,
-                                 result_offset,
                                  result);
 }
 }  // namespace exec
