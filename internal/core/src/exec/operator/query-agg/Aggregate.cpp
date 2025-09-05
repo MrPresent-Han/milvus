@@ -25,12 +25,12 @@ Aggregate::setOffsetsInternal(int32_t offset,
     rowSizeOffset_ = rowSizeOffset;
 }
 
-const AggregateFunctionEntry*
+const AggregateFunctionFactory*
 getAggregateFunctionEntry(const std::string& name) {
     auto sanitizedName = milvus::exec::sanitizeName(name);
 
     return aggregateFunctions().withRLock(
-        [&](const auto& functionsMap) -> const AggregateFunctionEntry* {
+        [&](const auto& functionsMap) -> const AggregateFunctionFactory* {
             auto it = functionsMap.find(sanitizedName);
             if (it != functionsMap.end()) {
                 return &it->second;

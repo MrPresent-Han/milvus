@@ -47,7 +47,6 @@ class Aggregate {
 
     static std::unique_ptr<Aggregate>
     create(const std::string& name,
-           plan::AggregationNode::Step step,
            const std::vector<DataType>& argTypes,
            const QueryConfig& query_config);//hc---the meaning for argTypes?
 
@@ -161,7 +160,7 @@ using AggregateFunctionFactory = std::function<std::unique_ptr<Aggregate>(
     const std::vector<DataType>& argTypes,
     const QueryConfig& config)>;
 
-const AggregateFunctionEntry*
+const AggregateFunctionFactory*
 getAggregateFunctionEntry(const std::string& name);
 
 using AggregateFunctionMap = folly::Synchronized<

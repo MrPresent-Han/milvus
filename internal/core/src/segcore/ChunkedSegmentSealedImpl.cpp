@@ -1559,10 +1559,21 @@ ChunkedSegmentSealedImpl::bulk_subscript_ptr_impl(
     const int64_t* seg_offsets,
     int64_t count,
     T* dst) {
-    auto field = reinterpret_cast<const ChunkedVariableColumn<S>*>(column);
-    for (int64_t i = 0; i < count; ++i) {
-        auto offset = seg_offsets[i];
-        dst[i] = std::move(T(field->RawAt(offset)));
+    if constexpr (std::is_same_v<S, Json>) {
+        column->BulkRawJsonAt(
+            [&](Json json, size_t offset, bool is_valid) {
+                dst[offset] = std::move(T(json));
+            },
+            seg_offsets,
+            count);
+    } else {
+        static_assert(std::is_same_v<S, std::string>);
+        column->BulkRawStringAt(
+            [&](std::string_view value, size_t offset, bool is_valid) {
+                dst[offset] = std::move(T(value));
+            },
+            seg_offsets,
+            count);
     }
 }
 

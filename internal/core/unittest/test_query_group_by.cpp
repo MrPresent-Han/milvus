@@ -174,7 +174,6 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
         DataType::INT16, int16_field, int16_id));
     PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(
         milvus::plan::GetNextPlanNodeId(),
-        milvus::plan::AggregationNode::Step::kSingle,
         std::move(groupingKeys),
         std::vector<std::string>{},
         std::vector<plan::AggregationNode::Aggregate>{},
@@ -255,7 +254,6 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
     aggregates.back().resultType_ = GetAggResultType(agg_name, DataType::INT64);
     PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(
         milvus::plan::GetNextPlanNodeId(),
-        milvus::plan::AggregationNode::Step::kSingle,
         std::move(groupingKeys),
         std::vector<std::string>{"sum"},
         std::move(aggregates),
@@ -365,7 +363,6 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
     }
     PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(
         milvus::plan::GetNextPlanNodeId(),
-        milvus::plan::AggregationNode::Step::kSingle,
         std::move(groupingKeys),
         std::vector<std::string>{"sum", "sum"},
         std::move(aggregates),
@@ -472,7 +469,6 @@ TEST_P(QueryAggTest, CountAggTest) {
     }
     PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(
         milvus::plan::GetNextPlanNodeId(),
-        milvus::plan::AggregationNode::Step::kSingle,
         std::move(groupingKeys),
         std::vector<std::string>{agg_name, agg_name},
         std::move(aggregates),
@@ -550,7 +546,6 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
     }
     PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(
         milvus::plan::GetNextPlanNodeId(),
-        milvus::plan::AggregationNode::Step::kSingle,
         std::vector<expr::FieldAccessTypeExprPtr>{},
         std::vector<std::string>{agg_name},
         std::move(aggregates),
@@ -599,7 +594,6 @@ TEST_P(QueryAggTest, GlobalCountEmptyTest) {
     }
     PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(
         milvus::plan::GetNextPlanNodeId(),
-        milvus::plan::AggregationNode::Step::kSingle,
         std::vector<expr::FieldAccessTypeExprPtr>{},
         std::vector<std::string>{agg_name},
         std::move(aggregates),
@@ -656,7 +650,6 @@ TEST_P(QueryAggTest, AggLimitTest) {
     std::vector<plan::AggregationNode::Aggregate> aggregates;
     PlanNodePtr agg_node = std::make_shared<plan::AggregationNode>(
         milvus::plan::GetNextPlanNodeId(),
-        milvus::plan::AggregationNode::Step::kSingle,
         std::move(groupingKeys),
         std::vector<std::string>{},
         std::move(aggregates),

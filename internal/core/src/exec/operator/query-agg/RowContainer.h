@@ -266,8 +266,7 @@ class RowContainer {
                            int32_t nullByte,
                            uint8_t nullMask,
                            const VectorPtr& result) {
-        auto maxRows = numRows + resultOffset;
-        AssertInfo(maxRows == result->size(),
+        AssertInfo(numRows == result->size(),
                    "extracted rows number should be equal to the size of "
                    "result vector");
         auto result_column_vec =
@@ -298,10 +297,8 @@ class RowContainer {
     extractValuesNoNulls(const char* const* rows,
                          int32_t numRows,
                          int32_t offset,
-                         int32_t resultOffset,
                          const VectorPtr& result) {
-        auto maxRows = numRows + resultOffset;
-        AssertInfo(maxRows == result->size(),
+        AssertInfo(numRows == result->size(),
                    "extracted rows number should be equal to the size of "
                    "result vector");
         auto result_column_vec =
@@ -311,16 +308,15 @@ class RowContainer {
             "Input column to extract result must be of ColumnVector type");
         for (auto i = 0; i < numRows; i++) {
             const char* row = rows[i];
-            auto resultIndex = resultOffset + i;
             if (row == nullptr) {
-                result_column_vec->nullAt(resultIndex);
+                result_column_vec->nullAt(i);
             } else {
                 if constexpr (std::is_same_v<T, std::string> ||
                               std::is_same_v<T, std::string_view>) {
                     auto* str_ptr = strAt(row, offset);
-                    result_column_vec->SetValueAt<T>(resultIndex, *str_ptr);
+                    result_column_vec->SetValueAt<T>(i, *str_ptr);
                 } else {
-                    result_column_vec->SetValueAt<T>(resultIndex,
+                    result_column_vec->SetValueAt<T>(i,
                                                      valueAt<T>(row, offset));
                 }
             }
@@ -348,11 +344,10 @@ class RowContainer {
                                           offset,
                                           column.nullByte(),
                                           nullMask,
-                                          resultOffset,
                                           result);
             } else {
                 extractValuesNoNulls<T>(
-                    rows, numRows, offset, resultOffset, result);
+                    rows, numRows, offset, result);
             }
         }
     }

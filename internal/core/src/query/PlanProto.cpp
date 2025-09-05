@@ -347,8 +347,8 @@ ProtoParser::RetrievePlanNodeFromProto(
                                "but is:{}",
                                input_field_id);
                     auto field_id = FieldId(input_field_id);
-                    auto field_type = schema.GetFieldType(field_id);
-                    auto field_name = schema.GetFieldName(field_id);
+                    auto field_type = schema->GetFieldType(field_id);
+                    auto field_name = schema->GetFieldName(field_id);
                     groupingKeys.emplace_back(
                         std::make_shared<const expr::FieldAccessTypeExpr>(
                             field_type, field_name, field_id));
@@ -380,17 +380,17 @@ ProtoParser::RetrievePlanNodeFromProto(
                                    "positive or zero, but is:{}",
                                    input_agg_field_id);
                         auto field_id = FieldId(input_agg_field_id);
-                        auto field_type = schema.GetFieldType(field_id);
-                        auto field_name = schema.GetFieldName(field_id);
+                        auto field_type = schema->GetFieldType(field_id);
+                        auto field_name = schema->GetFieldName(field_id);
                         auto agg_input =
-                            std::make_shared<expr::FieldAccessTypeExpr>(
+                            std::make_shared<const expr::FieldAccessTypeExpr>(
                                 field_type, field_name, field_id);
                         auto call = std::make_shared<const expr::CallExpr>(
                             agg_name,
                             std::vector<expr::TypedExprPtr>{agg_input},
                             nullptr);
                         aggregates.emplace_back(
-                            plan::AggregationNode::Aggregate{call});
+                            plan::AggregationNode::Aggregate(call));
                         aggregates.back().rawInputTypes_.emplace_back(
                             field_type);
                         aggregates.back().resultType_ =
