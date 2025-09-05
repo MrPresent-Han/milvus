@@ -388,7 +388,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                         auto call = std::make_shared<const expr::CallExpr>(
                             agg_name,
                             std::vector<expr::TypedExprPtr>{agg_input},
-                            nullptr);
+                        nullptr);
                         aggregates.emplace_back(
                             plan::AggregationNode::Aggregate(call));
                         aggregates.back().rawInputTypes_.emplace_back(
@@ -419,7 +419,6 @@ ProtoParser::RetrievePlanNodeFromProto(
                     std::move(groupingKeys),
                     std::move(agg_names),
                     std::move(aggregates),
-                    query.ignore_null_keys(),
                     query.limit(),
                     sources);
             }

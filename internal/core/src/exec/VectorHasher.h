@@ -45,7 +45,6 @@ class VectorHasher {
 
     void
     hash(bool mix,
-         const TargetBitmapView& activeRows,
          std::vector<uint64_t>& result);
 
     static constexpr uint64_t kNullHash = 1;

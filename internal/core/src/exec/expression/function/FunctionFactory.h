@@ -79,7 +79,7 @@ class FunctionFactory {
                            FilterFunctionPtr func);
                            
     void
-    RegisterAggregateFunction(const std::string& func_name);
+    RegisterAggregateFunction();
 
     const FilterFunctionPtr
     GetFilterFunction(const FilterFunctionRegisterKey& func_sig) const;

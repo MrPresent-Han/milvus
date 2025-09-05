@@ -324,7 +324,6 @@ SegmentInternalInterface::get_real_count() const {
         std::vector<expr::FieldAccessTypeExprPtr>{},
         std::vector<std::string>{agg_name},
         std::move(aggregates),
-        false,
         1,
         sources);
 

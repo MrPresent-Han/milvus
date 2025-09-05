@@ -141,8 +141,7 @@ class BaseHashTable {
     /// decode grouping keys from 'input'. 
     void
     prepareForGroupProbe(HashLookup& lookup,
-                         const RowVectorPtr& input,
-                         TargetBitmap& activeRows);
+                         const RowVectorPtr& input);
 
     /// Finds or creates a group for each key in 'lookup'. The keys are
     /// returned in 'lookup.hits'.

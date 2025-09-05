@@ -18,7 +18,7 @@
 #include "exec/expression/function/impl/StringFunctions.h"
 #include "log/Log.h"
 #include "exec/operator/query-agg/CountAggregateBase.h"
-#include "exec/operator/query-agg/SumAggregate.h"
+#include "exec/operator/query-agg/SumAggregateBase.h"
 
 namespace milvus {
 namespace exec {

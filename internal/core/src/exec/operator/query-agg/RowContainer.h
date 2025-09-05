@@ -396,7 +396,7 @@ class RowContainer {
         for (auto row : rows_) {
             for (auto i = 0; i < variable_offsets_.size(); i++) {
                 auto& off = variable_offsets_[i];
-                auto& row_col = columnAt(variable_idxes[i]);
+                auto& row_col = columnAt(variable_idxes_[i]);
                 bool isStrNull =
                     isNullAt(row, row_col.nullByte(), row_col.nullMask());
                 auto str = *reinterpret_cast<std::string**>(row + off);

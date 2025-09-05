@@ -36,7 +36,7 @@ BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
                    "Failed to get column vector from row vector input");
         hashers[i]->setColumnData(column_ptr);
     }
-    lookup.reset(input);
+    lookup.reset(input->size());
 
     const auto mode = hashMode();
     for (auto i = 0; i < hashers.size(); i++) {
@@ -261,9 +261,8 @@ HashTable::setHashMode(HashMode mode, int32_t numNew) {
     // TODO set hash mode kArray/kHash/kNormalizedKey
 }
 
-template <bool nullable>
 void
-HashTable<nullable>::clear(bool freeTable) {
+HashTable::clear(bool freeTable) {
     if (table_) {
         delete[] table_;
         table_ = nullptr;
@@ -272,7 +271,5 @@ HashTable<nullable>::clear(bool freeTable) {
     numDistinct_ = 0;
 }
 
-template class HashTable<true>;
-template class HashTable<false>;
 }  // namespace exec
 }  // namespace milvus

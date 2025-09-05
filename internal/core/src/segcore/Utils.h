@@ -21,6 +21,7 @@
 #include "common/Types.h"
 #include "index/Index.h"
 #include "segcore/ConcurrentVector.h"
+#include "segcore/SegmentInterface.h"
 
 namespace milvus::segcore {
 

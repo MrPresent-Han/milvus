@@ -113,9 +113,8 @@ class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
 
 INSTANTIATE_TEST_SUITE_P(TaskTestSuite,
                          QueryAggTest,
-                         ::testing::Values(std::make_pair(true, true),
-                                           std::make_pair(true, false),
-                                           std::make_pair(false, false)));
+                         ::testing::Values(std::make_pair(true),
+                                           std::make_pair(false)));
 
 RowVectorPtr
 execPlan(std::shared_ptr<Task>& task) {
@@ -152,7 +151,7 @@ execPlan(std::shared_ptr<Task>& task) {
 
 TEST_P(QueryAggTest, GroupFixedLengthType) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto [nullable, ignore_null_keys] = GetParam();
+    auto nullable = GetParam();
     //set up mvcc_node + project_node + agg_node
     // group by int16_field
     // mvcc node
@@ -177,7 +176,6 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
         std::move(groupingKeys),
         std::vector<std::string>{},
         std::vector<plan::AggregationNode::Aggregate>{},
-        ignore_null_keys,
         num_rows_,
         sources);
 
@@ -194,14 +192,14 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
     RowVectorPtr ret = execPlan(task);
     EXPECT_EQ(1, ret->childrens().size());
     auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
-    if (nullable && ignore_null_keys) {
+    if (nullable) {
         // as there are 10 values repeating 2 three times, after groupby, at most 7 valid unique values will be returned
         EXPECT_TRUE(column->size() <= 5);
     } else if (!nullable) {
         EXPECT_TRUE(column->size() == 5);
     }
 
-    if (!nullable || ignore_null_keys) {
+    if (!nullable) {
         auto count = column->size();
         std::set<int16_t> set;
         for (auto i = 0; i < count; i++) {
@@ -218,7 +216,7 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
 
 TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto [nullable, ignore_null_keys] = GetParam();
+    auto nullable = GetParam();
     //set up mvcc_node + project_node + agg_node
     // group by int16_field and int32_field
     // mvcc node
