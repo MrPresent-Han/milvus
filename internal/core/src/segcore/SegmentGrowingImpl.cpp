@@ -1160,7 +1160,8 @@ SegmentGrowingImpl::bulk_subscript(FieldId field_id,
                                    const int64_t* seg_offsets,
                                    int64_t count,
                                    void* data,
-                                   TargetBitmapView& valid_map) const {
+                                   TargetBitmapView& valid_map,
+                                   bool int_raw_type) const {
     auto vec_ptr = insert_record_.get_data_base(field_id);
     auto& field_meta = schema_->operator[](field_id);
     valid_map.set();
@@ -1178,13 +1179,23 @@ SegmentGrowingImpl::bulk_subscript(FieldId field_id,
             break;
         }
         case DataType::INT8: {
-            bulk_subscript_impl<int8_t>(
-                vec_ptr, seg_offsets, count, static_cast<int8_t*>(data));
+            if (int_raw_type) {
+                bulk_subscript_impl<int8_t>(
+                    vec_ptr, seg_offsets, count, static_cast<int8_t*>(data));
+            } else {
+                bulk_subscript_impl<int8_t>(
+                    vec_ptr, seg_offsets, count, static_cast<int32_t*>(data));
+            }
             break;
         }
         case DataType::INT16: {
-            bulk_subscript_impl<int16_t>(
-                vec_ptr, seg_offsets, count, static_cast<int16_t*>(data));
+            if (int_raw_type) {
+                bulk_subscript_impl<int16_t>(
+                    vec_ptr, seg_offsets, count, static_cast<int16_t*>(data));
+            } else {
+                bulk_subscript_impl<int16_t>(
+                    vec_ptr, seg_offsets, count, static_cast<int32_t*>(data));
+            }
             break;
         }
         case DataType::INT32: {

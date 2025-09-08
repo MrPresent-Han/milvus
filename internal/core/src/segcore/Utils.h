@@ -155,5 +155,6 @@ bulk_script_field_data(FieldId fieldId,
                        const int64_t* seg_offsets,
                        int64_t count,
                        const segcore::SegmentInternalInterface* segment,
-                       TargetBitmapView& valid_view);
+                       TargetBitmapView& valid_view,
+                       bool int_raw_type);
 }  // namespace milvus::segcore

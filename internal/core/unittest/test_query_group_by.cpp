@@ -58,8 +58,8 @@ class QueryAggTest : public testing::TestWithParam<bool> {
             schema_->AddDebugField(float_field, DataType::FLOAT, nullable);
         auto double_fid =
             schema_->AddDebugField(double_field, DataType::DOUBLE, nullable);
-        auto str1_fid =
-            schema_->AddDebugField(string_field, DataType::VARCHAR, nullable);
+        auto str_fid =
+            schema_->AddDebugField(string_field, DataType::VARCHAR);
         auto vector_fid =
             schema_->AddDebugField(vector_field, DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
         field_map_[bool_field] = bool_fid;
@@ -69,9 +69,9 @@ class QueryAggTest : public testing::TestWithParam<bool> {
         field_map_[int64_field] = int64_fid;
         field_map_[float_field] = float_fid;
         field_map_[double_field] = double_fid;
-        field_map_[string_field] = str1_fid;
+        field_map_[string_field] = str_fid;
         field_map_[vector_field] = vector_fid;
-        schema_->set_primary_field_id(str1_fid);
+        schema_->set_primary_field_id(str_fid);
 
         num_rows_ = 10;
         auto raw_data =

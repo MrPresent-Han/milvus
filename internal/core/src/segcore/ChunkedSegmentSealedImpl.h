@@ -338,7 +338,8 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
                    const int64_t* seg_offsets,
                    int64_t count,
                    void* data,
-                   TargetBitmapView& valid_map) const override;
+                   TargetBitmapView& valid_map,
+                   bool int_raw_type = false) const override;
 
     void
     check_search(const query::Plan* plan) const override;
@@ -367,7 +368,8 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
     bulk_subscript_impl(ChunkedColumnInterface* field,
                         const int64_t* seg_offsets,
                         int64_t count,
-                        T* dst_raw);
+                        T* dst_raw,
+                        bool int_raw_type = false);
 
     static void
     bulk_subscript_impl(int64_t element_sizeof,

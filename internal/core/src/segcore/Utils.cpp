@@ -1098,7 +1098,8 @@ bulk_script_field_data(FieldId fieldId,
                        const int64_t* seg_offsets,
                        int64_t count,
                        const segcore::SegmentInternalInterface* segment,
-                       TargetBitmapView& valid_view) {
+                       TargetBitmapView& valid_view,
+                       bool int_raw_type) {
     FieldDataPtr ret = nullptr;
     switch (dataType) {
         case milvus::DataType::BOOL: {
@@ -1112,7 +1113,7 @@ bulk_script_field_data(FieldId fieldId,
         case milvus::DataType::INT8: {
             FixedVector<int8_t> vec(count);
             segment->bulk_subscript(
-                fieldId, dataType, seg_offsets, count, vec.data(), valid_view);
+                fieldId, dataType, seg_offsets, count, vec.data(), valid_view, int_raw_type);
             ret = std::make_shared<FieldDataImpl<int8_t, true>>(
                 1, dataType, false, std::move(vec));
             break;
@@ -1120,7 +1121,7 @@ bulk_script_field_data(FieldId fieldId,
         case milvus::DataType::INT16: {
             FixedVector<int16_t> vec(count);
             segment->bulk_subscript(
-                fieldId, dataType, seg_offsets, count, vec.data(), valid_view);
+                fieldId, dataType, seg_offsets, count, vec.data(), valid_view, int_raw_type);
             ret = std::make_shared<FieldDataImpl<int16_t, true>>(
                 1, dataType, false, std::move(vec));
             break;

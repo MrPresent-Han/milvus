@@ -1418,7 +1418,8 @@ ChunkedSegmentSealedImpl::bulk_subscript(FieldId field_id,
                                          const int64_t* seg_offsets,
                                          int64_t count,
                                          void* data,
-                                         TargetBitmapView& valid_map) const {
+                                         TargetBitmapView& valid_map,
+                                         bool int_raw_type) const {
     auto& field_meta = schema_->operator[](field_id);
     auto& field_data = fields_.at(field_id);
     valid_map.set();
@@ -1437,14 +1438,16 @@ ChunkedSegmentSealedImpl::bulk_subscript(FieldId field_id,
             bulk_subscript_impl<int8_t>(field_data.get(),
                                         seg_offsets,
                                         count,
-                                        static_cast<int8_t*>(data));
+                                        static_cast<int8_t*>(data),
+                                        int_raw_type);
             break;
         }
         case DataType::INT16: {
             bulk_subscript_impl<int16_t>(field_data.get(),
                                          seg_offsets,
                                          count,
-                                         static_cast<int16_t*>(data));
+                                         static_cast<int16_t*>(data),
+                                         int_raw_type);
             break;
         }
         case DataType::INT32: {
@@ -1510,10 +1513,11 @@ void
 ChunkedSegmentSealedImpl::bulk_subscript_impl(ChunkedColumnInterface* field,
                                               const int64_t* seg_offsets,
                                               int64_t count,
-                                              T* dst) {
+                                              T* dst,
+                                              bool int_raw_type) {
     static_assert(std::is_fundamental_v<S> && std::is_fundamental_v<T>);
     // use field->data_type_ to determine the type of dst
-    field->BulkPrimitiveValueAt(static_cast<void*>(dst), seg_offsets, count);
+    field->BulkPrimitiveValueAt(static_cast<void*>(dst), seg_offsets, count, int_raw_type);
 }
 
 // for dense vector

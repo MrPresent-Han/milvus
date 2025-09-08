@@ -64,7 +64,8 @@ PhyProjectNode::GetOutput() {
                                                  selected_offsets.data(),
                                                  selected_count,
                                                  segment_,
-                                                 valid_view);
+                                                 valid_view,
+                                                true);
         auto column_vector = std::make_shared<ColumnVector>(
             std::move(field_data), std::move(valid_map));
         column_vectors.emplace_back(column_vector);

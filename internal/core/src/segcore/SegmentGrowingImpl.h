@@ -271,7 +271,8 @@ class SegmentGrowingImpl : public SegmentGrowing {
                    const int64_t* seg_offsets,
                    int64_t count,
                    void* data,
-                   TargetBitmapView& valid_map) const override;
+                   TargetBitmapView& valid_map, 
+                   bool int_raw_type = false) const override;
 
     std::unique_ptr<DataArray>
     bulk_subscript(FieldId field_id,
