@@ -532,12 +532,10 @@ class RescoresNode : public PlanNode {
 class AggregationNode : public PlanNode {
  public:
     struct Aggregate {
-        /// Function name and input column names.
+    /// Function name and input column names.
         expr::CallExprPtr call_;
 
-        /// Raw input types used to properly identify aggregate function. These
-        /// might be different from the input types specified in 'call' when
-        /// aggregation step is kIntermediate or kFinal.
+        /// Raw input types used to properly identify aggregate function. 
         std::vector<DataType> rawInputTypes_;
 
         DataType resultType_;

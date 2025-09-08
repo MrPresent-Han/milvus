@@ -40,14 +40,12 @@ getAggregationOutputType(
 
 AggregationNode::AggregationNode(
     const milvus::plan::PlanNodeId& id,
-    Step step,
     std::vector<expr::FieldAccessTypeExprPtr>&& groupingKeys,
     std::vector<std::string>&& aggNames,
     std::vector<Aggregate>&& aggregates,
     int64_t group_limit,
     std::vector<PlanNodePtr> sources)
     : PlanNode(id),
-      step_(step),
       groupingKeys_(std::move(groupingKeys)),
       aggregateNames_(std::move(aggNames)),
       aggregates_(std::move(aggregates)),
