@@ -18,14 +18,14 @@
 #include <glog/logging.h>
 #include "config/ConfigKnowhere.h"
 #include "segcore/segcore_init_c.h"
-#include "exec/operator/query-agg/RegisterAggregateFunctions.h"
+#include "test_utils/storage_test_utils.h"
 
 using namespace milvus;
 using namespace milvus::segcore;
 using namespace milvus::plan;
 using namespace milvus::exec;
 
-class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
+class QueryAggTest : public testing::TestWithParam<bool> {
  public:
     constexpr static const char bool_field[] = "bool";
     constexpr static const char int8_field[] = "int8";
@@ -35,6 +35,7 @@ class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
     constexpr static const char float_field[] = "float";
     constexpr static const char double_field[] = "double";
     constexpr static const char string_field[] = "string";
+    constexpr static const char vector_field[] = "vector";
 
  protected:
     void
@@ -42,7 +43,7 @@ class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
         schema_ = std::make_shared<Schema>();
         auto vec_fid = schema_->AddDebugField(
             "fakevec", DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
-        auto [nullable, _] = GetParam();
+        auto nullable = GetParam();
         auto bool_fid =
             schema_->AddDebugField(bool_field, DataType::BOOL, nullable);
         auto int8_fid =
@@ -59,6 +60,8 @@ class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
             schema_->AddDebugField(double_field, DataType::DOUBLE, nullable);
         auto str1_fid =
             schema_->AddDebugField(string_field, DataType::VARCHAR, nullable);
+        auto vector_fid =
+            schema_->AddDebugField(vector_field, DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
         field_map_[bool_field] = bool_fid;
         field_map_[int8_field] = int8_fid;
         field_map_[int16_field] = int16_fid;
@@ -67,36 +70,14 @@ class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
         field_map_[float_field] = float_fid;
         field_map_[double_field] = double_fid;
         field_map_[string_field] = str1_fid;
-
+        field_map_[vector_field] = vector_fid;
         schema_->set_primary_field_id(str1_fid);
 
-        auto segment = CreateSealedSegment(schema_);
         num_rows_ = 10;
         auto raw_data =
             DataGen(schema_, num_rows_, 42, 0, 2, 10, false, false, false);
-        auto fields = schema_->get_fields();
-        for (auto field_data : raw_data.raw_->fields_data()) {
-            int64_t field_id = field_data.field_id();
-
-            auto info =
-                FieldDataInfo(field_data.field_id(), num_rows_, "/tmp/a");
-            auto field_meta = fields.at(FieldId(field_id));
-            info.channel->push(CreateFieldDataFromDataArray(
-                num_rows_, &field_data, field_meta));
-            info.channel->close();
-
-            segment->LoadFieldData(FieldId(field_id), info);
-        }
-        // load ts field data
-        auto field_data =
-            std::make_shared<FieldData<int64_t>>(DataType::INT64, false);
-        field_data->FillFieldData(raw_data.timestamps_.data(), num_rows_);
-        auto ts_field_data_info =
-            FieldDataInfo{TimestampFieldID.get(),
-                          static_cast<size_t>(num_rows_),
-                          std::vector<FieldDataPtr>{field_data}};
-        segment->LoadFieldData(TimestampFieldID, ts_field_data_info);
-
+            
+        auto segment = CreateSealedWithFieldDataLoaded(schema_, raw_data);
         segment_ = SegmentSealedSPtr(segment.release());
     }
 
@@ -113,8 +94,7 @@ class QueryAggTest : public testing::TestWithParam<std::pair<bool, bool>> {
 
 INSTANTIATE_TEST_SUITE_P(TaskTestSuite,
                          QueryAggTest,
-                         ::testing::Values(std::make_pair(true),
-                                           std::make_pair(false)));
+                         ::testing::Values(true, false));
 
 RowVectorPtr
 execPlan(std::shared_ptr<Task>& task) {
@@ -184,16 +164,14 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
         "test1",
         segment_.get(),
         num_rows_,
-        MAX_TIMESTAMP,
-        std::make_shared<milvus::exec::QueryConfig>(
-            std::unordered_map<std::string, std::string>{}));
+        MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
     EXPECT_EQ(1, ret->childrens().size());
     auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
     if (nullable) {
-        // as there are 10 values repeating 2 three times, after groupby, at most 7 valid unique values will be returned
+        // as there are 10 values repeating 2 times, after groupby, at most 7 valid unique values will be returned
         EXPECT_TRUE(column->size() <= 5);
     } else if (!nullable) {
         EXPECT_TRUE(column->size() == 5);
@@ -263,9 +241,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
         "test1",
         segment_.get(),
         num_rows_,
-        MAX_TIMESTAMP,
-        std::make_shared<milvus::exec::QueryConfig>(
-            std::unordered_map<std::string, std::string>{}));
+        MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -371,9 +347,7 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
         "test1",
         segment_.get(),
         num_rows_,
-        MAX_TIMESTAMP,
-        std::make_shared<milvus::exec::QueryConfig>(
-            std::unordered_map<std::string, std::string>{}));
+        MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -476,9 +450,7 @@ TEST_P(QueryAggTest, CountAggTest) {
         "test1",
         segment_.get(),
         num_rows_,
-        MAX_TIMESTAMP,
-        std::make_shared<milvus::exec::QueryConfig>(
-            std::unordered_map<std::string, std::string>{}));
+        MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -552,9 +524,7 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
         "test1",
         segment_.get(),
         num_rows_,
-        MAX_TIMESTAMP,
-        std::make_shared<milvus::exec::QueryConfig>(
-            std::unordered_map<std::string, std::string>{}));
+        MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -599,9 +569,7 @@ TEST_P(QueryAggTest, GlobalCountEmptyTest) {
         "test1",
         segment_.get(),
         0,
-        MAX_TIMESTAMP,
-        std::make_shared<milvus::exec::QueryConfig>(
-            std::unordered_map<std::string, std::string>{}));
+        MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -654,9 +622,7 @@ TEST_P(QueryAggTest, AggLimitTest) {
         "test1",
         segment_.get(),
         num_rows_,
-        MAX_TIMESTAMP,
-        std::make_shared<milvus::exec::QueryConfig>(
-            std::unordered_map<std::string, std::string>{}));
+        MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);

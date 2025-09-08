@@ -49,7 +49,7 @@ RowContainer::RowContainer(const std::vector<DataType>& keyTypes,
         alignment_ = combineAlignments(accumulator.alignment(), alignment_);
     }
 
-    // Add 1 to the last null offset to get the number of bits.
+    // set up 1 null-bit for each key or accumulator
     auto null_bit_count = keyTypes_.size() + accumulators.size();
     flagBytes_ = milvus::bits::nBytes(null_bit_count);
     offset += flagBytes_;
