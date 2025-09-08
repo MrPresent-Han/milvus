@@ -80,9 +80,6 @@ RowContainer::initializeRow(char* row) {
 char*
 RowContainer::newRow() {
     char* row = new char[fixedRowSize_];
-    if (rows_.size() < numRows_ + 1) {
-        rows_.reserve(numRows_ + 1024);
-    }
     rows_.emplace_back(row);
     ++numRows_;
     return initializeRow(row);

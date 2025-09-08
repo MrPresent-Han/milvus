@@ -150,9 +150,6 @@ void
 GroupingSet::extractGroups(const milvus::RowVectorPtr& result) {
     RowContainer* rows = hash_table_->rows();
     const auto& groups = rows->allRows();
-    if (groups.empty()) {
-        return;
-    }
     result->resize(groups.size());
     auto totalKeys = rows->KeyTypes().size();
     auto groups_range = folly::Range<char**>(const_cast<char**>(groups.data()), groups.size());
