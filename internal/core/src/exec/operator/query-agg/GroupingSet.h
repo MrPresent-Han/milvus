@@ -90,6 +90,10 @@ class GroupingSet {
     std::unique_ptr<BaseHashTable> hash_table_;
     std::unique_ptr<HashLookup> lookup_;
     uint64_t numInputRows_ = 0;
+
+    // Boolean indicating whether accumulators for a global aggregation (i.e. hashers_.empty()) are initialized
+    // This is used to avoid segv when getting output directly without input for empty output of upstream operator
+    bool globalAggregationInitialized_{false};
 };
 
 }  // namespace exec

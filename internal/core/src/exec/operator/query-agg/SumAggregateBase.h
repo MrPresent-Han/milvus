@@ -50,6 +50,7 @@ class SumAggregateBase
 
     void
     addRawInput(char** groups,
+                int numGroups,
                 const std::vector<VectorPtr>& input) override {
         updateInternal<TAccumulator>(groups, input);
     }

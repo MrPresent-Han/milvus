@@ -51,7 +51,6 @@
 #include "test_utils/DataGen.h"
 #include "segcore/vector_index_c.h"
 #include "common/jsmn.h"
-#include "exec/operator/query-agg/RegisterAggregateFunctions.h"
 
 using namespace milvus;
 using namespace milvus::test;

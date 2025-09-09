@@ -46,6 +46,9 @@ GroupingSet::addInput(const RowVectorPtr& input) {
 
 void
 GroupingSet::initializeGlobalAggregation() {
+    if (globalAggregationInitialized_) {
+        return;
+    }
     lookup_ = std::make_unique<HashLookup>(hashers_, group_limit_);
     lookup_->reset(1);
 
@@ -90,6 +93,7 @@ GroupingSet::initializeGlobalAggregation() {
         aggregate.function_->initializeNewGroups(lookup_->hits_.data(),
                                                  singleGroup);
     }
+    globalAggregationInitialized_ = true;
 }
 
 void
@@ -106,6 +110,7 @@ GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input) {
 
 bool
 GroupingSet::getGlobalAggregationOutput(milvus::RowVectorPtr& result) {
+    initializeGlobalAggregation();// when input from upstream operator is empty, we need to initialize the accumulators for global aggregation
     AssertInfo(lookup_->hits_.size() == 1,
                "GlobalAggregation should have exactly one output line");
     auto groups = lookup_->hits_.data();
@@ -175,7 +180,9 @@ GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
     ensureInputFits(input);
     hash_table_->prepareForGroupProbe(*lookup_, input);
     hash_table_->groupProbe(*lookup_);
-    auto* groups = lookup_->hits_.data();
+    auto& hits = lookup_->hits_;
+    auto* groups = hits.data();
+    auto numGroups = hits.size();
     const auto& newGroups = lookup_->newGroups_;
     for (auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
@@ -183,7 +190,7 @@ GroupingSet::addInputForActiveRows(const RowVectorPtr& input) {
             function->initializeNewGroups(groups, newGroups);
         }
         populateTempVectors(i, input);
-        function->addRawInput(groups, tempVectors_);
+        function->addRawInput(groups, numGroups, tempVectors_);
     }
     tempVectors_.clear();
 }

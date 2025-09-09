@@ -15,10 +15,8 @@
 #include "plan/PlanNode.h"
 #include "exec/QueryContext.h"
 #include "exec/Task.h"
-#include <glog/logging.h>
-#include "config/ConfigKnowhere.h"
-#include "segcore/segcore_init_c.h"
 #include "test_utils/storage_test_utils.h"
+#include "exec/expression/function/FunctionFactory.h"
 
 using namespace milvus;
 using namespace milvus::segcore;
@@ -79,6 +77,10 @@ class QueryAggTest : public testing::TestWithParam<bool> {
             
         auto segment = CreateSealedWithFieldDataLoaded(schema_, raw_data);
         segment_ = SegmentSealedSPtr(segment.release());
+
+        milvus::exec::expression::FunctionFactory& factory =
+            milvus::exec::expression::FunctionFactory::Instance();
+        factory.Initialize();
     }
 
     void
@@ -172,7 +174,7 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
     auto column = std::dynamic_pointer_cast<ColumnVector>(ret->child(0));
     if (nullable) {
         // as there are 10 values repeating 2 times, after groupby, at most 7 valid unique values will be returned
-        EXPECT_TRUE(column->size() <= 5);
+        EXPECT_TRUE(column->size() == 6);
     } else if (!nullable) {
         EXPECT_TRUE(column->size() == 5);
     }
@@ -257,7 +259,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
         }
     }
     if (nullable) {
-        EXPECT_TRUE(size <= 5);
+        EXPECT_TRUE(size == 6);
     } else if (!nullable) {
         EXPECT_TRUE(size == 5);
     }
@@ -363,7 +365,7 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
         }
     }
     if (nullable) {
-        EXPECT_TRUE(size <= 5);
+        EXPECT_TRUE(size == 10);
     } else if (!nullable) {
         EXPECT_EQ(size, 5);
     }
@@ -466,9 +468,22 @@ TEST_P(QueryAggTest, CountAggTest) {
         }
     }
     if (nullable) {
-        EXPECT_TRUE(size <= 5);
+        EXPECT_TRUE(size == 10);
     } else if (!nullable) {
         EXPECT_EQ(size, 5);
+    }
+
+    // Check the count values in column 2 (count(*))
+    auto count_column = std::dynamic_pointer_cast<ColumnVector>(ret->child(2));
+    for (int j = 0; j < size; j++) {
+        auto count_val = count_column->ValueAt<int64_t>(j);
+        if (nullable) {
+            // For nullable case, each count should be 1
+            EXPECT_EQ(count_val, 1);
+        } else {
+            // For non-nullable case, each count should be 2
+            EXPECT_EQ(count_val, 2);
+        }
     }
 
     for (int i = 0; i < 4; i++) {
@@ -541,8 +556,6 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
 // Test count(*) when activeCount is zero
 TEST_P(QueryAggTest, GlobalCountEmptyTest) {
     std::vector<milvus::plan::PlanNodePtr> sources;
-    auto nullable = GetParam();
-    //set up mvcc_node + agg_node: global aggregation no need project column
     PlanNodePtr mvcc_node = std::make_shared<milvus::plan::MvccNode>(
         milvus::plan::GetNextPlanNodeId(), sources);
     sources = std::vector<milvus::plan::PlanNodePtr>{mvcc_node};
@@ -643,7 +656,7 @@ TEST_P(QueryAggTest, AggLimitTest) {
         for (auto j = 0; j < size; j++) {
             if (i == 0) {
                 auto val = column->ValueAt<int8_t>(j);
-                std::cout << "int8_val:" << int8_t(val) << std::endl;
+                std::cout << "int8_val:" << int32_t(val) << std::endl;
             }
             if (i == 1) {
                 auto val = column->ValueAt<std::string>(j);

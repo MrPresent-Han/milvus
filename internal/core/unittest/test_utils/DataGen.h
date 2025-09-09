@@ -14,6 +14,7 @@
 #include <boost/algorithm/string/predicate.hpp>
 #include <cstdint>
 #include <cstring>
+#include <iostream>
 #include <memory>
 #include <random>
 #include <string>
@@ -649,6 +650,11 @@ DataGen(SchemaPtr schema,
                 for (int i = 0; i < N; ++i) {
                     data[i] = i % 2 == 0 ? true : false;
                 }
+                std::cout << "BOOL: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -662,6 +668,11 @@ DataGen(SchemaPtr schema,
                         x = i / repeat_count;
                     data[i] = x;
                 }
+                std::cout << "TIMESTAMPTZ: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -675,6 +686,11 @@ DataGen(SchemaPtr schema,
                         data[i] = i / repeat_count;
                     }
                 }
+                std::cout << "INT64: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -688,6 +704,11 @@ DataGen(SchemaPtr schema,
                         x = i / repeat_count;
                     data[i] = x;
                 }
+                std::cout << "INT32: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -701,6 +722,11 @@ DataGen(SchemaPtr schema,
                         x = i / repeat_count;
                     data[i] = x;
                 }
+                std::cout << "INT16: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -714,6 +740,11 @@ DataGen(SchemaPtr schema,
                         x = i / repeat_count;
                     data[i] = x;
                 }
+                std::cout << "INT8: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << static_cast<int>(data[i]) << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -722,6 +753,11 @@ DataGen(SchemaPtr schema,
                 for (auto& x : data) {
                     x = distr(random);
                 }
+                std::cout << "FLOAT: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -730,6 +766,11 @@ DataGen(SchemaPtr schema,
                 for (auto& x : data) {
                     x = distr(random);
                 }
+                std::cout << "DOUBLE: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }
@@ -742,6 +783,11 @@ DataGen(SchemaPtr schema,
                     }
                 }
                 std::sort(data.begin(), data.end());
+                std::cout << "VARCHAR: ";
+                for (int i = 0; i < N; ++i) {
+                    std::cout << data[i] << " ";
+                }
+                std::cout << std::endl;
                 insert_cols(data, N, field_meta, random_valid);
                 break;
             }

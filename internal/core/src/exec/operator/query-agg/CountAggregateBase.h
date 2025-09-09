@@ -38,17 +38,24 @@ class CountAggregate : public SimpleNumericAggregate<bool, int64_t, int64_t> {
 
     void
     addRawInput(char** groups,
+                int numGroups,
                 const std::vector<VectorPtr>& input) override {
-        ColumnVectorPtr input_column = nullptr;
-        AssertInfo(input.size() == 1,
-                   fmt::format("input column count for count aggregation "
-                               "must be one , but got:{}",
-                               input.size()));
-        input_column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
-        for (auto i = 0; i < input_column->size(); i++) {
-            if ((input_column && input_column->ValidAt(i))) {
-                addToGroup(groups[i], 1);
+        if (!input.empty()){
+            ColumnVectorPtr input_column = nullptr;
+            AssertInfo(input.size() == 1,
+                       fmt::format("input column count for count aggregation "
+                                   "must be one , but got:{}",
+                                   input.size()));
+            input_column = std::dynamic_pointer_cast<ColumnVector>(input[0]);
+            for (auto i = 0; i < input_column->size(); i++) {
+                if ((input_column && input_column->ValidAt(i))) {
+                    addToGroup(groups[i], 1);
+                }
             }
+            return;
+        }
+        for (auto i = 0; i < numGroups; i++) {
+            addToGroup(groups[i], 1);
         }
     }
 

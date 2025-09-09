@@ -48,6 +48,7 @@ BaseHashTable::prepareForGroupProbe(HashLookup& lookup,
                 "Not support target hashMode, only support kHash for now");
         }
     }
+    std::cout << "hc===tmp hault" << std::endl;
 }
 
 class ProbeState {

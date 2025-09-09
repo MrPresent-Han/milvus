@@ -22,7 +22,6 @@
 #include "segcore/Record.h"
 #include "test_utils/DataGen.h"
 #include "test_utils/storage_test_utils.h"
-#include "exec/operator/query-agg/RegisterAggregateFunctions.h"
 
 using namespace milvus;
 using namespace milvus::segcore;
