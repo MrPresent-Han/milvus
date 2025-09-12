@@ -81,13 +81,12 @@ type queryTask struct {
 }
 
 type queryParams struct {
-	limit          int64
-	offset         int64
-	reduceType     reduce.IReduceType
-	isIterator     bool
-	collectionID   int64
-	groupByFields  []string
-	ignoreNullKeys bool
+	limit         int64
+	offset        int64
+	reduceType    reduce.IReduceType
+	isIterator    bool
+	collectionID  int64
+	groupByFields []string
 }
 
 func translateGroupByFieldIds(groupByFieldNames []string, schema *schemapb.CollectionSchema) ([]UniqueID, error) {
@@ -189,7 +188,6 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 		offset            int64
 		reduceStopForBest bool
 		isIterator        bool
-		ignoreNullKeys    bool
 		err               error
 		collectionID      int64
 	)
@@ -237,19 +235,11 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 	if err == nil {
 		groupByFields = strings.Split(groupByFieldsStr, ",")
 	}
-	ignoreNullKeysStr, err := funcutil.GetAttrByKeyFromRepeatedKV(QueryGroupByIgnoreNullKeys, queryParamsPair)
-	if err == nil {
-		ignoreNullKeys, err = strconv.ParseBool(ignoreNullKeysStr)
-		if err != nil {
-			return nil, merr.WrapErrParameterInvalid("true or false", ignoreNullKeysStr,
-				"value for ignoreNullKeys field is invalid")
-		}
-	}
 
 	limitStr, err := funcutil.GetAttrByKeyFromRepeatedKV(LimitKey, queryParamsPair)
 	// if limit is not provided
 	if err != nil {
-		return &queryParams{limit: typeutil.Unlimited, reduceType: reduceType, isIterator: isIterator, groupByFields: groupByFields, ignoreNullKeys: ignoreNullKeys}, nil
+		return &queryParams{limit: typeutil.Unlimited, reduceType: reduceType, isIterator: isIterator, groupByFields: groupByFields}, nil
 	}
 	limit, err = strconv.ParseInt(limitStr, 0, 64)
 	if err != nil {
@@ -271,13 +261,12 @@ func parseQueryParams(queryParamsPair []*commonpb.KeyValuePair) (*queryParams, e
 	}
 
 	return &queryParams{
-		limit:          limit,
-		offset:         offset,
-		reduceType:     reduceType,
-		isIterator:     isIterator,
-		collectionID:   collectionID,
-		groupByFields:  groupByFields,
-		ignoreNullKeys: ignoreNullKeys,
+		limit:         limit,
+		offset:        offset,
+		reduceType:    reduceType,
+		isIterator:    isIterator,
+		collectionID:  collectionID,
+		groupByFields: groupByFields,
 	}, nil
 }
 
@@ -333,8 +322,6 @@ func (t *queryTask) createPlan(ctx context.Context) error {
 	}
 	t.plan.GetQuery().GroupByFieldIds = groupByFieldsIDs
 	t.RetrieveRequest.GroupByFieldIds = groupByFieldsIDs
-	t.plan.GetQuery().IgnoreNullKeys = t.queryParams.ignoreNullKeys
-	t.RetrieveRequest.IgnoreNullKeys = t.queryParams.ignoreNullKeys
 
 	hasAgg := len(t.RetrieveRequest.GroupByFieldIds) > 0 || len(t.RetrieveRequest.Aggregates) > 0
 	// parse output field ids

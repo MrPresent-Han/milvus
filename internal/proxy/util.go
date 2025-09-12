@@ -1541,6 +1541,188 @@ func computeRecall(results *schemapb.SearchResultData, gts *schemapb.SearchResul
 // 4th return value is true if user requested pk field explicitly or using wildcard.
 // if removePkField is true, pk field will not be include in the first(resultFieldNames)/second(userOutputFields)
 // return value.
+// func translateOutputFields(outputFields []string, schema *schemaInfo, removePkField bool) ([]string, []string, []string, []agg.AggregateBase, bool, error) {
+// 	var primaryFieldName string
+// 	allFieldNameMap := make(map[string]*schemapb.FieldSchema)
+// 	resultFieldNameMap := make(map[string]bool)
+// 	resultFieldNames := make([]string, 0)
+// 	userOutputFieldsMap := make(map[string]bool)
+// 	userOutputFields := make([]string, 0)
+// 	userDynamicFieldsMap := make(map[string]bool)
+// 	userDynamicFields := make([]string, 0)
+// 	useAllDynamicFields := false
+// 	aggregates := make([]agg.AggregateBase, 0)
+
+// 	for _, field := range schema.Fields {
+// 		if field.IsPrimaryKey {
+// 			primaryFieldName = field.Name
+// 		}
+// 		allFieldNameMap[field.Name] = field
+// 	}
+
+// 	// User may specify a struct array field or some specific fields in the struct array field
+// 	for _, subStruct := range schema.StructArrayFields {
+// 		for _, field := range subStruct.Fields {
+// 			allFieldNameMap[field.Name] = field
+// 		}
+// 	}
+
+// 	structArrayNameToFields := make(map[string][]*schemapb.FieldSchema)
+// 	for _, subStruct := range schema.StructArrayFields {
+// 		structArrayNameToFields[subStruct.Name] = subStruct.Fields
+// 	}
+
+// 	userRequestedPkFieldExplicitly := false
+
+// 	for _, outputFieldName := range outputFields {
+// 		outputFieldName = strings.TrimSpace(outputFieldName)
+// 		if outputFieldName == primaryFieldName {
+// 			userRequestedPkFieldExplicitly = true
+// 		}
+// 		if outputFieldName == "*" {
+// 			userRequestedPkFieldExplicitly = true
+// 			for fieldName, field := range allFieldNameMap {
+// 				if schema.CanRetrieveRawFieldData(field) {
+// 					resultFieldNameMap[fieldName] = true
+// 					userOutputFieldsMap[fieldName] = true
+// 				}
+// 			}
+// 			useAllDynamicFields = true
+// 		} else {
+// 			if structArrayField, ok := structArrayNameToFields[outputFieldName]; ok {
+// 				for _, field := range structArrayField {
+// 					if schema.CanRetrieveRawFieldData(field) {
+// 						resultFieldNameMap[field.Name] = true
+// 						userOutputFieldsMap[field.Name] = true
+// 					}
+// 				}
+// 				continue
+// 			}
+// 			if field, ok := allFieldNameMap[outputFieldName]; ok {
+// 				if !schema.CanRetrieveRawFieldData(field) {
+// 					return nil, nil, nil, nil, false, fmt.Errorf("not allowed to retrieve raw data of field %s", outputFieldName)
+// 				}
+// 				resultFieldNameMap[outputFieldName] = true
+// 				userOutputFieldsMap[outputFieldName] = true
+// 			} else {
+// 				if schema.EnableDynamicField {
+// 					//hc--dynamicNestedPath := outputFieldName
+// 					err := planparserv2.ParseIdentifier(schema.schemaHelper, outputFieldName, func(expr *planpb.Expr) error {
+// 						columnInfo := expr.GetColumnExpr().GetInfo()
+// 						// there must be no error here
+// 						dynamicField, _ := schema.schemaHelper.GetDynamicField()
+// 						// only $meta["xxx"] is allowed for now
+// 						if dynamicField.GetFieldID() != columnInfo.GetFieldId() {
+// 							return errors.New("not support getting subkeys of json field yet")
+// 						}
+// 						nestedPaths := columnInfo.GetNestedPath()
+// 						// $meta["A"]["B"] not allowed for now
+// 						if len(nestedPaths) != 1 {
+// 							return errors.New("not support getting multiple level of dynamic field for now")
+// 						}
+// 						// $meta["dyn_field"], output field name could be:
+// 						// 1. "dyn_field", outputFieldName == nestedPath
+// 						// 2. `$meta["dyn_field"]` explicit form
+// 						if nestedPaths[0] != outputFieldName {
+// 							// use "dyn_field" as userDynamicFieldsMap when outputField = `$meta["dyn_field"]`
+// 							//hc--dynamicNestedPath = nestedPaths[0]
+// 						}
+// 						return nil
+// 					})
+// 					if err != nil {
+// 						log.Info("parse output field name failed", zap.String("field name", outputFieldName), zap.Error(err))
+// 						return nil, nil, nil, nil, false, fmt.Errorf("parse output field name failed: %s", outputFieldName)
+// 					}
+// 				} else if isAgg, aggregateName, aggFieldName := agg.MatchAggregationExpression(outputFieldName); isAgg {
+// if _, ok := allFieldNameMap[aggFieldName]; ok { //hc--
+// 	// if schema.IsFieldLoaded(aggFieldID.GetFieldID()) {
+// 	// 	aggFunc, aggErr := agg.NewAggregate(aggregateName, aggFieldID.GetFieldID(), outputFieldName)
+// 	// 	if aggErr != nil {
+// 	// 		return nil, nil, nil, nil, false, aggErr
+// 	// 	}
+// 	// 	aggregates = append(aggregates, aggFunc)
+// 	// } else {
+// 	// 	return nil, nil, nil, nil, false, fmt.Errorf("target field %s for aggregation:%s is not loaded", aggFieldName, aggregateName)
+// 	// }
+// } else if aggFieldName == "*" {
+// 	aggFunc, aggErr := agg.NewAggregate(aggregateName, 0, outputFieldName)
+// 	if aggErr != nil {
+// 		return nil, nil, nil, nil, false, aggErr
+// 	}
+// 	aggregates = append(aggregates, aggFunc)
+// } else {
+// 	return nil, nil, nil, nil, false, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
+// }
+// 				} else {
+// 					// if schema.EnableDynamicField {
+// 					// 	if schema.IsFieldLoaded(dynamicField.GetFieldID()) {
+// 					// 		schemaH, err := typeutil.CreateSchemaHelper(schema.CollectionSchema)
+// 					// 		if err != nil {
+// 					// 			return nil, nil, nil, nil, false, err
+// 					// 		}
+// 					// 		err = planparserv2.ParseIdentifier(schemaH, outputFieldName, func(expr *planpb.Expr) error {
+// 					// 			if len(expr.GetColumnExpr().GetInfo().GetNestedPath()) == 1 &&
+// 					// 				expr.GetColumnExpr().GetInfo().GetNestedPath()[0] == outputFieldName {
+// 					// 				return nil
+// 					// 			}
+// 					// 			return errors.New("not support getting subkeys of json field yet")
+// 					// 		})
+// 					// 		if err != nil {
+// 					// 			log.Info("parse output field name failed", zap.String("field name", outputFieldName))
+// 					// 			return nil, nil, nil, nil, false, fmt.Errorf("parse output field name failed: %s", outputFieldName)
+// 					// 		}
+// 					// 		resultFieldNameMap[common.MetaFieldName] = true
+// 					// 		userOutputFieldsMap[outputFieldName] = true
+// 					// 		userDynamicFieldsMap[outputFieldName] = true
+// 					// 	} else {
+// 					// 		// TODO after cold field be able to fetched with chunk cache, this check shall be removed
+// 					// 		return nil, nil, nil, nil, false, fmt.Errorf("field %s cannot be returned since dynamic field not loaded", outputFieldName)
+// 					// 	}
+// 					// 	resultFieldNameMap[common.MetaFieldName] = true
+// 					// 	userOutputFieldsMap[outputFieldName] = true
+// 					// 	userDynamicFieldsMap[dynamicNestedPath] = true
+// 					// } else {
+// 					// 	return nil, nil, nil, nil, false, fmt.Errorf("field %s not exist", outputFieldName)
+// 					// }
+// 					//hc---
+// 				}
+// 			}
+// 		}
+// 	}
+
+// 	if removePkField {
+// 		delete(resultFieldNameMap, primaryFieldName)
+// 		delete(userOutputFieldsMap, primaryFieldName)
+// 	}
+
+// 	for fieldName := range resultFieldNameMap {
+// 		resultFieldNames = append(resultFieldNames, fieldName)
+// 	}
+// 	for fieldName := range userOutputFieldsMap {
+// 		userOutputFields = append(userOutputFields, fieldName)
+// 	}
+// 	if !useAllDynamicFields {
+// 		for fieldName := range userDynamicFieldsMap {
+// 			userDynamicFields = append(userDynamicFields, fieldName)
+// 		}
+// 	}
+
+// 	return resultFieldNames, userOutputFields, userDynamicFields, aggregates, userRequestedPkFieldExplicitly, nil
+// }
+
+// Support wildcard in output fields:
+//
+//	"*" - all fields
+//
+// For example, A and B are scalar fields, C and D are vector fields, duplicated fields will automatically be removed.
+//
+//	output_fields=["*"] 	 ==> [A,B,C,D]
+//	output_fields=["*",A] 	 ==> [A,B,C,D]
+//	output_fields=["*",C]    ==> [A,B,C,D]
+//
+// 4th return value is true if user requested pk field explicitly or using wildcard.
+// if removePkField is true, pk field will not be include in the first(resultFieldNames)/second(userOutputFields)
+// return value.
 func translateOutputFields(outputFields []string, schema *schemaInfo, removePkField bool) ([]string, []string, []string, []agg.AggregateBase, bool, error) {
 	var primaryFieldName string
 	allFieldNameMap := make(map[string]*schemapb.FieldSchema)
@@ -1550,9 +1732,8 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, removePkFi
 	userOutputFields := make([]string, 0)
 	userDynamicFieldsMap := make(map[string]bool)
 	userDynamicFields := make([]string, 0)
-	useAllDynamicFields := false
+	useAllDyncamicFields := false
 	aggregates := make([]agg.AggregateBase, 0)
-
 	for _, field := range schema.Fields {
 		if field.IsPrimaryKey {
 			primaryFieldName = field.Name
@@ -1587,8 +1768,26 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, removePkFi
 					userOutputFieldsMap[fieldName] = true
 				}
 			}
-			useAllDynamicFields = true
+			useAllDyncamicFields = true
 		} else {
+			if isAgg, aggregateName, aggFieldName := agg.MatchAggregationExpression(outputFieldName); isAgg {
+				if aggField, ok := allFieldNameMap[aggFieldName]; ok {
+					aggFunc, aggErr := agg.NewAggregate(aggregateName, aggField.GetFieldID(), outputFieldName)
+					if aggErr != nil {
+						return nil, nil, nil, nil, false, aggErr
+					}
+					aggregates = append(aggregates, aggFunc)
+				} else if aggFieldName == "*" {
+					aggFunc, aggErr := agg.NewAggregate(aggregateName, 0, outputFieldName)
+					if aggErr != nil {
+						return nil, nil, nil, nil, false, aggErr
+					}
+					aggregates = append(aggregates, aggFunc)
+				} else {
+					return nil, nil, nil, nil, false, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
+				}
+			}
+
 			if structArrayField, ok := structArrayNameToFields[outputFieldName]; ok {
 				for _, field := range structArrayField {
 					if schema.CanRetrieveRawFieldData(field) {
@@ -1606,7 +1805,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, removePkFi
 				userOutputFieldsMap[outputFieldName] = true
 			} else {
 				if schema.EnableDynamicField {
-					//hc--dynamicNestedPath := outputFieldName
+					dynamicNestedPath := outputFieldName
 					err := planparserv2.ParseIdentifier(schema.schemaHelper, outputFieldName, func(expr *planpb.Expr) error {
 						columnInfo := expr.GetColumnExpr().GetInfo()
 						// there must be no error here
@@ -1625,7 +1824,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, removePkFi
 						// 2. `$meta["dyn_field"]` explicit form
 						if nestedPaths[0] != outputFieldName {
 							// use "dyn_field" as userDynamicFieldsMap when outputField = `$meta["dyn_field"]`
-							//hc--dynamicNestedPath = nestedPaths[0]
+							dynamicNestedPath = nestedPaths[0]
 						}
 						return nil
 					})
@@ -1633,58 +1832,11 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, removePkFi
 						log.Info("parse output field name failed", zap.String("field name", outputFieldName), zap.Error(err))
 						return nil, nil, nil, nil, false, fmt.Errorf("parse output field name failed: %s", outputFieldName)
 					}
-				} else if isAgg, aggregateName, aggFieldName := agg.MatchAggregationExpression(outputFieldName); isAgg {
-					if _, ok := allFieldNameMap[aggFieldName]; ok { //hc--
-						// if schema.IsFieldLoaded(aggFieldID.GetFieldID()) {
-						// 	aggFunc, aggErr := agg.NewAggregate(aggregateName, aggFieldID.GetFieldID(), outputFieldName)
-						// 	if aggErr != nil {
-						// 		return nil, nil, nil, nil, false, aggErr
-						// 	}
-						// 	aggregates = append(aggregates, aggFunc)
-						// } else {
-						// 	return nil, nil, nil, nil, false, fmt.Errorf("target field %s for aggregation:%s is not loaded", aggFieldName, aggregateName)
-						// }
-					} else if aggFieldName == "*" {
-						aggFunc, aggErr := agg.NewAggregate(aggregateName, 0, outputFieldName)
-						if aggErr != nil {
-							return nil, nil, nil, nil, false, aggErr
-						}
-						aggregates = append(aggregates, aggFunc)
-					} else {
-						return nil, nil, nil, nil, false, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
-					}
+					resultFieldNameMap[common.MetaFieldName] = true
+					userOutputFieldsMap[outputFieldName] = true
+					userDynamicFieldsMap[dynamicNestedPath] = true
 				} else {
-					// if schema.EnableDynamicField {
-					// 	if schema.IsFieldLoaded(dynamicField.GetFieldID()) {
-					// 		schemaH, err := typeutil.CreateSchemaHelper(schema.CollectionSchema)
-					// 		if err != nil {
-					// 			return nil, nil, nil, nil, false, err
-					// 		}
-					// 		err = planparserv2.ParseIdentifier(schemaH, outputFieldName, func(expr *planpb.Expr) error {
-					// 			if len(expr.GetColumnExpr().GetInfo().GetNestedPath()) == 1 &&
-					// 				expr.GetColumnExpr().GetInfo().GetNestedPath()[0] == outputFieldName {
-					// 				return nil
-					// 			}
-					// 			return errors.New("not support getting subkeys of json field yet")
-					// 		})
-					// 		if err != nil {
-					// 			log.Info("parse output field name failed", zap.String("field name", outputFieldName))
-					// 			return nil, nil, nil, nil, false, fmt.Errorf("parse output field name failed: %s", outputFieldName)
-					// 		}
-					// 		resultFieldNameMap[common.MetaFieldName] = true
-					// 		userOutputFieldsMap[outputFieldName] = true
-					// 		userDynamicFieldsMap[outputFieldName] = true
-					// 	} else {
-					// 		// TODO after cold field be able to fetched with chunk cache, this check shall be removed
-					// 		return nil, nil, nil, nil, false, fmt.Errorf("field %s cannot be returned since dynamic field not loaded", outputFieldName)
-					// 	}
-					// 	resultFieldNameMap[common.MetaFieldName] = true
-					// 	userOutputFieldsMap[outputFieldName] = true
-					// 	userDynamicFieldsMap[dynamicNestedPath] = true
-					// } else {
-					// 	return nil, nil, nil, nil, false, fmt.Errorf("field %s not exist", outputFieldName)
-					// }
-					//hc---
+					return nil, nil, nil, nil, false, fmt.Errorf("field %s not exist", outputFieldName)
 				}
 			}
 		}
@@ -1701,7 +1853,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, removePkFi
 	for fieldName := range userOutputFieldsMap {
 		userOutputFields = append(userOutputFields, fieldName)
 	}
-	if !useAllDynamicFields {
+	if !useAllDyncamicFields {
 		for fieldName := range userDynamicFieldsMap {
 			userDynamicFields = append(userDynamicFields, fieldName)
 		}
