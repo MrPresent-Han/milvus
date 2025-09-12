@@ -1786,6 +1786,7 @@ func translateOutputFields(outputFields []string, schema *schemaInfo, removePkFi
 				} else {
 					return nil, nil, nil, nil, false, fmt.Errorf("target field %s for aggregation:%s is not existed", aggFieldName, aggregateName)
 				}
+				continue
 			}
 
 			if structArrayField, ok := structArrayNameToFields[outputFieldName]; ok {
