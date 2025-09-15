@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/minio/minio-go/v7"
 	"github.com/zilliztech/woodpecker/common/config"
 	wpMetrics "github.com/zilliztech/woodpecker/common/metrics"
 	wpStorageClient "github.com/zilliztech/woodpecker/common/objectstorage"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
+	"github.com/milvus-io/milvus/pkg/v2/objectstorage"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/walimpls"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/walimpls/registry"
@@ -150,6 +152,33 @@ func (b *builderImpl) setCustomWpConfig(wpConfig *config.Configuration, cfg *par
 	wpConfig.Log.File.MaxBackups = paramtable.Get().LogCfg.MaxBackups.GetAsInt()
 
 	return nil
+}
+
+func (b *builderImpl) getMinioClient(ctx context.Context) (*minio.Client, error) {
+	c := objectstorage.NewDefaultConfig()
+	params := paramtable.Get()
+	opts := []objectstorage.Option{
+		objectstorage.RootPath(params.MinioCfg.RootPath.GetValue()),
+		objectstorage.Address(params.MinioCfg.Address.GetValue()),
+		objectstorage.AccessKeyID(params.MinioCfg.AccessKeyID.GetValue()),
+		objectstorage.SecretAccessKeyID(params.MinioCfg.SecretAccessKey.GetValue()),
+		objectstorage.UseSSL(params.MinioCfg.UseSSL.GetAsBool()),
+		objectstorage.SslCACert(params.MinioCfg.SslCACert.GetValue()),
+		objectstorage.SkipSSLVerify(params.MinioCfg.SkipSSLVerify.GetAsBool()),
+		objectstorage.BucketName(params.MinioCfg.BucketName.GetValue()),
+		objectstorage.UseIAM(params.MinioCfg.UseIAM.GetAsBool()),
+		objectstorage.CloudProvider(params.MinioCfg.CloudProvider.GetValue()),
+		objectstorage.IAMEndpoint(params.MinioCfg.IAMEndpoint.GetValue()),
+		objectstorage.UseVirtualHost(params.MinioCfg.UseVirtualHost.GetAsBool()),
+		objectstorage.Region(params.MinioCfg.Region.GetValue()),
+		objectstorage.RequestTimeout(params.MinioCfg.RequestTimeoutMs.GetAsInt64()),
+		objectstorage.CreateBucket(true),
+		objectstorage.GcpCredentialJSON(params.MinioCfg.GcpCredentialJSON.GetValue()),
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return objectstorage.NewMinioClient(ctx, c)
 }
 
 func (b *builderImpl) getEtcdClient(ctx context.Context) (*clientv3.Client, error) {

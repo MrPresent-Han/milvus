@@ -23,6 +23,7 @@ import (
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/pkg/v2/objectstorage"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
@@ -41,6 +42,7 @@ func NewChunkMgrFactory() *chunkMgrFactory {
 }
 
 func (m *chunkMgrFactory) NewChunkManager(ctx context.Context, config *indexpb.StorageConfig) (storage.ChunkManager, error) {
+	params := paramtable.Get()
 	chunkManagerFactory := storage.NewChunkManagerFactory(config.GetStorageType(),
 		objectstorage.RootPath(config.GetRootPath()),
 		objectstorage.Address(config.GetAddress()),
@@ -48,6 +50,7 @@ func (m *chunkMgrFactory) NewChunkManager(ctx context.Context, config *indexpb.S
 		objectstorage.SecretAccessKeyID(config.GetSecretAccessKey()),
 		objectstorage.UseSSL(config.GetUseSSL()),
 		objectstorage.SslCACert(config.GetSslCACert()),
+		objectstorage.SkipSSLVerify(params.MinioCfg.SkipSSLVerify.GetAsBool()),
 		objectstorage.BucketName(config.GetBucketName()),
 		objectstorage.UseIAM(config.GetUseIAM()),
 		objectstorage.CloudProvider(config.GetCloudProvider()),
