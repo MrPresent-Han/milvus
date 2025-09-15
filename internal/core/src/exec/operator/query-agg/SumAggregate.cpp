@@ -61,7 +61,6 @@ registerSum(const std::string& name) {
         });
 };
 
-
 void
 registerSumAggregate() {
     registerSum<SumAggregate>(milvus::KSum);

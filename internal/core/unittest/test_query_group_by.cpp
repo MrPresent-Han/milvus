@@ -56,10 +56,9 @@ class QueryAggTest : public testing::TestWithParam<bool> {
             schema_->AddDebugField(float_field, DataType::FLOAT, nullable);
         auto double_fid =
             schema_->AddDebugField(double_field, DataType::DOUBLE, nullable);
-        auto str_fid =
-            schema_->AddDebugField(string_field, DataType::VARCHAR);
-        auto vector_fid =
-            schema_->AddDebugField(vector_field, DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
+        auto str_fid = schema_->AddDebugField(string_field, DataType::VARCHAR);
+        auto vector_fid = schema_->AddDebugField(
+            vector_field, DataType::VECTOR_FLOAT, 16, knowhere::metric::L2);
         field_map_[bool_field] = bool_fid;
         field_map_[int8_field] = int8_fid;
         field_map_[int16_field] = int16_fid;
@@ -74,7 +73,7 @@ class QueryAggTest : public testing::TestWithParam<bool> {
         num_rows_ = 10;
         auto raw_data =
             DataGen(schema_, num_rows_, 42, 0, 2, 10, false, false, false);
-            
+
         auto segment = CreateSealedWithFieldDataLoaded(schema_, raw_data);
         segment_ = SegmentSealedSPtr(segment.release());
 
@@ -163,10 +162,7 @@ TEST_P(QueryAggTest, GroupFixedLengthType) {
 
     auto plan = plan::PlanFragment(agg_node);
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test1",
-        segment_.get(),
-        num_rows_,
-        MAX_TIMESTAMP);
+        "test1", segment_.get(), num_rows_, MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -240,10 +236,7 @@ TEST_P(QueryAggTest, GroupFixedLengthMultipleColumn) {
 
     auto plan = plan::PlanFragment(agg_node);
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test1",
-        segment_.get(),
-        num_rows_,
-        MAX_TIMESTAMP);
+        "test1", segment_.get(), num_rows_, MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -346,10 +339,7 @@ TEST_P(QueryAggTest, GroupVariableLengthMultipleColumn) {
 
     auto plan = plan::PlanFragment(agg_node);
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test1",
-        segment_.get(),
-        num_rows_,
-        MAX_TIMESTAMP);
+        "test1", segment_.get(), num_rows_, MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -449,10 +439,7 @@ TEST_P(QueryAggTest, CountAggTest) {
 
     auto plan = plan::PlanFragment(agg_node);
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test1",
-        segment_.get(),
-        num_rows_,
-        MAX_TIMESTAMP);
+        "test1", segment_.get(), num_rows_, MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -536,10 +523,7 @@ TEST_P(QueryAggTest, GlobalCountAggTest) {
 
     auto plan = plan::PlanFragment(agg_node);
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test1",
-        segment_.get(),
-        num_rows_,
-        MAX_TIMESTAMP);
+        "test1", segment_.get(), num_rows_, MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -579,10 +563,7 @@ TEST_P(QueryAggTest, GlobalCountEmptyTest) {
 
     auto plan = plan::PlanFragment(agg_node);
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test1",
-        segment_.get(),
-        0,
-        MAX_TIMESTAMP);
+        "test1", segment_.get(), 0, MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);
@@ -632,10 +613,7 @@ TEST_P(QueryAggTest, AggLimitTest) {
 
     auto plan = plan::PlanFragment(agg_node);
     auto query_context = std::make_shared<milvus::exec::QueryContext>(
-        "test1",
-        segment_.get(),
-        num_rows_,
-        MAX_TIMESTAMP);
+        "test1", segment_.get(), num_rows_, MAX_TIMESTAMP);
 
     auto task = Task::Create("task_query_group_by", plan, 0, query_context);
     RowVectorPtr ret = execPlan(task);

@@ -74,11 +74,10 @@ GroupingSet::initializeGlobalAggregation() {
         Accumulator accumulator(function.get());
         // Accumulator offset must be aligned by their alignment size.
         offset = milvus::bits::roundUp(offset, accumulator.alignment());
-        function->setOffsets(
-            offset,
-            RowContainer::nullByte(accumulatorFlagsOffset),
-            RowContainer::nullMask(accumulatorFlagsOffset),
-            rowSizeOffset);
+        function->setOffsets(offset,
+                             RowContainer::nullByte(accumulatorFlagsOffset),
+                             RowContainer::nullMask(accumulatorFlagsOffset),
+                             rowSizeOffset);
         offset += accumulator.fixedWidthSize();
         accumulatorFlagsOffset += 1;
         alignment =
@@ -110,7 +109,7 @@ GroupingSet::addGlobalAggregationInput(const milvus::RowVectorPtr& input) {
 
 bool
 GroupingSet::getGlobalAggregationOutput(milvus::RowVectorPtr& result) {
-    initializeGlobalAggregation();// when input from upstream operator is empty, we need to initialize the accumulators for global aggregation
+    initializeGlobalAggregation();  // when input from upstream operator is empty, we need to initialize the accumulators for global aggregation
     AssertInfo(lookup_->hits_.size() == 1,
                "GlobalAggregation should have exactly one output line");
     auto groups = lookup_->hits_.data();
@@ -127,7 +126,8 @@ GroupingSet::getOutput(milvus::RowVectorPtr& result) {
     if (isGlobal_) {
         return getGlobalAggregationOutput(result);
     }
-    AssertInfo(hash_table_ != nullptr, "hash_table_ should not be nullptr for non-global aggregation");
+    AssertInfo(hash_table_ != nullptr,
+               "hash_table_ should not be nullptr for non-global aggregation");
     const auto& all_rows = hash_table_->rows()->allRows();
     if (!all_rows.empty()) {
         extractGroups(result);
@@ -157,15 +157,18 @@ GroupingSet::extractGroups(const milvus::RowVectorPtr& result) {
     const auto& groups = rows->allRows();
     result->resize(groups.size());
     auto totalKeys = rows->KeyTypes().size();
-    auto groups_range = folly::Range<char**>(const_cast<char**>(groups.data()), groups.size());
+    auto groups_range =
+        folly::Range<char**>(const_cast<char**>(groups.data()), groups.size());
     for (auto i = 0; i < totalKeys; i++) {
         auto keyVector = result->child(i);
-        rows->extractColumn(groups_range.data(), groups_range.size(), i, keyVector);
+        rows->extractColumn(
+            groups_range.data(), groups_range.size(), i, keyVector);
     }
     for (auto i = 0; i < aggregates_.size(); i++) {
         auto& function = aggregates_[i].function_;
         auto aggregateVector = result->child(totalKeys + i);
-        function->extractValues(groups_range.data(), groups_range.size(), &aggregateVector);
+        function->extractValues(
+            groups_range.data(), groups_range.size(), &aggregateVector);
     }
 }
 
@@ -233,8 +236,8 @@ initializeAggregates(const std::vector<AggregateInfo>& aggregates,
 
 void
 GroupingSet::createHashTable() {
-    hash_table_ = std::make_unique<HashTable>(std::move(hashers_),
-                                                         accumulators());
+    hash_table_ =
+        std::make_unique<HashTable>(std::move(hashers_), accumulators());
     auto& rows = *(hash_table_->rows());
     initializeAggregates(aggregates_, rows);
     lookup_ =

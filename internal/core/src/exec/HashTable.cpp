@@ -85,9 +85,7 @@ class ProbeState {
 
     template <Operation op, typename Compare, typename Insert, typename Table>
     inline char*
-    fullProbe(Table& table,
-              Compare compare,
-              Insert insert) {
+    fullProbe(Table& table, Compare compare, Insert insert) {
         AssertInfo(op == Operation::kInsert,
                    "Only support insert operation for group cases");
         if (group_ && compare(group_, row_)) {
@@ -179,8 +177,8 @@ HashTable::checkSizeAndAllocateTable(int32_t numNew) {
 
 bool
 HashTable::compareKeys(const char* group,
-                                       milvus::exec::HashLookup& lookup,
-                                       milvus::vector_size_t row) {
+                       milvus::exec::HashLookup& lookup,
+                       milvus::vector_size_t row) {
     int32_t numKeys = lookup.hashers_.size();
     int32_t i = 0;
     do {
@@ -195,7 +193,7 @@ HashTable::compareKeys(const char* group,
 
 void
 HashTable::storeKeys(milvus::exec::HashLookup& lookup,
-                                     milvus::vector_size_t row) {
+                     milvus::vector_size_t row) {
     for (int32_t i = 0; i < hashers_.size(); i++) {
         auto& hasher = hashers_[i];
         rows_->store(hasher->columnData(), row, lookup.hits_[row], i);
@@ -203,9 +201,7 @@ HashTable::storeKeys(milvus::exec::HashLookup& lookup,
 }
 
 void
-HashTable::storeRowPointer(uint64_t index,
-                                           uint64_t hash,
-                                           char* row) {
+HashTable::storeRowPointer(uint64_t index, uint64_t hash, char* row) {
     const int64_t bktOffset = bucketOffset(index);
     auto* bucket = bucketAt(bktOffset);
     const auto slotIndex = index & (sizeof(TagVector) - 1);
@@ -215,8 +211,8 @@ HashTable::storeRowPointer(uint64_t index,
 
 char*
 HashTable::insertEntry(milvus::exec::HashLookup& lookup,
-                                       uint64_t index,
-                                       milvus::vector_size_t row) {
+                       uint64_t index,
+                       milvus::vector_size_t row) {
     char* group = rows_->newRow();
     lookup.hits_[row] = group;
     storeKeys(lookup, row);
@@ -227,8 +223,7 @@ HashTable::insertEntry(milvus::exec::HashLookup& lookup,
 }
 
 FOLLY_ALWAYS_INLINE void
-HashTable::fullProbe(HashLookup& lookup,
-                                     ProbeState& state) {
+HashTable::fullProbe(HashLookup& lookup, ProbeState& state) {
     constexpr ProbeState::Operation op = ProbeState::Operation::kInsert;
     lookup.hits_[state.row()] = state.fullProbe<op>(
         *this,

@@ -488,54 +488,56 @@ class CountNode : public PlanNode {
 };
 
 class RescoresNode : public PlanNode {
-    public:
-        RescoresNode(
-            const PlanNodeId& id,
-            const std::vector<std::shared_ptr<rescores::Scorer>> scorers,
-            const std::vector<PlanNodePtr>& sources = std::vector<PlanNodePtr>{})
-            : PlanNode(id),
-                scorers_(std::move(scorers)),
-                sources_{std::move(sources)} {
-        }
+ public:
+    RescoresNode(
+        const PlanNodeId& id,
+        const std::vector<std::shared_ptr<rescores::Scorer>> scorers,
+        const std::vector<PlanNodePtr>& sources = std::vector<PlanNodePtr>{})
+        : PlanNode(id),
+          scorers_(std::move(scorers)),
+          sources_{std::move(sources)} {
+    }
 
-        RowTypePtr
-        output_type() const override {
-            return std::make_shared<const RowType>(std::vector<std::string>{"scores"}, std::vector<milvus::DataType>{DataType::INT64});
-        }
+    RowTypePtr
+    output_type() const override {
+        return std::make_shared<const RowType>(
+            std::vector<std::string>{"scores"},
+            std::vector<milvus::DataType>{DataType::INT64});
+    }
 
-        std::vector<PlanNodePtr>
-        sources() const override {
-            return sources_;
-        }
+    std::vector<PlanNodePtr>
+    sources() const override {
+        return sources_;
+    }
 
-        const std::vector<std::shared_ptr<rescores::Scorer>>&
-        scorers() const {
-            return scorers_;
-        }
+    const std::vector<std::shared_ptr<rescores::Scorer>>&
+    scorers() const {
+        return scorers_;
+    }
 
-        std::string_view
-        name() const override {
-            return "RescoresNode";
-        }
+    std::string_view
+    name() const override {
+        return "RescoresNode";
+    }
 
-        std::string
-        ToString() const override {
-            return fmt::format("RescoresNode:\n\t[source node:{}]",
-                                SourceToString());
-        }
+    std::string
+    ToString() const override {
+        return fmt::format("RescoresNode:\n\t[source node:{}]",
+                           SourceToString());
+    }
 
-    private:
-        const std::vector<PlanNodePtr> sources_;
-        const std::vector<std::shared_ptr<rescores::Scorer>> scorers_;
+ private:
+    const std::vector<PlanNodePtr> sources_;
+    const std::vector<std::shared_ptr<rescores::Scorer>> scorers_;
 };
 
 class AggregationNode : public PlanNode {
  public:
     struct Aggregate {
-    /// Function name and input column names.
+        /// Function name and input column names.
         expr::CallExprPtr call_;
 
-        /// Raw input types used to properly identify aggregate function. 
+        /// Raw input types used to properly identify aggregate function.
         std::vector<DataType> rawInputTypes_;
 
         DataType resultType_;

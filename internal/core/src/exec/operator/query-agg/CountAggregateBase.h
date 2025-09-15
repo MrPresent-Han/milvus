@@ -40,7 +40,7 @@ class CountAggregate : public SimpleNumericAggregate<bool, int64_t, int64_t> {
     addRawInput(char** groups,
                 int numGroups,
                 const std::vector<VectorPtr>& input) override {
-        if (!input.empty()){
+        if (!input.empty()) {
             ColumnVectorPtr input_column = nullptr;
             AssertInfo(input.size() == 1,
                        fmt::format("input column count for count aggregation "
@@ -97,7 +97,8 @@ class CountAggregate : public SimpleNumericAggregate<bool, int64_t, int64_t> {
     }
 };
 
-void registerCount(const std::string& name);
+void
+registerCount(const std::string& name);
 
 }  // namespace exec
 }  // namespace milvus

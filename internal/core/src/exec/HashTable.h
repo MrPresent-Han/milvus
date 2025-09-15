@@ -138,10 +138,9 @@ class BaseHashTable {
 
     /// Populates 'hashes' and 'rows' fields in 'lookup' in preparation for
     /// 'groupProbe' call. Rehashes the table if necessary. Uses lookup.hashes to
-    /// decode grouping keys from 'input'. 
+    /// decode grouping keys from 'input'.
     void
-    prepareForGroupProbe(HashLookup& lookup,
-                         const RowVectorPtr& input);
+    prepareForGroupProbe(HashLookup& lookup, const RowVectorPtr& input);
 
     /// Finds or creates a group for each key in 'lookup'. The keys are
     /// returned in 'lookup.hits'.

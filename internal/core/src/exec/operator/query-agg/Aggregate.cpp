@@ -50,13 +50,11 @@ Aggregate::create(const std::string& name,
 }
 
 void
-registerAggregateFunction(
-    const std::string& name,
-    const AggregateFunctionFactory& factory) {
+registerAggregateFunction(const std::string& name,
+                          const AggregateFunctionFactory& factory) {
     auto realName = lowerString(name);
-    aggregateFunctions().withWLock([&](auto& aggFunctionMap) {
-        aggFunctionMap[realName] = factory;
-    });
+    aggregateFunctions().withWLock(
+        [&](auto& aggFunctionMap) { aggFunctionMap[realName] = factory; });
 }
 
 AggregateFunctionMap&

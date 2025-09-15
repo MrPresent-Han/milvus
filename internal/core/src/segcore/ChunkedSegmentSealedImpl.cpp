@@ -1517,7 +1517,8 @@ ChunkedSegmentSealedImpl::bulk_subscript_impl(ChunkedColumnInterface* field,
                                               bool int_raw_type) {
     static_assert(std::is_fundamental_v<S> && std::is_fundamental_v<T>);
     // use field->data_type_ to determine the type of dst
-    field->BulkPrimitiveValueAt(static_cast<void*>(dst), seg_offsets, count, int_raw_type);
+    field->BulkPrimitiveValueAt(
+        static_cast<void*>(dst), seg_offsets, count, int_raw_type);
 }
 
 // for dense vector

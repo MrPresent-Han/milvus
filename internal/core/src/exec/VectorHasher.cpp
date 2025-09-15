@@ -48,8 +48,7 @@ VectorHasher::hashValues(const ColumnVectorPtr& column_data,
         for (size_t row_idx = 0; row_idx < column_data->size(); ++row_idx) {
             if (!column_data->ValidAt(row_idx)) {
                 result[row_idx] =
-                    mix ? milvus::bits::hashMix(result[row_idx],
-                                                kNullHash)
+                    mix ? milvus::bits::hashMix(result[row_idx], kNullHash)
                         : kNullHash;
             } else {
                 T raw_value = column_data->ValueAt<T>(row_idx);
@@ -60,8 +59,7 @@ VectorHasher::hashValues(const ColumnVectorPtr& column_data,
                     hash_value = folly::hasher<T>()(raw_value);
                 }
                 result[row_idx] =
-                    mix ? milvus::bits::hashMix(result[row_idx],
-                                                hash_value)
+                    mix ? milvus::bits::hashMix(result[row_idx], hash_value)
                         : hash_value;
             }
         }
@@ -69,14 +67,10 @@ VectorHasher::hashValues(const ColumnVectorPtr& column_data,
 }
 
 void
-VectorHasher::hash(bool mix,
-                   std::vector<uint64_t>& result) {
+VectorHasher::hash(bool mix, std::vector<uint64_t>& result) {
     auto element_data_type = ChannelDataType();
-    MILVUS_DYNAMIC_TYPE_DISPATCH(hashValues,
-                                 element_data_type,
-                                 columnData(),
-                                 mix,
-                                 result.data());
+    MILVUS_DYNAMIC_TYPE_DISPATCH(
+        hashValues, element_data_type, columnData(), mix, result.data());
 }
 
 }  // namespace exec

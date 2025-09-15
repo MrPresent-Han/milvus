@@ -74,8 +74,7 @@ class SumAggregateBase
  protected:
     template <typename TData, typename TValue = TInput>
     void
-    updateInternal(char** groups,
-                   const std::vector<VectorPtr>& input) {
+    updateInternal(char** groups, const std::vector<VectorPtr>& input) {
         const auto& input_column = input[0];
         if (Aggregate::numNulls_) {
             BaseAggregate::template updateGroups<true, TData, TValue>(
@@ -102,6 +101,7 @@ class SumAggregateBase
     }
 };
 
-void registerSumAggregate();
+void
+registerSumAggregate();
 }  // namespace exec
 }  // namespace milvus

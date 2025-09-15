@@ -1090,7 +1090,7 @@ getCacheWarmupPolicy(bool is_vector, bool is_index, bool in_load_list) {
         return is_vector ? manager.getVectorFieldCacheWarmupPolicy()
                          : manager.getScalarFieldCacheWarmupPolicy();
     }
-}    
+}
 
 FieldDataPtr
 bulk_script_field_data(FieldId fieldId,
@@ -1112,16 +1112,26 @@ bulk_script_field_data(FieldId fieldId,
         }
         case milvus::DataType::INT8: {
             FixedVector<int8_t> vec(count);
-            segment->bulk_subscript(
-                fieldId, dataType, seg_offsets, count, vec.data(), valid_view, int_raw_type);
+            segment->bulk_subscript(fieldId,
+                                    dataType,
+                                    seg_offsets,
+                                    count,
+                                    vec.data(),
+                                    valid_view,
+                                    int_raw_type);
             ret = std::make_shared<FieldDataImpl<int8_t, true>>(
                 1, dataType, false, std::move(vec));
             break;
         }
         case milvus::DataType::INT16: {
             FixedVector<int16_t> vec(count);
-            segment->bulk_subscript(
-                fieldId, dataType, seg_offsets, count, vec.data(), valid_view, int_raw_type);
+            segment->bulk_subscript(fieldId,
+                                    dataType,
+                                    seg_offsets,
+                                    count,
+                                    vec.data(),
+                                    valid_view,
+                                    int_raw_type);
             ret = std::make_shared<FieldDataImpl<int16_t, true>>(
                 1, dataType, false, std::move(vec));
             break;

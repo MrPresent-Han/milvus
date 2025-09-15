@@ -23,8 +23,7 @@ namespace exec {
 
 RowContainer::RowContainer(const std::vector<DataType>& keyTypes,
                            const std::vector<Accumulator>& accumulators)
-    : keyTypes_(keyTypes),
-      accumulators_(accumulators) {
+    : keyTypes_(keyTypes), accumulators_(accumulators) {
     int32_t offset = 0;
     bool isVariableWidth = false;
     int idx = 0;
@@ -59,8 +58,8 @@ RowContainer::RowContainer(const std::vector<DataType>& keyTypes,
         offsets_.push_back(offset);
         offset += accumulator.fixedWidthSize();
     }
-    AssertInfo(offsets_.size() == keyTypes_.size() + accumulators.size(), 
-        "wrong size of offsets in RowContainer");   
+    AssertInfo(offsets_.size() == keyTypes_.size() + accumulators.size(),
+               "wrong size of offsets in RowContainer");
     if (isVariableWidth) {
         rowSizeOffset_ = offset;
         offset += sizeof(uint32_t);
@@ -93,16 +92,16 @@ RowContainer::store(const milvus::ColumnVectorPtr& column_data,
     auto numKeys = keyTypes_.size();
     bool isKey = column_index < numKeys;
     AssertInfo(isKey || accumulators_.empty(),
-                "Should only store into rows for key");
+               "Should only store into rows for key");
     auto rowColumn = rowColumns_[column_index];
     MILVUS_DYNAMIC_TYPE_DISPATCH(storeWithNull,
-                                    keyTypes_[column_index],
-                                    column_data,
-                                    index,
-                                    row,
-                                    rowColumn.offset(),
-                                    rowColumn.nullByte(),
-                                    rowColumn.nullMask());
+                                 keyTypes_[column_index],
+                                 column_data,
+                                 index,
+                                 row,
+                                 rowColumn.offset(),
+                                 rowColumn.nullByte(),
+                                 rowColumn.nullMask());
 }
 
 Accumulator::Accumulator(bool isFixedSize, int32_t fixedSize, int32_t alignment)

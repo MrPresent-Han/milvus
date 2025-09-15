@@ -23,7 +23,8 @@ PhyAggregationNode::PhyAggregationNode(
     int32_t operator_id,
     milvus::exec::DriverContext* ctx,
     const std::shared_ptr<const plan::AggregationNode>& node)
-    : Operator(ctx, node->output_type(), operator_id, node->id(), "AggregationNode"),
+    : Operator(
+          ctx, node->output_type(), operator_id, node->id(), "AggregationNode"),
       aggregationNode_(node),
       isGlobal_(node->GroupingKeys().empty()),
       group_limit_(node->group_limit()) {

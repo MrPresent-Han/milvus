@@ -329,7 +329,7 @@ SegmentInternalInterface::get_real_count() const {
 
     plan->plan_node_->plannodes_ = plannode;
     auto res =
-            Retrieve(nullptr, plan.get(), MAX_TIMESTAMP, INT64_MAX, false, 0);
+        Retrieve(nullptr, plan.get(), MAX_TIMESTAMP, INT64_MAX, false, 0);
     AssertInfo(res->fields_data().size() == 1,
                "count result should only have one column");
     AssertInfo(res->fields_data()[0].has_scalars(),

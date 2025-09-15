@@ -48,17 +48,14 @@ class Aggregate {
     static std::unique_ptr<Aggregate>
     create(const std::string& name,
            const std::vector<DataType>& argTypes,
-           const QueryConfig& query_config);//hc---the meaning for argTypes?
+           const QueryConfig& query_config);  //hc---the meaning for argTypes?
 
     void
     setOffsets(int32_t offset,
                int32_t nullByte,
                uint8_t nullMask,
                int32_t rowSizeOffset) {
-        setOffsetsInternal(offset,
-                           nullByte,
-                           nullMask,
-                           rowSizeOffset);
+        setOffsetsInternal(offset, nullByte, nullMask, rowSizeOffset);
     }
 
     virtual void
@@ -158,8 +155,7 @@ class Aggregate {
 };
 
 using AggregateFunctionFactory = std::function<std::unique_ptr<Aggregate>(
-    const std::vector<DataType>& argTypes,
-    const QueryConfig& config)>;
+    const std::vector<DataType>& argTypes, const QueryConfig& config)>;
 
 const AggregateFunctionFactory*
 getAggregateFunctionEntry(const std::string& name);
@@ -176,9 +172,8 @@ aggregateFunctions();
 /// overwrite is true, existing registration will be replaced. Otherwise, return
 /// false without overwriting the registry.
 void
-registerAggregateFunction(
-    const std::string& name,
-    const AggregateFunctionFactory& factory);
+registerAggregateFunction(const std::string& name,
+                          const AggregateFunctionFactory& factory);
 
 }  // namespace exec
 }  // namespace milvus

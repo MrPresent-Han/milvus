@@ -339,15 +339,10 @@ class RowContainer {
             auto nullMask = column.nullMask();
             auto offset = column.offset();
             if (nullMask) {
-                extractValuesWithNulls<T>(rows,
-                                          numRows,
-                                          offset,
-                                          column.nullByte(),
-                                          nullMask,
-                                          result);
+                extractValuesWithNulls<T>(
+                    rows, numRows, offset, column.nullByte(), nullMask, result);
             } else {
-                extractValuesNoNulls<T>(
-                    rows, numRows, offset, result);
+                extractValuesNoNulls<T>(rows, numRows, offset, result);
             }
         }
     }
@@ -358,8 +353,7 @@ class RowContainer {
                        int32_t numRows,
                        RowColumn column,
                        const VectorPtr& result) {
-        extractColumnTypedInternal<Type>(
-            rows, numRows, column, result);
+        extractColumnTypedInternal<Type>(rows, numRows, column, result);
     }
 
     static void
@@ -390,7 +384,7 @@ class RowContainer {
     nullMask(int32_t nullOffset) {
         return 1 << (nullOffset & 7);
     }
-    
+
     void
     clear() {
         for (auto row : rows_) {
@@ -438,12 +432,8 @@ RowContainer::extractColumn(const char* const* rows,
                             int32_t num_rows,
                             milvus::exec::RowColumn column,
                             const milvus::VectorPtr& result) {
-    MILVUS_DYNAMIC_TYPE_DISPATCH(extractColumnTyped,
-                                 result->type(),
-                                 rows,
-                                 num_rows,
-                                 column,
-                                 result);
+    MILVUS_DYNAMIC_TYPE_DISPATCH(
+        extractColumnTyped, result->type(), rows, num_rows, column, result);
 }
 }  // namespace exec
 }  // namespace milvus

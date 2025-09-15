@@ -44,8 +44,7 @@ class VectorHasher {
     }
 
     void
-    hash(bool mix,
-         std::vector<uint64_t>& result);
+    hash(bool mix, std::vector<uint64_t>& result);
 
     static constexpr uint64_t kNullHash = 1;
 
@@ -67,9 +66,7 @@ class VectorHasher {
 
     template <DataType type>
     void
-    hashValues(const ColumnVectorPtr& column_data,
-               bool mix,
-               uint64_t* result);
+    hashValues(const ColumnVectorPtr& column_data, bool mix, uint64_t* result);
 
     void
     setColumnData(const ColumnVectorPtr& column_data) {
