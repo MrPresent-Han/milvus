@@ -321,8 +321,7 @@ ExecPlanNodeVisitor::setupRetrieveResult(
     if (first_column->IsBitmap()) {
         BitsetTypeView view(first_column->GetRawData(), first_column->size());
         tracer::AutoSpan _("Find Limit Pk", tracer::GetRootSpan());
-        BitsetType bitset(view);
-        auto results_pair = segment->find_first(node.limit_, bitset);
+        auto results_pair = segment->find_first(node.limit_, view);
         tmp_retrieve_result.result_offsets_ = std::move(results_pair.first);
         tmp_retrieve_result.has_more_result = results_pair.second;
         retrieve_result_opt_ = std::move(tmp_retrieve_result);

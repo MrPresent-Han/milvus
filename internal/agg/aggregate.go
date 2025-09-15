@@ -693,19 +693,14 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 	firstFieldData := results[0].GetFieldDatas()
 	outputColumnCount := len(firstFieldData)
 	for idx, fieldData := range firstFieldData {
-		if idx < numGroupingKeys {
-			hasher, err := NewFieldAccessor(fieldData.GetType())
-			if err != nil {
-				return nil, err
-			}
-			hashers[idx] = hasher
+		accessor, err := NewFieldAccessor(fieldData.GetType())
+		if err != nil {
+			return nil, err
 		}
-		if idx >= numGroupingKeys {
-			accumulator, err := NewFieldAccessor(fieldData.GetType())
-			if err != nil {
-				return nil, err
-			}
-			accumulators[idx-numGroupingKeys] = accumulator
+		if idx < numGroupingKeys {
+			hashers[idx] = accessor
+		} else {
+			accumulators[idx-numGroupingKeys] = accessor
 		}
 	}
 	reducedResult := NewAggregationResult(nil, 0)
@@ -795,7 +790,7 @@ func (reducer *GroupAggReducer) Reduce(ctx context.Context, results []*Aggregati
 					bucket.Accumulate(newRow, rowIdx, numGroupingKeys, aggs)
 				}
 			}
-			if totalRowCount >= reducer.groupLimit {
+			if reducer.groupLimit != -1 && totalRowCount >= reducer.groupLimit {
 				break
 			}
 		}
@@ -830,7 +825,9 @@ func SegcoreResults2AggResult(results []*segcorepb.RetrieveResults) ([]*Aggregat
 		if results[i] == nil {
 			return nil, fmt.Errorf("input segcore query results from any sources cannot be nil")
 		}
-		aggResults[i] = NewAggregationResult(results[i].GetFieldsData(), results[i].GetAllRetrieveCount())
+		fieldsData := results[i].GetFieldsData()
+		allRetrieveCount := results[i].GetAllRetrieveCount()
+		aggResults[i] = NewAggregationResult(fieldsData, allRetrieveCount)
 	}
 	return aggResults, nil
 }

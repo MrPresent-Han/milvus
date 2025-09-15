@@ -406,7 +406,7 @@ class SegmentGrowingImpl : public SegmentGrowing {
     }
 
     std::pair<std::vector<OffsetMap::OffsetType>, bool>
-    find_first(int64_t limit, const BitsetType& bitset) const override {
+    find_first(int64_t limit, const BitsetTypeView& bitset) const override {
         return insert_record_.pk2offset_->find_first(limit, bitset);
     }
 

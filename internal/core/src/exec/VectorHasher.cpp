@@ -66,7 +66,6 @@ VectorHasher::hashValues(const ColumnVectorPtr& column_data,
             }
         }
     }
-    std::cout << "hc===tmp hault" << std::endl;
 }
 
 void

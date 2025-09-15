@@ -1311,7 +1311,7 @@ ChunkedSegmentSealedImpl::search_sorted_pk_range(proto::plan::OpType op,
 
 std::pair<std::vector<OffsetMap::OffsetType>, bool>
 ChunkedSegmentSealedImpl::find_first(int64_t limit,
-                                     const BitsetType& bitset) const {
+                                     const BitsetTypeView& bitset) const {
     if (!is_sorted_by_pk_) {
         return insert_record_.pk2offset_->find_first(limit, bitset);
     }

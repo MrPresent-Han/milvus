@@ -258,7 +258,7 @@ class ChunkedSegmentSealedImpl : public SegmentSealed {
            const Timestamp* timestamps) override;
 
     std::pair<std::vector<OffsetMap::OffsetType>, bool>
-    find_first(int64_t limit, const BitsetType& bitset) const override;
+    find_first(int64_t limit, const BitsetTypeView& bitset) const override;
 
     // Calculate: output[i] = Vec[seg_offset[i]]
     // where Vec is determined from field_offset
