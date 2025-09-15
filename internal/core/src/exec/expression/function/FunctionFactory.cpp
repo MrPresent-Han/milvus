@@ -50,7 +50,6 @@ FunctionFactory::Initialize() {
     std::call_once(init_flag_, &FunctionFactory::RegisterAllFunctions, this);
 }
 
-//hc---register all functions here
 void
 FunctionFactory::RegisterAllFunctions() {
     RegisterFilterFunction(

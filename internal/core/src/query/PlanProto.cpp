@@ -363,7 +363,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                     auto aggregate = query.aggregates(i);
                     auto agg_name = getAggregateOpName(
                         aggregate
-                            .op());  //hc---how register aggregate function?
+                            .op());
                     agg_names.emplace_back(agg_name);
                     auto input_agg_field_id = aggregate.field_id();
                     if (input_agg_field_id == 0) {
@@ -371,7 +371,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                         auto call = std::make_shared<const expr::CallExpr>(
                             agg_name,
                             std::vector<expr::TypedExprPtr>{},
-                            nullptr);  //hc---what is CallExpr?
+                            nullptr);
                         aggregates.emplace_back(
                             plan::AggregationNode::Aggregate{call});
                         aggregates.back().resultType_ =
@@ -397,7 +397,7 @@ ProtoParser::RetrievePlanNodeFromProto(
                             field_type);
                         aggregates.back().resultType_ = GetAggResultType(
                             agg_name,
-                            field_type);  //hc---this should be defined agg function implementation
+                            field_type);
                         insert_project_field_if_not_exist(
                             field_id, field_name, field_type);
                     }

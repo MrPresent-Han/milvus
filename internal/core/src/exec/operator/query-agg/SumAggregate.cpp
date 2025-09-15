@@ -21,7 +21,6 @@ namespace exec {
 
 template <typename TInput, typename TAccumulator, typename ResultType>
 using SumAggregate = SumAggregateBase<TInput, TAccumulator, ResultType, false>;
-//hc---resigster agg function
 template <template <typename U, typename V, typename W> class T>
 void
 registerSum(const std::string& name) {

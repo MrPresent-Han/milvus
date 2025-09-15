@@ -47,7 +47,7 @@ toAggregateInfo(const plan::AggregationNode& aggregationNode,
             aggregate.call_->fun_name(),
             aggregate.rawInputTypes_,
             *(operatorCtx.get_exec_context()
-                  ->get_query_config()));  //hc---agg conversion
+                  ->get_query_config()));
         info.output_ = index;
         aggregates.emplace_back(std::move(info));
     }

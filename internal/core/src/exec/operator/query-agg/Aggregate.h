@@ -48,7 +48,7 @@ class Aggregate {
     static std::unique_ptr<Aggregate>
     create(const std::string& name,
            const std::vector<DataType>& argTypes,
-           const QueryConfig& query_config);  //hc---the meaning for argTypes?
+           const QueryConfig& query_config);
 
     void
     setOffsets(int32_t offset,
