@@ -81,6 +81,7 @@ func (m *shardManagerImpl) checkIfSegmentCanBeFlushed(uniquePartitionKey Partiti
 }
 
 // CreateSegment creates a new segment manager when create segment message is written into wal.
+// hc--- create segment here
 func (m *shardManagerImpl) CreateSegment(msg message.ImmutableCreateSegmentMessageV2) {
 	logger := m.Logger().With(log.FieldMessage(msg))
 

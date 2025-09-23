@@ -213,4 +213,4 @@ func (m *partitionManager) assignSegment(req *AssignSegmentRequest) (*AssignSegm
 	// Ask a new pending segment to insert.
 	m.asyncAllocSegment()
 	return nil, ErrWaitForNewSegment
-}
+} //hc---alloc new segment here

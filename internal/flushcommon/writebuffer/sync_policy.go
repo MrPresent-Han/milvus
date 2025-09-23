@@ -73,7 +73,7 @@ func GetSealedSegmentsPolicy(meta metacache.MetaCache) SyncPolicy {
 		ids := meta.GetSegmentIDsBy(metacache.WithSegmentState(commonpb.SegmentState_Sealed))
 		meta.UpdateSegments(metacache.UpdateState(commonpb.SegmentState_Flushing),
 			metacache.WithSegmentIDs(ids...), metacache.WithSegmentState(commonpb.SegmentState_Sealed))
-		return ids
+		return ids //hc--- update segments state to from sealed toflushing here
 	}, "segment flushing")
 }
 

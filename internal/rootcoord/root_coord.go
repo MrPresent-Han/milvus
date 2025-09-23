@@ -1043,6 +1043,63 @@ func (c *Core) AddCollectionField(ctx context.Context, in *milvuspb.AddCollectio
 	return merr.Success(), nil
 }
 
+func (c *Core) AddCollectionFunctionField(ctx context.Context, in *milvuspb.AddCollectionFunctionFieldRequest) (*milvuspb.AddCollectionFunctionFieldResponse, error) {
+	if err := merr.CheckHealthy(c.GetStateCode()); err != nil {
+		return &milvuspb.AddCollectionFunctionFieldResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+	metrics.RootCoordDDLReqCounter.WithLabelValues("AddCollectionFunctionField", metrics.TotalLabel).Inc()
+	tr := timerecord.NewTimeRecorder("AddCollectionFunctionField")
+
+	log.Ctx(ctx).Info("received request to add function field",
+		zap.String("dbName", in.GetDbName()),
+		zap.String("name", in.GetCollectionName()),
+		zap.String("role", typeutil.RootCoordRole))
+
+	t := &addCollectionFunctionFieldTask{
+		baseTask: newBaseTask(ctx, c),
+		Req:      in,
+	}
+
+	if err := c.scheduler.AddTask(t); err != nil {
+		log.Ctx(ctx).Info("failed to enqueue request to add function field",
+			zap.String("role", typeutil.RootCoordRole),
+			zap.Error(err),
+			zap.String("name", in.GetCollectionName()))
+
+		metrics.RootCoordDDLReqCounter.WithLabelValues("AddCollectionFunctionField", metrics.FailLabel).Inc()
+		return &milvuspb.AddCollectionFunctionFieldResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+
+	if err := t.WaitToFinish(); err != nil {
+		log.Ctx(ctx).Info("failed to add function field",
+			zap.String("role", typeutil.RootCoordRole),
+			zap.Error(err),
+			zap.String("name", in.GetCollectionName()),
+			zap.Uint64("ts", t.GetTs()))
+
+		metrics.RootCoordDDLReqCounter.WithLabelValues("AddCollectionFunctionField", metrics.FailLabel).Inc()
+		return &milvuspb.AddCollectionFunctionFieldResponse{
+			Status: merr.Status(err),
+		}, nil
+	}
+
+	metrics.RootCoordDDLReqCounter.WithLabelValues("AddCollectionFunctionField", metrics.SuccessLabel).Inc()
+	metrics.RootCoordDDLReqLatency.WithLabelValues("AddCollectionFunctionField").Observe(float64(tr.ElapseSpan().Milliseconds()))
+	metrics.RootCoordDDLReqLatencyInQueue.WithLabelValues("AddCollectionFunctionField").Observe(float64(t.queueDur.Milliseconds()))
+
+	log.Ctx(ctx).Info("done to add function field",
+		zap.String("role", typeutil.RootCoordRole),
+		zap.String("name", in.GetCollectionName()),
+		zap.Uint64("ts", t.GetTs()))
+	return &milvuspb.AddCollectionFunctionFieldResponse{
+		Status: merr.Success(),
+	}, nil
+}
+
 // DropCollection drop collection
 func (c *Core) DropCollection(ctx context.Context, in *milvuspb.DropCollectionRequest) (*commonpb.Status, error) {
 	if err := merr.CheckHealthy(c.GetStateCode()); err != nil {

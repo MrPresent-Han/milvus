@@ -119,7 +119,8 @@ const (
 	AlterDatabaseTaskName    = "AlterDatabaseTaskName"
 	DescribeDatabaseTaskName = "DescribeDatabaseTaskName"
 
-	AddFieldTaskName = "AddFieldTaskName"
+	AddFieldTaskName         = "AddFieldTaskName"
+	AddFunctionFieldTaskName = "AddFunctionFieldTaskName"
 
 	// minFloat32 minimum float.
 	minFloat32 = -1 * float32(math.MaxFloat32)
@@ -466,6 +467,43 @@ func (t *createCollectionTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 
+func checkOldSchemaForAddField(schema *schemapb.CollectionSchema, newFieldSchema *schemapb.FieldSchema) error {
+	fieldList := typeutil.NewSet[string]()
+	for _, schema := range schema.Fields {
+		fieldList.Insert(schema.Name)
+	}
+	if len(fieldList) >= Params.ProxyCfg.MaxFieldNum.GetAsInt() {
+		msg := fmt.Sprintf("The number of fields has reached the maximum value %d", Params.ProxyCfg.MaxFieldNum.GetAsInt())
+		return merr.WrapErrParameterInvalidMsg(msg)
+	}
+	if fieldList.Contain(newFieldSchema.GetName()) {
+		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("duplicated field name %s", newFieldSchema.GetName()))
+	}
+	if _, ok := schemapb.DataType_name[int32(newFieldSchema.GetDataType())]; !ok || newFieldSchema.GetDataType() == schemapb.DataType_None {
+		return merr.WrapErrParameterInvalid("valid field", fmt.Sprintf("field data type: %s is not supported", newFieldSchema.GetDataType()))
+	}
+	if funcutil.SliceContain([]string{common.RowIDFieldName, common.TimeStampFieldName, common.MetaFieldName, common.NamespaceFieldName}, newFieldSchema.GetName()) {
+		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add system field, field name = %s", newFieldSchema.GetName()))
+	}
+	if newFieldSchema.GetIsPrimaryKey() {
+		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add pk field, field name = %s", newFieldSchema.GetName()))
+	}
+	if newFieldSchema.GetAutoID() {
+		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("only primary field can speficy AutoID with true, field name = %s", newFieldSchema.GetName()))
+	}
+	if newFieldSchema.GetIsPartitionKey() {
+		return merr.WrapErrParameterInvalidMsg("not support to add partition key field, field name  = %s", newFieldSchema.GetName())
+	}
+	if newFieldSchema.GetIsClusteringKey() {
+		for _, f := range schema.GetFields() {
+			if f.GetIsClusteringKey() {
+				return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("already has another clutering key field, field name: %s", newFieldSchema.GetName()))
+			}
+		}
+	}
+	return nil
+}
+
 type addCollectionFieldTask struct {
 	baseTask
 	Condition
@@ -527,52 +565,18 @@ func (t *addCollectionFieldTask) PreExecute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	fieldList := typeutil.NewSet[string]()
-	for _, schema := range t.oldSchema.Fields {
-		fieldList.Insert(schema.Name)
+	if err := checkOldSchemaForAddField(t.oldSchema, t.fieldSchema); err != nil {
+		return err
 	}
-
-	if len(fieldList) >= Params.ProxyCfg.MaxFieldNum.GetAsInt() {
-		msg := fmt.Sprintf("The number of fields has reached the maximum value %d", Params.ProxyCfg.MaxFieldNum.GetAsInt())
-		return merr.WrapErrParameterInvalidMsg(msg)
-	}
-
-	if _, ok := schemapb.DataType_name[int32(t.fieldSchema.DataType)]; !ok || t.fieldSchema.GetDataType() == schemapb.DataType_None {
-		return merr.WrapErrParameterInvalid("valid field", fmt.Sprintf("field data type: %s is not supported", t.fieldSchema.GetDataType()))
-	}
-
 	if typeutil.IsVectorType(t.fieldSchema.DataType) {
 		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add vector field, field name = %s", t.fieldSchema.Name))
-	}
-	if funcutil.SliceContain([]string{common.RowIDFieldName, common.TimeStampFieldName, common.MetaFieldName, common.NamespaceFieldName}, t.fieldSchema.GetName()) {
-		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add system field, field name = %s", t.fieldSchema.Name))
-	}
-	if t.fieldSchema.IsPrimaryKey {
-		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add pk field, field name = %s", t.fieldSchema.Name))
 	}
 	if !t.fieldSchema.Nullable {
 		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("added field must be nullable, please check it, field name = %s", t.fieldSchema.Name))
 	}
-	if t.fieldSchema.AutoID {
-		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("only primary field can speficy AutoID with true, field name = %s", t.fieldSchema.Name))
-	}
-	if t.fieldSchema.IsPartitionKey {
-		return merr.WrapErrParameterInvalidMsg("not support to add partition key field, field name  = %s", t.fieldSchema.Name)
-	}
-	if t.fieldSchema.GetIsClusteringKey() {
-		for _, f := range t.oldSchema.Fields {
-			if f.GetIsClusteringKey() {
-				return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("already has another clutering key field, field name: %s", t.fieldSchema.GetName()))
-			}
-		}
-	}
 	if err := ValidateField(t.fieldSchema, t.oldSchema); err != nil {
 		return err
 	}
-	if fieldList.Contain(t.fieldSchema.Name) {
-		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("duplicate field name: %s", t.fieldSchema.GetName()))
-	}
-
 	log.Info("PreExecute addField task done", zap.Any("field schema", t.fieldSchema))
 	return nil
 }
@@ -584,6 +588,84 @@ func (t *addCollectionFieldTask) Execute(ctx context.Context) error {
 }
 
 func (t *addCollectionFieldTask) PostExecute(ctx context.Context) error {
+	return nil
+}
+
+type addCollectionFunctionFieldTask struct {
+	baseTask
+	Condition
+	*milvuspb.AddCollectionFunctionFieldRequest
+	*milvuspb.AddCollectionFunctionFieldResponse
+	ctx       context.Context
+	mixCoord  types.MixCoordClient
+	oldSchema *schemapb.CollectionSchema
+}
+
+func (t *addCollectionFunctionFieldTask) TraceCtx() context.Context {
+	return t.ctx
+}
+
+func (t *addCollectionFunctionFieldTask) ID() UniqueID {
+	return t.Base.MsgID
+}
+
+func (t *addCollectionFunctionFieldTask) SetID(uid UniqueID) {
+	t.Base.MsgID = uid
+}
+
+func (t *addCollectionFunctionFieldTask) Name() string {
+	return AddFunctionFieldTaskName
+}
+
+func (t *addCollectionFunctionFieldTask) Type() commonpb.MsgType {
+	return t.Base.MsgType
+}
+
+func (t *addCollectionFunctionFieldTask) BeginTs() Timestamp {
+	return t.Base.Timestamp
+}
+
+func (t *addCollectionFunctionFieldTask) EndTs() Timestamp {
+	return t.Base.Timestamp
+}
+
+func (t *addCollectionFunctionFieldTask) SetTs(ts Timestamp) {
+	t.Base.Timestamp = ts
+}
+
+func (t *addCollectionFunctionFieldTask) OnEnqueue() error {
+	if t.Base == nil {
+		t.Base = commonpbutil.NewMsgBase()
+	}
+	t.Base.MsgType = commonpb.MsgType_AddCollectionField
+	t.Base.SourceID = paramtable.GetNodeID()
+	return nil
+}
+
+func (t *addCollectionFunctionFieldTask) PreExecute(ctx context.Context) error {
+	if t.oldSchema == nil {
+		return merr.WrapErrParameterInvalidMsg("empty old schema in add function field task")
+	}
+	newFieldSchema := t.GetFieldSchema()
+	if err := checkOldSchemaForAddField(t.oldSchema, newFieldSchema); err != nil {
+		return err
+	}
+	if funcutil.SliceContain([]string{common.RowIDFieldName, common.TimeStampFieldName, common.MetaFieldName, common.NamespaceFieldName}, newFieldSchema.GetName()) {
+		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add system field, field name = %s", newFieldSchema.GetName()))
+	}
+	if err := ValidateField(newFieldSchema, t.oldSchema); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (t *addCollectionFunctionFieldTask) Execute(ctx context.Context) error {
+	var err error
+	t.AddCollectionFunctionFieldResponse, err = t.mixCoord.AddCollectionFunctionField(ctx, t.AddCollectionFunctionFieldRequest)
+	return merr.CheckRPCCall(t.AddCollectionFunctionFieldResponse.GetStatus(), err)
+}
+
+func (t *addCollectionFunctionFieldTask) PostExecute(ctx context.Context) error {
 	return nil
 }
 

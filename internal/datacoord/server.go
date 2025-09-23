@@ -1001,7 +1001,7 @@ func (s *Server) postFlush(ctx context.Context, segmentID UniqueID) error {
 
 // recovery logic, fetch all Segment in `Flushing` state and do Flush notification logic
 func (s *Server) handleFlushingSegments(ctx context.Context) {
-	segments := s.meta.GetFlushingSegments()
+	segments := s.meta.GetFlushingSegments() //hc--- segments in flushing state
 	for _, segment := range segments {
 		// The old flushing segment may not be flushed, so we need to flush it again.
 		// It should be retry until success

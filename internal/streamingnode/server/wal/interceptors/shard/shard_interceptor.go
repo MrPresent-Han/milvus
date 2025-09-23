@@ -159,7 +159,7 @@ func (impl *shardInterceptor) handleInsertMessage(ctx context.Context, msg messa
 			// so we need to check nil before the assignment.
 			req.TxnSession = session
 		}
-		result, err := impl.shardManager.AssignSegment(req)
+		result, err := impl.shardManager.AssignSegment(req) //hc--- assign segment here
 		if errors.IsAny(err, shards.ErrTimeTickTooOld, shards.ErrWaitForNewSegment, shards.ErrFencedAssign) {
 			// 1. time tick is too old for segment assignment.
 			// 2. partition is fenced.
@@ -253,7 +253,7 @@ func (impl *shardInterceptor) handleCreateSegment(ctx context.Context, msg messa
 	msgID, err := appendOp(ctx, msg)
 	if err != nil {
 		return nil, err
-	}
+	} //hc--- create segment here
 	impl.shardManager.CreateSegment(message.MustAsImmutableCreateSegmentMessageV2(msg.IntoImmutableMessage(msgID)))
 	return msgID, nil
 }

@@ -106,7 +106,7 @@ func (o *openerAdaptorImpl) openRWWAL(ctx context.Context, l walimpls.WALImpls, 
 		WAL:                    param.WAL,
 		InitialRecoverSnapshot: snapshot,
 		TxnManager:             param.TxnManager,
-	})
+	}) //hc--- set up shard manager here
 
 	// start the flusher to flush and generate recovery info.
 	var flusher *flusherimpl.WALFlusherImpl

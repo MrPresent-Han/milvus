@@ -405,6 +405,10 @@ func (s *Server) AddCollectionField(ctx context.Context, in *milvuspb.AddCollect
 	return s.mixCoord.AddCollectionField(ctx, in)
 }
 
+func (s *Server) AddCollectionFunctionField(ctx context.Context, in *milvuspb.AddCollectionFunctionFieldRequest) (*milvuspb.AddCollectionFunctionFieldResponse, error) {
+	return s.mixCoord.AddCollectionFunctionField(ctx, in)
+}
+
 // CreatePartition creates a partition in a collection
 func (s *Server) CreatePartition(ctx context.Context, in *milvuspb.CreatePartitionRequest) (*commonpb.Status, error) {
 	return s.mixCoord.CreatePartition(ctx, in)

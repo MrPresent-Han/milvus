@@ -103,6 +103,7 @@ func (w *segmentAllocWorker) generateNewGrowingSegmentMessage() error {
 	}
 
 	// Allocate new segment id and create ts from remote.
+	//hc--- alloc new segment msg here
 	segmentID, err := resource.Resource().IDAllocator().Allocate(w.ctx)
 	if err != nil {
 		w.Logger().Warn("failed to allocate segment id", zap.Error(err))

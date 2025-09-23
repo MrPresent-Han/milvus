@@ -148,7 +148,7 @@ func (s *segmentAllocManager) AllocRows(req *AssignSegmentRequest) (*AssignSegme
 		// The segment is not growing, return ErrWaitForNewSegment.
 		return nil, ErrNotGrowing
 	}
-
+	//hc--- alloc rows here
 	err := resource.Resource().SegmentStatsManager().AllocRows(s.GetSegmentID(), req.ModifiedMetrics)
 	if err != nil {
 		return nil, err

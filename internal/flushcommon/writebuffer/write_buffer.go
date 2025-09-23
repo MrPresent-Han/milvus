@@ -298,7 +298,7 @@ func (wb *writeBufferBase) dropPartitions(partitionIDs []int64) {
 func (wb *writeBufferBase) syncSegments(ctx context.Context, segmentIDs []int64) []*conc.Future[struct{}] {
 	log := log.Ctx(ctx)
 	result := make([]*conc.Future[struct{}], 0, len(segmentIDs))
-	for _, segmentID := range segmentIDs {
+	for _, segmentID := range segmentIDs { //hc--- get segments to sync
 		syncTask, err := wb.getSyncTask(ctx, segmentID)
 		if err != nil {
 			if errors.Is(err, merr.ErrSegmentNotFound) {

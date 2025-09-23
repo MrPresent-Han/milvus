@@ -29,6 +29,7 @@ const (
 	RootCoord_CreateCollection_FullMethodName              = "/milvus.proto.rootcoord.RootCoord/CreateCollection"
 	RootCoord_DropCollection_FullMethodName                = "/milvus.proto.rootcoord.RootCoord/DropCollection"
 	RootCoord_AddCollectionField_FullMethodName            = "/milvus.proto.rootcoord.RootCoord/AddCollectionField"
+	RootCoord_AddCollectionFunctionField_FullMethodName    = "/milvus.proto.rootcoord.RootCoord/AddCollectionFunctionField"
 	RootCoord_HasCollection_FullMethodName                 = "/milvus.proto.rootcoord.RootCoord/HasCollection"
 	RootCoord_DescribeCollection_FullMethodName            = "/milvus.proto.rootcoord.RootCoord/DescribeCollection"
 	RootCoord_DescribeCollectionInternal_FullMethodName    = "/milvus.proto.rootcoord.RootCoord/DescribeCollectionInternal"
@@ -111,6 +112,13 @@ type RootCoordClient interface {
 	//
 	// @return Status
 	AddCollectionField(ctx context.Context, in *milvuspb.AddCollectionFieldRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
+	// *
+	// @brief This method is used to add collection function field.
+	//
+	// @param AddCollectionFunctionFieldRequest, field schema is going to be added.
+	//
+	// @return AddCollectionFunctionFieldResponse
+	AddCollectionFunctionField(ctx context.Context, in *milvuspb.AddCollectionFunctionFieldRequest, opts ...grpc.CallOption) (*milvuspb.AddCollectionFunctionFieldResponse, error)
 	// *
 	// @brief This method is used to test collection existence.
 	//
@@ -259,6 +267,15 @@ func (c *rootCoordClient) DropCollection(ctx context.Context, in *milvuspb.DropC
 func (c *rootCoordClient) AddCollectionField(ctx context.Context, in *milvuspb.AddCollectionFieldRequest, opts ...grpc.CallOption) (*commonpb.Status, error) {
 	out := new(commonpb.Status)
 	err := c.cc.Invoke(ctx, RootCoord_AddCollectionField_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rootCoordClient) AddCollectionFunctionField(ctx context.Context, in *milvuspb.AddCollectionFunctionFieldRequest, opts ...grpc.CallOption) (*milvuspb.AddCollectionFunctionFieldResponse, error) {
+	out := new(milvuspb.AddCollectionFunctionFieldResponse)
+	err := c.cc.Invoke(ctx, RootCoord_AddCollectionFunctionField_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -762,6 +779,13 @@ type RootCoordServer interface {
 	// @return Status
 	AddCollectionField(context.Context, *milvuspb.AddCollectionFieldRequest) (*commonpb.Status, error)
 	// *
+	// @brief This method is used to add collection function field.
+	//
+	// @param AddCollectionFunctionFieldRequest, field schema is going to be added.
+	//
+	// @return AddCollectionFunctionFieldResponse
+	AddCollectionFunctionField(context.Context, *milvuspb.AddCollectionFunctionFieldRequest) (*milvuspb.AddCollectionFunctionFieldResponse, error)
+	// *
 	// @brief This method is used to test collection existence.
 	//
 	// @param HasCollectionRequest, collection name is going to be tested.
@@ -874,6 +898,9 @@ func (UnimplementedRootCoordServer) DropCollection(context.Context, *milvuspb.Dr
 }
 func (UnimplementedRootCoordServer) AddCollectionField(context.Context, *milvuspb.AddCollectionFieldRequest) (*commonpb.Status, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method AddCollectionField not implemented")
+}
+func (UnimplementedRootCoordServer) AddCollectionFunctionField(context.Context, *milvuspb.AddCollectionFunctionFieldRequest) (*milvuspb.AddCollectionFunctionFieldResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method AddCollectionFunctionField not implemented")
 }
 func (UnimplementedRootCoordServer) HasCollection(context.Context, *milvuspb.HasCollectionRequest) (*milvuspb.BoolResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method HasCollection not implemented")
@@ -1147,6 +1174,24 @@ func _RootCoord_AddCollectionField_Handler(srv interface{}, ctx context.Context,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RootCoordServer).AddCollectionField(ctx, req.(*milvuspb.AddCollectionFieldRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RootCoord_AddCollectionFunctionField_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(milvuspb.AddCollectionFunctionFieldRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RootCoordServer).AddCollectionFunctionField(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RootCoord_AddCollectionFunctionField_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RootCoordServer).AddCollectionFunctionField(ctx, req.(*milvuspb.AddCollectionFunctionFieldRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2117,6 +2162,10 @@ var RootCoord_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "AddCollectionField",
 			Handler:    _RootCoord_AddCollectionField_Handler,
+		},
+		{
+			MethodName: "AddCollectionFunctionField",
+			Handler:    _RootCoord_AddCollectionFunctionField_Handler,
 		},
 		{
 			MethodName: "HasCollection",
