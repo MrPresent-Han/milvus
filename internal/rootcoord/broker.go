@@ -226,6 +226,7 @@ func (b *ServerBroker) GetSegmentIndexState(ctx context.Context, collID UniqueID
 	return resp.GetStates(), nil
 }
 
+// hc---BroadcastAlteredCollection here
 func (b *ServerBroker) BroadcastAlteredCollection(ctx context.Context, req *milvuspb.AlterCollectionRequest) error {
 	log.Ctx(ctx).Info("broadcasting request to alter collection",
 		zap.String("collectionName", req.GetCollectionName()),
@@ -263,7 +264,7 @@ func (b *ServerBroker) BroadcastAlteredCollection(ctx context.Context, req *milv
 		DbID:           db.ID,
 		VChannels:      colMeta.VirtualChannelNames,
 	}
-
+	//hc---check here
 	resp, err := b.s.mixCoord.BroadcastAlteredCollection(ctx, dcReq)
 	if err != nil {
 		return err
@@ -272,7 +273,7 @@ func (b *ServerBroker) BroadcastAlteredCollection(ctx context.Context, req *milv
 	if resp.ErrorCode != commonpb.ErrorCode_Success {
 		return errors.New(resp.Reason)
 	}
-	log.Ctx(ctx).Info("done to broadcast request to alter collection", zap.String("collectionName", req.GetCollectionName()), zap.Int64("collectionID", req.GetCollectionID()), zap.Any("props", req.GetProperties()), zap.Any("field", colMeta.Fields))
+	log.Ctx(ctx).Info("hc===done to broadcast request to alter collection", zap.String("collectionName", req.GetCollectionName()), zap.Int64("collectionID", req.GetCollectionID()), zap.Any("props", req.GetProperties()), zap.Any("field", colMeta.Fields))
 	return nil
 }
 

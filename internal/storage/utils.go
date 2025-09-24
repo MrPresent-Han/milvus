@@ -771,6 +771,7 @@ func ColumnBasedInsertMsgToInsertData(msg *msgstream.InsertMsg, collSchema *sche
 
 	handleFieldData := func(field *schemapb.FieldSchema) (FieldData, error) {
 		if IsBM25FunctionOutputField(field, collSchema) {
+			log.Info("hc====skip IsBM25FunctionOutputField", zap.Int64("fieldID", field.FieldID))
 			return nil, nil
 		}
 
@@ -1542,17 +1543,15 @@ func (ni NullableInt) IsNull() bool {
 
 // TODO: unify the function implementation, storage/utils.go & proxy/util.go
 func IsBM25FunctionOutputField(field *schemapb.FieldSchema, collSchema *schemapb.CollectionSchema) bool {
-	if !(field.GetIsFunctionOutput() && field.GetDataType() == schemapb.DataType_SparseFloatVector) {
-		return false
-	}
-
-	for _, fSchema := range collSchema.Functions {
-		if fSchema.Type == schemapb.FunctionType_BM25 {
-			if len(fSchema.OutputFieldNames) != 0 && field.Name == fSchema.OutputFieldNames[0] {
-				return true
-			}
-			if len(fSchema.OutputFieldIds) != 0 && field.FieldID == fSchema.OutputFieldIds[0] {
-				return true
+	if field.GetIsFunctionOutput() && field.GetDataType() == schemapb.DataType_SparseFloatVector {
+		for _, fSchema := range collSchema.Functions {
+			if fSchema.Type == schemapb.FunctionType_BM25 {
+				if len(fSchema.OutputFieldNames) != 0 && field.Name == fSchema.OutputFieldNames[0] {
+					return true
+				}
+				if len(fSchema.OutputFieldIds) != 0 && field.FieldID == fSchema.OutputFieldIds[0] {
+					return true
+				}
 			}
 		}
 	}

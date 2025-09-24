@@ -447,8 +447,9 @@ func (r *recoveryStorageImpl) handleSchemaChange(msg message.ImmutableSchemaChan
 
 	// persist the schema change into recovery info.
 	if vchannelInfo, ok := r.vchannels[msg.VChannel()]; ok {
-		vchannelInfo.ObserveSchemaChange(msg)
+		vchannelInfo.ObserveSchemaChange(msg) //hc---ObserveSchemaChange here
 	}
+	log.Info("hc====handleSchemaChange", zap.Any("msg", msg))
 }
 
 // detectInconsistency detects the inconsistency in the recovery storage.

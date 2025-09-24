@@ -4,9 +4,11 @@ import (
 	"math"
 
 	"github.com/cockroachdb/errors"
+	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/streamingpb"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 )
@@ -136,6 +138,7 @@ func (info *vchannelRecoveryInfo) ObserveSchemaChange(msg message.ImmutableSchem
 		State:              streamingpb.VChannelSchemaState_VCHANNEL_SCHEMA_STATE_NORMAL,
 		CheckpointTimeTick: msg.TimeTick(),
 	})
+	log.Info("hc====ObserveSchemaChange", zap.Any("msg", msg))
 	info.meta.CheckpointTimeTick = msg.TimeTick()
 	info.dirty = true
 }

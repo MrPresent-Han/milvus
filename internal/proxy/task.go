@@ -643,19 +643,19 @@ func (t *addCollectionFunctionFieldTask) OnEnqueue() error {
 }
 
 func (t *addCollectionFunctionFieldTask) PreExecute(ctx context.Context) error {
-	if t.oldSchema == nil {
-		return merr.WrapErrParameterInvalidMsg("empty old schema in add function field task")
-	}
-	newFieldSchema := t.GetFieldSchema()
-	if err := checkOldSchemaForAddField(t.oldSchema, newFieldSchema); err != nil {
-		return err
-	}
-	if funcutil.SliceContain([]string{common.RowIDFieldName, common.TimeStampFieldName, common.MetaFieldName, common.NamespaceFieldName}, newFieldSchema.GetName()) {
-		return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add system field, field name = %s", newFieldSchema.GetName()))
-	}
-	if err := ValidateField(newFieldSchema, t.oldSchema); err != nil {
-		return err
-	}
+	// if t.oldSchema == nil {
+	// 	return merr.WrapErrParameterInvalidMsg("empty old schema in add function field task")
+	// }
+	// newFieldSchema := t.GetFieldSchema()
+	// if err := checkOldSchemaForAddField(t.oldSchema, newFieldSchema); err != nil {
+	// 	return err
+	// }
+	// if funcutil.SliceContain([]string{common.RowIDFieldName, common.TimeStampFieldName, common.MetaFieldName, common.NamespaceFieldName}, newFieldSchema.GetName()) {
+	// 	return merr.WrapErrParameterInvalidMsg(fmt.Sprintf("not support to add system field, field name = %s", newFieldSchema.GetName()))
+	// }
+	// if err := ValidateField(newFieldSchema, t.oldSchema); err != nil {
+	// 	return err
+	// }
 	return nil
 }
 

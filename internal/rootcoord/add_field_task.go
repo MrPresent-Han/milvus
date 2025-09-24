@@ -104,11 +104,11 @@ func executeAddCollectionFieldTaskSteps(ctx context.Context,
 	})
 
 	oldColl := col.Clone()
-	redoTask.AddSyncStep(&AddCollectionFieldStep{
+	redoTask.AddSyncStep(&AddCollectionMetaStep{
 		baseStep:          baseStep{core: core},
 		oldColl:           oldColl,
 		updatedCollection: updatedCollection,
-		newField:          newField,
+		newFields:         []*model.Field{newField},
 	})
 
 	redoTask.AddSyncStep(&BroadcastAlteredCollectionStep{

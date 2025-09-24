@@ -290,7 +290,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 				zap.Uint64("timetick", schemaMsg.SchemaChangeMessage.TimeTick()),
 				zap.Int64s("segmentIDs", schemaMsg.SchemaChangeMessage.Header().FlushedSegmentIds),
 			)
-			logger.Info("receive schema change message")
+			logger.Info("hc===receive schema change message")
 			ddn.msgHandler.HandleSchemaChange(ddn.ctx, schemaMsg.SchemaChangeMessage)
 		}
 	}

@@ -364,6 +364,10 @@ func CheckTimeTickLagExceeded(ctx context.Context, mixcoord types.MixCoord, maxD
 	return nil
 }
 
+func checkFieldSchemaForFunction(fieldSchema *schemapb.FieldSchema, functionSchema *schemapb.FunctionSchema) error {
+	return nil
+}
+
 func checkFieldSchema(fieldSchemas []*schemapb.FieldSchema) error {
 	for _, fieldSchema := range fieldSchemas {
 		if fieldSchema.GetDataType() == schemapb.DataType_ArrayOfStruct {
@@ -564,4 +568,14 @@ func nextFieldID(coll *model.Collection) int64 {
 		}
 	}
 	return maxFieldID + 1
+}
+
+func nextFunctionID(coll *model.Collection) int64 {
+	maxFunctionID := int64(common.StartOfUserFunctionID)
+	for _, function := range coll.Functions {
+		if function.ID > maxFunctionID {
+			maxFunctionID = function.ID
+		}
+	}
+	return maxFunctionID + 1
 }

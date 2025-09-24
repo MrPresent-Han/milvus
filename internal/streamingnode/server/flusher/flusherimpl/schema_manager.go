@@ -29,3 +29,5 @@ func (m *versionedSchemaManager) GetSchema(timetick uint64) *schemapb.Collection
 	}
 	return schema
 }
+
+//hc---newVersionlessSchemaManager here
