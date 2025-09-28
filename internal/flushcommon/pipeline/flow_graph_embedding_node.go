@@ -166,7 +166,7 @@ func (eNode *embeddingNode) checkHasFunctions(schema *schemapb.CollectionSchema)
 		}
 		log.Info("hc====checkHasFunctions", zap.Any("functionRunners", eNode.functionRunners))
 	}
-	return len(eNode.functionRunners) == 0, nil
+	return len(eNode.functionRunners) > 0, nil
 }
 
 func (eNode *embeddingNode) Operate(in []Msg) []Msg {
@@ -178,23 +178,24 @@ func (eNode *embeddingNode) Operate(in []Msg) []Msg {
 	currentSchema := eNode.metaCache.GetSchema(fgMsg.TimeTick())
 	hasFunctions, err := eNode.checkHasFunctions(currentSchema)
 	if err != nil {
-		log.Error("failed to check has functions", zap.Error(err))
+		log.Error("hc===failed to check has functions", zap.Error(err))
 		panic(err)
 	}
 	if !hasFunctions {
+		log.Info("hc====skip embedding for no function", zap.Any("currentSchema", currentSchema))
 		return []Msg{fgMsg}
 	}
 	insertData := make([]*writebuffer.InsertData, 0)
 	if len(fgMsg.InsertMessages) > 0 {
 		var err error
 		if insertData, err = writebuffer.PrepareInsert(currentSchema, eNode.pkField, fgMsg.InsertMessages); err != nil {
-			log.Error("failed to prepare insert data", zap.Error(err))
+			log.Error("hc===failed to prepare insert data in embedding node", zap.Error(err))
 			panic(err)
 		}
 	}
 
 	if err := eNode.Embedding(insertData); err != nil {
-		log.Warn("failed to embedding insert data", zap.Error(err))
+		log.Warn("hc===failed to embedding insert data", zap.Error(err))
 		panic(err)
 	}
 

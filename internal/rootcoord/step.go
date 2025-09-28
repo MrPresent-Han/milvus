@@ -202,6 +202,7 @@ type expireCacheStep struct {
 
 func (s *expireCacheStep) Execute(ctx context.Context) ([]nestedStep, error) {
 	err := s.core.ExpireMetaCache(ctx, s.dbName, s.collectionNames, s.collectionID, s.partitionName, s.ts, s.opts...)
+	log.Ctx(ctx).Info("hc===expire cache", zap.String("dbName", s.dbName), zap.Any("collectionNames", s.collectionNames), zap.Int64("collectionID", s.collectionID), zap.String("partitionName", s.partitionName), zap.Uint64("ts", s.ts), zap.Any("opts", s.opts))
 	return nil, err
 }
 
@@ -476,7 +477,7 @@ func (a *AddCollectionMetaStep) Execute(ctx context.Context) ([]nestedStep, erro
 	// newColl := a.oldColl.Clone()
 	// newColl.Fields = append(newColl.Fields, a.newField)
 	err := a.core.meta.AlterCollection(ctx, a.oldColl, a.updatedCollection, a.updatedCollection.UpdateTimestamp, true)
-	log.Ctx(ctx).Info("add field done", zap.Int64("collectionID", a.oldColl.CollectionID), zap.Any("new fields", a.newFields), zap.Any("new function", a.newFunction))
+	log.Ctx(ctx).Info("hc===add field done", zap.Int64("collectionID", a.oldColl.CollectionID), zap.Any("new fields", a.newFields), zap.Any("new function", a.newFunction))
 	return nil, err
 }
 
@@ -540,7 +541,7 @@ func (s *WriteSchemaChangeWALStep) Execute(ctx context.Context) ([]nestedStep, e
 		return resp.GetAppendResult(channelName).TimeTick
 	}))
 	log.Ctx(ctx).Info(
-		"broadcast schema change success",
+		"hc===broadcast schema change success",
 		zap.Uint64("broadcastID", resp.BroadcastID),
 		zap.Uint64("WALUpdateTimestamp", s.collection.UpdateTimestamp),
 		zap.Any("appendResults", resp.AppendResults),

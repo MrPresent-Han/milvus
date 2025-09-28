@@ -282,7 +282,7 @@ func (ddn *ddNode) Operate(in []Msg) []Msg {
 			} else {
 				logger.Info("handle manual flush message success")
 			}
-		case commonpb.MsgType_AddCollectionField:
+		case commonpb.MsgType_AddCollectionField, commonpb.MsgType_AddCollectionFunctionField:
 			schemaMsg := msg.(*adaptor.SchemaChangeMessageBody)
 			logger := log.With(
 				zap.String("vchannel", ddn.Name()),

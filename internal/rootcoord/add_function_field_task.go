@@ -18,6 +18,7 @@ package rootcoord
 
 import (
 	"context"
+	"fmt"
 
 	"go.uber.org/zap"
 
@@ -43,6 +44,7 @@ func (t *addCollectionFunctionFieldTask) Prepare(ctx context.Context) error {
 
 	t.fieldInfos = t.Req.GetFieldInfos()
 	t.functionSchema = t.Req.GetFuncSchema()
+	log.Info("hc===add function field", zap.Any("functionSchema", t.functionSchema), zap.Any("fieldInfos", t.fieldInfos))
 	// if err := checkFieldSchemaForFunction(t.fieldSchema, t.Req.GetFuncSchema()); err != nil {
 	// 	return err
 	// }
@@ -89,9 +91,37 @@ func (t *addCollectionFunctionFieldTask) executeAddCollectionFunctionFieldTaskSt
 	for i, fieldInfo := range t.fieldInfos {
 		fields[i] = model.UnmarshalFieldModel(fieldInfo.FieldSchema)
 	}
-	function := model.UnmarshalFunctionModel(t.functionSchema)
-
 	updatedCollection.Fields = append(updatedCollection.Fields, fields...)
+
+	name2id := map[string]int64{}
+	for _, field := range updatedCollection.Fields {
+		name2id[field.Name] = field.FieldID
+	}
+
+	t.functionSchema.InputFieldIds = make([]int64, len(t.functionSchema.InputFieldNames))
+	for idx, name := range t.functionSchema.InputFieldNames {
+		fieldId, ok := name2id[name]
+		if !ok {
+			return fmt.Errorf("input field %s of function %s not found", name, t.functionSchema.GetName())
+		}
+		t.functionSchema.InputFieldIds[idx] = fieldId
+	}
+
+	t.functionSchema.OutputFieldIds = make([]int64, len(t.functionSchema.OutputFieldNames))
+	for idx, name := range t.functionSchema.OutputFieldNames {
+		fieldId, ok := name2id[name]
+		if !ok {
+			return fmt.Errorf("output field %s of function %s not found", name, t.functionSchema.GetName())
+		}
+		t.functionSchema.OutputFieldIds[idx] = fieldId
+	}
+	log.Info("hc===add function field",
+		zap.Any("functionSchema.inputFieldIds", t.functionSchema.InputFieldIds),
+		zap.Any("functionSchema.inputFieldNames", t.functionSchema.InputFieldNames),
+		zap.Any("functionSchema.outputFieldNames", t.functionSchema.OutputFieldNames),
+		zap.Any("functionSchema.outputFieldIds", t.functionSchema.OutputFieldIds))
+
+	function := model.UnmarshalFunctionModel(t.functionSchema)
 	updatedCollection.Functions = append(updatedCollection.Functions, function)
 
 	// 2. write schema change WAL

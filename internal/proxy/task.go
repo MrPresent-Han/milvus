@@ -637,7 +637,7 @@ func (t *addCollectionFunctionFieldTask) OnEnqueue() error {
 	if t.Base == nil {
 		t.Base = commonpbutil.NewMsgBase()
 	}
-	t.Base.MsgType = commonpb.MsgType_AddCollectionField
+	t.Base.MsgType = commonpb.MsgType_AddCollectionFunctionField
 	t.Base.SourceID = paramtable.GetNodeID()
 	return nil
 }
