@@ -229,6 +229,7 @@ func (w *walAdaptorImpl) retryAppendWhenRecoverableError(ctx context.Context, ms
 }
 
 // AppendAsync writes a record to the log asynchronously.
+// hc---- append async here
 func (w *walAdaptorImpl) AppendAsync(ctx context.Context, msg message.MutableMessage, cb func(*wal.AppendResult, error)) {
 	if !w.lifetime.Add(typeutil.LifetimeStateWorking) {
 		cb(nil, status.NewOnShutdownError("wal is on shutdown"))

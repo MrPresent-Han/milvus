@@ -30,7 +30,7 @@ func CreateProduceServer(walManager walmanager.Manager, streamServer streamingpb
 	if err != nil {
 		return nil, status.NewInvaildArgument("create producer request is required")
 	}
-	l, err := walManager.GetAvailableWAL(types.NewPChannelInfoFromProto(createReq.GetPchannel()))
+	wal, err := walManager.GetAvailableWAL(types.NewPChannelInfoFromProto(createReq.GetPchannel()))
 	if err != nil {
 		return nil, err
 	}
@@ -39,18 +39,18 @@ func CreateProduceServer(walManager walmanager.Manager, streamServer streamingpb
 		StreamingNodeHandlerService_ProduceServer: streamServer,
 	}
 	if err := produceServer.SendCreated(&streamingpb.CreateProducerResponse{
-		WalName: l.WALName().String(),
+		WalName: wal.WALName().String(),
 	}); err != nil {
 		return nil, errors.Wrap(err, "at send created")
 	}
-	metrics := newProducerMetrics(l.Channel())
+	metrics := newProducerMetrics(wal.Channel())
 	return &ProduceServer{
-		wal:           l,
+		wal:           wal,
 		produceServer: produceServer,
 		logger: resource.Resource().Logger().With(
 			log.FieldComponent("producer-server"),
-			zap.String("channel", l.Channel().Name),
-			zap.Int64("term", l.Channel().Term)),
+			zap.String("channel", wal.Channel().Name),
+			zap.Int64("term", wal.Channel().Term)),
 		produceMessageCh: make(chan *streamingpb.ProduceMessageResponse),
 		appendWG:         sync.WaitGroup{},
 		metrics:          metrics,
@@ -182,6 +182,8 @@ func (p *ProduceServer) handleProduce(req *streamingpb.ProduceMessageRequest) {
 	// Update metrics.
 	msg := message.NewMutableMessageBeforeAppend(req.GetMessage().GetPayload(), req.GetMessage().GetProperties())
 	metricsGuard := p.metrics.StartProduce()
+	log.Info("hc==== validate message here before appending", zap.Any("msg", msg))
+	//hc--- validate message here before appending
 	if err := p.validateMessage(msg); err != nil {
 		p.logger.Warn("produce message validation failed", zap.Int64("requestID", req.RequestId), zap.Error(err))
 		p.sendProduceResult(req.RequestId, nil, err)

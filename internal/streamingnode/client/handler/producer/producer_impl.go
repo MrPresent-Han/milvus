@@ -41,7 +41,7 @@ func CreateProducer(
 	// Initialize the producer client.
 	produceClient := &produceGrpcClient{
 		streamClient,
-	}
+	} //hc--- create producer grpc client here
 
 	// Recv the first response from server.
 	// It must be a create response.
@@ -269,7 +269,7 @@ func (p *producerImpl) sendLoop() (err error) {
 					err: err,
 				})
 				return err
-			}
+			} //hc--- calling grcpstream client here
 		}
 	}
 }

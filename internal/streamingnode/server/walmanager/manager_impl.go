@@ -30,7 +30,7 @@ func OpenManager() (Manager, error) {
 		lock.NewInterceptorBuilder(),
 		timetick.NewInterceptorBuilder(),
 		shard.NewInterceptorBuilder(),
-	).Build()
+	).Build() //hc--- wal builder here
 	if err != nil {
 		return nil, err
 	}
@@ -54,7 +54,7 @@ type managerImpl struct {
 	wltMap *typeutil.ConcurrentMap[string, *walLifetime]
 	opener wal.Opener // wal allocator
 	logger *log.MLogger
-}
+} //hc---- manager impl here
 
 // Open opens a wal instance for the channel on this Manager.
 func (m *managerImpl) Open(ctx context.Context, channel types.PChannelInfo) (err error) {

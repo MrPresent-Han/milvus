@@ -27,6 +27,8 @@ type ROWALImpls interface {
 	Read(ctx context.Context, opts ReadOption) (ScannerImpls, error)
 }
 
+//hc---- append async here
+
 // WALImpls is the underlying implementation for a wal that supports read and write operations.
 type WALImpls interface {
 	ROWALImpls
@@ -40,3 +42,5 @@ type WALImpls interface {
 	// Truncate truncates the wal to the given id (inclusive).
 	Truncate(ctx context.Context, id message.MessageID) error
 }
+
+//hc---- append async here

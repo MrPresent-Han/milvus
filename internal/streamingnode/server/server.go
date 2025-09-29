@@ -67,7 +67,7 @@ func (s *Server) Stop() {
 // initBasicComponent initialize all underlying dependency for streamingnode.
 func (s *Server) initBasicComponent() {
 	var err error
-	s.walManager, err = walmanager.OpenManager()
+	s.walManager, err = walmanager.OpenManager() //hc--- wal manager here
 	if err != nil {
 		panic(fmt.Sprintf("open wal manager failed, %+v", err))
 	}
@@ -80,6 +80,7 @@ func (s *Server) initService() {
 	s.handlerService = service.NewHandlerService(s.walManager)
 	s.managerService = service.NewManagerService(s.walManager)
 	s.registerGRPCService(s.grpcServer)
+	//hc--- register manager&&handler grpc service here
 }
 
 // registerGRPCService register all grpc service to grpc server.

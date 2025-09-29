@@ -13,7 +13,7 @@ import (
 func (w *walAccesserImpl) appendToWAL(ctx context.Context, msg message.MutableMessage) (*types.AppendResult, error) {
 	pchannel := funcutil.ToPhysicalChannel(msg.VChannel())
 	p := w.getProducer(pchannel)
-	return p.Produce(ctx, msg)
+	return p.Produce(ctx, msg) //hc---truly send message here
 }
 
 // createOrGetProducer creates or get a producer.
