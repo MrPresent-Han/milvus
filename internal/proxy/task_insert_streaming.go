@@ -68,7 +68,9 @@ func (it *insertTask) Execute(ctx context.Context) error {
 		it.result.Status = merr.Status(err)
 		return err
 	}
+	log.Info("hc==== start append messages to wal", zap.Any("msgs", msgs))
 	resp := streaming.WAL().AppendMessages(ctx, msgs...)
+	log.Info("hc==== end append messages to wal", zap.Any("msgs", msgs))
 	if err := resp.UnwrapFirstError(); err != nil {
 		log.Warn("append messages to wal failed", zap.Error(err))
 		it.result.Status = merr.Status(err)

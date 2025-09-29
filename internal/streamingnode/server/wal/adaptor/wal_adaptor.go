@@ -154,6 +154,9 @@ func (w *walAdaptorImpl) Append(ctx context.Context, msg message.MutableMessage)
 	// Execute the interceptor and wal append.
 	var extraAppendResult utility.ExtraAppendResult
 	ctx = utility.WithExtraAppendResult(ctx, &extraAppendResult)
+	if msg.MessageType() != message.MessageTypeTimeTick {
+		log.Info("hc====walAdaptorImpl append async start interceptor here", zap.Any("msg", msg))
+	}
 	messageID, err := w.interceptorBuildResult.Interceptor.DoAppend(ctx, msg,
 		func(ctx context.Context, msg message.MutableMessage) (message.MessageID, error) {
 			if notPersistHint := utility.GetNotPersisted(ctx); notPersistHint != nil {
@@ -165,6 +168,9 @@ func (w *walAdaptorImpl) Append(ctx context.Context, msg message.MutableMessage)
 			metricsGuard.FinishWALImplAppend()
 			return msgID, err
 		})
+	if msg.MessageType() != message.MessageTypeTimeTick {
+		log.Info("hc====walAdaptorImpl append async end interceptor here", zap.Any("msg", msg))
+	}
 	metricsGuard.FinishAppend()
 	if err != nil {
 		appendMetrics.Done(nil, err)
@@ -207,6 +213,7 @@ func (w *walAdaptorImpl) retryAppendWhenRecoverableError(ctx context.Context, ms
 
 	// An append operation should be retried until it succeeds or some unrecoverable error occurs.
 	for i := 0; ; i++ {
+		//hc---- truly append here
 		msgID, err := w.rwWALImpls.Append(ctx, msg)
 		if err == nil {
 			return msgID, nil
@@ -231,6 +238,7 @@ func (w *walAdaptorImpl) retryAppendWhenRecoverableError(ctx context.Context, ms
 // AppendAsync writes a record to the log asynchronously.
 // hc---- append async here
 func (w *walAdaptorImpl) AppendAsync(ctx context.Context, msg message.MutableMessage, cb func(*wal.AppendResult, error)) {
+	log.Info("hc====walAdaptorImpl append async here", zap.Any("msg", msg))
 	if !w.lifetime.Add(typeutil.LifetimeStateWorking) {
 		cb(nil, status.NewOnShutdownError("wal is on shutdown"))
 		return

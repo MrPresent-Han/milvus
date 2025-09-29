@@ -9,6 +9,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
 
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/streamingpb"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/types"
@@ -75,6 +76,9 @@ func (w *walImpl) WALName() message.WALName {
 }
 
 func (w *walImpl) Append(ctx context.Context, msg message.MutableMessage) (message.MessageID, error) {
+	if msg.MessageType() != message.MessageTypeTimeTick {
+		log.Info("hc==== send message to pulsar", zap.Any("msg", msg))
+	}
 	if w.Channel().AccessMode != types.AccessModeRW {
 		panic("write on a wal that is not in read-write mode")
 	}
@@ -95,6 +99,9 @@ func (w *walImpl) Append(ctx context.Context, msg message.MutableMessage) (messa
 	if err != nil {
 		w.Log().RatedWarn(1, "send message to pulsar failed", zap.Error(err))
 		return nil, err
+	}
+	if msg.MessageType() != message.MessageTypeTimeTick {
+		log.Info("hc==== send message to pulsar done", zap.Any("id", id))
 	}
 	return pulsarID{id}, nil
 }

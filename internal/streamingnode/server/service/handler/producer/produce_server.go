@@ -3,6 +3,7 @@ package producer
 import (
 	"io"
 	"sync"
+	"time"
 
 	"github.com/cockroachdb/errors"
 	"go.uber.org/zap"
@@ -183,6 +184,7 @@ func (p *ProduceServer) handleProduce(req *streamingpb.ProduceMessageRequest) {
 	msg := message.NewMutableMessageBeforeAppend(req.GetMessage().GetPayload(), req.GetMessage().GetProperties())
 	metricsGuard := p.metrics.StartProduce()
 	log.Info("hc==== validate message here before appending", zap.Any("msg", msg))
+	time.Sleep(10 * time.Second)
 	//hc--- validate message here before appending
 	if err := p.validateMessage(msg); err != nil {
 		p.logger.Warn("produce message validation failed", zap.Int64("requestID", req.RequestId), zap.Error(err))
@@ -201,6 +203,7 @@ func (p *ProduceServer) handleProduce(req *streamingpb.ProduceMessageRequest) {
 		}()
 		p.sendProduceResult(req.RequestId, appendResult, err)
 	})
+	log.Info("hc==== appended message to wal", zap.Any("msg", msg))
 }
 
 // validateMessage validates the message.

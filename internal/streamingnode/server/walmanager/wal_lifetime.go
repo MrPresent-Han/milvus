@@ -24,7 +24,7 @@ func newWALLifetime(opener wal.Opener, channel string, logger *log.MLogger) *wal
 		statePair: newWALStatePair(),
 		logger:    logger.With(zap.String("channel", channel)),
 	}
-	go l.backgroundTask()
+	go l.backgroundTask() //hc---observe message here
 	return l
 }
 

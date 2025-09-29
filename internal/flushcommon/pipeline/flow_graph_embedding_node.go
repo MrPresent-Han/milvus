@@ -182,7 +182,7 @@ func (eNode *embeddingNode) Operate(in []Msg) []Msg {
 		panic(err)
 	}
 	if !hasFunctions {
-		log.Info("hc====skip embedding for no function", zap.Any("currentSchema", currentSchema))
+		//log.RatedInfo(10, "hc====skip embedding for no function", zap.Any("currentSchema", currentSchema))
 		return []Msg{fgMsg}
 	}
 	insertData := make([]*writebuffer.InsertData, 0)

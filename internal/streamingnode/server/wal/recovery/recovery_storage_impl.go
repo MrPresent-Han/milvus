@@ -124,6 +124,7 @@ func (r *recoveryStorageImpl) UpdateFlusherCheckpoint(vchannel string, checkpoin
 }
 
 // GetSchema gets the schema of the collection at the given timetick.
+// hc---- GetSchema here
 func (r *recoveryStorageImpl) GetSchema(ctx context.Context, vchannel string, timetick uint64) (*schemapb.CollectionSchema, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
