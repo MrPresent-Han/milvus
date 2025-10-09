@@ -156,7 +156,7 @@ func (w *walAdaptorImpl) Append(ctx context.Context, msg message.MutableMessage)
 	ctx = utility.WithExtraAppendResult(ctx, &extraAppendResult)
 	if msg.MessageType() != message.MessageTypeTimeTick {
 		log.Info("hc====walAdaptorImpl append async start interceptor here", zap.Any("msg", msg))
-	}
+	} //hc---interceptor do append here
 	messageID, err := w.interceptorBuildResult.Interceptor.DoAppend(ctx, msg,
 		func(ctx context.Context, msg message.MutableMessage) (message.MessageID, error) {
 			if notPersistHint := utility.GetNotPersisted(ctx); notPersistHint != nil {

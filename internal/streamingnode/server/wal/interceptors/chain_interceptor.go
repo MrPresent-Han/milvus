@@ -11,7 +11,8 @@ var _ InterceptorWithReady = (*chainedInterceptor)(nil)
 
 type (
 	// AppendInterceptorCall is the common function to execute the append interceptor.
-	AppendInterceptorCall = func(ctx context.Context, msg message.MutableMessage, append Append) (message.MessageID, error)
+	AppendInterceptorCall     = func(ctx context.Context, msg message.MutableMessage, append Append) (message.MessageID, error)
+	PostAppendInterceptorCall = func(ctx context.Context, msg message.MutableMessage) error
 )
 
 // NewChainedInterceptor creates a new chained interceptor.
@@ -63,6 +64,7 @@ func (c *chainedInterceptor) Close() {
 }
 
 // chainAppendInterceptors chains all unary client interceptors into one.
+// hc---chainAppendInterceptors here
 func chainAppendInterceptors(interceptors []Interceptor) AppendInterceptorCall {
 	if len(interceptors) == 0 {
 		// Do nothing if no interceptors.

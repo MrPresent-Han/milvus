@@ -26,6 +26,7 @@ var _ interceptors.InterceptorWithMetrics = (*shardInterceptor)(nil)
 type shardInterceptor struct {
 	shardManager shards.ShardManager
 	ops          map[message.MessageType]interceptors.AppendInterceptorCall
+	postOps      map[message.MessageType]interceptors.PostAppendInterceptorCall
 }
 
 // initOpTable initializes the operation table for the segment interceptor.
@@ -42,6 +43,9 @@ func (impl *shardInterceptor) initOpTable() {
 		message.MessageTypeCreateSegment:    impl.handleCreateSegment,
 		message.MessageTypeFlush:            impl.handleFlushSegment,
 	}
+	impl.postOps = map[message.MessageType]interceptors.PostAppendInterceptorCall{
+		message.MessageTypeSchemaChange: impl.postHandleSchemaChange,
+	}
 }
 
 // Name returns the name of the interceptor.
@@ -56,7 +60,22 @@ func (impl *shardInterceptor) DoAppend(ctx context.Context, msg message.MutableM
 		// If the message type is registered in the interceptor, use the registered operation.
 		return op(ctx, msg, appendOp)
 	}
-	return appendOp(ctx, msg)
+	msgID, err = appendOp(ctx, msg)
+	if err == nil {
+		postOp, ok := impl.postOps[msg.MessageType()]
+		if ok {
+			err = postOp(ctx, msg)
+			if err != nil {
+				return msgID, err
+			}
+		}
+	}
+	return msgID, err
+}
+
+func (impl *shardInterceptor) postHandleSchemaChange(ctx context.Context, msg message.MutableMessage) error {
+	log.Info("hc---postHandleSchemaChange here")
+	return nil
 }
 
 // handleCreateCollection handles the create collection message.
