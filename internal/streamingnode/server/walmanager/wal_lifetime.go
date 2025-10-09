@@ -24,7 +24,7 @@ func newWALLifetime(opener wal.Opener, channel string, logger *log.MLogger) *wal
 		statePair: newWALStatePair(),
 		logger:    logger.With(zap.String("channel", channel)),
 	}
-	go l.backgroundTask() //hc---observe message here
+	go l.backgroundTask() //hc---start observing message here
 	return l
 }
 
@@ -156,9 +156,9 @@ func (w *walLifetime) doLifetimeChanged(expectedState expectedWALState) {
 
 	// If expected state is available, open a new wal.
 	// TODO: merge the expectedState and expected state context together.
-	l, err := w.opener.Open(expectedState.Context(), &wal.OpenOption{
+	newWal, err := w.opener.Open(expectedState.Context(), &wal.OpenOption{
 		Channel: expectedState.GetPChannelInfo(),
-	})
+	}) //hc---open new wal here
 	if err != nil {
 		logger.Warn("open new wal fail", zap.Error(err))
 		// Open new wal at expected term failed, push expected term to current state unavailable.
@@ -168,5 +168,5 @@ func (w *walLifetime) doLifetimeChanged(expectedState expectedWALState) {
 	}
 	logger.Info("open new wal done")
 	// -> (expectedTerm,true)
-	w.statePair.SetCurrentState(newAvailableCurrentState(l))
+	w.statePair.SetCurrentState(newAvailableCurrentState(newWal))
 }

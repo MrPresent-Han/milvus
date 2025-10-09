@@ -55,7 +55,7 @@ func (o *openerAdaptorImpl) Open(ctx context.Context, opt *wal.OpenOption) (wal.
 
 	logger := o.Logger().With(zap.String("channel", opt.Channel.String()))
 
-	l, err := o.opener.Open(ctx, &walimpls.OpenOption{
+	walImpl, err := o.opener.Open(ctx, &walimpls.OpenOption{
 		Channel: opt.Channel,
 	})
 	if err != nil {
@@ -66,9 +66,9 @@ func (o *openerAdaptorImpl) Open(ctx context.Context, opt *wal.OpenOption) (wal.
 	var wal wal.WAL
 	switch opt.Channel.AccessMode {
 	case types.AccessModeRW:
-		wal, err = o.openRWWAL(ctx, l, opt)
+		wal, err = o.openRWWAL(ctx, walImpl, opt)
 	case types.AccessModeRO:
-		wal, err = o.openROWAL(l)
+		wal, err = o.openROWAL(walImpl)
 	default:
 		panic("unknown access mode")
 	}
