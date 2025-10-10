@@ -162,6 +162,11 @@ func (impl *shardInterceptor) handleInsertMessage(ctx context.Context, msg messa
 	// Assign segment for insert message.
 	// !!! Current implementation a insert message only has one parition, but we need to merge the message for partition-key in future.
 	header := insertMsg.Header()
+	schemaVersion := header.GetSchemaVerison()
+	if err := impl.shardManager.CheckIfCollectionSchemaVersionMatch(header.GetCollectionId(), schemaVersion); err != nil {
+		log.Warn("hc===handleInsertMessage check schema version match failed", zap.Any("msg", msg), zap.Error(err))
+		return nil, status.NewUnrecoverableError(err.Error())
+	}
 	for _, partition := range header.GetPartitions() {
 		if partition.BinarySize == 0 {
 			// binary size should be set at proxy with estimate, but we don't implement it right now.
