@@ -7,6 +7,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
 
+	"github.com/cockroachdb/errors"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/distributed/streaming"
@@ -74,6 +75,10 @@ func (it *insertTask) Execute(ctx context.Context) error {
 	if err := resp.UnwrapFirstError(); err != nil {
 		log.Warn("append messages to wal failed", zap.Error(err))
 		it.result.Status = merr.Status(err)
+		if errors.Is(err, merr.ErrCollectionSchemaMismatch) {
+			log.Warn("hc====collection schema mismatch", zap.Error(err))
+			return err
+		}
 	}
 	// Update result.Timestamp for session consistency.
 	it.result.Timestamp = resp.MaxTimeTick()

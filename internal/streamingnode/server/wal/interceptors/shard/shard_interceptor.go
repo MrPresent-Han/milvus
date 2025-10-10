@@ -16,6 +16,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/messagespb"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 )
 
 const interceptorName = "shard"
@@ -165,7 +166,7 @@ func (impl *shardInterceptor) handleInsertMessage(ctx context.Context, msg messa
 	schemaVersion := header.GetSchemaVerison()
 	if err := impl.shardManager.CheckIfCollectionSchemaVersionMatch(header.GetCollectionId(), schemaVersion); err != nil {
 		log.Warn("hc===handleInsertMessage check schema version match failed", zap.Any("msg", msg), zap.Error(err))
-		return nil, status.NewUnrecoverableError(err.Error())
+		return nil, merr.WrapErrCollectionSchemaMisMatch(header.GetCollectionId())
 	}
 	for _, partition := range header.GetPartitions() {
 		if partition.BinarySize == 0 {

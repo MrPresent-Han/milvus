@@ -154,11 +154,11 @@ func (m *shardManagerImpl) checkIfCollectionSchemaVersionMatch(collectionID int6
 	}
 	if len(m.collections[collectionID].Schemas) == 0 {
 		log.Warn("collection schema not found", zap.Int64("collectionID", collectionID))
-		return ErrCollectionNotFound
+		return ErrCollectionSchemaNotFound
 	}
 	if m.collections[collectionID].Schemas[len(m.collections[collectionID].Schemas)-1].GetCheckpointTimeTick() != schemaVersion {
 		log.Warn("collection schema version not match", zap.Int64("collectionID", collectionID), zap.Uint64("schemaVersion", schemaVersion))
-		return ErrCollectionNotFound
+		return ErrCollectionSchemaVersionNotMatch
 	}
 	log.Info("collection schema version match", zap.Int64("collectionID", collectionID), zap.Uint64("schemaVersion", schemaVersion))
 	return nil
