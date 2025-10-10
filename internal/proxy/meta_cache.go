@@ -491,7 +491,7 @@ func (m *MetaCache) update(ctx context.Context, database, collectionName string,
 			createdUtcTimestamp:   collection.CreatedUtcTimestamp,
 			consistencyLevel:      collection.ConsistencyLevel,
 			partitionKeyIsolation: isolation,
-			updateTimestamp:       collection.UpdateTimestamp,
+			updateTimestamp:       collection.UpdateTimestamp, //hc---schema version is from updateTimestamp
 			collectionTTL:         getCollectionTTL(schemaInfo.CollectionSchema.GetProperties()),
 			vChannels:             collection.VirtualChannelNames,
 			pChannels:             collection.PhysicalChannelNames,
@@ -530,6 +530,7 @@ func (m *MetaCache) update(ctx context.Context, database, collectionName string,
 		zap.String("actual collection Name", collection.Schema.GetName()), zap.Int64("collectionID", collection.CollectionID),
 		zap.Strings("partition", partitions.PartitionNames), zap.Uint64("currentVersion", curVersion),
 		zap.Uint64("version", collection.GetRequestTime()), zap.Any("aliases", collection.Aliases),
+		zap.Uint64("hc====schemaVersion", collection.UpdateTimestamp),
 	)
 
 	m.collectionCacheVersion[collection.GetCollectionID()] = collection.GetRequestTime()

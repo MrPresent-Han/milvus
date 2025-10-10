@@ -543,9 +543,9 @@ func (s *WriteSchemaChangeWALStep) Execute(ctx context.Context) ([]nestedStep, e
 	log.Ctx(ctx).Info(
 		"hc===broadcast schema change success",
 		zap.Uint64("broadcastID", resp.BroadcastID),
-		zap.Uint64("WALUpdateTimestamp", s.collection.UpdateTimestamp),
+		zap.Uint64("hc===WALUpdateTimestamp", s.collection.UpdateTimestamp),
 		zap.Any("appendResults", resp.AppendResults),
-		zap.Uint64("schemaVersion", resp.GetAppendResult(vchannels[0]).TimeTick),
+		zap.Uint64("hc===schemaVersion", resp.GetAppendResult(vchannels[0]).TimeTick),
 	)
 	return nil, nil
 }

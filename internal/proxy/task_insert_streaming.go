@@ -59,9 +59,9 @@ func (it *insertTask) Execute(ctx context.Context) error {
 	// start to repack insert data
 	var msgs []message.MutableMessage
 	if it.partitionKeys == nil {
-		msgs, err = repackInsertDataForStreamingService(it.TraceCtx(), channelNames, it.insertMsg, it.result, ez)
+		msgs, err = repackInsertDataForStreamingService(it.TraceCtx(), channelNames, it.insertMsg, it.result, ez, it.schemaTimestamp)
 	} else {
-		msgs, err = repackInsertDataWithPartitionKeyForStreamingService(it.TraceCtx(), channelNames, it.insertMsg, it.result, it.partitionKeys, ez)
+		msgs, err = repackInsertDataWithPartitionKeyForStreamingService(it.TraceCtx(), channelNames, it.insertMsg, it.result, it.partitionKeys, ez, it.schemaTimestamp)
 	}
 	if err != nil {
 		log.Warn("assign segmentID and repack insert data failed", zap.Error(err))
@@ -86,6 +86,7 @@ func repackInsertDataForStreamingService(
 	insertMsg *msgstream.InsertMsg,
 	result *milvuspb.MutationResult,
 	ez *message.CipherConfig,
+	schemaVersion uint64,
 ) ([]message.MutableMessage, error) {
 	messages := make([]message.MutableMessage, 0)
 
@@ -114,6 +115,7 @@ func repackInsertDataForStreamingService(
 							BinarySize:  0, // TODO: current not used, message estimate size is used.
 						},
 					},
+					SchemaVerison: schemaVersion,
 				}).
 				WithBody(insertRequest).
 				WithCipher(ez).
@@ -134,6 +136,7 @@ func repackInsertDataWithPartitionKeyForStreamingService(
 	result *milvuspb.MutationResult,
 	partitionKeys *schemapb.FieldData,
 	ez *message.CipherConfig,
+	schemaVersion uint64,
 ) ([]message.MutableMessage, error) {
 	messages := make([]message.MutableMessage, 0)
 
@@ -195,7 +198,7 @@ func repackInsertDataWithPartitionKeyForStreamingService(
 								BinarySize:  0, // TODO: current not used, message estimate size is used.
 							},
 						},
-						SchemaVerison: insertMsg.GetSchemaVersion(),
+						SchemaVerison: schemaVersion,
 					}).
 					WithBody(insertRequest).
 					WithCipher(ez).
@@ -207,5 +210,6 @@ func repackInsertDataWithPartitionKeyForStreamingService(
 			}
 		}
 	}
+	log.Info("hc==== repackInsertDataWithPartitionKeyForStreamingService", zap.Uint64("messages.schemaVersion", schemaVersion))
 	return messages, nil
 }

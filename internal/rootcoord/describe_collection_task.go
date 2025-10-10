@@ -21,7 +21,9 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
+	"go.uber.org/zap"
 )
 
 // describeCollectionTask describe collection request task
@@ -67,6 +69,7 @@ func (t *describeCollectionTask) Execute(ctx context.Context) (err error) {
 	}
 	t.Rsp = convertModelToDesc(coll, aliases, db.Name)
 	t.Rsp.RequestTime = t.ts
+	log.Info("hc===describeCollectionTask", zap.Uint64("hc===UpdateTimestamp", t.Rsp.UpdateTimestamp))
 	return nil
 }
 
