@@ -660,6 +660,11 @@ func (t *addCollectionFunctionFieldTask) PreExecute(ctx context.Context) error {
 }
 
 func (t *addCollectionFunctionFieldTask) Execute(ctx context.Context) error {
+	//hc----set isFunctionOutput to true for all fields
+	for _, fieldInfo := range t.AddCollectionFunctionFieldRequest.FieldInfos {
+		fieldInfo.FieldSchema.IsFunctionOutput = true
+	}
+
 	var err error
 	t.AddCollectionFunctionFieldResponse, err = t.mixCoord.AddCollectionFunctionField(ctx, t.AddCollectionFunctionFieldRequest)
 	return merr.CheckRPCCall(t.AddCollectionFunctionFieldResponse.GetStatus(), err)

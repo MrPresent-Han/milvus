@@ -165,7 +165,9 @@ func newCollectionInfos(recoverInfos *recovery.RecoverySnapshot) map[int64]*Coll
 		collectionInfoMap[vchannelInfo.CollectionInfo.CollectionId] = &CollectionInfo{
 			VChannel:     vchannelInfo.Vchannel,
 			PartitionIDs: currentPartition,
-		}
+			Schemas:      vchannelInfo.CollectionInfo.Schemas,
+		} //hc----this should be updated to use the new schema version
+		log.Info("hc====schemas of the vchannel", zap.Int("schemas.length", len(vchannelInfo.CollectionInfo.Schemas)))
 	}
 	return collectionInfoMap
 }
