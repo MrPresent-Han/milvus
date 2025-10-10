@@ -8,6 +8,7 @@ import (
 )
 
 // newVersionedSchemaManager creates a new versioned schema manager.
+// hc---newVersionedSchemaManager here
 func newVersionedSchemaManager(vchannel string, rs recovery.RecoveryStorage) *versionedSchemaManager {
 	return &versionedSchemaManager{
 		vchannel: vchannel,

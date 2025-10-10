@@ -146,6 +146,7 @@ func (eNode *embeddingNode) Embedding(datas []*writebuffer.InsertData) error {
 			return err
 		}
 		data.SetBM25Stats(stats)
+		log.Info("hc====embedding data")
 	}
 	return nil
 }
@@ -182,7 +183,7 @@ func (eNode *embeddingNode) Operate(in []Msg) []Msg {
 		panic(err)
 	}
 	if !hasFunctions {
-		//log.RatedInfo(10, "hc====skip embedding for no function", zap.Any("currentSchema", currentSchema))
+		log.RatedInfo(20, "hc====skip embedding for no function", zap.Any("currentSchema", currentSchema))
 		return []Msg{fgMsg}
 	}
 	insertData := make([]*writebuffer.InsertData, 0)

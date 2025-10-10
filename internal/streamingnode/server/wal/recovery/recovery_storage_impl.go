@@ -131,6 +131,7 @@ func (r *recoveryStorageImpl) GetSchema(ctx context.Context, vchannel string, ti
 
 	if vchannelInfo, ok := r.vchannels[vchannel]; ok {
 		_, schema := vchannelInfo.GetSchema(timetick)
+		log.RatedInfo(20, "hc====GetSchema from schema manager", zap.Any("schema", schema))
 		if schema == nil {
 			return nil, errors.Errorf("critical error: schema not found, vchannel: %s, timetick: %d", vchannel, timetick)
 		}
