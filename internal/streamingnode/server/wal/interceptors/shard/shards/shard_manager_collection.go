@@ -5,6 +5,7 @@ import (
 
 	"github.com/milvus-io/milvus/internal/streamingnode/server/wal/interceptors/shard/policy"
 	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/pkg/v2/proto/streamingpb"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 )
 
@@ -118,4 +119,47 @@ func (m *shardManagerImpl) DropCollection(msg message.ImmutableDropCollectionMes
 	}
 	logger.Info("collection removed", zap.Int64s("partitionIDs", partitionIDs), zap.Int64s("segmentIDs", segmentIDs))
 	m.updateMetrics()
+}
+
+func (m *shardManagerImpl) AppendNewCollectionSchema(msg message.ImmutableSchemaChangeMessageV2) {
+	log.Info("hc====AppendNewSchemaChange", zap.Any("msg", msg))
+	header := msg.Header()
+	collectionID := header.CollectionId
+	schema := msg.MustBody().Schema
+	timetick := msg.TimeTick()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	nweCollectionSchema := &streamingpb.CollectionSchemaOfVChannel{
+		Schema:             schema,
+		CheckpointTimeTick: timetick,
+		State:              streamingpb.VChannelSchemaState_VCHANNEL_SCHEMA_STATE_NORMAL,
+	}
+	m.collections[collectionID].Schemas = append(m.collections[collectionID].Schemas, nweCollectionSchema)
+	log.Info("hc====AppendedNewCollectionSchema", zap.Any("msg", msg))
+}
+
+func (m *shardManagerImpl) CheckIfCollectionSchemaVersionMatch(collectionID int64, schemaVersion uint64) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	return m.checkIfCollectionSchemaVersionMatch(collectionID, schemaVersion)
+}
+
+func (m *shardManagerImpl) checkIfCollectionSchemaVersionMatch(collectionID int64, schemaVersion uint64) error {
+	if _, ok := m.collections[collectionID]; !ok {
+		log.Warn("collection not found", zap.Int64("collectionID", collectionID))
+		return ErrCollectionNotFound
+	}
+	if len(m.collections[collectionID].Schemas) == 0 {
+		log.Warn("collection schema not found", zap.Int64("collectionID", collectionID))
+		return ErrCollectionNotFound
+	}
+	if m.collections[collectionID].Schemas[len(m.collections[collectionID].Schemas)-1].GetCheckpointTimeTick() != schemaVersion {
+		log.Warn("collection schema version not match", zap.Int64("collectionID", collectionID), zap.Uint64("schemaVersion", schemaVersion))
+		return ErrCollectionNotFound
+	}
+	log.Info("collection schema version match", zap.Int64("collectionID", collectionID), zap.Uint64("schemaVersion", schemaVersion))
+	return nil
 }

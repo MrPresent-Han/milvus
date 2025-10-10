@@ -25,6 +25,7 @@ var errWALManagerClosed = status.NewOnShutdownError("wal manager is closed")
 func OpenManager() (Manager, error) {
 	walName := util.MustSelectWALName()
 	resource.Resource().Logger().Info("open wal manager", zap.Stringer("walName", walName))
+	//hc--- setup interceptors here
 	opener, err := registry.MustGetBuilder(walName,
 		redo.NewInterceptorBuilder(),
 		lock.NewInterceptorBuilder(),

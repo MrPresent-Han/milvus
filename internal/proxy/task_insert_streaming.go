@@ -195,6 +195,7 @@ func repackInsertDataWithPartitionKeyForStreamingService(
 								BinarySize:  0, // TODO: current not used, message estimate size is used.
 							},
 						},
+						SchemaVerison: insertMsg.GetSchemaVersion(),
 					}).
 					WithBody(insertRequest).
 					WithCipher(ez).

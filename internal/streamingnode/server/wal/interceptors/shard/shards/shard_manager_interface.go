@@ -46,5 +46,9 @@ type ShardManager interface {
 
 	AsyncFlushSegment(signal utils.SealSegmentSignal)
 
+	AppendNewCollectionSchema(msg message.ImmutableSchemaChangeMessageV2)
+
+	CheckIfCollectionSchemaVersionMatch(collectionID int64, schemaVersion uint64) error
+
 	Close()
 }

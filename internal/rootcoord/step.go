@@ -545,6 +545,7 @@ func (s *WriteSchemaChangeWALStep) Execute(ctx context.Context) ([]nestedStep, e
 		zap.Uint64("broadcastID", resp.BroadcastID),
 		zap.Uint64("WALUpdateTimestamp", s.collection.UpdateTimestamp),
 		zap.Any("appendResults", resp.AppendResults),
+		zap.Uint64("schemaVersion", resp.GetAppendResult(vchannels[0]).TimeTick),
 	)
 	return nil, nil
 }

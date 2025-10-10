@@ -12,7 +12,7 @@ var _ InterceptorWithReady = (*chainedInterceptor)(nil)
 type (
 	// AppendInterceptorCall is the common function to execute the append interceptor.
 	AppendInterceptorCall     = func(ctx context.Context, msg message.MutableMessage, append Append) (message.MessageID, error)
-	PostAppendInterceptorCall = func(ctx context.Context, msg message.MutableMessage) error
+	PostAppendInterceptorCall = func(ctx context.Context, msg message.MutableMessage, msgID message.MessageID) error
 )
 
 // NewChainedInterceptor creates a new chained interceptor.

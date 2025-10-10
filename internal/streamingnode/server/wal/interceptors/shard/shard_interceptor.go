@@ -64,7 +64,7 @@ func (impl *shardInterceptor) DoAppend(ctx context.Context, msg message.MutableM
 	if err == nil {
 		postOp, ok := impl.postOps[msg.MessageType()]
 		if ok {
-			err = postOp(ctx, msg)
+			err = postOp(ctx, msg, msgID)
 			if err != nil {
 				return msgID, err
 			}
@@ -73,8 +73,10 @@ func (impl *shardInterceptor) DoAppend(ctx context.Context, msg message.MutableM
 	return msgID, err
 }
 
-func (impl *shardInterceptor) postHandleSchemaChange(ctx context.Context, msg message.MutableMessage) error {
+func (impl *shardInterceptor) postHandleSchemaChange(ctx context.Context, msg message.MutableMessage, msgID message.MessageID) error {
 	log.Info("hc---postHandleSchemaChange here")
+	impl.shardManager.AppendNewCollectionSchema(message.MustAsImmutableSchemaChangeMessageV2(msg.IntoImmutableMessage(msgID)))
+	log.Info("hc---append new collection schema", zap.Any("msgID", msgID))
 	return nil
 }
 
