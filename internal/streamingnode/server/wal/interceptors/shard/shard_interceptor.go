@@ -55,28 +55,30 @@ func (impl *shardInterceptor) Name() string {
 
 // DoAppend assigns segment for every partition in the message.
 func (impl *shardInterceptor) DoAppend(ctx context.Context, msg message.MutableMessage, appendOp interceptors.Append) (msgID message.MessageID, err error) {
-	op, ok := impl.ops[msg.MessageType()]
-	if ok {
+	if op, ok := impl.ops[msg.MessageType()]; ok {
 		// If the message type is registered in the interceptor, use the registered operation.
-		return op(ctx, msg, appendOp)
+		msgID, err = op(ctx, msg, appendOp)
+	} else {
+		msgID, err = appendOp(ctx, msg)
 	}
-	msgID, err = appendOp(ctx, msg)
-	if err == nil {
-		postOp, ok := impl.postOps[msg.MessageType()]
-		if ok {
-			err = postOp(ctx, msg, msgID)
-			if err != nil {
-				return msgID, err
-			}
+	if err != nil {
+		return msgID, err
+	}
+	postOp, ok := impl.postOps[msg.MessageType()]
+	if ok {
+		log.Info("hc===postHandleAppend", zap.Any("msg", msg))
+		err = postOp(ctx, msg, msgID)
+		if err != nil {
+			return msgID, err
 		}
 	}
 	return msgID, err
 }
 
 func (impl *shardInterceptor) postHandleSchemaChange(ctx context.Context, msg message.MutableMessage, msgID message.MessageID) error {
-	log.Info("hc---postHandleSchemaChange here")
+	log.Info("hc===postHandleSchemaChange here")
 	impl.shardManager.AppendNewCollectionSchema(message.MustAsImmutableSchemaChangeMessageV2(msg.IntoImmutableMessage(msgID)))
-	log.Info("hc---append new collection schema", zap.Any("msgID", msgID))
+	log.Info("hc===append new collection schema", zap.Any("msgID", msgID))
 	return nil
 }
 
@@ -258,7 +260,7 @@ func (impl *shardInterceptor) handleSchemaChange(ctx context.Context, msg messag
 	// Modify the header of schema change message, carry with the all flushed segment ids.
 	header.FlushedSegmentIds = segmentIDs
 	schemaChangeMsg.OverwriteHeader(header)
-
+	log.Info("hc===handleSchemaChange", zap.Any("msg", msg))
 	return appendOp(ctx, msg)
 }
 
