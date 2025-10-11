@@ -85,7 +85,7 @@ var _ CompactionMeta = (*meta)(nil)
 type meta struct {
 	ctx     context.Context
 	catalog metastore.DataCoordCatalog
-
+	//hc----meta collections here
 	collections *typeutil.ConcurrentMap[UniqueID, *collectionInfo] // collection id to collection info
 
 	segMu    lock.RWMutex

@@ -295,10 +295,12 @@ func (bw *BulkPackWriter) writeBM25Stasts(ctx context.Context, pack *SyncPack) (
 						logs[fieldID] = fieldBinlog
 					}
 					fieldBinlog.Binlogs = append(fieldBinlog.Binlogs, binlog)
+					log.Info("hc===sn===fieldBinlog", zap.Any("fieldBinlog", fieldBinlog), zap.Any("key", k))
 				}
 			}
 		}
 	}
+	log.Info("hc===sn===logs", zap.Any("logs", logs))
 	return logs, nil
 }
 

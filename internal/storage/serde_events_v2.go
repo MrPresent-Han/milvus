@@ -25,6 +25,7 @@ import (
 	"github.com/apache/arrow/go/v17/arrow/array"
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/allocator"
@@ -519,6 +520,11 @@ func (pw *PackedBinlogRecordWriter) writeBm25Stats() error {
 		pw.bm25StatsLog = make(map[FieldID]*datapb.FieldBinlog)
 	}
 	for fid, stats := range pw.bm25Stats {
+		log.Info("hc====write bm25 stats", zap.Int64("fieldID", fid), zap.Int64("numRow", stats.NumRow()), zap.Int64("segmentID", pw.segmentID))
+		if stats.NumToken() == 0 {
+			log.Warn("hc====skip write bm25 stats for empty stats", zap.Int64("fieldID", fid))
+			continue
+		}
 		bytes, err := stats.Serialize()
 		if err != nil {
 			return err
@@ -531,6 +537,11 @@ func (pw *PackedBinlogRecordWriter) writeBm25Stats() error {
 			RowNum:     stats.NumRow(),
 			MemorySize: int64(len(bytes)),
 		}
+		log.Info("hc====write bm25 stats",
+			zap.String("key", key),
+			zap.Int64("segmentID", pw.segmentID),
+			zap.Int64("numRow", stats.NumRow()),
+			zap.Int64("MemorySize", int64(len(bytes))))
 		if err := pw.BlobsWriter([]*Blob{blob}); err != nil {
 			return err
 		}

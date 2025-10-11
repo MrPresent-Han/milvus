@@ -55,9 +55,11 @@ func (b *brokerMetaWriter) UpdateSync(ctx context.Context, pack *SyncTask) error
 	}
 
 	deltaBm25StatsBinlogs := segment.Bm25logs()
+	log.Info("hc===sn===deltaBm25StatsBinlogs111", zap.Any("deltaBm25StatsBinlogs", deltaBm25StatsBinlogs))
 	if len(pack.bm25Binlogs) > 0 {
 		deltaBm25StatsBinlogs = append(segment.Bm25logs(), lo.MapToSlice(pack.bm25Binlogs, func(_ int64, fieldBinlog *datapb.FieldBinlog) *datapb.FieldBinlog { return fieldBinlog })...)
 	}
+	log.Info("hc===sn===deltaBm25StatsBinlogs222", zap.Any("deltaBm25StatsBinlogs", deltaBm25StatsBinlogs))
 
 	checkPoints = append(checkPoints, &datapb.CheckPoint{
 		SegmentID: pack.segmentID,
@@ -82,7 +84,7 @@ func (b *brokerMetaWriter) UpdateSync(ctx context.Context, pack *SyncTask) error
 	}
 
 	getBinlogNum := func(fBinlog *datapb.FieldBinlog) int { return len(fBinlog.GetBinlogs()) }
-	log.Info("SaveBinlogPath",
+	log.Info("hc===sn===SaveBinlogPath",
 		zap.Int64("SegmentID", pack.segmentID),
 		zap.Int64("CollectionID", pack.collectionID),
 		zap.Int64("ParitionID", pack.partitionID),

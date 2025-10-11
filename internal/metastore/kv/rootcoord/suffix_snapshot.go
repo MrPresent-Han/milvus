@@ -58,6 +58,7 @@ func ConstructTombstone() []byte {
 // SuffixSnapshot implements SnapshotKV
 // this is a simple replacement for MetaSnapshot, which is not available due to etcd compaction
 // SuffixSnapshot record timestamp as prefix of a key under the Snapshot prefix path
+// hc----KVSnapshot here
 type SuffixSnapshot struct {
 	// internal kv which SuffixSnapshot based on
 	kv.MetaKv
