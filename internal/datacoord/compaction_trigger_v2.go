@@ -43,6 +43,7 @@ const (
 	TriggerTypeClustering
 	TriggerTypeSingle
 	TriggerTypeSort
+	TriggerTypeBackfill
 )
 
 type TickerType int8
@@ -70,6 +71,8 @@ func (t CompactionTriggerType) String() string {
 		return "Single"
 	case TriggerTypeSort:
 		return "Sort"
+	case TriggerTypeBackfill:
+		return "Backfill"
 	default:
 		return ""
 	}
@@ -150,7 +153,7 @@ func NewCompactionTriggerManager(alloc allocator.Allocator, handler Handler, ins
 	m.l0Policy = newL0CompactionPolicy(meta, alloc)
 	m.clusteringPolicy = newClusteringCompactionPolicy(meta, m.allocator, m.handler)
 	m.singlePolicy = newSingleCompactionPolicy(meta, m.allocator, m.handler)
-	backfillPolicy := newBackfillCompactionPolicy(meta, m.handler)
+	backfillPolicy := newBackfillCompactionPolicy(meta, m.allocator, m.handler)
 
 	// Initialize policies map for ticker handling
 	m.policies[L0Ticker] = m.l0Policy
@@ -363,7 +366,7 @@ func (m *CompactionTriggerManager) notify(ctx context.Context, eventType Compact
 		outViews, reason := m.triggerViewForCompaction(ctx, eventType, view)
 		for _, outView := range outViews {
 			if outView != nil {
-				log.Info("Success to trigger a compaction, try to submit",
+				log.Info("hc===Success to trigger a compaction, try to submit",
 					zap.String("eventType", eventType.String()),
 					zap.String("reason", reason),
 					zap.String("output view", outView.String()),
@@ -378,6 +381,8 @@ func (m *CompactionTriggerManager) notify(ctx context.Context, eventType Compact
 					m.SubmitSingleViewToScheduler(ctx, outView, datapb.CompactionType_MixCompaction)
 				case TriggerTypeSort:
 					m.SubmitSingleViewToScheduler(ctx, outView, datapb.CompactionType_SortCompaction)
+				case TriggerTypeBackfill:
+					m.SubmitBackfillViewToScheduler(ctx, outView)
 				}
 			}
 		}
@@ -643,6 +648,56 @@ func (m *CompactionTriggerManager) SubmitSingleViewToScheduler(ctx context.Conte
 		zap.Int64("planID", task.GetPlanID()),
 		zap.String("type", task.GetType().String()),
 	)
+}
+
+func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Context, view CompactionView) {
+	log := log.Ctx(ctx).With(zap.String("view", view.String()))
+	planID, _, err := m.allocator.AllocN(1)
+	if err != nil {
+		log.Warn("Failed to submit compaction view to scheduler because allocate id fail", zap.Error(err))
+		return
+	}
+	collection, err := m.handler.GetCollection(ctx, view.GetGroupLabel().CollectionID)
+	if err != nil {
+		log.Warn("Failed to submit compaction view to scheduler because get collection fail", zap.Error(err))
+		return
+	}
+	var totalRows int64 = 0
+	for _, s := range view.GetSegmentsView() {
+		totalRows += s.NumOfRows
+	}
+	expectedSize := getExpectedSegmentSize(m.meta, collection.ID, collection.Schema)
+	task := &datapb.CompactionTask{
+		PlanID:             planID,
+		TriggerID:          view.(*BackfillSegmentsView).triggerID,
+		State:              datapb.CompactionTaskState_pipelining,
+		StartTime:          time.Now().Unix(),
+		CollectionTtl:      view.(*BackfillSegmentsView).collectionTTL.Nanoseconds(),
+		Type:               datapb.CompactionType_BackfillCompaction,
+		CollectionID:       view.GetGroupLabel().CollectionID,
+		PartitionID:        view.GetGroupLabel().PartitionID,
+		Channel:            view.GetGroupLabel().Channel,
+		Schema:             collection.Schema,
+		InputSegments:      lo.Map(view.GetSegmentsView(), func(segmentView *SegmentView, _ int) int64 { return segmentView.ID }),
+		ResultSegments:     []int64{},
+		TotalRows:          totalRows,
+		LastStateStartTime: time.Now().Unix(),
+		MaxSize:            expectedSize,
+	}
+	err = m.inspector.enqueueCompaction(task)
+	if err != nil {
+		log.Warn("Failed to execute compaction task",
+			zap.Int64("triggerID", task.GetTriggerID()),
+			zap.Int64("planID", task.GetPlanID()),
+			zap.Int64s("segmentIDs", task.GetInputSegments()),
+			zap.Error(err))
+	}
+	log.Info("hc===Finish to submit a backfill compaction task",
+		zap.Int64("triggerID", task.GetTriggerID()),
+		zap.Int64("planID", task.GetPlanID()),
+		zap.String("type", task.GetType().String()),
+	)
+	return
 }
 
 func getExpectedSegmentSize(meta *meta, collectionID int64, schema *schemapb.CollectionSchema) int64 {

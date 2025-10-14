@@ -630,6 +630,7 @@ enum CompactionType {
   Level0DeleteCompaction = 7;
   ClusteringCompaction = 8;
   SortCompaction = 9;
+  BackfillCompaction = 10;
 }
 
 message CompactionStateRequest {
