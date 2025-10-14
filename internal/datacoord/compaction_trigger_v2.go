@@ -45,6 +45,15 @@ const (
 	TriggerTypeSort
 )
 
+type TickerType int8
+
+const (
+	L0Ticker TickerType = iota + 1
+	ClusteringTicker
+	SingleTicker
+	BackfillTicker
+)
+
 func (t CompactionTriggerType) String() string {
 	switch t {
 	case TriggerTypeLevelZeroViewChange:
@@ -64,6 +73,16 @@ func (t CompactionTriggerType) String() string {
 	default:
 		return ""
 	}
+}
+
+// CompactionPolicy defines the interface for different compaction policies
+type CompactionPolicy interface {
+	// Enable returns whether this compaction policy is enabled
+	Enable() bool
+	// Trigger triggers compaction for all collections and returns compaction views grouped by trigger type
+	Trigger(ctx context.Context) (map[CompactionTriggerType][]CompactionView, error)
+	// Name returns the name of this compaction policy
+	Name() string
 }
 
 type TriggerManager interface {
@@ -92,8 +111,11 @@ type CompactionTriggerManager struct {
 	handler   Handler
 	allocator allocator.Allocator
 
-	meta             *meta
-	importMeta       ImportMeta
+	meta       *meta
+	importMeta ImportMeta
+	policies   map[TickerType]CompactionPolicy
+
+	// Keep separate pointers to avoid frequent type casting
 	l0Policy         *l0CompactionPolicy
 	clusteringPolicy *clusteringCompactionPolicy
 	singlePolicy     *singleCompactionPolicy
@@ -119,12 +141,23 @@ func NewCompactionTriggerManager(alloc allocator.Allocator, handler Handler, ins
 		importMeta:              importMeta,
 		pauseCompactionChanMap:  make(map[int64]chan struct{}),
 		resumeCompactionChanMap: make(map[int64]chan struct{}),
+		policies:                make(map[TickerType]CompactionPolicy),
 	}
 	m.l0SigLock = &sync.Mutex{}
 	m.l0TickSig = sync.NewCond(m.l0SigLock)
+
+	// Initialize policies and keep separate pointers for frequently accessed ones
 	m.l0Policy = newL0CompactionPolicy(meta, alloc)
 	m.clusteringPolicy = newClusteringCompactionPolicy(meta, m.allocator, m.handler)
 	m.singlePolicy = newSingleCompactionPolicy(meta, m.allocator, m.handler)
+	backfillPolicy := newBackfillCompactionPolicy(meta, m.handler)
+
+	// Initialize policies map for ticker handling
+	m.policies[L0Ticker] = m.l0Policy
+	m.policies[ClusteringTicker] = m.clusteringPolicy
+	m.policies[SingleTicker] = m.singlePolicy
+	m.policies[BackfillTicker] = backfillPolicy
+
 	return m
 }
 
@@ -219,6 +252,8 @@ func (m *CompactionTriggerManager) loop(ctx context.Context) {
 	defer clusteringTicker.Stop()
 	singleTicker := time.NewTicker(Params.DataCoordCfg.MixCompactionTriggerInterval.GetAsDuration(time.Second))
 	defer singleTicker.Stop()
+	backfillTicker := time.NewTicker(Params.DataCoordCfg.BackfillCompactionTriggerInterval.GetAsDuration(time.Second))
+	defer backfillTicker.Stop()
 	log.Info("Compaction trigger manager start")
 	for {
 		select {
@@ -226,62 +261,13 @@ func (m *CompactionTriggerManager) loop(ctx context.Context) {
 			log.Info("Compaction trigger manager checkLoop quit")
 			return
 		case <-l0Ticker.C:
-			if !m.l0Policy.Enable() {
-				continue
-			}
-			if m.inspector.isFull() {
-				log.RatedInfo(10, "Skip trigger l0 compaction since inspector is full")
-				continue
-			}
-			m.setL0Triggering(true)
-			events, err := m.l0Policy.Trigger(ctx)
-			if err != nil {
-				log.Warn("Fail to trigger L0 policy", zap.Error(err))
-				m.setL0Triggering(false)
-				continue
-			}
-			if len(events) > 0 {
-				for triggerType, views := range events {
-					m.notify(ctx, triggerType, views)
-				}
-			}
-			m.setL0Triggering(false)
+			m.handleTicker(ctx, L0Ticker)
 		case <-clusteringTicker.C:
-			if !m.clusteringPolicy.Enable() {
-				continue
-			}
-			if m.inspector.isFull() {
-				log.RatedInfo(10, "Skip trigger clustering compaction since inspector is full")
-				continue
-			}
-			events, err := m.clusteringPolicy.Trigger(ctx)
-			if err != nil {
-				log.Warn("Fail to trigger clustering policy", zap.Error(err))
-				continue
-			}
-			if len(events) > 0 {
-				for triggerType, views := range events {
-					m.notify(ctx, triggerType, views)
-				}
-			}
+			m.handleTicker(ctx, ClusteringTicker)
 		case <-singleTicker.C:
-			if !m.singlePolicy.Enable() {
-				continue
-			}
-			if m.inspector.isFull() {
-				log.RatedInfo(10, "Skip trigger single compaction since inspector is full")
-				continue
-			}
-			events, err := m.singlePolicy.Trigger(ctx)
-			if err != nil {
-				log.Warn("Fail to trigger single policy", zap.Error(err))
-				continue
-			}
-			if len(events) > 0 {
-				for triggerType, views := range events {
-					m.notify(ctx, triggerType, views)
-				}
-			}
+			m.handleTicker(ctx, SingleTicker)
+		case <-backfillTicker.C:
+			m.handleTicker(ctx, BackfillTicker)
 		case segID := <-getStatsTaskChSingleton():
 			log.Info("receive new segment to trigger sort compaction", zap.Int64("segmentID", segID))
 			view := m.singlePolicy.triggerSegmentSortCompaction(ctx, segID)
@@ -290,6 +276,41 @@ func (m *CompactionTriggerManager) loop(ctx context.Context) {
 				continue
 			}
 			m.notify(ctx, TriggerTypeSort, []CompactionView{view})
+		}
+	}
+}
+
+func (m *CompactionTriggerManager) handleTicker(ctx context.Context, tickerType TickerType) {
+	policy, exists := m.policies[tickerType]
+	if !exists {
+		log.Warn("Policy not found for ticker type", zap.Any("tickerType", tickerType))
+		return
+	}
+
+	if !policy.Enable() {
+		return
+	}
+
+	if m.inspector.isFull() {
+		log.RatedInfo(10, "Skip trigger compaction since inspector is full", zap.String("policy", policy.Name()))
+		return
+	}
+
+	// Special handling for L0 policy
+	if tickerType == L0Ticker {
+		m.setL0Triggering(true)
+		defer m.setL0Triggering(false)
+	}
+
+	events, err := policy.Trigger(ctx)
+	if err != nil {
+		log.Warn("Fail to trigger policy", zap.String("policy", policy.Name()), zap.Error(err))
+		return
+	}
+
+	if len(events) > 0 {
+		for triggerType, views := range events {
+			m.notify(ctx, triggerType, views)
 		}
 	}
 }

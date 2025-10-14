@@ -87,6 +87,7 @@ func (alloc *compactionAlloactor) allocSegmentID() (typeutil.UniqueID, error) {
 	return alloc.segmentAlloc.AllocOne()
 }
 
+// hc--- construct segment writer here
 func NewMultiSegmentWriter(ctx context.Context, binlogIO io.BinlogIO, allocator *compactionAlloactor, segmentSize int64,
 	schema *schemapb.CollectionSchema, params compaction.Params,
 	maxRows int64, partitionID, collectionID int64, channel string, batchSize int, rwOption ...storage.RwOption,
@@ -123,7 +124,7 @@ func (w *MultiSegmentWriter) closeWriter() error {
 		fieldBinlogs, statsLog, bm25Logs := w.writer.GetLogs()
 
 		result := &datapb.CompactionSegment{
-			SegmentID:           w.currentSegmentID,
+			SegmentID:           w.currentSegmentID, //hc--- use current segment id here
 			InsertLogs:          storage.SortFieldBinlogs(fieldBinlogs),
 			Field2StatslogPaths: []*datapb.FieldBinlog{statsLog},
 			NumOfRows:           w.writer.GetRowNum(),
@@ -149,7 +150,7 @@ func (w *MultiSegmentWriter) rotateWriter() error {
 	if err := w.closeWriter(); err != nil {
 		return err
 	}
-
+	//hc----new segment id is here
 	newSegmentID, err := w.allocator.allocSegmentID()
 	if err != nil {
 		return err

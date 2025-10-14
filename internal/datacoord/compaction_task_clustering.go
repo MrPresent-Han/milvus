@@ -144,7 +144,7 @@ func (t *clusteringCompactionTask) QueryTaskOnWorker(cluster session.Cluster) {
 	defer func() {
 		t.retryOnError(err)
 	}()
-
+	//hc----Query Compaction here
 	var result *datapb.CompactionPlanResult
 	result, err = cluster.QueryCompaction(t.GetTaskProto().GetNodeID(), &datapb.CompactionStateRequest{
 		PlanID: t.GetTaskProto().GetPlanID(),

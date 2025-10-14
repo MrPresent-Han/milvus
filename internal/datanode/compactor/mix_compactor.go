@@ -177,7 +177,7 @@ func (t *mixCompactionTask) mergeSplit(
 		log.Warn("compact wrong, failed to finish writer", zap.Error(err))
 		return nil, err
 	}
-	res := mWriter.GetCompactionSegments()
+	res := mWriter.GetCompactionSegments() //hc---compaction writer is here
 	if len(res) == 0 {
 		// append an empty segment
 		id, err := segIDAlloc.AllocOne()
@@ -361,7 +361,7 @@ func (t *mixCompactionTask) Compact() (*datapb.CompactionPlanResult, error) {
 			sortMergeAppicable = false
 		}
 	}
-
+	//hc----result segments is here
 	var res []*datapb.CompactionSegment
 	var err error
 	if sortMergeAppicable {

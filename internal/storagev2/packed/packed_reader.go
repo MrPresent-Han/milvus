@@ -36,6 +36,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 )
 
+// hc----new packed reader here
 func NewPackedReader(filePaths []string, schema *arrow.Schema, bufferSize int64, storageConfig *indexpb.StorageConfig, storagePluginContext *indexcgopb.StoragePluginContext) (*PackedReader, error) {
 	cFilePaths := make([]*C.char, len(filePaths))
 	for i, path := range filePaths {

@@ -168,7 +168,7 @@ func (e *executor) executeTask(task Compactor) {
 
 	log.Info("start to execute compaction")
 
-	result, err := task.Compact()
+	result, err := task.Compact() //hc---execute compaction task here
 	if err != nil {
 		log.Warn("compaction task failed", zap.Error(err))
 		return

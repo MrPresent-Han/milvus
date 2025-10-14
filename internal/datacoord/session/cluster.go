@@ -132,7 +132,7 @@ func (c *cluster) queryTask(nodeID int64, properties taskcommon.Properties) (*wo
 		log.Ctx(ctx).Warn("failed to get client", zap.Error(err))
 		return nil, err
 	}
-
+	//hc----Query Compaction Task here
 	resp, err := cli.QueryTask(ctx, &workerpb.QueryTaskRequest{
 		Properties: properties,
 	})
