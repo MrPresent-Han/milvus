@@ -185,6 +185,7 @@ message CreateSegmentMessageHeader {
     uint64 max_segment_size = 5; // the max size bytes of the segment.
     uint64 max_rows         = 6; // the max rows of the segment.
     data.SegmentLevel level = 7; // the level of the segment.
+    uint64 schema_verison   = 8;
 }
 
 message ManualFlushMessageHeader {

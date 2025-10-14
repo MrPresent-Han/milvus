@@ -257,6 +257,7 @@ func (b *ServerBroker) BroadcastAlteredCollection(ctx context.Context, req *milv
 			Fields:            model.MarshalFieldModels(colMeta.Fields),
 			StructArrayFields: model.MarshalStructArrayFieldModels(colMeta.StructArrayFields),
 			Functions:         model.MarshalFunctionModels(colMeta.Functions),
+			SchemaVersion:     colMeta.UpdateTimestamp,
 		},
 		PartitionIDs:   partitionIDs,
 		StartPositions: colMeta.StartPositions,
@@ -273,7 +274,9 @@ func (b *ServerBroker) BroadcastAlteredCollection(ctx context.Context, req *milv
 	if resp.ErrorCode != commonpb.ErrorCode_Success {
 		return errors.New(resp.Reason)
 	}
-	log.Ctx(ctx).Info("hc===done to broadcast request to alter collection", zap.String("collectionName", req.GetCollectionName()), zap.Int64("collectionID", req.GetCollectionID()), zap.Any("props", req.GetProperties()), zap.Any("field", colMeta.Fields))
+	log.Ctx(ctx).Info("hc===done to broadcast request to alter collection",
+		zap.String("collectionName", req.GetCollectionName()), zap.Int64("collectionID", req.GetCollectionID()),
+		zap.Any("props", req.GetProperties()), zap.Any("field", colMeta.Fields), zap.Uint64("schemaVersion", colMeta.UpdateTimestamp))
 	return nil
 }
 
