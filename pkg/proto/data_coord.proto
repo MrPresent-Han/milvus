@@ -703,6 +703,7 @@ message CompactionPlan {
   string json_params = 22;
   int32 current_scalar_index_version = 23;
   repeated common.KeyValuePair plugin_context = 29;
+  repeated schema.FunctionSchema functions = 30;
 }
 
 message CompactionSegment {

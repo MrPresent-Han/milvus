@@ -180,7 +180,7 @@ func (s *globalTaskScheduler) schedule() {
 			defer s.mu.RUnlock(task.GetTaskID())
 			log.Ctx(s.ctx).Info("processing task...", WrapTaskLog(task)...)
 			if task.GetTaskState() == taskcommon.Init {
-				task.CreateTaskOnWorker(nodeID, s.cluster)
+				task.CreateTaskOnWorker(nodeID, s.cluster) //hc===start executing task here
 				switch task.GetTaskState() {
 				case taskcommon.Init, taskcommon.Retry:
 					s.pendingTasks.Push(task)
@@ -208,7 +208,7 @@ func (s *globalTaskScheduler) check() {
 		future := s.checkPool.Submit(func() (struct{}, error) {
 			s.mu.RLock(task.GetTaskID())
 			defer s.mu.RUnlock(task.GetTaskID())
-			task.QueryTaskOnWorker(s.cluster)
+			task.QueryTaskOnWorker(s.cluster) //hc---query task state here
 			switch task.GetTaskState() {
 			case taskcommon.Init, taskcommon.Retry:
 				s.runningTasks.Remove(task.GetTaskID())

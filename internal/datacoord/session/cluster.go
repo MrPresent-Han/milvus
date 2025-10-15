@@ -100,6 +100,7 @@ func NewCluster(nm NodeManager) Cluster {
 	return c
 }
 
+// hc---create compaction/index task here
 func (c *cluster) createTask(nodeID int64, in proto.Message, properties taskcommon.Properties) error {
 	timeout := paramtable.Get().DataCoordCfg.RequestTimeoutSeconds.GetAsDuration(time.Second)
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)

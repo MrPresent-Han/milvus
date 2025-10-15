@@ -250,6 +250,13 @@ func (node *DataNode) CompactionV2(ctx context.Context, req *datapb.CompactionPl
 			compactionParams,
 			[]int64{pk.GetFieldID()},
 		)
+	case datapb.CompactionType_BackfillCompaction:
+		task = compactor.NewBackfillCompactionTask(
+			taskCtx,
+			binlogIO,
+			req,
+			compactionParams,
+		)
 	default:
 		log.Warn("Unknown compaction type", zap.String("type", req.GetType().String()))
 		return merr.Status(merr.WrapErrParameterInvalidMsg("Unknown compaction type: %v", req.GetType().String())), nil
@@ -533,6 +540,7 @@ func (node *DataNode) DropCompactionPlan(ctx context.Context, req *datapb.DropCo
 }
 
 // CreateTask creates different types of tasks based on task type
+// hc---start executing task here
 func (node *DataNode) CreateTask(ctx context.Context, request *workerpb.CreateTaskRequest) (*commonpb.Status, error) {
 	log.Ctx(ctx).Info("CreateTask received", zap.Any("properties", request.GetProperties()))
 	if err := merr.CheckHealthy(node.GetStateCode()); err != nil {

@@ -25,10 +25,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/arrow/go/v17/arrow/array"
+	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/samber/lo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
@@ -36,6 +39,7 @@ import (
 	"github.com/milvus-io/milvus/internal/mocks/flushcommon/mock_util"
 	"github.com/milvus-io/milvus/internal/storagecommon"
 	"github.com/milvus-io/milvus/pkg/v2/common"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v2/util/paramtable"
@@ -156,6 +160,9 @@ func (s *PackedBinlogRecordSuite) TestPackedBinlogRecordIntegration() {
 	s.Equal(rowNum, int64(rows))
 
 	fieldBinlogs, statsLog, bm25StatsLog := w.GetLogs()
+	log.Info("hc===sn===fieldBinlogs", zap.Any("fieldBinlogs", fieldBinlogs))
+	log.Info("hc===sn===statsLog", zap.Any("statsLog", statsLog))
+	log.Info("hc===sn===bm25StatsLog", zap.Any("bm25StatsLog", bm25StatsLog))
 	s.Equal(len(fieldBinlogs), len(columnGroups))
 	for _, columnGroup := range fieldBinlogs {
 		s.Equal(len(columnGroup.Binlogs), 1)
@@ -189,6 +196,182 @@ func (s *PackedBinlogRecordSuite) TestPackedBinlogRecordIntegration() {
 	_, err = r.Next()
 	s.Equal(err, io.EOF)
 	err = r.Close()
+	s.NoError(err)
+}
+
+func (s *PackedBinlogRecordSuite) TestPackedBinlogRecordIntegrationPartialGet() {
+	paramtable.Get().Save(paramtable.Get().CommonCfg.StorageType.Key, "local")
+	s.mockBinlogIO.EXPECT().Upload(mock.Anything, mock.Anything).Return(nil)
+	rows := 10000
+	readBatchSize := 1024
+	columnGroups := []storagecommon.ColumnGroup{
+		{
+			GroupID: 0,
+			Columns: []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+		},
+		{
+			GroupID: 102,
+			Columns: []int{13},
+		},
+		{
+			GroupID: 103,
+			Columns: []int{14},
+		},
+		{
+			GroupID: 104,
+			Columns: []int{15},
+		},
+		{
+			GroupID: 105,
+			Columns: []int{16},
+		},
+		{
+			GroupID: 106,
+			Columns: []int{17},
+		},
+	}
+	wOption := []RwOption{
+		WithUploader(func(ctx context.Context, kvs map[string][]byte) error {
+			return s.mockBinlogIO.Upload(ctx, kvs)
+		}),
+		WithVersion(StorageV2),
+		WithMultiPartUploadSize(0),
+		WithBufferSize(1 * 1024 * 1024), // 1MB
+		WithColumnGroups(columnGroups),
+		WithStorageConfig(s.storageConfig),
+	}
+
+	w, err := NewBinlogRecordWriter(s.ctx, s.collectionID, s.partitionID, s.segmentID, s.schema, s.logIDAlloc, s.chunkSize, s.maxRowNum, wOption...)
+	s.NoError(err)
+
+	blobs, err := generateTestData(rows)
+	s.NoError(err)
+
+	reader, err := NewBinlogDeserializeReader(generateTestSchema(), MakeBlobsReader(blobs), false)
+	s.NoError(err)
+	defer reader.Close()
+
+	for i := 1; i <= rows; i++ {
+		value, err := reader.NextValue()
+		s.NoError(err)
+		rec, err := ValueSerializer([]*Value{*value}, s.schema)
+		s.NoError(err)
+		err = w.Write(rec)
+		s.NoError(err)
+	}
+	err = w.Close()
+	s.NoError(err)
+	writtenUncompressed := w.GetWrittenUncompressed()
+	s.Positive(writtenUncompressed)
+
+	rowNum := w.GetRowNum()
+	s.Equal(rowNum, int64(rows))
+
+	fieldBinlogs, statsLog, bm25StatsLog := w.GetLogs()
+	log.Info("hc===sn===fieldBinlogs", zap.Any("fieldBinlogs", fieldBinlogs))
+	log.Info("hc===sn===statsLog", zap.Any("statsLog", statsLog))
+	log.Info("hc===sn===bm25StatsLog", zap.Any("bm25StatsLog", bm25StatsLog))
+	s.Equal(len(fieldBinlogs), len(columnGroups))
+	for _, columnGroup := range fieldBinlogs {
+		s.Equal(len(columnGroup.Binlogs), 1)
+		s.Equal(columnGroup.Binlogs[0].EntriesNum, int64(rows))
+		s.Positive(columnGroup.Binlogs[0].MemorySize)
+	}
+
+	s.Equal(len(statsLog.Binlogs), 1)
+	s.Equal(statsLog.Binlogs[0].EntriesNum, int64(rows))
+
+	s.Equal(len(bm25StatsLog), 0)
+
+	binlogs := SortFieldBinlogs(fieldBinlogs)
+	rOption := []RwOption{
+		WithVersion(StorageV2),
+		WithStorageConfig(s.storageConfig),
+	}
+
+	// a partial schema
+	partialSchema := &schemapb.CollectionSchema{Fields: []*schemapb.FieldSchema{
+		{FieldID: 106, Name: "sparseFloatVector", DataType: schemapb.DataType_SparseFloatVector},
+	}}
+	r, err := NewBinlogRecordReader(s.ctx, binlogs, partialSchema, rOption...)
+	s.NoError(err)
+	defer r.Close()
+	for i := 0; i < rows/readBatchSize+1; i++ {
+		rec, err := r.Next()
+		log.Info("hc===sn===rec", zap.Any("rec.Len()", rec.Len()))
+		s.NoError(err)
+		if i < rows/readBatchSize {
+			s.Equal(rec.Len(), readBatchSize)
+		} else {
+			s.Equal(rec.Len(), rows%readBatchSize)
+		}
+		field, ok := rec.Column(106).(*array.Binary)
+		if !ok {
+			s.Fail("bm25 field value not found")
+		}
+		for j := 0; j < rec.Len(); j++ {
+			log.Info("hc===sn===field.Value(j)", zap.Any("field.Value(j)", field.Value(j)))
+		}
+	}
+
+	_, err = r.Next()
+	s.Equal(err, io.EOF)
+	err = r.Close()
+	s.NoError(err)
+
+	partialSchema2 := &schemapb.CollectionSchema{Fields: []*schemapb.FieldSchema{
+		{FieldID: common.RowIDField, Name: "rowid", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
+		{FieldID: 107, Name: "sparseFloatVector", DataType: schemapb.DataType_SparseFloatVector},
+	}}
+
+	rw, err := NewBinlogRecordWriter(s.ctx, s.collectionID, s.partitionID, s.segmentID,
+		partialSchema2, s.logIDAlloc, s.chunkSize, s.maxRowNum, wOption...)
+	s.NoError(err)
+
+	// Create a record based on partialSchema2 following BulkPackWriterV2 pattern
+	arrowSchema, err := ConvertToArrowSchema(partialSchema2)
+	s.NoError(err)
+
+	builder := array.NewRecordBuilder(memory.DefaultAllocator, arrowSchema)
+	defer builder.Release()
+
+	// Create sample data for the sparse float vector field
+	insertData := &InsertData{
+		Data: make(map[FieldID]FieldData),
+	}
+
+	// Create sample sparse float vector data
+	sparseData := &SparseFloatVectorFieldData{
+		SparseFloatArray: schemapb.SparseFloatArray{
+			Dim: 300,
+			Contents: [][]byte{
+				// Sample sparse vector data using typeutil helper
+				typeutil.CreateSparseFloatRow([]uint32{5, 6, 7}, []float32{1.1, 1.2, 1.3}),
+			},
+		},
+	}
+	insertData.Data[107] = sparseData // FieldID 107 is the sparseFloatVector field
+
+	// Build the record using the existing BuildRecord function
+	err = BuildRecord(builder, insertData, partialSchema2)
+	s.NoError(err)
+
+	arrowRecord := builder.NewRecord()
+	defer arrowRecord.Release()
+
+	// Create field mapping for the record
+	field2Col := make(map[FieldID]int)
+	field2Col[107] = 0 // sparseFloatVector field is at column 0
+
+	// Create the final record
+	record := NewSimpleArrowRecord(arrowRecord, field2Col)
+
+	// Write the record
+	err = rw.Write(record)
+	newFieldBinlogs, newStatsLog, newBm25StatsLog := rw.GetLogs()
+	log.Info("hc===sn===newFieldBinlogs", zap.Any("newFieldBinlogs", newFieldBinlogs))
+	log.Info("hc===sn===newStatsLog", zap.Any("newStatsLog", newStatsLog))
+	log.Info("hc===sn===newBm25StatsLog", zap.Any("newBm25StatsLog", newBm25StatsLog))
 	s.NoError(err)
 }
 

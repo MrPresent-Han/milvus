@@ -105,7 +105,7 @@ func (eNode *embeddingNode) bm25Embedding(runner function.FunctionRunner, data *
 		datas = append(datas, data.GetDataRows())
 	}
 
-	output, err := runner.BatchRun(datas...)
+	output, err := runner.BatchRun(datas...) //hc---datas should be slice for string len=1
 	if err != nil {
 		return err
 	}

@@ -293,7 +293,7 @@ func (c *compactionInspector) schedule() []CompactionTask {
 
 		c.executingGuard.Lock()
 		c.executingTasks[t.GetTaskProto().GetPlanID()] = t
-		c.scheduler.Enqueue(t)
+		c.scheduler.Enqueue(t) //hc===enqueue compaction to scheduler here
 		log.Info("compaction task enqueued",
 			zap.Int64("planID", t.GetTaskProto().GetPlanID()),
 			zap.String("type", t.GetTaskProto().GetType().String()),
@@ -581,7 +581,7 @@ func (c *compactionInspector) enqueueCompaction(task *datapb.CompactionTask) err
 		log.Warn("Failed to enqueue compaction task, unable to save task meta", zap.Error(err))
 		return err
 	}
-	if err = c.submitTask(t); err != nil {
+	if err = c.submitTask(t); err != nil { //hc===submit comaction to dn here
 		log.Warn("submit compaction task failed", zap.Error(err))
 		c.meta.SetSegmentsCompacting(context.Background(), t.GetTaskProto().GetInputSegments(), false)
 		return err
@@ -601,7 +601,7 @@ func (c *compactionInspector) createCompactTask(t *datapb.CompactionTask) (Compa
 	case datapb.CompactionType_ClusteringCompaction:
 		task = newClusteringCompactionTask(t, c.allocator, c.meta, c.handler, c.analyzeScheduler)
 	case datapb.CompactionType_BackfillCompaction:
-		task = newBackfillCompactionTask(t, c.allocator, c.meta, c.handler, c.analyzeScheduler)
+		task = newBackfillCompactionTask(t, c.allocator, c.meta, c.handler)
 	default:
 		return nil, merr.WrapErrIllegalCompactionPlan("illegal compaction type")
 	}
