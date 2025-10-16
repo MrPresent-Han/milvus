@@ -31,8 +31,10 @@ import (
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/cdata"
 	"github.com/cockroachdb/errors"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus/internal/storagecommon"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexcgopb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 )
@@ -116,11 +118,14 @@ func NewPackedWriter(filePaths []string, schema *arrow.Schema, bufferSize int64,
 		defer C.free(unsafe.Pointer(cStorageConfig.sslCACert))
 		defer C.free(unsafe.Pointer(cStorageConfig.region))
 		defer C.free(unsafe.Pointer(cStorageConfig.gcp_credential_json))
+		log.Warn("hc====sn===NewPackedWriterWithStorageConfig", zap.Strings("cFilePaths", filePaths))
 		status = C.NewPackedWriterWithStorageConfig(cSchema, cBufferSize, cFilePathsArray, cNumPaths, cMultiPartUploadSize, cColumnGroups, cStorageConfig, &cPackedWriter, pluginContextPtr)
 	} else {
+		log.Warn("hc====sn===NewPackedWriter33333")
 		status = C.NewPackedWriter(cSchema, cBufferSize, cFilePathsArray, cNumPaths, cMultiPartUploadSize, cColumnGroups, &cPackedWriter, pluginContextPtr)
 	}
 	if err := ConsumeCStatusIntoError(&status); err != nil {
+		log.Warn("hc====sn===NewPackedWriterXXXX error", zap.Error(err))
 		return nil, err
 	}
 	return &PackedWriter{cPackedWriter: cPackedWriter}, nil

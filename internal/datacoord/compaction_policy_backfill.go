@@ -7,7 +7,9 @@ import (
 
 	"go.uber.org/zap"
 
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
+	"github.com/milvus-io/milvus/internal/datacoord/broker"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 )
 
@@ -15,13 +17,14 @@ type backfillCompactionPolicy struct {
 	meta      *meta
 	handler   Handler
 	allocator allocator.Allocator
+	broker    broker.Broker
 }
 
 // Ensure backfillCompactionPolicy implements CompactionPolicy interface
 var _ CompactionPolicy = (*backfillCompactionPolicy)(nil)
 
-func newBackfillCompactionPolicy(meta *meta, allocator allocator.Allocator, handler Handler) *backfillCompactionPolicy {
-	return &backfillCompactionPolicy{meta: meta, allocator: allocator, handler: handler}
+func newBackfillCompactionPolicy(meta *meta, allocator allocator.Allocator, handler Handler, broker broker.Broker) *backfillCompactionPolicy {
+	return &backfillCompactionPolicy{meta: meta, allocator: allocator, handler: handler, broker: broker}
 }
 
 func (policy *backfillCompactionPolicy) Enable() bool {
@@ -30,6 +33,37 @@ func (policy *backfillCompactionPolicy) Enable() bool {
 
 func (policy *backfillCompactionPolicy) Name() string {
 	return "BackfillCompaction"
+}
+
+func (policy *backfillCompactionPolicy) getCollectionSchemaByVersion(ctx context.Context, collectionID int64, schemaVersion uint64) (*schemapb.CollectionSchema, error) {
+	log := log.Ctx(ctx).With(
+		zap.Int64("collectionID", collectionID),
+		zap.Uint64("schemaVersion", schemaVersion))
+
+	log.Debug("Getting collection schema by version")
+
+	descResp, err := policy.broker.DescribeCollectionInternal(ctx, collectionID, schemaVersion)
+	if err != nil {
+		log.Warn("Failed to describe collection", zap.Error(err))
+		return nil, fmt.Errorf("failed to describe collection %d with version %d: %w", collectionID, schemaVersion, err)
+	}
+
+	if descResp == nil {
+		log.Warn("Describe collection response is nil")
+		return nil, fmt.Errorf("describe collection response is nil for collection %d with version %d", collectionID, schemaVersion)
+	}
+
+	schema := descResp.GetSchema()
+	if schema == nil {
+		log.Warn("Schema is nil in describe collection response")
+		return nil, fmt.Errorf("schema is nil in describe collection response for collection %d with version %d", collectionID, schemaVersion)
+	}
+
+	log.Debug("Successfully retrieved collection schema",
+		zap.Uint64("retrievedSchemaVersion", schema.GetSchemaVersion()),
+		zap.String("collectionName", schema.GetName()))
+
+	return schema, nil
 }
 
 func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[CompactionTriggerType][]CompactionView, error) {
@@ -60,6 +94,11 @@ func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[Compac
 		for _, group := range partSegments {
 			for _, segment := range group.segments {
 				segmentSchemaVersion := segment.GetSchemaVersion()
+				segmentSchema, err := policy.getCollectionSchemaByVersion(ctx, collectionID, segmentSchemaVersion)
+				if err != nil {
+					log.Ctx(ctx).Error("Failed to get segment schema", zap.Error(err))
+					continue
+				}
 
 				// If segment's schema version is smaller than collection's schema version
 				if segmentSchemaVersion < collectionSchemaVersion {
@@ -99,6 +138,8 @@ type BackfillSegmentsView struct {
 	triggerID     int64
 	collectionTTL time.Duration
 }
+
+var _ CompactionView = (*BackfillSegmentsView)(nil)
 
 func (v *BackfillSegmentsView) GetGroupLabel() *CompactionGroupLabel {
 	return v.label

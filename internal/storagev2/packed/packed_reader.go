@@ -31,7 +31,9 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/cdata"
+	"go.uber.org/zap"
 
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexcgopb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
 )
@@ -99,12 +101,13 @@ func NewPackedReader(filePaths []string, schema *arrow.Schema, bufferSize int64,
 		defer C.free(unsafe.Pointer(cStorageConfig.sslCACert))
 		defer C.free(unsafe.Pointer(cStorageConfig.region))
 		defer C.free(unsafe.Pointer(cStorageConfig.gcp_credential_json))
-
+		log.Warn("hc====sn===NewPackedReaderWithStorageConfig", zap.Strings("cFilePaths", filePaths))
 		status = C.NewPackedReaderWithStorageConfig(cFilePathsArray, cNumPaths, cSchema, cBufferSize, cStorageConfig, &cPackedReader, pluginContextPtr)
-	} else {
+	} else { //hc----sn---NewPackedReader error
 		status = C.NewPackedReader(cFilePathsArray, cNumPaths, cSchema, cBufferSize, &cPackedReader, pluginContextPtr)
 	}
 	if err := ConsumeCStatusIntoError(&status); err != nil {
+		log.Warn("hc====sn===NewPackedReader error", zap.Error(err))
 		return nil, err
 	}
 	return &PackedReader{cPackedReader: cPackedReader, schema: schema}, nil

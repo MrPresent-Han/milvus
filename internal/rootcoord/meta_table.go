@@ -668,6 +668,7 @@ func (mt *MetaTable) getCollectionByIDInternal(ctx context.Context, dbName strin
 	return filterUnavailable(coll), nil
 }
 
+// hc----GetCollectionByName
 func (mt *MetaTable) GetCollectionByName(ctx context.Context, dbName string, collectionName string, ts Timestamp) (*model.Collection, error) {
 	mt.ddLock.RLock()
 	defer mt.ddLock.RUnlock()

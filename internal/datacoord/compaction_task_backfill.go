@@ -165,7 +165,7 @@ func (t *backfillCompactionTask) NeedReAssignNodeID() bool {
 }
 
 func (t *backfillCompactionTask) SaveTaskMeta() error {
-	return nil
+	return t.meta.SaveCompactionTask(context.TODO(), t.GetTaskProto())
 }
 
 func (t *backfillCompactionTask) CheckCompactionContainsSegment(segmentID int64) bool {

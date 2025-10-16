@@ -4,9 +4,11 @@ import (
 	"strconv"
 
 	"github.com/apache/arrow/go/v17/arrow"
+	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/storagev2/packed"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
@@ -38,7 +40,8 @@ func ConvertToArrowSchema(schema *schemapb.CollectionSchema) (*arrow.Schema, err
 
 		arrowType := serdeMap[field.DataType].arrowType(dim, elementType)
 		arrowField := ConvertToArrowField(field, arrowType)
-
+		log.Warn("hc====sn===arrowField", zap.Strings("arrowField.Keys", arrowField.Metadata.Keys()),
+			zap.Strings("arrowField.Values", arrowField.Metadata.Values()))
 		// Add extra metadata for ArrayOfVector
 		if field.DataType == schemapb.DataType_ArrayOfVector {
 			arrowField.Metadata = arrow.NewMetadata(

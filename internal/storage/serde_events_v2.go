@@ -169,6 +169,7 @@ func (pw *packedRecordWriter) Write(r Record) error {
 		allFields := typeutil.GetAllFieldSchemas(pw.schema)
 		arrays := make([]arrow.Array, len(allFields))
 		for i, field := range allFields {
+			log.Warn("hc====sn===Write field", zap.Int64("fieldID", field.FieldID), zap.Int("column", i))
 			arrays[i] = r.Column(field.FieldID)
 		}
 		rec = array.NewRecord(pw.arrowSchema, arrays, int64(r.Len()))
@@ -258,6 +259,7 @@ func NewPackedRecordWriter(bucketName string, paths []string, schema *schemapb.C
 	})
 	writer, err := packed.NewPackedWriter(truePaths, arrowSchema, bufferSize, multiPartUploadSize, columnGroups, storageConfig, storagePluginContext)
 	if err != nil {
+		log.Warn("hc====sn===can not new packed record writer22222", zap.Error(err))
 		return nil, merr.WrapErrServiceInternal(
 			fmt.Sprintf("can not new packed record writer %s", err.Error()))
 	}
@@ -335,10 +337,10 @@ type PackedBinlogRecordWriter struct {
 }
 
 func (pw *PackedBinlogRecordWriter) Write(r Record) error {
-	if err := pw.initWriters(r); err != nil {
+	if err := pw.initWriters(r); err != nil { //hc----sn---initWriters error
 		return err
 	}
-
+	//hc---
 	tsArray := r.Column(common.TimeStampField).(*array.Int64)
 	rows := r.Len()
 	for i := 0; i < rows; i++ {
@@ -402,6 +404,7 @@ func (pw *PackedBinlogRecordWriter) initWriters(r Record) error {
 		}
 		pw.writer, err = NewPackedRecordWriter(pw.storageConfig.GetBucketName(), paths, pw.schema, pw.bufferSize, pw.multiPartUploadSize, pw.columnGroups, pw.storageConfig, pw.storagePluginContext)
 		if err != nil {
+			log.Warn("hc====sn===can not new packed record writer", zap.Error(err))
 			return merr.WrapErrServiceInternal(fmt.Sprintf("can not new packed record writer %s", err.Error()))
 		}
 	}

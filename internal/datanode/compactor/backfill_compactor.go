@@ -8,6 +8,7 @@ import (
 	"github.com/milvus-io/milvus/internal/compaction"
 	"github.com/milvus-io/milvus/internal/flushcommon/io"
 	"github.com/milvus-io/milvus/internal/util/function"
+	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
@@ -78,6 +79,7 @@ func (t *backfillCompactionTask) runBackfillFunction(functionRunner function.Fun
 }
 
 func (t *backfillCompactionTask) runBm25Function(functionRunner function.FunctionRunner) error {
+	log.Warn("hc====sn===runBm25Function")
 	return nil
 }
 
