@@ -1107,6 +1107,7 @@ message CompactionTask{
   int64 max_size = 26;
   repeated int64 tmpSegments = 27;
   IDRange pre_allocated_segmentIDs = 28;
+  repeated schema.FunctionSchema functions = 29;
 }
 
 message PartitionStatsInfo {

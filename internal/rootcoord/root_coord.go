@@ -1230,6 +1230,7 @@ func convertModelToDesc(collInfo *model.Collection, aliases []string, dbName str
 		Functions:          model.MarshalFunctionModels(collInfo.Functions),
 		EnableDynamicField: collInfo.EnableDynamicField,
 		Properties:         collInfo.Properties,
+		SchemaVersion:      collInfo.UpdateTimestamp,
 	}
 	resp.CollectionID = collInfo.CollectionID
 	resp.VirtualChannelNames = collInfo.VirtualChannelNames

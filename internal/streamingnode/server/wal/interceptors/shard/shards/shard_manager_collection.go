@@ -81,6 +81,15 @@ func (m *shardManagerImpl) CreateCollection(msg message.ImmutableCreateCollectio
 		)
 	}
 	logger.Info("collection created in segment assignment service", zap.Int64s("partitionIDs", partitionIDs))
+
+	schema := msg.MustBody().GetCollectionSchema()
+	schemaOfVChannel := &streamingpb.CollectionSchemaOfVChannel{
+		Schema:             schema,
+		CheckpointTimeTick: timetick,
+		State:              streamingpb.VChannelSchemaState_VCHANNEL_SCHEMA_STATE_NORMAL,
+	}
+	m.collections[collectionID].Schemas = append(m.collections[collectionID].Schemas, schemaOfVChannel)
+	log.Info("hc====append new collection schema", zap.Any("schemaOfVChannel", schemaOfVChannel))
 	m.updateMetrics()
 }
 

@@ -511,6 +511,7 @@ func (node *Proxy) CreateCollection(ctx context.Context, request *milvuspb.Creat
 		zap.Int("len(schema)", lenOfSchema),
 		zap.Int32("shards_num", request.ShardsNum),
 		zap.String("consistency_level", request.ConsistencyLevel.String()),
+		zap.Uint64("hc===msg timestamp", request.GetBase().GetReplicateInfo().GetMsgTimestamp()),
 	)
 
 	log.Info(rpcReceived(method))

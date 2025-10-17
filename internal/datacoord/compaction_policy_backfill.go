@@ -10,6 +10,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/broker"
+	"github.com/milvus-io/milvus/internal/util"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 )
 
@@ -99,9 +100,18 @@ func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[Compac
 					log.Ctx(ctx).Error("Failed to get segment schema", zap.Error(err))
 					continue
 				}
-
 				// If segment's schema version is smaller than collection's schema version
 				if segmentSchemaVersion < collectionSchemaVersion {
+					log.Ctx(ctx).Info("hc====sn===Start to compare schemas",
+						zap.Any("collectionSchema", collection.Schema),
+						zap.Any("segmentSchema", segmentSchema))
+					_, funcDiff, err := util.SchemaDiff(collection.Schema, segmentSchema)
+					if err != nil {
+						log.Ctx(ctx).Error("Failed to compare schemas", zap.Error(err))
+						continue
+					}
+					log.Ctx(ctx).Info("hc====sn===Finish to compare schemas",
+						zap.Any("funcDiff", funcDiff))
 					log.Ctx(ctx).Info("hc===Found segment with outdated schema version",
 						zap.Int64("segmentID", segment.GetID()),
 						zap.Int64("collectionID", collectionID),
@@ -114,6 +124,7 @@ func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[Compac
 						label:     segmentViews[0].label,
 						segments:  segmentViews,
 						triggerID: newTriggerID,
+						funcDiff:  funcDiff,
 					}
 					views = append(views, view)
 				}
@@ -137,6 +148,7 @@ type BackfillSegmentsView struct {
 	segments      []*SegmentView
 	triggerID     int64
 	collectionTTL time.Duration
+	funcDiff      *util.FuncDiff
 }
 
 var _ CompactionView = (*BackfillSegmentsView)(nil)

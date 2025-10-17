@@ -63,7 +63,7 @@ func (s *Server) getFieldNameByID(schema *schemapb.CollectionSchema, fieldID int
 }
 
 func (s *Server) getSchema(ctx context.Context, collID int64) (*schemapb.CollectionSchema, error) {
-	resp, err := s.broker.DescribeCollectionInternal(ctx, collID)
+	resp, err := s.broker.DescribeCollectionInternal(ctx, collID, typeutil.MaxTimestamp)
 	if err != nil {
 		return nil, err
 	}

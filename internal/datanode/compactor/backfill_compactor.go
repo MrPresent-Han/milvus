@@ -50,6 +50,7 @@ func (t *backfillCompactionTask) Compact() (*datapb.CompactionPlanResult, error)
 	// 	Segments: resultSegments,
 	// 	Channel:  t.plan.GetChannel(),
 	// }, nil
+	log.Warn("hc====sn===Start to run backfill function")
 	backfillFunctions := t.plan.GetFunctions()
 	if len(backfillFunctions) != 1 {
 		return nil, errors.New("backfill functions should be exactly one")
@@ -66,6 +67,7 @@ func (t *backfillCompactionTask) Compact() (*datapb.CompactionPlanResult, error)
 	if err != nil {
 		return nil, err
 	}
+	log.Warn("hc====sn===Finish to run backfill function")
 	return nil, nil
 }
 

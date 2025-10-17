@@ -1179,7 +1179,7 @@ func (s *Server) loadCollectionFromRootCoord(ctx context.Context, collectionID i
 		return merr.WrapErrCollectionNotFound(collectionID)
 	}
 
-	resp, err := s.broker.DescribeCollectionInternal(ctx, collectionID)
+	resp, err := s.broker.DescribeCollectionInternal(ctx, collectionID, typeutil.MaxTimestamp)
 	if err != nil {
 		return err
 	}

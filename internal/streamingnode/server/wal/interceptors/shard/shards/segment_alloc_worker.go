@@ -18,7 +18,7 @@ import (
 )
 
 // asyncAllocSegment allocates a new growing segment asynchronously.
-func (m *partitionManager) asyncAllocSegment() {
+func (m *partitionManager) asyncAllocSegment(schemaVersion uint64) {
 	if m.onAllocating != nil {
 		m.Logger().Debug("segment alloc worker is already on allocating")
 		// manager is already on allocating.
@@ -27,11 +27,12 @@ func (m *partitionManager) asyncAllocSegment() {
 	// Create a notifier to notify the waiter when the allocation is done.
 	m.onAllocating = make(chan struct{})
 	w := &segmentAllocWorker{
-		ctx:          m.ctx,
-		collectionID: m.collectionID,
-		partitionID:  m.partitionID,
-		vchannel:     m.vchannel,
-		wal:          m.wal.Get(),
+		ctx:           m.ctx,
+		collectionID:  m.collectionID,
+		partitionID:   m.partitionID,
+		vchannel:      m.vchannel,
+		wal:           m.wal.Get(),
+		schemaVersion: schemaVersion,
 	}
 	w.SetLogger(m.Logger())
 	// It should always done asynchronously.
@@ -42,12 +43,13 @@ func (m *partitionManager) asyncAllocSegment() {
 // segmentAllocWorker is a worker that allocates new growing segments asynchronously.
 type segmentAllocWorker struct {
 	log.Binder
-	ctx          context.Context
-	collectionID int64
-	partitionID  int64
-	vchannel     string
-	wal          wal.WAL
-	msg          message.MutableMessage
+	ctx           context.Context
+	collectionID  int64
+	partitionID   int64
+	vchannel      string
+	wal           wal.WAL
+	msg           message.MutableMessage
+	schemaVersion uint64
 }
 
 // do is the main loop of the segment allocation worker.
@@ -126,9 +128,11 @@ func (w *segmentAllocWorker) generateNewGrowingSegmentMessage() error {
 			MaxRows:        limitation.SegmentRows,
 			MaxSegmentSize: limitation.SegmentSize,
 			Level:          datapb.SegmentLevel_L1,
+			SchemaVerison:  w.schemaVersion,
 		}).
 		WithBody(&message.CreateSegmentMessageBody{}).
 		MustBuildMutable()
 	w.SetLogger(w.Logger().With(log.FieldMessage(w.msg)))
+	log.Info("hc====generateNewGrowingSegmentMessage", zap.Any("msg", w.msg))
 	return nil
 }

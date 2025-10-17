@@ -80,13 +80,13 @@ func (impl *msgHandlerImpl) createNewGrowingSegment(ctx context.Context, vchanne
 			Vchannel:             vchannel,
 			StorageVersion:       h.StorageVersion,
 			IsCreatedByStreaming: true,
-			SchemaVersion:        h.SchemaVerison,
+			SchemaVersion:        h.SchemaVerison, //hc---schema version here
 		})
 		if err := merr.CheckRPCCall(resp, err); err != nil {
 			logger.Warn("failed to alloc growing segment at datacoord")
 			return errors.Wrap(err, "failed to alloc growing segment at datacoord")
 		}
-		logger.Info("alloc growing segment at datacoord")
+		logger.Info("alloc growing segment at datacoord", zap.Uint64("hc===schemaVersion", h.SchemaVerison))
 		return nil
 	}, retry.AttemptAlways())
 }

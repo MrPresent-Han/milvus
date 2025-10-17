@@ -323,7 +323,7 @@ func (m *meta) reloadCollectionsFromRootcoord(ctx context.Context, broker broker
 			return err
 		}
 		for _, collectionID := range collectionsResp.GetCollectionIds() {
-			descResp, err := broker.DescribeCollectionInternal(ctx, collectionID)
+			descResp, err := broker.DescribeCollectionInternal(ctx, collectionID, typeutil.MaxTimestamp)
 			if err != nil {
 				return err
 			}

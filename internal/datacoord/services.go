@@ -374,7 +374,15 @@ func (s *Server) AllocSegment(ctx context.Context, req *datapb.AllocSegmentReque
 	if req.GetCollectionId() == 0 || req.GetPartitionId() == 0 || req.GetVchannel() == "" || req.GetSegmentId() == 0 {
 		return &datapb.AllocSegmentResponse{Status: merr.Status(merr.ErrParameterInvalid)}, nil
 	}
-
+	log.Ctx(ctx).Info("hc====sn===Start to AllocSegment segment",
+		zap.Int64("hc===collectionID", req.GetCollectionId()),
+		zap.Int64("hc===partitionID", req.GetPartitionId()),
+		zap.Int64("hc===segmentID", req.GetSegmentId()),
+		zap.String("hc===channelName", req.GetVchannel()),
+		zap.Int64("hc===storageVersion", req.GetStorageVersion()),
+		zap.Bool("hc===isCreatedByStreaming", req.GetIsCreatedByStreaming()),
+		zap.Uint64("hc===schemaVersion", req.GetSchemaVersion()),
+	)
 	// Alloc new growing segment and return the segment info.
 	segmentInfo, err := s.segmentManager.AllocNewGrowingSegment(
 		ctx,
@@ -926,7 +934,7 @@ func (s *Server) GetRecoveryInfo(ctx context.Context, req *datapb.GetRecoveryInf
 		}, nil
 	}
 
-	dresp, err := s.broker.DescribeCollectionInternal(s.ctx, collectionID)
+	dresp, err := s.broker.DescribeCollectionInternal(s.ctx, collectionID, typeutil.MaxTimestamp)
 	if err != nil {
 		log.Error("get collection info from rootcoord failed",
 			zap.Error(err))
@@ -1638,7 +1646,7 @@ func (s *Server) GetFlushAllState(ctx context.Context, req *milvuspb.GetFlushAll
 				continue
 			}
 
-			describeColRsp, err := s.broker.DescribeCollectionInternal(ctx, collectionID)
+			describeColRsp, err := s.broker.DescribeCollectionInternal(ctx, collectionID, typeutil.MaxTimestamp)
 			if err != nil {
 				log.Warn("failed to DescribeCollectionInternal",
 					zap.Int64("collectionID", collectionID), zap.Error(err))

@@ -181,7 +181,8 @@ func (impl *shardInterceptor) handleInsertMessage(ctx context.Context, msg messa
 				Rows:       partition.GetRows(),
 				BinarySize: partition.GetBinarySize(),
 			},
-			TimeTick: msg.TimeTick(),
+			TimeTick:      msg.TimeTick(),
+			SchemaVersion: schemaVersion,
 		}
 		if session := txn.GetTxnSessionFromContext(ctx); session != nil {
 			// because the shard manager use the interface, txn is a struct,

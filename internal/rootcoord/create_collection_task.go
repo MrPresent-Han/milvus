@@ -585,7 +585,8 @@ func (t *createCollectionTask) Execute(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-
+	log.Ctx(ctx).Info("hc====sn===Start to execute create collection task",
+		zap.Uint64("hc===ts", ts))
 	vchanNames := t.channels.virtualChannels
 	chanNames := t.channels.physicalChannels
 
@@ -727,6 +728,7 @@ func executeCreateCollectionTaskSteps(ctx context.Context,
 				StructArrayFields: model.MarshalStructArrayFieldModels(col.StructArrayFields),
 				Properties:        col.Properties,
 				Functions:         model.MarshalFunctionModels(col.Functions),
+				SchemaVersion:     col.UpdateTimestamp,
 			},
 			dbProperties: dbProperties,
 		},

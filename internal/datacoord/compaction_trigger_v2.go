@@ -155,7 +155,7 @@ func NewCompactionTriggerManager(alloc allocator.Allocator, handler Handler, ins
 	m.l0Policy = newL0CompactionPolicy(meta, alloc)
 	m.clusteringPolicy = newClusteringCompactionPolicy(meta, m.allocator, m.handler)
 	m.singlePolicy = newSingleCompactionPolicy(meta, m.allocator, m.handler)
-	backfillPolicy := newBackfillCompactionPolicy(meta, m.allocator, m.handler)
+	backfillPolicy := newBackfillCompactionPolicy(meta, m.allocator, m.handler, broker)
 
 	// Initialize policies map for ticker handling
 	m.policies[L0Ticker] = m.l0Policy
@@ -685,6 +685,7 @@ func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Con
 		TotalRows:          totalRows,
 		LastStateStartTime: time.Now().Unix(),
 		MaxSize:            expectedSize,
+		Functions:          view.(*BackfillSegmentsView).funcDiff.Added,
 	}
 	err = m.inspector.enqueueCompaction(task)
 	if err != nil {

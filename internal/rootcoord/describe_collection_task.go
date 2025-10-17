@@ -69,7 +69,9 @@ func (t *describeCollectionTask) Execute(ctx context.Context) (err error) {
 	}
 	t.Rsp = convertModelToDesc(coll, aliases, db.Name)
 	t.Rsp.RequestTime = t.ts
-	log.Info("hc===describeCollectionTask", zap.Uint64("hc===UpdateTimestamp", t.Rsp.UpdateTimestamp))
+	log.Info("hc===describeCollectionTask",
+		zap.Uint64("hc===UpdateTimestamp", t.Rsp.UpdateTimestamp),
+		zap.Uint64("hc===SchemaVersion", t.Rsp.Schema.SchemaVersion))
 	return nil
 }
 

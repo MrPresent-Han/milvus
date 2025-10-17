@@ -8,6 +8,7 @@ import (
 	"go.uber.org/zap"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/compaction"
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/session"
@@ -26,14 +27,16 @@ type backfillCompactionTask struct {
 	meta      CompactionMeta
 	handler   Handler
 	ievm      IndexEngineVersionManager
+	functions []*schemapb.FunctionSchema
 }
 
-func newBackfillCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta, handler Handler, ievm IndexEngineVersionManager) *backfillCompactionTask {
+func newBackfillCompactionTask(t *datapb.CompactionTask, allocator allocator.Allocator, meta CompactionMeta, handler Handler, ievm IndexEngineVersionManager, functions []*schemapb.FunctionSchema) *backfillCompactionTask {
 	task := &backfillCompactionTask{
 		allocator: allocator,
 		meta:      meta,
 		handler:   handler,
 		ievm:      ievm,
+		functions: functions,
 	}
 	task.taskProto.Store(t)
 	return task
@@ -91,6 +94,7 @@ func (t *backfillCompactionTask) BuildCompactionRequest() (*datapb.CompactionPla
 		MaxSize:                   taskProto.GetMaxSize(),
 		JsonParams:                compactionParams,
 		CurrentScalarIndexVersion: t.ievm.GetCurrentScalarIndexEngineVersion(),
+		Functions:                 t.functions,
 	}
 	segIDMap := make(map[int64][]*datapb.FieldBinlog, len(plan.SegmentBinlogs))
 	segments := make([]*SegmentInfo, 0, len(taskProto.GetInputSegments()))
@@ -128,7 +132,7 @@ func (t *backfillCompactionTask) BuildCompactionRequest() (*datapb.CompactionPla
 }
 
 func (t *backfillCompactionTask) GetSlotUsage() int64 {
-	return 0
+	return 1
 }
 
 func (t *backfillCompactionTask) GetLabel() string {

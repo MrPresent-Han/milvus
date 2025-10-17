@@ -405,6 +405,7 @@ func (s *SegmentManager) openNewSegment(ctx context.Context, collectionID Unique
 	})
 }
 
+// hc---alloc new growing segment with given segment id
 func (s *SegmentManager) openNewSegmentWithGivenSegmentID(ctx context.Context, req AllocNewGrowingSegmentRequest) (*SegmentInfo, error) {
 	var maxNumOfRows int
 	if !req.IsCreatedByStreaming {
