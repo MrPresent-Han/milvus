@@ -45,7 +45,8 @@ func (impl *shardInterceptor) initOpTable() {
 		message.MessageTypeFlush:            impl.handleFlushSegment,
 	}
 	impl.postOps = map[message.MessageType]interceptors.PostAppendInterceptorCall{
-		message.MessageTypeSchemaChange: impl.postHandleSchemaChange,
+		message.MessageTypeSchemaChange:     impl.postHandleSchemaChange,
+		message.MessageTypeCreateCollection: impl.postHandleCreateCollection,
 	}
 }
 
@@ -80,6 +81,14 @@ func (impl *shardInterceptor) postHandleSchemaChange(ctx context.Context, msg me
 	log.Info("hc===postHandleSchemaChange here")
 	impl.shardManager.AppendNewCollectionSchema(message.MustAsImmutableSchemaChangeMessageV2(msg.IntoImmutableMessage(msgID)))
 	log.Info("hc===append new collection schema", zap.Any("msgID", msgID))
+	return nil
+}
+
+func (impl *shardInterceptor) postHandleCreateCollection(ctx context.Context, msg message.MutableMessage, msgID message.MessageID) error {
+	log.Info("hc===postHandleCreateCollection here")
+	createCollectionMsg := message.MustAsImmutableCreateCollectionMessageV1(msg.IntoImmutableMessage(msgID))
+	impl.shardManager.AppendNewCollectionSchemaFromCreateCollection(createCollectionMsg)
+	log.Info("hc===append new collection schema from create collection", zap.Any("msgID", msgID))
 	return nil
 }
 

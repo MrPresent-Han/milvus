@@ -48,6 +48,8 @@ type ShardManager interface {
 
 	AppendNewCollectionSchema(msg message.ImmutableSchemaChangeMessageV2)
 
+	AppendNewCollectionSchemaFromCreateCollection(msg message.ImmutableCreateCollectionMessageV1)
+
 	CheckIfCollectionSchemaVersionMatch(collectionID int64, schemaVersion uint64) error
 
 	Close()

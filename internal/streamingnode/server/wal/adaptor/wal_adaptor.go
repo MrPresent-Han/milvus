@@ -23,6 +23,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/streaming/walimpls"
 	"github.com/milvus-io/milvus/pkg/v2/util/conc"
 	"github.com/milvus-io/milvus/pkg/v2/util/lifetime"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
@@ -181,6 +182,10 @@ func (w *walAdaptorImpl) Append(ctx context.Context, msg message.MutableMessage)
 				w.Logger().Warn("wal is fenced, mark as unavailable, all append opertions will be rejected", zap.Error(err))
 			}
 			return nil, status.NewChannelFenced(w.Channel().String())
+		}
+		if errors.Is(err, merr.ErrCollectionSchemaMismatch) {
+			log.Warn("hc====walAdaptorImpl append error for mismatch schema", zap.Error(err))
+			return nil, status.NewUnrecoverableError(err.Error())
 		}
 		return nil, err
 	}

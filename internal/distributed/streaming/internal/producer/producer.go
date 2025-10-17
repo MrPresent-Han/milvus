@@ -16,6 +16,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/message"
 	"github.com/milvus-io/milvus/pkg/v2/streaming/util/types"
+	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/syncutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
@@ -91,11 +92,13 @@ func (p *ResumableProducer) Produce(ctx context.Context, msg message.MutableMess
 		}
 		//hc---truly send message here
 		produceResult, err := producerHandler.Append(ctx, msg)
+		log.Info("hc====producer produce result", zap.Any("error", err), zap.Any("produceResult", produceResult))
 		if err == nil {
 			return produceResult, nil
 		}
 		// It's ok to stop retry if the error is canceled or deadline exceed.
-		if status.IsCanceled(err) {
+		if status.IsCanceled(err) || errors.Is(err, merr.ErrCollectionSchemaMismatch) {
+			log.Warn("hc====producer produce result error", zap.Error(err))
 			return nil, errors.Mark(err, errs.ErrCanceledOrDeadlineExceed)
 		}
 		if sErr := status.AsStreamingError(err); sErr != nil {
