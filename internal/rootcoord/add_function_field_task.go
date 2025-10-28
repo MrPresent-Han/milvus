@@ -119,7 +119,8 @@ func (t *addCollectionFunctionFieldTask) executeAddCollectionFunctionFieldTaskSt
 		zap.Any("functionSchema.inputFieldIds", t.functionSchema.InputFieldIds),
 		zap.Any("functionSchema.inputFieldNames", t.functionSchema.InputFieldNames),
 		zap.Any("functionSchema.outputFieldNames", t.functionSchema.OutputFieldNames),
-		zap.Any("functionSchema.outputFieldIds", t.functionSchema.OutputFieldIds))
+		zap.Any("functionSchema.outputFieldIds", t.functionSchema.OutputFieldIds),
+		zap.Uint64("ts", ts))
 
 	function := model.UnmarshalFunctionModel(t.functionSchema)
 	updatedCollection.Functions = append(updatedCollection.Functions, function)
@@ -128,6 +129,7 @@ func (t *addCollectionFunctionFieldTask) executeAddCollectionFunctionFieldTaskSt
 	redoTask.AddSyncStep(&WriteSchemaChangeWALStep{
 		baseStep:   baseStep{core: t.core},
 		collection: updatedCollection,
+		ts:         ts,
 	})
 
 	// 3. add fields and function to collection meta

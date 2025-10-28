@@ -81,7 +81,18 @@ func (t *backfillCompactionTask) runBackfillFunction(functionRunner function.Fun
 }
 
 func (t *backfillCompactionTask) runBm25Function(functionRunner function.FunctionRunner) error {
-	log.Warn("hc====sn===runBm25Function")
+	functionSchema := functionRunner.GetSchema()
+	inputFieldIDs := functionSchema.GetInputFieldIds()
+	if len(inputFieldIDs) != 1 {
+		return errors.New("bm25 function should have exactly one input field")
+	}
+	inputFieldID := inputFieldIDs[0]
+	inputField := typeutil.GetField(t.plan.GetSchema(), inputFieldID)
+	if inputField == nil {
+		return errors.New("input field not found")
+	}
+
+	functionRunner.BatchRun()
 	return nil
 }
 

@@ -142,7 +142,7 @@ func (m *shardManagerImpl) AppendNewCollectionSchema(msg message.ImmutableSchema
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	schema.SchemaVersion = timetick
+	schema.SchemaVersion = header.GetSchemaVerison()
 	nweCollectionSchema := &streamingpb.CollectionSchemaOfVChannel{
 		Schema:             schema,
 		CheckpointTimeTick: timetick,

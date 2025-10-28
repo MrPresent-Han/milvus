@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/pkg/v2/log"
+	"go.uber.org/zap"
 )
 
 // FieldDiff represents the differences in fields between two schemas
@@ -24,7 +26,7 @@ func SchemaDiff(oldSchema, newSchema *schemapb.CollectionSchema) (*FieldDiff, *F
 	if newSchema == nil {
 		return nil, nil, fmt.Errorf("new_schema cannot be nil")
 	}
-
+	log.Info("hc===SchemaDiff", zap.Any("oldSchema", oldSchema), zap.Any("newSchema", newSchema))
 	fieldDiff := compareFields(oldSchema.GetFields(), newSchema.GetFields())
 	funcDiff := compareFunctions(oldSchema.GetFunctions(), newSchema.GetFunctions())
 	return fieldDiff, funcDiff, nil
@@ -63,7 +65,7 @@ func compareFunctions(oldFunctions, newFunctions []*schemapb.FunctionSchema) *Fu
 	diff := &FuncDiff{
 		Added: make([]*schemapb.FunctionSchema, 0),
 	}
-
+	log.Info("hc===compareFunctions", zap.Any("oldFunctions", oldFunctions), zap.Any("newFunctions", newFunctions))
 	// Create map for efficient lookup by function ID
 	oldFuncMap := make(map[int64]*schemapb.FunctionSchema)
 

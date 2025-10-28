@@ -62,7 +62,8 @@ func (policy *backfillCompactionPolicy) getCollectionSchemaByVersion(ctx context
 
 	log.Debug("Successfully retrieved collection schema",
 		zap.Uint64("retrievedSchemaVersion", schema.GetSchemaVersion()),
-		zap.String("collectionName", schema.GetName()))
+		zap.String("collectionName", schema.GetName()),
+		zap.Any("schema", schema))
 
 	return schema, nil
 }
@@ -102,7 +103,7 @@ func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[Compac
 				}
 				// If segment's schema version is smaller than collection's schema version
 				if segmentSchemaVersion < collectionSchemaVersion {
-					_, funcDiff, err := util.SchemaDiff(collection.Schema, segmentSchema)
+					_, funcDiff, err := util.SchemaDiff(segmentSchema, collection.Schema)
 					if err != nil {
 						log.Ctx(ctx).Error("Failed to compare schemas", zap.Error(err))
 						continue

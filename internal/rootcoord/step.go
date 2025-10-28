@@ -21,7 +21,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/samber/lo"
 	"go.uber.org/zap"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
@@ -477,7 +476,8 @@ func (a *AddCollectionMetaStep) Execute(ctx context.Context) ([]nestedStep, erro
 	// newColl := a.oldColl.Clone()
 	// newColl.Fields = append(newColl.Fields, a.newField)
 	err := a.core.meta.AlterCollection(ctx, a.oldColl, a.updatedCollection, a.updatedCollection.UpdateTimestamp, true)
-	log.Ctx(ctx).Info("hc===add field done", zap.Int64("collectionID", a.oldColl.CollectionID), zap.Any("new fields", a.newFields), zap.Any("new function", a.newFunction))
+	log.Ctx(ctx).Info("hc===add field done", zap.Int64("collectionID", a.oldColl.CollectionID),
+		zap.Any("new fields", a.newFields), zap.Any("new function", a.newFunction), zap.Uint64("ts", a.updatedCollection.UpdateTimestamp))
 	return nil, err
 }
 
@@ -522,7 +522,8 @@ func (s *WriteSchemaChangeWALStep) Execute(ctx context.Context) ([]nestedStep, e
 	schemaMsg, err := message.NewSchemaChangeMessageBuilderV2().
 		WithBroadcast(vchannels).
 		WithHeader(&message.SchemaChangeMessageHeader{
-			CollectionId: s.collection.CollectionID,
+			CollectionId:  s.collection.CollectionID,
+			SchemaVerison: s.ts,
 		}).
 		WithBody(&message.SchemaChangeMessageBody{
 			Schema: schema,
@@ -537,15 +538,13 @@ func (s *WriteSchemaChangeWALStep) Execute(ctx context.Context) ([]nestedStep, e
 	}
 
 	// use broadcast max msg timestamp as update timestamp here
-	s.collection.UpdateTimestamp = lo.Max(lo.Map(vchannels, func(channelName string, _ int) uint64 {
-		return resp.GetAppendResult(channelName).TimeTick
-	}))
+	s.collection.UpdateTimestamp = s.ts
 	log.Ctx(ctx).Info(
 		"hc===broadcast schema change success",
 		zap.Uint64("broadcastID", resp.BroadcastID),
 		zap.Uint64("hc===WALUpdateTimestamp", s.collection.UpdateTimestamp),
 		zap.Any("appendResults", resp.AppendResults),
-		zap.Uint64("hc===schemaVersion", resp.GetAppendResult(vchannels[0]).TimeTick),
+		zap.Uint64("hc===schemaVersion", s.ts),
 	)
 	return nil, nil
 }

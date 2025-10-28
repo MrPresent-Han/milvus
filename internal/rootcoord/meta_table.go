@@ -639,8 +639,8 @@ func (mt *MetaTable) getCollectionByIDInternal(ctx context.Context, dbName strin
 	var coll *model.Collection
 	coll, ok := mt.collID2Meta[collectionID]
 	log.Info("hc====getCollectionByIDInternal", zap.Int64("collectionID", collectionID),
-		zap.Uint64("ts", ts), zap.Uint64("createTime", coll.CreateTime))
-	if !ok || coll == nil || !coll.Available() || coll.CreateTime > ts {
+		zap.Uint64("ts", ts), zap.Uint64("createTime", coll.CreateTime), zap.Uint64("updateTimestamp", coll.UpdateTimestamp))
+	if !ok || coll == nil || !coll.Available() || coll.UpdateTimestamp > ts {
 		// travel meta information from catalog.
 		ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
 		db, err := mt.getDatabaseByNameInternal(ctx, dbName, typeutil.MaxTimestamp)
@@ -887,7 +887,7 @@ func (mt *MetaTable) AlterCollection(ctx context.Context, oldColl *model.Collect
 		return err
 	}
 	mt.collID2Meta[oldColl.CollectionID] = newColl
-	log.Ctx(ctx).Info("alter collection finished", zap.Int64("collectionID", oldColl.CollectionID), zap.Uint64("ts", ts))
+	log.Ctx(ctx).Info("hc===alter collection finished", zap.Int64("collectionID", oldColl.CollectionID), zap.Uint64("ts", ts))
 	return nil
 }
 
