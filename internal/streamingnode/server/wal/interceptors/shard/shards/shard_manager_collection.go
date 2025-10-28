@@ -157,9 +157,8 @@ func (m *shardManagerImpl) AppendNewCollectionSchemaFromCreateCollection(msg mes
 	header := msg.Header()
 	collectionID := header.CollectionId
 	schema := msg.MustBody().GetCollectionSchema()
+	schema.SchemaVersion = header.ColTs
 	timetick := msg.TimeTick()
-	schema.SchemaVersion = timetick
-
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

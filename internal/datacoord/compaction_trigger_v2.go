@@ -644,6 +644,7 @@ func (m *CompactionTriggerManager) SubmitSingleViewToScheduler(ctx context.Conte
 			zap.Int64("planID", task.GetPlanID()),
 			zap.Int64s("segmentIDs", task.GetInputSegments()),
 			zap.Error(err))
+		return
 	}
 	log.Info("Finish to submit a single compaction task",
 		zap.Int64("triggerID", task.GetTriggerID()),
@@ -694,6 +695,7 @@ func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Con
 			zap.Int64("planID", task.GetPlanID()),
 			zap.Int64s("segmentIDs", task.GetInputSegments()),
 			zap.Error(err))
+		return
 	}
 	log.Info("hc===Finish to submit a backfill compaction task",
 		zap.Int64("triggerID", task.GetTriggerID()),

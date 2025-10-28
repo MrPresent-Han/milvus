@@ -508,28 +508,28 @@ func (t *createCollectionTask) genCreateCollectionRequest() *msgpb.CreateCollect
 	}
 }
 
-func (t *createCollectionTask) addChannelsAndGetStartPositions(ctx context.Context, ts uint64) (map[string][]byte, uint64, error) {
+func (t *createCollectionTask) addChannelsAndGetStartPositions(ctx context.Context, ts uint64) (map[string][]byte, error) {
 	t.core.chanTimeTick.addDmlChannels(t.channels.physicalChannels...)
 	if streamingutil.IsStreamingServiceEnabled() {
 		return t.broadcastCreateCollectionMsgIntoStreamingService(ctx, ts)
 	}
 	msg := t.genCreateCollectionMsg(ctx, ts)
 	startPositions, err := t.core.chanTimeTick.broadcastMarkDmlChannels(t.channels.physicalChannels, msg)
-	return startPositions, 0, err
+	return startPositions, err
 }
 
 // hc----write createCollectionMsg into streaming service
-func (t *createCollectionTask) broadcastCreateCollectionMsgIntoStreamingService(ctx context.Context, ts uint64) (map[string][]byte, uint64, error) {
+func (t *createCollectionTask) broadcastCreateCollectionMsgIntoStreamingService(ctx context.Context, ts uint64) (map[string][]byte, error) {
 	notifier := snmanager.NewStreamingReadyNotifier()
 	if err := snmanager.StaticStreamingNodeManager.RegisterStreamingEnabledListener(ctx, notifier); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	if !notifier.IsReady() {
 		// streaming service is not ready, so we send it into msgstream.
 		defer notifier.Release()
 		msg := t.genCreateCollectionMsg(ctx, ts)
 		startPositions, err := t.core.chanTimeTick.broadcastMarkDmlChannels(t.channels.physicalChannels, msg)
-		return startPositions, 0, err
+		return startPositions, err
 	}
 	// streaming service is ready, so we release the ready notifier and send it into streaming service.
 	notifier.Release()
@@ -543,11 +543,12 @@ func (t *createCollectionTask) broadcastCreateCollectionMsgIntoStreamingService(
 			WithHeader(&message.CreateCollectionMessageHeader{
 				CollectionId: req.CollectionID,
 				PartitionIds: req.GetPartitionIDs(),
+				ColTs:        ts,
 			}).
 			WithBody(req).
 			BuildMutable()
 		if err != nil {
-			return nil, 0, err
+			return nil, err
 		}
 		msgs = append(msgs, msg)
 	}
@@ -559,14 +560,8 @@ func (t *createCollectionTask) broadcastCreateCollectionMsgIntoStreamingService(
 		BarrierTimeTick: ts,
 	}, msgs...)
 
-	var collectionSchemaVersion uint64
-	for _, resp := range resps.Responses {
-		log.Info("hc====rootcoord create collection resp", zap.Any("resp.timetick", resp.AppendResult.TimeTick))
-		collectionSchemaVersion = resp.AppendResult.TimeTick
-	}
-
 	if err := resps.UnwrapFirstError(); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 	// make the old message stream serialized id.
 	startPositions := make(map[string][]byte)
@@ -574,7 +569,7 @@ func (t *createCollectionTask) broadcastCreateCollectionMsgIntoStreamingService(
 		// The key is pchannel here
 		startPositions[req.PhysicalChannelNames[idx]] = adaptor.MustGetMQWrapperIDFromMessage(resp.AppendResult.MessageID).Serialize()
 	}
-	return startPositions, collectionSchemaVersion, nil
+	return startPositions, nil
 }
 
 func (t *createCollectionTask) getCreateTs(ctx context.Context) (uint64, error) {
@@ -664,16 +659,14 @@ func (t *createCollectionTask) Execute(ctx context.Context) error {
 
 	// TODO: The create collection is not idempotent for other component, such as wal.
 	// we need to make the create collection operation must success after some persistent operation, refactor it in future.
-	startPositions, collectionSchemaVersion, err := t.addChannelsAndGetStartPositions(ctx, ts)
+	startPositions, err := t.addChannelsAndGetStartPositions(ctx, ts)
 	if err != nil {
 		// ugly here, since we must get start positions first.
 		t.core.chanTimeTick.removeDmlChannels(t.channels.physicalChannels...)
 		return err
 	}
 	collInfo.StartPositions = toKeyDataPairs(startPositions)
-	collInfo.UpdateTimestamp = collectionSchemaVersion
-	collInfo.CreateTime = ts
-	log.Info("hc====collection schema version", zap.Uint64("collectionSchemaVersion", collectionSchemaVersion))
+	log.Info("hc====collection schema version", zap.Uint64("schema_timestamp", ts))
 	return executeCreateCollectionTaskSteps(ctx, t.core, &collInfo, t.Req.GetDbName(), t.dbProperties, ts)
 }
 

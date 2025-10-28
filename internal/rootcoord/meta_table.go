@@ -638,6 +638,8 @@ func (mt *MetaTable) getCollectionByIDInternal(ctx context.Context, dbName strin
 
 	var coll *model.Collection
 	coll, ok := mt.collID2Meta[collectionID]
+	log.Info("hc====getCollectionByIDInternal", zap.Int64("collectionID", collectionID),
+		zap.Uint64("ts", ts), zap.Uint64("createTime", coll.CreateTime))
 	if !ok || coll == nil || !coll.Available() || coll.CreateTime > ts {
 		// travel meta information from catalog.
 		ctx1 := contextutil.WithTenantID(ctx, Params.CommonCfg.ClusterName.GetValue())
