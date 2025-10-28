@@ -83,15 +83,15 @@ func (m *shardManagerImpl) CreateCollection(msg message.ImmutableCreateCollectio
 	logger.Info("collection created in segment assignment service", zap.Int64s("partitionIDs", partitionIDs),
 		zap.Uint64("timetick", timetick))
 
-	// schema := msg.MustBody().GetCollectionSchema()
-	// schemaOfVChannel := &streamingpb.CollectionSchemaOfVChannel{
-	// 	Schema:             schema,
-	// 	CheckpointTimeTick: timetick,
-	// 	State:              streamingpb.VChannelSchemaState_VCHANNEL_SCHEMA_STATE_NORMAL,
-	// }
+	schema := msg.MustBody().GetCollectionSchema()
+	schemaOfVChannel := &streamingpb.CollectionSchemaOfVChannel{
+		Schema:             schema,
+		CheckpointTimeTick: timetick,
+		State:              streamingpb.VChannelSchemaState_VCHANNEL_SCHEMA_STATE_NORMAL,
+	}
 	// m.collections[collectionID].Schemas = append(m.collections[collectionID].Schemas, schemaOfVChannel)
-	// log.Info("hc====append new collection schema", zap.Any("schemaOfVChannel", schemaOfVChannel),
-	// 	zap.Uint64("schemaVersion", schema.GetSchemaVersion()))
+	log.Info("hc====append new collection schema", zap.Any("schemaOfVChannel", schemaOfVChannel),
+		zap.Any("schema", schema))
 	m.updateMetrics()
 }
 
@@ -142,13 +142,14 @@ func (m *shardManagerImpl) AppendNewCollectionSchema(msg message.ImmutableSchema
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	schema.SchemaVersion = timetick
 	nweCollectionSchema := &streamingpb.CollectionSchemaOfVChannel{
 		Schema:             schema,
 		CheckpointTimeTick: timetick,
 		State:              streamingpb.VChannelSchemaState_VCHANNEL_SCHEMA_STATE_NORMAL,
 	}
 	m.collections[collectionID].Schemas = append(m.collections[collectionID].Schemas, nweCollectionSchema)
-	log.Info("hc====AppendedNewCollectionSchema", zap.Any("msg", msg))
+	log.Info("hc====AppendedNewCollectionSchema", zap.Any("schema", schema), zap.Uint64("schemaVersion", schema.GetSchemaVersion()))
 }
 
 func (m *shardManagerImpl) AppendNewCollectionSchemaFromCreateCollection(msg message.ImmutableCreateCollectionMessageV1) {
@@ -169,7 +170,7 @@ func (m *shardManagerImpl) AppendNewCollectionSchemaFromCreateCollection(msg mes
 	}
 	m.collections[collectionID].Schemas = append(m.collections[collectionID].Schemas, newCollectionSchema)
 	log.Info("hc====AppendedNewCollectionSchema", zap.Any("msg", msg), zap.Uint64("schemaVersion", schema.GetSchemaVersion()),
-		zap.Uint64("timetick", timetick))
+		zap.Uint64("timetick", timetick), zap.Int("schemas.length", len(m.collections[collectionID].Schemas)))
 }
 
 func (m *shardManagerImpl) CheckIfCollectionSchemaVersionMatch(collectionID int64, schemaVersion uint64) error {
@@ -191,8 +192,10 @@ func (m *shardManagerImpl) checkIfCollectionSchemaVersionMatch(collectionID int6
 	}
 	collectionSchemaVersion := m.collections[collectionID].Schemas[len(m.collections[collectionID].Schemas)-1].GetSchema().GetSchemaVersion()
 	if collectionSchemaVersion != schemaVersion {
-		log.Warn("hc====collection schema version not match", zap.Int64("collectionID", collectionID), zap.Uint64("schemaVersion", schemaVersion),
-			zap.Any("collectionSchemaVersion", collectionSchemaVersion))
+		log.Warn("hc====collection schema version not match", zap.Int64("collectionID", collectionID),
+			zap.Uint64("schemaVersion", schemaVersion),
+			zap.Any("collectionSchemaVersion", collectionSchemaVersion),
+			zap.Int("schemas.length", len(m.collections[collectionID].Schemas)))
 		return ErrCollectionSchemaVersionNotMatch
 	}
 	log.Info("hc====collection schema version match", zap.Int64("collectionID", collectionID), zap.Uint64("schemaVersion", schemaVersion), zap.Any("collectionSchemaVersion", collectionSchemaVersion))

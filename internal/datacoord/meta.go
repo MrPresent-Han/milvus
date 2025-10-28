@@ -427,6 +427,10 @@ func GetSegmentsChanPart(m *meta, collectionID int64, filters ...SegmentFilter) 
 			mDimEntry[d] = entry
 		}
 		entry.segments = append(entry.segments, si)
+		log.Info("hc====GetSegmentsChanPart", zap.Int64("collectionID", si.CollectionID),
+			zap.Int64("partitionID", si.PartitionID), zap.String("channelName", si.InsertChannel),
+			zap.Uint64("schemaVersion", si.GetSchemaVersion()),
+			zap.Bool("isCompacting", si.isCompacting))
 	}
 	result := make([]*chanPartSegments, 0, len(mDimEntry))
 	for _, entry := range mDimEntry {
@@ -570,7 +574,7 @@ func (m *meta) AddSegment(ctx context.Context, segment *SegmentInfo) error {
 	m.segments.SetSegment(segment.GetID(), segment)
 
 	metrics.DataCoordNumSegments.WithLabelValues(segment.GetState().String(), segment.GetLevel().String(), getSortStatus(segment.GetIsSorted())).Inc()
-	log.Info("meta update: adding segment - complete", zap.Int64("segmentID", segment.GetID()))
+	log.Info("hc====meta update: adding segment - complete", zap.Int64("segmentID", segment.GetID()), zap.Uint64("schemaVersion", segment.GetSchemaVersion()))
 	return nil
 }
 
@@ -595,7 +599,7 @@ func (m *meta) DropSegment(ctx context.Context, segmentID UniqueID) error {
 	metrics.DataCoordNumSegments.WithLabelValues(segment.GetState().String(), segment.GetLevel().String(), getSortStatus(segment.GetIsSorted())).Dec()
 
 	m.segments.DropSegment(segmentID)
-	log.Info("meta update: dropping segment - complete",
+	log.Info("hc====meta update: dropping segment - complete",
 		zap.Int64("segmentID", segmentID))
 	return nil
 }
@@ -821,8 +825,9 @@ func (p *updateSegmentPack) Get(segmentID int64) *SegmentInfo {
 			zap.Bool("segment unhealthy", !isSegmentHealthy(segment)))
 		return nil
 	}
-
+	log.Info("hc====Get11111", zap.Int64("segmentID", segmentID), zap.Uint64("schemaVersion", segment.GetSchemaVersion()))
 	p.segments[segmentID] = segment.Clone()
+	log.Info("hc====Get22222", zap.Int64("segmentID", segmentID), zap.Uint64("schemaVersion", p.segments[segmentID].GetSchemaVersion()))
 	return p.segments[segmentID]
 }
 
@@ -1205,6 +1210,7 @@ func UpdateAsDroppedIfEmptyWhenFlushing(segmentID int64) UpdateOperator {
 
 // updateSegmentsInfo update segment infos
 // will exec all operators, and update all changed segments
+// hc----updateSegmentsInfo here
 func (m *meta) UpdateSegmentsInfo(ctx context.Context, operators ...UpdateOperator) error {
 	m.segMu.Lock()
 	defer m.segMu.Unlock()
@@ -1243,6 +1249,7 @@ func (m *meta) UpdateSegmentsInfo(ctx context.Context, operators ...UpdateOperat
 	updatePack.metricMutation.commit()
 	// update memory status
 	for id, s := range updatePack.segments {
+		log.Info("hc====updateSegmentsInfo", zap.Int64("segmentID", id), zap.Uint64("schemaVersion", s.GetSchemaVersion()))
 		m.segments.SetSegment(id, s)
 	}
 	log.Ctx(ctx).Info("meta update: update flush segments info - update flush segments info successfully")
@@ -1664,6 +1671,7 @@ func (m *meta) completeClusterCompactionMutation(t *datapb.CompactionTask, resul
 			// visible after stats and index
 			IsInvisible:    true,
 			StorageVersion: seg.GetStorageVersion(),
+			SchemaVersion:  compactFromSegInfos[0].GetSchemaVersion(),
 		}
 		segment := NewSegmentInfo(segmentInfo)
 		compactToSegInfos = append(compactToSegInfos, segment)
@@ -1754,7 +1762,9 @@ func (m *meta) completeMixCompactionMutation(
 				DmlPosition: getMinPosition(lo.Map(compactFromSegInfos, func(info *SegmentInfo, _ int) *msgpb.MsgPosition {
 					return info.GetDmlPosition()
 				})),
-				IsSorted: compactToSegment.GetIsSorted(),
+				IsSorted:      compactToSegment.GetIsSorted(),
+				SchemaVersion: compactFromSegInfos[0].GetSchemaVersion(),
+				// hc-----schemaVersion for all compacted segments should be the same
 			})
 
 		if compactToSegmentInfo.GetNumOfRows() == 0 {
@@ -2234,6 +2244,7 @@ func (m *meta) completeSortCompactionMutation(
 		Deltalogs:                 resultSegment.GetDeltalogs(),
 		CompactionFrom:            []int64{compactFromSegID},
 		IsSorted:                  true,
+		SchemaVersion:             oldSegment.GetSchemaVersion(),
 	}
 
 	segment := NewSegmentInfo(segmentInfo)

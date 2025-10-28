@@ -389,6 +389,10 @@ func (s *SegmentsInfo) addSecondaryIndex(segment *SegmentInfo) {
 		s.secondaryIndexes.channel2Segments[channel] = make(map[UniqueID]*SegmentInfo)
 	}
 	s.secondaryIndexes.channel2Segments[channel][segment.ID] = segment
+	log.Info("hc====addSecondaryIndex", zap.Int64("collectionID", collID), zap.Int64("segmentID", segment.ID), zap.Uint64("schemaVersion", segment.GetSchemaVersion()))
+	if segment.GetSchemaVersion() == 0 {
+		panic("hc====schemaVersion is 0")
+	}
 }
 
 func (s *SegmentsInfo) removeSecondaryIndex(segment *SegmentInfo) {

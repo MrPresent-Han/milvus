@@ -133,6 +133,6 @@ func (w *segmentAllocWorker) generateNewGrowingSegmentMessage() error {
 		WithBody(&message.CreateSegmentMessageBody{}).
 		MustBuildMutable()
 	w.SetLogger(w.Logger().With(log.FieldMessage(w.msg)))
-	log.Info("hc====generateNewGrowingSegmentMessage", zap.Any("msg", w.msg))
+	log.Info("hc====generateNewGrowingSegmentMessage", zap.Any("msg", w.msg), zap.Uint64("schemaVersion", w.schemaVersion))
 	return nil
 }

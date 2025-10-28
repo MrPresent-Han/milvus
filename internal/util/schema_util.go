@@ -25,21 +25,13 @@ func SchemaDiff(oldSchema, newSchema *schemapb.CollectionSchema) (*FieldDiff, *F
 		return nil, nil, fmt.Errorf("new_schema cannot be nil")
 	}
 
-	fieldDiff, err := compareFields(oldSchema.GetFields(), newSchema.GetFields())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to compare fields: %w", err)
-	}
-
-	funcDiff, err := compareFunctions(oldSchema.GetFunctions(), newSchema.GetFunctions())
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to compare functions: %w", err)
-	}
-
+	fieldDiff := compareFields(oldSchema.GetFields(), newSchema.GetFields())
+	funcDiff := compareFunctions(oldSchema.GetFunctions(), newSchema.GetFunctions())
 	return fieldDiff, funcDiff, nil
 }
 
 // compareFields compares field arrays and returns the differences
-func compareFields(oldFields, newFields []*schemapb.FieldSchema) (*FieldDiff, error) {
+func compareFields(oldFields, newFields []*schemapb.FieldSchema) *FieldDiff {
 	diff := &FieldDiff{
 		Added: make([]*schemapb.FieldSchema, 0),
 	}
@@ -63,11 +55,11 @@ func compareFields(oldFields, newFields []*schemapb.FieldSchema) (*FieldDiff, er
 		}
 	}
 
-	return diff, nil
+	return diff
 }
 
 // compareFunctions compares function arrays and returns the differences
-func compareFunctions(oldFunctions, newFunctions []*schemapb.FunctionSchema) (*FuncDiff, error) {
+func compareFunctions(oldFunctions, newFunctions []*schemapb.FunctionSchema) *FuncDiff {
 	diff := &FuncDiff{
 		Added: make([]*schemapb.FunctionSchema, 0),
 	}
@@ -91,5 +83,5 @@ func compareFunctions(oldFunctions, newFunctions []*schemapb.FunctionSchema) (*F
 		}
 	}
 
-	return diff, nil
+	return diff
 }

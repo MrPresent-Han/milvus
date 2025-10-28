@@ -102,21 +102,18 @@ func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[Compac
 				}
 				// If segment's schema version is smaller than collection's schema version
 				if segmentSchemaVersion < collectionSchemaVersion {
-					log.Ctx(ctx).Info("hc====sn===Start to compare schemas",
-						zap.Any("collectionSchema", collection.Schema),
-						zap.Any("segmentSchema", segmentSchema))
 					_, funcDiff, err := util.SchemaDiff(collection.Schema, segmentSchema)
 					if err != nil {
 						log.Ctx(ctx).Error("Failed to compare schemas", zap.Error(err))
 						continue
 					}
-					log.Ctx(ctx).Info("hc====sn===Finish to compare schemas",
-						zap.Any("funcDiff", funcDiff))
 					log.Ctx(ctx).Info("hc===Found segment with outdated schema version",
 						zap.Int64("segmentID", segment.GetID()),
 						zap.Int64("collectionID", collectionID),
 						zap.Uint64("segmentSchemaVersion", segmentSchemaVersion),
-						zap.Uint64("collectionSchemaVersion", collectionSchemaVersion))
+						zap.Uint64("collectionSchemaVersion", collectionSchemaVersion),
+						zap.Any("funcDiff", funcDiff),
+						zap.Bool("isCompacting", segment.isCompacting))
 
 					// Create BackfillSegmentsView for this segment
 					segmentViews := GetViewsByInfo(segment)

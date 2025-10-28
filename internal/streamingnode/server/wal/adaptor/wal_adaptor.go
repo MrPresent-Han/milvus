@@ -185,7 +185,7 @@ func (w *walAdaptorImpl) Append(ctx context.Context, msg message.MutableMessage)
 		}
 		if errors.Is(err, merr.ErrCollectionSchemaMismatch) {
 			log.Warn("hc====walAdaptorImpl append error for mismatch schema", zap.Error(err))
-			return nil, status.NewUnrecoverableError(err.Error())
+			return nil, err
 		}
 		return nil, err
 	}
