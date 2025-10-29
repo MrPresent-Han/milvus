@@ -7,10 +7,13 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/compaction"
 	"github.com/milvus-io/milvus/internal/flushcommon/io"
+	"github.com/milvus-io/milvus/internal/metastore/kv/binlog"
+	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/util/function"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
+	"go.uber.org/zap"
 )
 
 type backfillCompactionTask struct {
@@ -81,6 +84,7 @@ func (t *backfillCompactionTask) runBackfillFunction(functionRunner function.Fun
 }
 
 func (t *backfillCompactionTask) runBm25Function(functionRunner function.FunctionRunner) error {
+	//1. set up function schema
 	functionSchema := functionRunner.GetSchema()
 	inputFieldIDs := functionSchema.GetInputFieldIds()
 	if len(inputFieldIDs) != 1 {
@@ -92,7 +96,25 @@ func (t *backfillCompactionTask) runBm25Function(functionRunner function.Functio
 		return errors.New("input field not found")
 	}
 
-	functionRunner.BatchRun()
+	//2. get input data
+	segment := t.plan.GetSegmentBinlogs()[0]
+	collectionID := segment.GetCollectionID()
+	partitionID := segment.GetPartitionID()
+	segmentID := segment.GetSegmentID()
+	if err := binlog.DecompressBinLogWithRootPath(t.compactionParams.StorageConfig.GetRootPath(),
+		storage.InsertBinlog, collectionID, partitionID,
+		segmentID, segment.GetFieldBinlogs()); err != nil {
+		log.Ctx(t.ctx).Warn("Decompress insert binlog error", zap.Error(err))
+		return err
+	}
+
+	//3. run function
+	// output, err := functionRunner.BatchRun(inputData)
+	// if err != nil {
+	// 	return err
+	// }
+
+	// functionRunner.BatchRun()
 	return nil
 }
 

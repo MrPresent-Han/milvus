@@ -364,6 +364,9 @@ func (s *PackedBinlogRecordSuite) TestPackedBinlogRecordIntegrationPartialGet() 
 	}
 
 	// Create sample sparse float vector data
+	insertData.Data[13] = &Int64FieldData{
+		Data: []int64{1},
+	}
 	sparseData := &SparseFloatVectorFieldData{
 		SparseFloatArray: schemapb.SparseFloatArray{
 			Dim: 300,
@@ -372,9 +375,6 @@ func (s *PackedBinlogRecordSuite) TestPackedBinlogRecordIntegrationPartialGet() 
 				typeutil.CreateSparseFloatRow([]uint32{5, 6, 7}, []float32{1.1, 1.2, 1.3}),
 			},
 		},
-	}
-	insertData.Data[13] = &Int64FieldData{
-		Data: []int64{1},
 	}
 	insertData.Data[107] = sparseData // FieldID 107 is the sparseFloatVector field
 	insertData.Data[common.TimeStampField] = &Int64FieldData{
