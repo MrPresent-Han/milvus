@@ -10,4 +10,5 @@
 # or implied. See the License for the specific language governing permissions and limitations under the License
 
 add_source_at_current_directory_recursively()
+list(FILTER SOURCE_FILES EXCLUDE REGEX ".*/(test_.*|.*Test)\\.cpp$")
 add_library(milvus_index OBJECT ${SOURCE_FILES})

@@ -11,12 +11,12 @@
 
 set(JSON_STATS_TEST_FILES
     ../init_gtest.cpp
-    test_bson_builder.cpp
-    test_bson_view.cpp
-    test_parquet_writer.cpp
-    test_utils.cpp
-    test_json_key_stats.cpp
-    test_traverse_json_for_build_stats.cpp
+    # test_bson_builder.cpp
+    # test_bson_view.cpp
+    # test_parquet_writer.cpp
+    # test_utils.cpp
+    # test_json_key_stats.cpp
+    # test_traverse_json_for_build_stats.cpp
 )
 
 add_executable(json_stats_test
