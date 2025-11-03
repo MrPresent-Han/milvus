@@ -290,11 +290,41 @@ HuaweiCloudSTSCredentialsClient::callHuaweiCloudSTS(
         auto resp = httpClient->MakeRequest(req);
         std::ostringstream oss;
         oss << resp->GetResponseBody().rdbuf();
-        Aws::String respBody = oss.str();
-        std::cout << "hc===STS Response Body: " << respBody << std::endl;
-        std::cout << "hc===STS Response Body Length: " << respBody.length() << std::endl;
+        Aws::String credentialsStr = oss.str();
+        
+        std::cout << "hc===STS Response Body: " << credentialsStr << std::endl;
+        std::cout << "hc===STS Response Body Length: " << credentialsStr.length() << std::endl;
+        
+        // 解析华为云STS响应，模仿腾讯云的处理逻辑
         STSCallResult result;
+        if (credentialsStr.empty()) {
+            result.errorMessage = "Get an empty credential from Huawei Cloud STS";
+            std::cout << "hc===Error: " << result.errorMessage << std::endl;
+            return result;
+        }
+
+        auto json = Utils::Json::JsonView(credentialsStr);
+        auto rootNode = json.GetObject("credential");
+        if (rootNode.IsNull()) {
+            result.errorMessage = "Get credential from STS result failed";
+            std::cout << "hc===Error: " << result.errorMessage << std::endl;
+            return result;
+        }
+
+        // 华为云STS返回的凭证字段名称
+        result.credentials.SetAWSAccessKeyId(rootNode.GetString("access"));
+        result.credentials.SetAWSSecretKey(rootNode.GetString("secret"));
+        result.credentials.SetSessionToken(rootNode.GetString("securitytoken"));
+        
+        // 解析过期时间
+        auto expiresAt = rootNode.GetString("expires_at");
+        if (!expiresAt.empty()) {
+            result.credentials.SetExpiration(Aws::Utils::DateTime(
+                Aws::Utils::StringUtils::Trim(expiresAt.c_str()).c_str(),
+                Aws::Utils::DateFormat::ISO_8601));
+        }
         result.success = true;
+        std::cout << "hc===Successfully parsed credentials from STS response" << std::endl;
         return result;
 }
 
