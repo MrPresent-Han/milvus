@@ -5,6 +5,7 @@
 #include <aws/core/utils/logging/LogMacros.h>
 #include <aws/core/client/SpecifiedRetryableErrorsRetryStrategy.h>
 #include <aws/core/utils/UUID.h>
+#include "log/Log.h"
 
 static const char STS_ASSUME_ROLE_WEB_IDENTITY_LOG_TAG[] =
     "HuaweiCloudSTSAssumeRoleWebIdentityCredentialsProvider";
@@ -16,10 +17,14 @@ namespace Auth {
 HuaweiCloudSTSAssumeRoleWebIdentityCredentialsProvider::
     HuaweiCloudSTSAssumeRoleWebIdentityCredentialsProvider() : m_initialized(false) {
 
-    m_region = Aws::Environment::GetEnv("HUAWEI_CLOUD_REGION");
-    m_roleArn = Aws::Environment::GetEnv("HUAWEI_CLOUD_ROLE_ARN");
-    m_tokenFile = Aws::Environment::GetEnv("HUAWEI_CLOUD_WEB_IDENTITY_TOKEN_FILE");
-    m_providerId = Aws::Environment::GetEnv("HUAWEI_CLOUD_PROVIDER_ID");
+    m_region = Aws::Environment::GetEnv("HUAWEICLOUD_SDK_REGION");
+    m_roleArn = Aws::Environment::GetEnv("HUAWEICLOUD_SDK_PROJECT_ID");
+    m_tokenFile = Aws::Environment::GetEnv("HUAWEICLOUD_SDK_ID_TOKEN_FILE");
+    m_providerId = Aws::Environment::GetEnv("HUAWEICLOUD_SDK_IDP_ID");
+    LOG_INFO(
+        "hc===HuaweiCloudSTSAssumeRoleWebIdentityCredentialsProvider: region={} roleArn={} tokenFile={} providerId={}",
+        m_region, m_roleArn, m_tokenFile, m_providerId);
+
     auto currentTimePoint = std::chrono::high_resolution_clock::now();
     auto nanoseconds = std::chrono::time_point_cast<std::chrono::nanoseconds>(
         currentTimePoint);
