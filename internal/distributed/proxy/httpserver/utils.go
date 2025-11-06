@@ -294,6 +294,10 @@ func checkAndSetData(body []byte, collSchema *schemapb.CollectionSchema, partial
 	}
 
 	fieldNames := make([]string, 0, len(collSchema.Fields))
+	structArrayFieldsMap := make(map[string]bool)
+	for _, structArrayField := range collSchema.StructArrayFields {
+		structArrayFieldsMap[structArrayField.Name] = true
+	}
 	for _, field := range collSchema.Fields {
 		if field.IsDynamic {
 			continue
@@ -586,6 +590,17 @@ func checkAndSetData(body []byte, collSchema *schemapb.CollectionSchema, partial
 			}
 
 			// fill dynamic schema
+			for _, structArrayField := range collSchema.StructArrayFields {
+				structArrayFieldName := structArrayField.Name
+				structVal := data.Get(structArrayFieldName)
+				structVal.ForEach(func(key, value gjson.Result) bool {
+					fieldName := key.String()
+					fieldValue := value.String()
+					log.Info("hc===fieldName", zap.String("fieldName", fieldName), zap.String("fieldValue", fieldValue))
+					return true
+				})
+				//hc---这里要遍历每个inner field，然后添加到reallyData中
+			}
 
 			for mapKey, mapValue := range data.Map() {
 				if !containsString(fieldNames, mapKey) {
@@ -823,6 +838,7 @@ func anyToColumns(rows []map[string]interface{}, validDataMap map[string][]bool,
 			IsDynamic: field.IsDynamic,
 		}
 	}
+
 	if len(nameDims) == 0 && len(sch.Functions) == 0 && !partialUpdate {
 		return nil, fmt.Errorf("collection: %s has no vector field or functions", sch.Name)
 	}

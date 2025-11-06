@@ -1670,6 +1670,32 @@ func (h *HandlersV2) createCollection(ctx context.Context, c *gin.Context, anyRe
 			collSchema.Fields = append(collSchema.Fields, &fieldSchema)
 			fieldNames[field.FieldName] = true
 		}
+
+		for _, structArrayField := range httpReq.Schema.StructArrayFields {
+			structArrayFieldSchema := schemapb.StructArrayFieldSchema{
+				Name:        structArrayField.Name,
+				Description: structArrayField.Description,
+				Fields:      []*schemapb.FieldSchema{},
+				TypeParams:  structArrayField.TypeParams,
+			}
+			structFieldRootName := structArrayField.Name
+			for _, field := range structArrayField.Fields {
+				fieldNames[structFieldRootName+"["+field.FieldName+"]"] = true
+				fieldSchema, err := field.GetProto(ctx)
+				if err != nil {
+					HTTPAbortReturn(c, http.StatusOK, gin.H{HTTPReturnCode: merr.Code(err), HTTPReturnMessage: err.Error()})
+					return nil, err
+				}
+				fieldSchema.ElementType = fieldSchema.DataType
+				if typeutil.IsVectorType(fieldSchema.DataType) {
+					fieldSchema.DataType = schemapb.DataType_ArrayOfVector
+				} else {
+					fieldSchema.DataType = schemapb.DataType_Array
+				}
+				structArrayFieldSchema.Fields = append(structArrayFieldSchema.Fields, fieldSchema)
+			}
+			collSchema.StructArrayFields = append(collSchema.StructArrayFields, &structArrayFieldSchema)
+		}
 		schema, err = proto.Marshal(&collSchema)
 	}
 	if err != nil {

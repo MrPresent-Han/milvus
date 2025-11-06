@@ -354,6 +354,7 @@ func (t *createCollectionTask) PreExecute(ctx context.Context) error {
 
 	t.schema = &schemapb.CollectionSchema{}
 	err := proto.Unmarshal(t.Schema, t.schema)
+	log.Info("hc===createCollectionTask PreExecute schema", zap.Any("schema", t.schema))
 	if err != nil {
 		return err
 	}

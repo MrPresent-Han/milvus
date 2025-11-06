@@ -560,6 +560,7 @@ func validateFieldType(schema *schemapb.CollectionSchema) error {
 			}
 		}
 	}
+	log.Info("hc===schema", zap.Any("schema", schema))
 	return nil
 }
 
