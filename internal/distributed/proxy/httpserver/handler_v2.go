@@ -1070,19 +1070,7 @@ func (h *HandlersV2) upsert(ctx context.Context, c *gin.Context, anyReq any, dbN
 		return nil, err
 	}
 	body, _ := c.Get(gin.BodyBytesKey)
-	var validDataMap map[string][]bool
-	err, httpReq.Data, validDataMap = checkAndSetData(body.([]byte), collSchema, httpReq.PartialUpdate)
-	if err != nil {
-		log.Ctx(ctx).Warn("high level restful api, fail to deal with upsert data", zap.Any("body", body), zap.Error(err))
-		HTTPAbortReturn(c, http.StatusOK, gin.H{
-			HTTPReturnCode:    merr.Code(merr.ErrInvalidInsertData),
-			HTTPReturnMessage: merr.ErrInvalidInsertData.Error() + ", error: " + err.Error(),
-		})
-		return nil, err
-	}
-
-	req.NumRows = uint32(len(httpReq.Data))
-	req.FieldsData, err = anyToColumns(httpReq.Data, validDataMap, collSchema, false, httpReq.PartialUpdate)
+	req.FieldsData, req.NumRows, err = checkAndFillDataV2(body.([]byte), collSchema, httpReq.PartialUpdate)
 	if err != nil {
 		log.Ctx(ctx).Warn("high level restful api, fail to deal with upsert data", zap.Any("data", httpReq.Data), zap.Error(err))
 		HTTPAbortReturn(c, http.StatusOK, gin.H{

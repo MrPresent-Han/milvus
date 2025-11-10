@@ -283,236 +283,7 @@ func printIndexes(indexes []*milvuspb.IndexDescription) []gin.H {
 }
 
 type FieldDataFiller struct {
-	fieldData         *schemapb.FieldData
-	structFieldSchema *schemapb.StructArrayFieldSchema
-}
-
-func NewFieldDataFiller(fieldSchema *schemapb.FieldSchema) (*FieldDataFiller, error) {
-	fieldData := &schemapb.FieldData{
-		Type:      fieldSchema.DataType,
-		FieldName: fieldSchema.Name,
-		FieldId:   fieldSchema.FieldID,
-		IsDynamic: fieldSchema.IsDynamic,
-		ValidData: make([]bool, 0),
-	}
-
-	switch fieldSchema.DataType {
-	case schemapb.DataType_Bool:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_BoolData{
-					BoolData: &schemapb.BoolArray{
-						Data: make([]bool, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Int8:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_IntData{
-					IntData: &schemapb.IntArray{
-						Data: make([]int32, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Int16:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_IntData{
-					IntData: &schemapb.IntArray{
-						Data: make([]int32, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Int32:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_IntData{
-					IntData: &schemapb.IntArray{
-						Data: make([]int32, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Int64:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_LongData{
-					LongData: &schemapb.LongArray{
-						Data: make([]int64, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Float:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_FloatData{
-					FloatData: &schemapb.FloatArray{
-						Data: make([]float32, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Double:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_DoubleData{
-					DoubleData: &schemapb.DoubleArray{
-						Data: make([]float64, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_String:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_StringData{
-					StringData: &schemapb.StringArray{
-						Data: make([]string, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_VarChar:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_StringData{
-					StringData: &schemapb.StringArray{
-						Data: make([]string, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Array:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_ArrayData{
-					ArrayData: &schemapb.ArrayArray{
-						Data: make([]*schemapb.ScalarField, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_JSON:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_JsonData{
-					JsonData: &schemapb.JSONArray{
-						Data: make([][]byte, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Geometry:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_GeometryWktData{
-					GeometryWktData: &schemapb.GeometryWktArray{
-						Data: make([]string, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Timestamptz:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_TimestamptzData{
-					TimestamptzData: &schemapb.TimestamptzArray{
-						Data: make([]int64, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_FloatVector:
-		dim, _ := getDim(fieldSchema)
-		fieldData.Field = &schemapb.FieldData_Vectors{
-			Vectors: &schemapb.VectorField{
-				Dim: dim,
-				Data: &schemapb.VectorField_FloatVector{
-					FloatVector: &schemapb.FloatArray{
-						Data: make([]float32, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_BinaryVector:
-		dim, _ := getDim(fieldSchema)
-		fieldData.Field = &schemapb.FieldData_Vectors{
-			Vectors: &schemapb.VectorField{
-				Dim: dim,
-				Data: &schemapb.VectorField_BinaryVector{
-					BinaryVector: make([]byte, 0),
-				},
-			},
-		}
-	case schemapb.DataType_Float16Vector:
-		dim, _ := getDim(fieldSchema)
-		fieldData.Field = &schemapb.FieldData_Vectors{
-			Vectors: &schemapb.VectorField{
-				Dim: dim,
-				Data: &schemapb.VectorField_Float16Vector{
-					Float16Vector: make([]byte, 0),
-				},
-			},
-		}
-	case schemapb.DataType_BFloat16Vector:
-		dim, _ := getDim(fieldSchema)
-		fieldData.Field = &schemapb.FieldData_Vectors{
-			Vectors: &schemapb.VectorField{
-				Dim: dim,
-				Data: &schemapb.VectorField_Bfloat16Vector{
-					Bfloat16Vector: make([]byte, 0),
-				},
-			},
-		}
-	case schemapb.DataType_SparseFloatVector:
-		fieldData.Field = &schemapb.FieldData_Vectors{
-			Vectors: &schemapb.VectorField{
-				Dim: 0, // Sparse vectors have dynamic dimension
-				Data: &schemapb.VectorField_SparseFloatVector{
-					SparseFloatVector: &schemapb.SparseFloatArray{
-						Dim:      0,
-						Contents: make([][]byte, 0),
-					},
-				},
-			},
-		}
-	case schemapb.DataType_Int8Vector:
-		dim, _ := getDim(fieldSchema)
-		fieldData.Field = &schemapb.FieldData_Vectors{
-			Vectors: &schemapb.VectorField{
-				Dim: dim,
-				Data: &schemapb.VectorField_Int8Vector{
-					Int8Vector: make([]byte, 0),
-				},
-			},
-		}
-	default:
-		// For unsupported types, return nil
-		return nil, fmt.Errorf("not supported field type: %s", fieldSchema.DataType.String())
-	}
-	return &FieldDataFiller{
-		fieldData: fieldData,
-	}, nil
-}
-
-func NewStructArrayFieldDataFiller(structArrayFieldSchema *schemapb.StructArrayFieldSchema) (*FieldDataFiller, error) {
-	fieldData := &schemapb.FieldData{
-		Type: schemapb.DataType_ArrayOfStruct,
-		Field: &schemapb.FieldData_StructArrays{
-			StructArrays: &schemapb.StructArrayField{
-				Fields: make([]*schemapb.FieldData, 0),
-			},
-		},
-	}
-	return &FieldDataFiller{
-		fieldData:         fieldData,
-		structFieldSchema: structArrayFieldSchema,
-	}, nil
+	fieldData *schemapb.FieldData
 }
 
 func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
@@ -776,9 +547,6 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		int8VectorData := f.fieldData.GetVectors().GetInt8Vector()
 		int8VectorData = append(int8VectorData, byteArray...)
 		f.fieldData.GetVectors().Data.(*schemapb.VectorField_Int8Vector).Int8Vector = int8VectorData
-
-	case schemapb.DataType_ArrayOfStruct:
-		f.fillStructArray(jsonData)
 	default:
 		return fmt.Errorf("unsupported field type: %s", f.fieldData.Type.String())
 	}
@@ -789,20 +557,257 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 	return nil
 }
 
-func (f *FieldDataFiller) fillStructArray(jsonData gjson.Result) error {
-	structArray := jsonData.Array()
-	for _, structData := range structArray {
-		for _, field := range f.structFieldSchema.Fields {
-			fieldJsonData := gjson.Get(structData.Raw, field.Name)
-		}
-	}
-}
-
 func (f *FieldDataFiller) ToFieldData() *schemapb.FieldData {
 	return f.fieldData
 }
 
+func NewFieldDataFiller(fieldSchema *schemapb.FieldSchema) (*FieldDataFiller, error) {
+	fieldData := &schemapb.FieldData{
+		Type:      fieldSchema.DataType,
+		FieldName: fieldSchema.Name,
+		FieldId:   fieldSchema.FieldID,
+		IsDynamic: fieldSchema.IsDynamic,
+		ValidData: make([]bool, 0),
+	}
+
+	switch fieldSchema.DataType {
+	case schemapb.DataType_Bool:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_BoolData{
+					BoolData: &schemapb.BoolArray{
+						Data: make([]bool, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Int8:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_IntData{
+					IntData: &schemapb.IntArray{
+						Data: make([]int32, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Int16:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_IntData{
+					IntData: &schemapb.IntArray{
+						Data: make([]int32, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Int32:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_IntData{
+					IntData: &schemapb.IntArray{
+						Data: make([]int32, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Int64:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_LongData{
+					LongData: &schemapb.LongArray{
+						Data: make([]int64, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Float:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_FloatData{
+					FloatData: &schemapb.FloatArray{
+						Data: make([]float32, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Double:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_DoubleData{
+					DoubleData: &schemapb.DoubleArray{
+						Data: make([]float64, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_String:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_StringData{
+					StringData: &schemapb.StringArray{
+						Data: make([]string, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_VarChar:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_StringData{
+					StringData: &schemapb.StringArray{
+						Data: make([]string, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Array:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_ArrayData{
+					ArrayData: &schemapb.ArrayArray{
+						Data: make([]*schemapb.ScalarField, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_JSON:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_JsonData{
+					JsonData: &schemapb.JSONArray{
+						Data: make([][]byte, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Geometry:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_GeometryWktData{
+					GeometryWktData: &schemapb.GeometryWktArray{
+						Data: make([]string, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Timestamptz:
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_TimestamptzData{
+					TimestamptzData: &schemapb.TimestamptzArray{
+						Data: make([]int64, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_FloatVector:
+		dim, _ := getDim(fieldSchema)
+		fieldData.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: dim,
+				Data: &schemapb.VectorField_FloatVector{
+					FloatVector: &schemapb.FloatArray{
+						Data: make([]float32, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_BinaryVector:
+		dim, _ := getDim(fieldSchema)
+		fieldData.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: dim,
+				Data: &schemapb.VectorField_BinaryVector{
+					BinaryVector: make([]byte, 0),
+				},
+			},
+		}
+	case schemapb.DataType_Float16Vector:
+		dim, _ := getDim(fieldSchema)
+		fieldData.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: dim,
+				Data: &schemapb.VectorField_Float16Vector{
+					Float16Vector: make([]byte, 0),
+				},
+			},
+		}
+	case schemapb.DataType_BFloat16Vector:
+		dim, _ := getDim(fieldSchema)
+		fieldData.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: dim,
+				Data: &schemapb.VectorField_Bfloat16Vector{
+					Bfloat16Vector: make([]byte, 0),
+				},
+			},
+		}
+	case schemapb.DataType_SparseFloatVector:
+		fieldData.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: 0, // Sparse vectors have dynamic dimension
+				Data: &schemapb.VectorField_SparseFloatVector{
+					SparseFloatVector: &schemapb.SparseFloatArray{
+						Dim:      0,
+						Contents: make([][]byte, 0),
+					},
+				},
+			},
+		}
+	case schemapb.DataType_Int8Vector:
+		dim, _ := getDim(fieldSchema)
+		fieldData.Field = &schemapb.FieldData_Vectors{
+			Vectors: &schemapb.VectorField{
+				Dim: dim,
+				Data: &schemapb.VectorField_Int8Vector{
+					Int8Vector: make([]byte, 0),
+				},
+			},
+		}
+	default:
+		// For unsupported types, return nil
+		return nil, fmt.Errorf("not supported field type: %s", fieldSchema.DataType.String())
+	}
+	return &FieldDataFiller{
+		fieldData: fieldData,
+	}, nil
+}
+
+type StructArrayFieldDataFiller struct {
+	structArrayFieldSchema *schemapb.StructArrayFieldSchema
+	fieldDataFillers       []*FieldDataFiller
+}
+
+func (safd *StructArrayFieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
+	structArray := jsonData.Array()
+	for _, structData := range structArray {
+		for _, fieldDataFiller := range safd.fieldDataFillers {
+			if err := fieldDataFiller.FillSingleCell(structData); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func NewStructArrayFieldDataFiller(structArrayFieldSchema *schemapb.StructArrayFieldSchema) (*StructArrayFieldDataFiller, error) {
+	fieldDatasFillers := make([]*FieldDataFiller, 0, len(structArrayFieldSchema.Fields))
+	for _, field := range structArrayFieldSchema.Fields {
+		fieldDataFiller, err := NewFieldDataFiller(field)
+		if err != nil {
+			return nil, err
+		}
+		fieldDatasFillers = append(fieldDatasFillers, fieldDataFiller)
+	}
+	return &StructArrayFieldDataFiller{
+		structArrayFieldSchema: structArrayFieldSchema,
+		fieldDataFillers:       fieldDatasFillers,
+	}, nil
+}
+
 func checkAndFillDataV2(body []byte, collSchema *schemapb.CollectionSchema, partialUpdate bool) ([]*schemapb.FieldData, uint32, error) {
+	// 1. set up field fillers and struct array field fillers
 	fieldDataFillerMap := make(map[string]*FieldDataFiller)
 	for _, field := range collSchema.Fields {
 		fieldDataFiller, err := NewFieldDataFiller(field)
@@ -811,31 +816,48 @@ func checkAndFillDataV2(body []byte, collSchema *schemapb.CollectionSchema, part
 		}
 		fieldDataFillerMap[field.Name] = fieldDataFiller
 	}
-
+	structArrayFieldDataFillerMap := make(map[string]*StructArrayFieldDataFiller)
 	for _, structArrayField := range collSchema.StructArrayFields {
-		fieldDataFiller, err := NewStructArrayFieldDataFiller(structArrayField)
+		structFieldDataFiller, err := NewStructArrayFieldDataFiller(structArrayField)
 		if err != nil {
 			return nil, 0, err
 		}
-		fieldDataFillerMap[structArrayField.Name] = fieldDataFiller
+		structArrayFieldDataFillerMap[structArrayField.Name] = structFieldDataFiller
 	}
 
+	// 2. fill data by rows
 	dataResult := gjson.GetBytes(body, HTTPRequestData)
 	dataResultArray := dataResult.Array()
 	if len(dataResultArray) == 0 {
 		return nil, 0, merr.ErrMissingRequiredParameters
 	}
 	for _, data := range dataResultArray {
-		for _, field := range collSchema.Fields {
-			fieldDataFiller := fieldDataFillerMap[field.Name]
-			if fieldDataFiller == nil {
-				return nil, 0, merr.WrapErrParameterInvalid("", "field not found: "+field.Name)
+		if data.Type == gjson.JSON {
+			for _, field := range collSchema.Fields {
+				fieldDataFiller := fieldDataFillerMap[field.Name]
+				if fieldDataFiller == nil {
+					return nil, 0, merr.WrapErrParameterInvalid("", "field not found: "+field.Name)
+				}
+				fieldJsonData := gjson.Get(data.Raw, field.Name)
+				err := fieldDataFiller.FillSingleCell(fieldJsonData)
+				if err != nil {
+					return nil, 0, err
+				}
 			}
-			fieldJsonData := gjson.Get(data.Raw, field.Name)
-			err := fieldDataFiller.FillSingleCell(fieldJsonData)
-			if err != nil {
-				return nil, 0, err
+			for _, structField := range collSchema.StructArrayFields {
+				structArrayFieldDataFiller := structArrayFieldDataFillerMap[structField.Name]
+				if structArrayFieldDataFiller == nil {
+					return nil, 0, merr.WrapErrParameterInvalid("", "struct array field not found: "+structField.Name)
+				}
+				structArrayData := gjson.Get(data.Raw, structField.Name)
+				err := structArrayFieldDataFiller.FillSingleCell(structArrayData)
+				if err != nil {
+					return nil, 0, err
+				}
 			}
+			//handle dynamic fields
+		} else {
+			return nil, 0, merr.WrapErrParameterInvalid(gjson.JSON, data.Type, "NULL:0, FALSE:1, NUMBER:2, STRING:3, TRUE:4, JSON:5"), reallyDataArray, validDataMap
 		}
 	}
 
@@ -1150,20 +1172,6 @@ func checkAndSetData(body []byte, collSchema *schemapb.CollectionSchema, partial
 					return merr.WrapErrParameterInvalid("", schemapb.DataType_name[int32(fieldType)], "fieldName: "+fieldName), reallyDataArray, validDataMap
 				}
 			}
-
-			// process struct array fields
-			for _, structArrayField := range collSchema.StructArrayFields {
-				structArrayFieldName := structArrayField.Name
-				structArrayVal := data.Get(structArrayFieldName)
-				structArrayVal.ForEach(func(key, value gjson.Result) bool {
-					fieldName := key.String()
-					fieldValue := value.String()
-					log.Info("hc===fieldName", zap.String("fieldName", fieldName), zap.String("fieldValue", fieldValue))
-
-					return true
-				})
-			}
-
 			for mapKey, mapValue := range data.Map() {
 				if !containsString(fieldNames, mapKey) {
 					if collSchema.EnableDynamicField {
