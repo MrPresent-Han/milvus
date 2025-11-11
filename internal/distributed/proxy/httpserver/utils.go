@@ -28,7 +28,6 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/gin-gonic/gin"
-	"github.com/samber/lo"
 	"github.com/spf13/cast"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -283,85 +282,72 @@ func printIndexes(indexes []*milvuspb.IndexDescription) []gin.H {
 	return res
 }
 
-type FieldDataFiller struct {
-	fieldData *schemapb.FieldData
-}
-
-func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
+func jsonToAny(jsonData gjson.Result, dataType schemapb.DataType) any {
 	if jsonData.Type == gjson.Null {
-		f.fieldData.ValidData = append(f.fieldData.ValidData, false)
 		return nil
 	}
+
 	dataString := jsonData.String()
 
-	switch f.fieldData.Type {
+	switch dataType {
 	case schemapb.DataType_Bool:
 		result, err := cast.ToBoolE(dataString)
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		boolData := f.fieldData.GetScalars().GetBoolData()
-		boolData.Data = append(boolData.Data, result)
+		return result
 
 	case schemapb.DataType_Int8:
 		result, err := cast.ToInt8E(dataString)
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		intData := f.fieldData.GetScalars().GetIntData()
-		intData.Data = append(intData.Data, int32(result))
+		return result
 
 	case schemapb.DataType_Int16:
 		result, err := cast.ToInt16E(dataString)
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		intData := f.fieldData.GetScalars().GetIntData()
-		intData.Data = append(intData.Data, int32(result))
+		return result
 
 	case schemapb.DataType_Int32:
 		result, err := cast.ToInt32E(dataString)
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		intData := f.fieldData.GetScalars().GetIntData()
-		intData.Data = append(intData.Data, result)
+		return result
 
 	case schemapb.DataType_Int64:
 		result, err := json.Number(dataString).Int64()
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		longData := f.fieldData.GetScalars().GetLongData()
-		longData.Data = append(longData.Data, result)
+		return result
 
 	case schemapb.DataType_Float:
 		result, err := cast.ToFloat32E(dataString)
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		floatData := f.fieldData.GetScalars().GetFloatData()
-		floatData.Data = append(floatData.Data, result)
+		return result
 
 	case schemapb.DataType_Double:
 		result, err := cast.ToFloat64E(dataString)
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		doubleData := f.fieldData.GetScalars().GetDoubleData()
-		doubleData.Data = append(doubleData.Data, result)
+		return result
 
 	case schemapb.DataType_String, schemapb.DataType_VarChar:
-		stringData := f.fieldData.GetScalars().GetStringData()
-		stringData.Data = append(stringData.Data, dataString)
+		return dataString
 
 	case schemapb.DataType_Timestamptz:
 		result, err := json.Number(dataString).Int64()
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
-		timestampData := f.fieldData.GetScalars().GetTimestamptzData()
-		timestampData.Data = append(timestampData.Data, result)
+		return result
 
 	case schemapb.DataType_Array:
 		var scalarField *schemapb.ScalarField
@@ -369,26 +355,146 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		if err != nil {
 			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
 		}
-		arrayData := f.fieldData.GetScalars().GetArrayData()
-		arrayData.Data = append(arrayData.Data, scalarField)
-
+		return scalarField
 	case schemapb.DataType_JSON:
-		jsonData := f.fieldData.GetScalars().GetJsonData()
-		jsonData.Data = append(jsonData.Data, []byte(dataString))
+		// For JSON type, return as byte array
+		return []byte(dataString)
 
 	case schemapb.DataType_Geometry:
-		geometryData := f.fieldData.GetScalars().GetGeometryWktData()
-		geometryData.Data = append(geometryData.Data, dataString)
+		return dataString
 
 	case schemapb.DataType_FloatVector:
 		if dataString == "" {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "missing vector field")
+			return nil
 		}
 		var vectorArray []float32
 		err := json.Unmarshal([]byte(dataString), &vectorArray)
 		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
+			return nil
 		}
+		return vectorArray
+
+	case schemapb.DataType_BinaryVector:
+		if dataString == "" {
+			return nil
+		}
+		var vectorArray []byte
+		err := json.Unmarshal([]byte(dataString), &vectorArray)
+		if err != nil {
+			return nil
+		}
+		return vectorArray
+
+	case schemapb.DataType_Float16Vector, schemapb.DataType_BFloat16Vector:
+		if dataString == "" {
+			return nil
+		}
+		if jsonData.IsArray() {
+			// Float32 array input
+			var vectorArray []float32
+			err := json.Unmarshal([]byte(dataString), &vectorArray)
+			if err != nil {
+				return nil
+			}
+			return vectorArray
+		} else if jsonData.Type == gjson.String {
+			// Byte array input
+			var vectorArray []byte
+			err := json.Unmarshal([]byte(dataString), &vectorArray)
+			if err != nil {
+				return nil
+			}
+			return vectorArray
+		}
+		return nil
+
+	case schemapb.DataType_SparseFloatVector:
+		if dataString == "" {
+			return nil
+		}
+		sparseVec, err := typeutil.CreateSparseFloatRowFromJSON([]byte(dataString))
+		if err != nil {
+			return nil
+		}
+		return sparseVec
+
+	case schemapb.DataType_Int8Vector:
+		if dataString == "" {
+			return nil
+		}
+		var vectorArray []int8
+		err := json.Unmarshal([]byte(dataString), &vectorArray)
+		if err != nil {
+			return nil
+		}
+		return vectorArray
+
+	default:
+		// For unsupported types, return the string representation
+		return dataString
+	}
+}
+
+type FieldDataFiller struct {
+	fieldData *schemapb.FieldData
+}
+
+func (f *FieldDataFiller) FillSingleCellArray(singleArray *schemapb.ScalarField) error {
+	if f.fieldData.Type != schemapb.DataType_Array {
+		return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "field type is not array")
+	}
+	arrayData := f.fieldData.GetScalars().GetArrayData()
+	arrayData.Data = append(arrayData.Data, singleArray)
+	return nil
+}
+
+func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
+	val := jsonToAny(jsonData, f.fieldData.Type)
+	dataString := jsonData.String()
+	if val == nil {
+		f.fieldData.ValidData = append(f.fieldData.ValidData, false)
+		return nil
+	}
+	switch f.fieldData.Type {
+	case schemapb.DataType_Bool:
+		boolData := f.fieldData.GetScalars().GetBoolData()
+		boolData.Data = append(boolData.Data, val.(bool))
+
+	case schemapb.DataType_Int8:
+		intData := f.fieldData.GetScalars().GetIntData()
+		intData.Data = append(intData.Data, int32(val.(int8)))
+	case schemapb.DataType_Int16:
+		intData := f.fieldData.GetScalars().GetIntData()
+		intData.Data = append(intData.Data, int32(val.(int16)))
+	case schemapb.DataType_Int32:
+		intData := f.fieldData.GetScalars().GetIntData()
+		intData.Data = append(intData.Data, val.(int32))
+	case schemapb.DataType_Int64:
+		longData := f.fieldData.GetScalars().GetLongData()
+		longData.Data = append(longData.Data, val.(int64))
+	case schemapb.DataType_Float:
+		floatData := f.fieldData.GetScalars().GetFloatData()
+		floatData.Data = append(floatData.Data, val.(float32))
+	case schemapb.DataType_Double:
+		doubleData := f.fieldData.GetScalars().GetDoubleData()
+		doubleData.Data = append(doubleData.Data, val.(float64))
+	case schemapb.DataType_String, schemapb.DataType_VarChar:
+		stringData := f.fieldData.GetScalars().GetStringData()
+		stringData.Data = append(stringData.Data, val.(string))
+	case schemapb.DataType_Timestamptz:
+		timestampData := f.fieldData.GetScalars().GetTimestamptzData()
+		timestampData.Data = append(timestampData.Data, val.(int64))
+	case schemapb.DataType_Array:
+		arrayData := f.fieldData.GetScalars().GetArrayData()
+		arrayData.Data = append(arrayData.Data, val.(*schemapb.ScalarField))
+	case schemapb.DataType_JSON:
+		jsonData := f.fieldData.GetScalars().GetJsonData()
+		jsonData.Data = append(jsonData.Data, []byte(val.(string)))
+	case schemapb.DataType_Geometry:
+		geometryData := f.fieldData.GetScalars().GetGeometryWktData()
+		geometryData.Data = append(geometryData.Data, val.(string))
+	case schemapb.DataType_FloatVector:
+		vectorArray := val.([]float32)
 		// Validate dimension
 		expectedDim := f.fieldData.GetVectors().GetDim()
 		if len(vectorArray) != int(expectedDim) {
@@ -398,14 +504,7 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		floatVectorData.Data = append(floatVectorData.Data, vectorArray...)
 
 	case schemapb.DataType_BinaryVector:
-		if dataString == "" {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "missing vector field")
-		}
-		var vectorArray []byte
-		err := json.Unmarshal([]byte(dataString), &vectorArray)
-		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
-		}
+		vectorArray := val.([]byte)
 		expectedDim := f.fieldData.GetVectors().GetDim()
 		if len(vectorArray) != int(expectedDim/8) {
 			return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)*8), fmt.Sprintf("expected %d", expectedDim))
@@ -418,19 +517,12 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 	case schemapb.DataType_Float16Vector:
 		fallthrough
 	case schemapb.DataType_BFloat16Vector:
-		if dataString == "" {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "missing vector field")
-		}
 		vectorJSON := jsonData
 		// Clients may send float32 vector because they are inconvenient of processing float16 or bfloat16.
 		// Float32 vector is an array in JSON format, like `[1.0, 2.0, 3.0]`, `[1, 2, 3]`, etc,
 		// while float16 or bfloat16 vector is a string in JSON format, like `"4z1jPgAAgL8="`, `"gD+AP4A/gD8="`, etc.
 		if vectorJSON.IsArray() {
-			var vectorArray []float32
-			err := json.Unmarshal([]byte(dataString), &vectorArray)
-			if err != nil {
-				return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
-			}
+			vectorArray := val.([]float32)
 			expectedDim := f.fieldData.GetVectors().GetDim()
 			if len(vectorArray) != int(expectedDim) {
 				return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)), fmt.Sprintf("expected %d", expectedDim))
@@ -441,11 +533,7 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 			f.fieldData.GetVectors().Data.(*schemapb.VectorField_Bfloat16Vector).Bfloat16Vector = bfloat16VectorData
 		} else if vectorJSON.Type == gjson.String {
 			// Byte array input
-			var vectorArray []byte
-			err := json.Unmarshal([]byte(dataString), &vectorArray)
-			if err != nil {
-				return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
-			}
+			vectorArray := val.([]byte)
 			expectedDim := f.fieldData.GetVectors().GetDim()
 			if len(vectorArray) != int(expectedDim*2) {
 				return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)/2), fmt.Sprintf("expected %d", expectedDim))
@@ -458,13 +546,7 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		}
 
 	case schemapb.DataType_SparseFloatVector:
-		if dataString == "" {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "missing vector field")
-		}
-		sparseVec, err := typeutil.CreateSparseFloatRowFromJSON([]byte(dataString))
-		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
-		}
+		sparseVec := val.([]byte)
 		rowSparseDim := typeutil.SparseFloatRowDim(sparseVec)
 		sparseVectorData := f.fieldData.GetVectors().GetSparseFloatVector()
 		if rowSparseDim > sparseVectorData.Dim {
@@ -472,23 +554,12 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 			f.fieldData.GetVectors().Dim = rowSparseDim
 		}
 		sparseVectorData.Contents = append(sparseVectorData.Contents, sparseVec)
-
 	case schemapb.DataType_Int8Vector:
-		if dataString == "" {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "missing vector field")
-		}
-		var vectorArray []int8
-		err := json.Unmarshal([]byte(dataString), &vectorArray)
-		if err != nil {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
-		}
-
+		vectorArray := val.([]int8)
 		expectedDim := f.fieldData.GetVectors().GetDim()
 		if len(vectorArray) != int(expectedDim) {
 			return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)), fmt.Sprintf("expected %d", expectedDim))
 		}
-
-		// Convert []int8 to []byte
 		byteArray := make([]byte, len(vectorArray))
 		for i, v := range vectorArray {
 			byteArray[i] = byte(v)
@@ -611,71 +682,14 @@ func NewFieldDataFiller(fieldSchema *schemapb.FieldSchema) (*FieldDataFiller, er
 			},
 		}
 	case schemapb.DataType_Array:
-		switch fieldSchema.ElementType {
-		case schemapb.DataType_Bool:
-			fieldData.Field = &schemapb.FieldData_Scalars{
-				Scalars: &schemapb.ScalarField{
-					Data: &schemapb.ScalarField_BoolData{
-						BoolData: &schemapb.BoolArray{
-							Data: make([]bool, 0),
-						},
+		fieldData.Field = &schemapb.FieldData_Scalars{
+			Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_ArrayData{
+					ArrayData: &schemapb.ArrayArray{
+						Data: make([]*schemapb.ScalarField, 0),
 					},
 				},
-			}
-		case schemapb.DataType_Int8:
-			fallthrough
-		case schemapb.DataType_Int16:
-			fallthrough
-		case schemapb.DataType_Int32:
-			fieldData.Field = &schemapb.FieldData_Scalars{
-				Scalars: &schemapb.ScalarField{
-					Data: &schemapb.ScalarField_IntData{
-						IntData: &schemapb.IntArray{
-							Data: make([]int32, 0),
-						},
-					},
-				},
-			}
-		case schemapb.DataType_Int64:
-			fieldData.Field = &schemapb.FieldData_Scalars{
-				Scalars: &schemapb.ScalarField{
-					Data: &schemapb.ScalarField_LongData{
-						LongData: &schemapb.LongArray{
-							Data: make([]int64, 0),
-						},
-					},
-				},
-			}
-		case schemapb.DataType_Float:
-			fieldData.Field = &schemapb.FieldData_Scalars{
-				Scalars: &schemapb.ScalarField{
-					Data: &schemapb.ScalarField_FloatData{
-						FloatData: &schemapb.FloatArray{
-							Data: make([]float32, 0),
-						},
-					},
-				},
-			}
-		case schemapb.DataType_Double:
-			fieldData.Field = &schemapb.FieldData_Scalars{
-				Scalars: &schemapb.ScalarField{
-					Data: &schemapb.ScalarField_DoubleData{
-						DoubleData: &schemapb.DoubleArray{
-							Data: make([]float64, 0),
-						},
-					},
-				},
-			}
-		case schemapb.DataType_VarChar:
-			fieldData.Field = &schemapb.FieldData_Scalars{
-				Scalars: &schemapb.ScalarField{
-					Data: &schemapb.ScalarField_StringData{
-						StringData: &schemapb.StringArray{
-							Data: make([]string, 0),
-						},
-					},
-				},
-			}
+			},
 		}
 	case schemapb.DataType_JSON:
 		fieldData.Field = &schemapb.FieldData_Scalars{
@@ -782,29 +796,144 @@ func NewFieldDataFiller(fieldSchema *schemapb.FieldSchema) (*FieldDataFiller, er
 
 type StructArrayFieldDataFiller struct {
 	structArrayFieldSchema *schemapb.StructArrayFieldSchema
-	fieldDataFillers       []*FieldDataFiller
+	fieldDataFillers       map[string]*FieldDataFiller
 }
 
 func (safd *StructArrayFieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 	structArray := jsonData.Array()
-	for _, structData := range structArray {
-		for _, fieldDataFiller := range safd.fieldDataFillers {
-			if err := fieldDataFiller.FillSingleCell(structData); err != nil {
-				return err
+	arrayDataMap := make(map[string]*schemapb.ScalarField)
+	structCount := len(structArray)
+	for _, field := range safd.structArrayFieldSchema.Fields {
+		switch field.ElementType {
+		case schemapb.DataType_Bool:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_BoolData{
+					BoolData: &schemapb.BoolArray{
+						Data: make([]bool, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_Int8:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_IntData{
+					IntData: &schemapb.IntArray{
+						Data: make([]int32, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_Int16:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_IntData{
+					IntData: &schemapb.IntArray{
+						Data: make([]int32, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_Int32:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_IntData{
+					IntData: &schemapb.IntArray{
+						Data: make([]int32, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_Int64:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_LongData{
+					LongData: &schemapb.LongArray{
+						Data: make([]int64, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_Float:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_FloatData{
+					FloatData: &schemapb.FloatArray{
+						Data: make([]float32, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_Double:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_DoubleData{
+					DoubleData: &schemapb.DoubleArray{
+						Data: make([]float64, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_VarChar:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_StringData{
+					StringData: &schemapb.StringArray{
+						Data: make([]string, 0, structCount),
+					},
+				},
+			}
+		case schemapb.DataType_FloatVector:
+			arrayDataMap[field.Name] = &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_ArrayData{
+					ArrayData: &schemapb.ArrayArray{
+						Data: make([]*schemapb.ScalarField, 0),
+					},
+				},
 			}
 		}
+	}
+
+	for _, structData := range structArray {
+		for _, field := range safd.structArrayFieldSchema.Fields {
+			structFieldData := structData.Get(field.Name)
+			val := jsonToAny(structFieldData, field.ElementType)
+			switch field.ElementType {
+			case schemapb.DataType_Bool:
+				arrayDataMap[field.Name].GetBoolData().Data = append(arrayDataMap[field.Name].GetBoolData().Data, val.(bool))
+			case schemapb.DataType_Int8:
+				arrayDataMap[field.Name].GetIntData().Data = append(arrayDataMap[field.Name].GetIntData().Data, int32(val.(int8)))
+			case schemapb.DataType_Int16:
+				arrayDataMap[field.Name].GetIntData().Data = append(arrayDataMap[field.Name].GetIntData().Data, int32(val.(int16)))
+			case schemapb.DataType_Int32:
+				arrayDataMap[field.Name].GetIntData().Data = append(arrayDataMap[field.Name].GetIntData().Data, val.(int32))
+			case schemapb.DataType_Int64:
+				arrayDataMap[field.Name].GetLongData().Data = append(arrayDataMap[field.Name].GetLongData().Data, val.(int64))
+			case schemapb.DataType_Float:
+				arrayDataMap[field.Name].GetFloatData().Data = append(arrayDataMap[field.Name].GetFloatData().Data, val.(float32))
+			case schemapb.DataType_Double:
+				arrayDataMap[field.Name].GetDoubleData().Data = append(arrayDataMap[field.Name].GetDoubleData().Data, val.(float64))
+			case schemapb.DataType_VarChar:
+				arrayDataMap[field.Name].GetStringData().Data = append(arrayDataMap[field.Name].GetStringData().Data, val.(string))
+			case schemapb.DataType_FloatVector:
+				scalarField := &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_FloatData{
+						FloatData: &schemapb.FloatArray{
+							Data: val.([]float32),
+						},
+					},
+				}
+				arrayDataMap[field.Name].GetArrayData().Data = append(arrayDataMap[field.Name].GetArrayData().Data, scalarField)
+			}
+		}
+	}
+
+	for _, field := range safd.structArrayFieldSchema.Fields {
+		fieldDataFiller := safd.fieldDataFillers[field.Name]
+		if fieldDataFiller == nil {
+			return merr.WrapErrParameterInvalid("", "field data filler not found: "+field.Name)
+		}
+		fieldDataFiller.FillSingleCellArray(arrayDataMap[field.Name])
 	}
 	return nil
 }
 
 func (safd *StructArrayFieldDataFiller) ToFieldData() *schemapb.FieldData {
+	fieldDatas := make([]*schemapb.FieldData, 0, len(safd.fieldDataFillers))
+	for _, fieldDataFiller := range safd.fieldDataFillers {
+		fieldDatas = append(fieldDatas, fieldDataFiller.ToFieldData())
+	}
 	ret := &schemapb.FieldData{
 		Type: schemapb.DataType_ArrayOfStruct,
 		Field: &schemapb.FieldData_StructArrays{
 			StructArrays: &schemapb.StructArrayField{
-				Fields: lo.Map(safd.fieldDataFillers, func(fieldDataFiller *FieldDataFiller, _ int) *schemapb.FieldData {
-					return fieldDataFiller.ToFieldData()
-				}),
+				Fields: fieldDatas,
 			},
 		},
 	}
@@ -812,13 +941,13 @@ func (safd *StructArrayFieldDataFiller) ToFieldData() *schemapb.FieldData {
 }
 
 func NewStructArrayFieldDataFiller(structArrayFieldSchema *schemapb.StructArrayFieldSchema) (*StructArrayFieldDataFiller, error) {
-	fieldDatasFillers := make([]*FieldDataFiller, 0, len(structArrayFieldSchema.Fields))
+	fieldDatasFillers := make(map[string]*FieldDataFiller, len(structArrayFieldSchema.Fields))
 	for _, field := range structArrayFieldSchema.Fields {
 		fieldDataFiller, err := NewFieldDataFiller(field)
 		if err != nil {
 			return nil, err
 		}
-		fieldDatasFillers = append(fieldDatasFillers, fieldDataFiller)
+		fieldDatasFillers[field.Name] = fieldDataFiller
 	}
 	return &StructArrayFieldDataFiller{
 		structArrayFieldSchema: structArrayFieldSchema,
