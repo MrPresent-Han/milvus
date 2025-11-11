@@ -28,6 +28,7 @@ import (
 
 	"github.com/cockroachdb/errors"
 	"github.com/gin-gonic/gin"
+	"github.com/samber/lo"
 	"github.com/spf13/cast"
 	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
@@ -388,13 +389,11 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		if err != nil {
 			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
 		}
-
 		// Validate dimension
 		expectedDim := f.fieldData.GetVectors().GetDim()
 		if len(vectorArray) != int(expectedDim) {
 			return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)), fmt.Sprintf("expected %d", expectedDim))
 		}
-
 		floatVectorData := f.fieldData.GetVectors().GetFloatVector()
 		floatVectorData.Data = append(floatVectorData.Data, vectorArray...)
 
@@ -407,8 +406,6 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		if err != nil {
 			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
 		}
-
-		// Validate dimension (binary vector dimension is in bits, so divide by 8)
 		expectedDim := f.fieldData.GetVectors().GetDim()
 		if len(vectorArray) != int(expectedDim/8) {
 			return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)*8), fmt.Sprintf("expected %d", expectedDim))
@@ -419,67 +416,25 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		f.fieldData.GetVectors().Data.(*schemapb.VectorField_BinaryVector).BinaryVector = binaryVectorData
 
 	case schemapb.DataType_Float16Vector:
-		if dataString == "" {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "missing vector field")
-		}
-
-		vectorJSON := jsonData
-		if vectorJSON.IsArray() {
-			// Float32 array input, convert to Float16
-			var vectorArray []float32
-			err := json.Unmarshal([]byte(dataString), &vectorArray)
-			if err != nil {
-				return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
-			}
-
-			expectedDim := f.fieldData.GetVectors().GetDim()
-			if len(vectorArray) != int(expectedDim) {
-				return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)), fmt.Sprintf("expected %d", expectedDim))
-			}
-
-			vec := typeutil.Float32ArrayToFloat16Bytes(vectorArray)
-			float16VectorData := f.fieldData.GetVectors().GetFloat16Vector()
-			float16VectorData = append(float16VectorData, vec...)
-			f.fieldData.GetVectors().Data.(*schemapb.VectorField_Float16Vector).Float16Vector = float16VectorData
-		} else if vectorJSON.Type == gjson.String {
-			// Byte array input
-			var vectorArray []byte
-			err := json.Unmarshal([]byte(dataString), &vectorArray)
-			if err != nil {
-				return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
-			}
-
-			expectedDim := f.fieldData.GetVectors().GetDim()
-			if len(vectorArray) != int(expectedDim*2) { // Float16 uses 2 bytes per element
-				return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)/2), fmt.Sprintf("expected %d", expectedDim))
-			}
-
-			float16VectorData := f.fieldData.GetVectors().GetFloat16Vector()
-			float16VectorData = append(float16VectorData, vectorArray...)
-			f.fieldData.GetVectors().Data.(*schemapb.VectorField_Float16Vector).Float16Vector = float16VectorData
-		} else {
-			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, "invalid vector field")
-		}
-
+		fallthrough
 	case schemapb.DataType_BFloat16Vector:
 		if dataString == "" {
 			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], "", "missing vector field")
 		}
-
 		vectorJSON := jsonData
+		// Clients may send float32 vector because they are inconvenient of processing float16 or bfloat16.
+		// Float32 vector is an array in JSON format, like `[1.0, 2.0, 3.0]`, `[1, 2, 3]`, etc,
+		// while float16 or bfloat16 vector is a string in JSON format, like `"4z1jPgAAgL8="`, `"gD+AP4A/gD8="`, etc.
 		if vectorJSON.IsArray() {
-			// Float32 array input, convert to BFloat16
 			var vectorArray []float32
 			err := json.Unmarshal([]byte(dataString), &vectorArray)
 			if err != nil {
 				return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
 			}
-
 			expectedDim := f.fieldData.GetVectors().GetDim()
 			if len(vectorArray) != int(expectedDim) {
 				return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)), fmt.Sprintf("expected %d", expectedDim))
 			}
-
 			vec := typeutil.Float32ArrayToBFloat16Bytes(vectorArray)
 			bfloat16VectorData := f.fieldData.GetVectors().GetBfloat16Vector()
 			bfloat16VectorData = append(bfloat16VectorData, vec...)
@@ -491,12 +446,10 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 			if err != nil {
 				return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
 			}
-
 			expectedDim := f.fieldData.GetVectors().GetDim()
-			if len(vectorArray) != int(expectedDim*2) { // BFloat16 uses 2 bytes per element
+			if len(vectorArray) != int(expectedDim*2) {
 				return merr.WrapErrParameterInvalid("vector dimension", fmt.Sprintf("%d", len(vectorArray)/2), fmt.Sprintf("expected %d", expectedDim))
 			}
-
 			bfloat16VectorData := f.fieldData.GetVectors().GetBfloat16Vector()
 			bfloat16VectorData = append(bfloat16VectorData, vectorArray...)
 			f.fieldData.GetVectors().Data.(*schemapb.VectorField_Bfloat16Vector).Bfloat16Vector = bfloat16VectorData
@@ -512,15 +465,12 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		if err != nil {
 			return merr.WrapErrParameterInvalid(schemapb.DataType_name[int32(f.fieldData.Type)], dataString, err.Error())
 		}
-
-		// Update dimension if necessary
 		rowSparseDim := typeutil.SparseFloatRowDim(sparseVec)
 		sparseVectorData := f.fieldData.GetVectors().GetSparseFloatVector()
 		if rowSparseDim > sparseVectorData.Dim {
 			sparseVectorData.Dim = rowSparseDim
 			f.fieldData.GetVectors().Dim = rowSparseDim
 		}
-
 		sparseVectorData.Contents = append(sparseVectorData.Contents, sparseVec)
 
 	case schemapb.DataType_Int8Vector:
@@ -543,7 +493,6 @@ func (f *FieldDataFiller) FillSingleCell(jsonData gjson.Result) error {
 		for i, v := range vectorArray {
 			byteArray[i] = byte(v)
 		}
-
 		int8VectorData := f.fieldData.GetVectors().GetInt8Vector()
 		int8VectorData = append(int8VectorData, byteArray...)
 		f.fieldData.GetVectors().Data.(*schemapb.VectorField_Int8Vector).Int8Vector = int8VectorData
@@ -662,14 +611,71 @@ func NewFieldDataFiller(fieldSchema *schemapb.FieldSchema) (*FieldDataFiller, er
 			},
 		}
 	case schemapb.DataType_Array:
-		fieldData.Field = &schemapb.FieldData_Scalars{
-			Scalars: &schemapb.ScalarField{
-				Data: &schemapb.ScalarField_ArrayData{
-					ArrayData: &schemapb.ArrayArray{
-						Data: make([]*schemapb.ScalarField, 0),
+		switch fieldSchema.ElementType {
+		case schemapb.DataType_Bool:
+			fieldData.Field = &schemapb.FieldData_Scalars{
+				Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_BoolData{
+						BoolData: &schemapb.BoolArray{
+							Data: make([]bool, 0),
+						},
 					},
 				},
-			},
+			}
+		case schemapb.DataType_Int8:
+			fallthrough
+		case schemapb.DataType_Int16:
+			fallthrough
+		case schemapb.DataType_Int32:
+			fieldData.Field = &schemapb.FieldData_Scalars{
+				Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_IntData{
+						IntData: &schemapb.IntArray{
+							Data: make([]int32, 0),
+						},
+					},
+				},
+			}
+		case schemapb.DataType_Int64:
+			fieldData.Field = &schemapb.FieldData_Scalars{
+				Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_LongData{
+						LongData: &schemapb.LongArray{
+							Data: make([]int64, 0),
+						},
+					},
+				},
+			}
+		case schemapb.DataType_Float:
+			fieldData.Field = &schemapb.FieldData_Scalars{
+				Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_FloatData{
+						FloatData: &schemapb.FloatArray{
+							Data: make([]float32, 0),
+						},
+					},
+				},
+			}
+		case schemapb.DataType_Double:
+			fieldData.Field = &schemapb.FieldData_Scalars{
+				Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_DoubleData{
+						DoubleData: &schemapb.DoubleArray{
+							Data: make([]float64, 0),
+						},
+					},
+				},
+			}
+		case schemapb.DataType_VarChar:
+			fieldData.Field = &schemapb.FieldData_Scalars{
+				Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_StringData{
+						StringData: &schemapb.StringArray{
+							Data: make([]string, 0),
+						},
+					},
+				},
+			}
 		}
 	case schemapb.DataType_JSON:
 		fieldData.Field = &schemapb.FieldData_Scalars{
@@ -791,6 +797,20 @@ func (safd *StructArrayFieldDataFiller) FillSingleCell(jsonData gjson.Result) er
 	return nil
 }
 
+func (safd *StructArrayFieldDataFiller) ToFieldData() *schemapb.FieldData {
+	ret := &schemapb.FieldData{
+		Type: schemapb.DataType_ArrayOfStruct,
+		Field: &schemapb.FieldData_StructArrays{
+			StructArrays: &schemapb.StructArrayField{
+				Fields: lo.Map(safd.fieldDataFillers, func(fieldDataFiller *FieldDataFiller, _ int) *schemapb.FieldData {
+					return fieldDataFiller.ToFieldData()
+				}),
+			},
+		},
+	}
+	return ret
+}
+
 func NewStructArrayFieldDataFiller(structArrayFieldSchema *schemapb.StructArrayFieldSchema) (*StructArrayFieldDataFiller, error) {
 	fieldDatasFillers := make([]*FieldDataFiller, 0, len(structArrayFieldSchema.Fields))
 	for _, field := range structArrayFieldSchema.Fields {
@@ -864,6 +884,9 @@ func checkAndFillDataV2(body []byte, collSchema *schemapb.CollectionSchema, part
 	fieldDataList := make([]*schemapb.FieldData, 0, len(fieldDataFillerMap))
 	for _, fieldDataFiller := range fieldDataFillerMap {
 		fieldDataList = append(fieldDataList, fieldDataFiller.ToFieldData())
+	}
+	for _, structArrayFieldDataFiller := range structArrayFieldDataFillerMap {
+		fieldDataList = append(fieldDataList, structArrayFieldDataFiller.ToFieldData())
 	}
 	return fieldDataList, uint32(len(dataResultArray)), nil
 }
