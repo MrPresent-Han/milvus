@@ -209,6 +209,9 @@ GroupIteratorResult(const std::shared_ptr<VectorIterator>& iterator,
         distances.emplace_back(std::get<1>(*iter));
         group_by_values.emplace_back(std::move(std::get<2>(*iter)));
     }
+    if (res.size() < topK * group_size) {
+        LOG_DEBUG("SearchGroupBy result count is less than expected, res_count: {}, topK: {}, group_size: {}", res_count, topK, group_size);
+    }
 }
 
 }  // namespace exec
