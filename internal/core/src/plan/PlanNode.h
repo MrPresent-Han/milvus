@@ -484,6 +484,62 @@ class SearchGroupByNode : public PlanNode {
     const std::vector<PlanNodePtr> sources_;
 };
 
+class SearchOrderByNode : public PlanNode {
+ public:
+    struct OrderByField {
+        FieldId field_id_;
+        bool ascending_;  // true for asc, false for desc
+        std::optional<std::string> json_path_;  // for JSON field access
+
+        OrderByField(FieldId field_id,
+                     bool ascending,
+                     std::optional<std::string> json_path = std::nullopt)
+            : field_id_(field_id),
+              ascending_(ascending),
+              json_path_(std::move(json_path)) {
+        }
+    };
+
+    SearchOrderByNode(
+        const PlanNodeId& id,
+        std::vector<OrderByField>&& order_by_fields,
+        std::vector<PlanNodePtr> sources = std::vector<PlanNodePtr>{})
+        : PlanNode(id),
+          sources_{std::move(sources)},
+          order_by_fields_{std::move(order_by_fields)} {
+    }
+
+    RowTypePtr
+    output_type() const override {
+        return RowType::None;
+    }
+
+    std::vector<PlanNodePtr>
+    sources() const override {
+        return sources_;
+    }
+
+    const std::vector<OrderByField>&
+    order_by_fields() const {
+        return order_by_fields_;
+    }
+
+    std::string_view
+    name() const override {
+        return "SearchOrderByNode";
+    }
+
+    std::string
+    ToString() const override {
+        return fmt::format("SearchOrderByNode:\n\t[source node:{}]",
+                           SourceToString());
+    }
+
+ private:
+    const std::vector<PlanNodePtr> sources_;
+    const std::vector<OrderByField> order_by_fields_;
+};
+
 class RescoresNode : public PlanNode {
  public:
     RescoresNode(
