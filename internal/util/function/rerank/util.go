@@ -340,7 +340,12 @@ func newGroupingIDScores[T PKType](idScores map[T]float32, idLocations map[T]IDL
 		0,
 		make([]IDLoc, 0, searchParams.limit),
 	}
-	for index := int(searchParams.offset); index < len(groupList); index++ {
+	// Ensure we only output limit groups starting from offset
+	endIndex := int(searchParams.offset) + int(searchParams.limit)
+	if endIndex > len(groupList) {
+		endIndex = len(groupList)
+	}
+	for index := int(searchParams.offset); index < endIndex; index++ {
 		group := groupList[index]
 		for i, score := range group.scoreList {
 			// idList and scoreList must have same length
