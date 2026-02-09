@@ -88,7 +88,21 @@ HuaweiCloudSTSCredentialsClient::GetAssumeRoleWithWebIdentityCredentials(
 
     STSAssumeRoleWithWebIdentityResult result;
 
-    auto awsResult = GetResourceWithAWSWebServiceResult(httpRequest);
+    // Stage 1: Get IAM token via OIDC id-token endpoint
+    Aws::AmazonWebServiceResult<Aws::String> awsResult;
+    try {
+        awsResult = GetResourceWithAWSWebServiceResult(httpRequest);
+    } catch (const std::exception& e) {
+        AWS_LOGSTREAM_ERROR(
+            STS_RESOURCE_CLIENT_LOG_TAG,
+            "Exception during Huawei Cloud STS token request: " << e.what());
+        return result;
+    } catch (...) {
+        AWS_LOGSTREAM_ERROR(
+            STS_RESOURCE_CLIENT_LOG_TAG,
+            "Unknown exception during Huawei Cloud STS token request");
+        return result;
+    }
     auto responseCode = awsResult.GetResponseCode();
     if (responseCode != Aws::Http::HttpResponseCode::OK &&
         responseCode != Aws::Http::HttpResponseCode::CREATED) {
@@ -108,8 +122,23 @@ HuaweiCloudSTSCredentialsClient::GetAssumeRoleWithWebIdentityCredentials(
         return result;
     }
 
+    // Stage 2: Exchange IAM token for temporary AK/SK credentials
     const Aws::String subjectToken = subjectTokenIter->second;
-    auto stsResult = callHuaweiCloudSTS(subjectToken, request);
+    STSCallResult stsResult;
+    try {
+        stsResult = callHuaweiCloudSTS(subjectToken, request);
+    } catch (const std::exception& e) {
+        AWS_LOGSTREAM_ERROR(
+            STS_RESOURCE_CLIENT_LOG_TAG,
+            "Exception during Huawei Cloud STS credentials request: "
+                << e.what());
+        return result;
+    } catch (...) {
+        AWS_LOGSTREAM_ERROR(
+            STS_RESOURCE_CLIENT_LOG_TAG,
+            "Unknown exception during Huawei Cloud STS credentials request");
+        return result;
+    }
     if (!stsResult.success) {
         AWS_LOGSTREAM_WARN(STS_RESOURCE_CLIENT_LOG_TAG,
                            "Failed to get credentials from Huawei Cloud STS: "
@@ -118,6 +147,7 @@ HuaweiCloudSTSCredentialsClient::GetAssumeRoleWithWebIdentityCredentials(
     }
 
     result.creds = stsResult.credentials;
+    result.success = true;
     return result;
 }
 
@@ -157,10 +187,23 @@ HuaweiCloudSTSCredentialsClient::callHuaweiCloudSTS(
     req->AddContentBody(body);
 
     auto resp = m_httpClient->MakeRequest(req);
+    STSCallResult result;
+    if (!resp) {
+        result.errorMessage =
+            "Null response from Huawei Cloud STS HTTP request";
+        return result;
+    }
+    auto httpResponseCode = resp->GetResponseCode();
+    if (httpResponseCode != Aws::Http::HttpResponseCode::OK &&
+        httpResponseCode != Aws::Http::HttpResponseCode::CREATED) {
+        result.errorMessage =
+            "Huawei Cloud STS security token request failed with HTTP code: " +
+            std::to_string(static_cast<int>(httpResponseCode));
+        return result;
+    }
     std::ostringstream oss;
     oss << resp->GetResponseBody().rdbuf();
     Aws::String credentialsStr = oss.str();
-    STSCallResult result;
     if (credentialsStr.empty()) {
         result.errorMessage = "Get an empty credential from Huawei Cloud STS";
         return result;

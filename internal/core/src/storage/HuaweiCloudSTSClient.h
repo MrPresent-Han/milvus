@@ -45,6 +45,7 @@ class AWS_CORE_API HuaweiCloudSTSCredentialsClient
     };
 
     struct STSAssumeRoleWithWebIdentityResult {
+        bool success = false;
         Aws::Auth::AWSCredentials creds;
     };
 
@@ -57,7 +58,7 @@ class AWS_CORE_API HuaweiCloudSTSCredentialsClient
     std::shared_ptr<Aws::Http::HttpClient> m_httpClient;
 
     struct STSCallResult {
-        bool success;
+        bool success = false;
         Aws::Auth::AWSCredentials credentials;
         Aws::String errorMessage;
     };
