@@ -301,7 +301,9 @@ IndexFactory::VecIndexLoadResource(
     request.has_raw_data = has_raw_data;
     request.final_disk_cost = resource.value().diskCost;
     request.final_memory_cost = resource.value().memoryCost;
-    if (knowhere::UseDiskLoad(index_type, index_version) || mmaped) {
+    bool use_disk_load =
+        knowhere::UseDiskLoad(index_type, index_version) || mmaped;
+    if (use_disk_load) {
         request.max_disk_cost = resource.value().diskCost;
         request.max_memory_cost = std::max(resource.value().memoryCost,
                                            download_buffer_size_in_bytes);
@@ -309,6 +311,32 @@ IndexFactory::VecIndexLoadResource(
         request.max_disk_cost = 0;
         request.max_memory_cost = 2 * resource.value().memoryCost;
     }
+
+    LOG_INFO(
+        "VecIndexLoadResource: index_type={}, index_version={}, "
+        "index_size_in_bytes={}, num_rows={}, dim={}, mmap_enable={}, "
+        "mmaped={}, use_disk_load={}, "
+        "knowhere_memoryCost={}, knowhere_diskCost={}, "
+        "download_buffer_size={}, has_raw_data={}, "
+        "max_memory_cost={}, max_disk_cost={}, "
+        "final_memory_cost={}, final_disk_cost={}",
+        index_type,
+        index_version,
+        index_size_in_bytes,
+        num_rows,
+        dim,
+        mmap_enable,
+        mmaped,
+        use_disk_load,
+        resource.value().memoryCost,
+        resource.value().diskCost,
+        download_buffer_size_in_bytes,
+        has_raw_data,
+        request.max_memory_cost,
+        request.max_disk_cost,
+        request.final_memory_cost,
+        request.final_disk_cost);
+
     return request;
 }
 

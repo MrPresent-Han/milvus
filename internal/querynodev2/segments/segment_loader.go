@@ -1997,6 +1997,20 @@ func estimateLoadingResourceUsageOfSegment(schema *schemapb.CollectionSchema, lo
 					fieldIndexInfo.GetBuildID())
 			}
 
+			log.Info("estimateLoadingResource PART1: index estimate result",
+				zap.Int64("collectionID", loadInfo.GetCollectionID()),
+				zap.Int64("segmentID", loadInfo.GetSegmentID()),
+				zap.Int64("fieldID", fieldID),
+				zap.Bool("isVectorType", isVectorType),
+				zap.Int64("indexSize", fieldIndexInfo.GetIndexSize()),
+				zap.Uint64("MaxMemoryCost", estimateResult.MaxMemoryCost),
+				zap.Uint64("MaxDiskCost", estimateResult.MaxDiskCost),
+				zap.Uint64("FinalMemoryCost", estimateResult.FinalMemoryCost),
+				zap.Uint64("FinalDiskCost", estimateResult.FinalDiskCost),
+				zap.Bool("HasRawData", estimateResult.HasRawData),
+				zap.Bool("TieredEvictionEnabled", multiplyFactor.TieredEvictionEnabled),
+			)
+
 			if !multiplyFactor.TieredEvictionEnabled {
 				indexMemorySize += estimateResult.MaxMemoryCost
 				segDiskLoadingSize += estimateResult.MaxDiskCost
@@ -2009,6 +2023,11 @@ func estimateLoadingResourceUsageOfSegment(schema *schemapb.CollectionSchema, lo
 			// could skip binlog or
 			// could be missing for new field or storage v2 group 0
 			if estimateResult.HasRawData {
+				log.Info("estimateLoadingResource PART1: HasRawData=true, skipping binlog for field",
+					zap.Int64("segmentID", loadInfo.GetSegmentID()),
+					zap.Int64("fieldID", fieldID),
+					zap.Bool("isVectorType", isVectorType),
+				)
 				delete(id2Binlogs, fieldID)
 				continue
 			}
@@ -2164,6 +2183,15 @@ func estimateLoadingResourceUsageOfSegment(schema *schemapb.CollectionSchema, lo
 			}
 		}
 	}
+
+	log.Info("estimateLoadingResource final breakdown",
+		zap.Int64("collectionID", loadInfo.GetCollectionID()),
+		zap.Int64("segmentID", loadInfo.GetSegmentID()),
+		zap.Float64("indexMemorySize(MB)", logutil.ToMB(float64(indexMemorySize))),
+		zap.Float64("segMemoryLoadingSize(MB)", logutil.ToMB(float64(segMemoryLoadingSize))),
+		zap.Float64("totalMemorySize(MB)", logutil.ToMB(float64(segMemoryLoadingSize+indexMemorySize))),
+		zap.Float64("segDiskLoadingSize(MB)", logutil.ToMB(float64(segDiskLoadingSize))),
+	)
 
 	return &ResourceUsage{
 		MemorySize:         segMemoryLoadingSize + indexMemorySize,
