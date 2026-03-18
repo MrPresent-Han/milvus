@@ -174,9 +174,17 @@ func (p *HuaweiCredentialProvider) Retrieve() (minioCred.Value, error) {
 	p.refreshMu.Lock()
 	defer p.refreshMu.Unlock()
 
-	if !p.expiration.IsZero() && time.Now().UTC().Before(p.expiration.Add(-expirationGracePeriod)) {
+	now := time.Now().UTC()
+	threshold := p.expiration.Add(-expirationGracePeriod)
+	if !p.expiration.IsZero() && now.Before(threshold) {
 		return p.credentials, nil
 	}
+
+	log.Info("HuaweiCloud credential provider: cache miss, will call STS",
+		zap.Time("now", now),
+		zap.Time("expiration", p.expiration),
+		zap.Time("threshold", threshold),
+		zap.Bool("expiration_is_zero", p.expiration.IsZero()))
 
 	// Throttle retries after STS failures to avoid hammering the service.
 	// Only return cached credentials if they haven't fully expired yet;

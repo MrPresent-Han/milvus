@@ -71,6 +71,9 @@ endif()
 # bitset has its own test binary
 list(FILTER MILVUS_TEST_FILES EXCLUDE REGEX "BitsetTest\\.cpp$")
 
+# STS conflict test — manual integration test, exclude from all_tests
+list(FILTER MILVUS_TEST_FILES EXCLUDE REGEX "HuaweiCloudSTSConflictTest\\.cpp$")
+
 if (NOT (LINUX OR APPLE))
     list(FILTER MILVUS_TEST_FILES EXCLUDE REGEX "ScalarIndexCreatorTest\\.cpp$")
     list(FILTER MILVUS_TEST_FILES EXCLUDE REGEX "StringIndexTest\\.cpp$")
@@ -126,6 +129,21 @@ set_target_properties(all_tests PROPERTIES
         )
 
 install(TARGETS all_tests DESTINATION unittest)
+
+# HuaweiCloud STS conflict test — standalone manual integration test
+add_executable(HuaweiCloudSTSConflictTest
+        ${CMAKE_HOME_DIRECTORY}/src/storage/HuaweiCloudSTSConflictTest.cpp
+        init_gtest.cpp
+        )
+target_link_libraries(HuaweiCloudSTSConflictTest
+        gtest
+        gmock
+        milvus_core
+        knowhere
+        milvus-storage
+        milvus-common
+        )
+install(TARGETS HuaweiCloudSTSConflictTest DESTINATION unittest)
 
 add_subdirectory(bench)
 add_subdirectory(test_json_stats)
