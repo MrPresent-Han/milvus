@@ -209,7 +209,6 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 		totalOffsetElements += len(searchResultData[i].Topks)
 	}
 	offsetBacking := make([]int64, totalOffsetElements)
-	groupByValIterator := make([]func(int) any, len(searchResultData))
 	for i := range searchResultData {
 		n := len(searchResultData[i].Topks)
 		resultOffsets[i] = offsetBacking[:n:n]
@@ -218,13 +217,9 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 			resultOffsets[i][j] = resultOffsets[i][j-1] + searchResultData[i].Topks[j-1]
 		}
 		ret.AllSearchCount += searchResultData[i].GetAllSearchCount()
-		groupByValIterator[i] = typeutil.GetDataIterator(searchResultData[i].GetGroupByFieldValue())
-	}
-	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(searchResultData[0].GetGroupByFieldValue().GetType(), true, int(info.GetTopK()))
-	if err != nil {
-		return ret, merr.WrapErrServiceInternal("failed to construct group by field data builder, this is abnormal as segcore should always set up a group by field, no matter data status, check code on qn", err.Error())
 	}
 
+	keyExtractors := buildKeyExtractors(searchResultData, info)
 	idxComputers := make([]*typeutil.FieldDataIdxComputer, len(searchResultData))
 	for i, srd := range searchResultData {
 		idxComputers[i] = typeutil.NewFieldDataIdxComputer(srd.FieldsData)
@@ -238,12 +233,17 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 		groupSize = 1
 	}
 	groupBound := info.GetTopK() * groupSize
+	acceptedRows := make([]reduce.RowRef, 0, nq*groupBound)
 
 	for i := int64(0); i < info.GetNq(); i++ {
 		offsets := make([]int64, len(searchResultData))
 
 		idSet := make(map[interface{}]struct{})
-		groupByValueMap := make(map[interface{}]int64)
+		// groupBuckets stores per-composite-key state keyed by uint64 hash.
+		// Collisions resolve via linear scan over the per-bucket slice, just
+		// like internal/agg's reducer — cheap given normal collision rates.
+		groupBuckets := make(map[uint64][]*reduceGroupEntry)
+		totalGroups := int64(0)
 
 		var j int64
 		for j = 0; j < groupBound; {
@@ -254,17 +254,23 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 			idx := resultOffsets[sel][i] + offsets[sel]
 
 			id := typeutil.GetPK(searchResultData[sel].GetIds(), idx)
-			groupByVal := groupByValIterator[sel](int(idx))
+			hash, values := keyExtractors[sel](int(idx))
 			score := searchResultData[sel].Scores[idx]
 			if _, ok := idSet[id]; !ok {
-				groupCount := groupByValueMap[groupByVal]
-				if groupCount == 0 && int64(len(groupByValueMap)) >= info.GetTopK() {
+				entry := findReduceGroupEntry(groupBuckets[hash], values)
+				isNewGroup := entry == nil
+				if isNewGroup && totalGroups >= info.GetTopK() {
 					// exceed the limit for group count, filter this entity
 					filteredCount++
-				} else if groupCount >= groupSize {
+				} else if !isNewGroup && entry.count >= groupSize {
 					// exceed the limit for each group, filter this entity
 					filteredCount++
 				} else {
+					if isNewGroup {
+						entry = &reduceGroupEntry{values: values}
+						groupBuckets[hash] = append(groupBuckets[hash], entry)
+						totalGroups++
+					}
 					fieldsData := searchResultData[sel].FieldsData
 					fieldIdxs := idxComputers[sel].Compute(idx)
 					retSize += typeutil.AppendFieldData(ret.FieldsData, fieldsData, idx, fieldIdxs...)
@@ -273,9 +279,9 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 					if searchResultData[sel].ElementIndices != nil && ret.ElementIndices != nil {
 						ret.ElementIndices.Data = append(ret.ElementIndices.Data, searchResultData[sel].ElementIndices.Data[idx])
 					}
-					gpFieldBuilder.Add(groupByVal)
-					groupByValueMap[groupByVal] += 1
+					entry.count++
 					idSet[id] = struct{}{}
+					acceptedRows = append(acceptedRows, reduce.RowRef{ResultIdx: sel, RowIdx: idx})
 					j++
 				}
 			} else {
@@ -291,7 +297,9 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 			return nil, fmt.Errorf("search results exceed the maxOutputSize Limit %d", maxOutputSize)
 		}
 	}
-	ret.GroupByFieldValue = gpFieldBuilder.Build()
+	if err := writeGroupByOutput(ret, acceptedRows, searchResultData, info); err != nil {
+		return ret, merr.WrapErrServiceInternal("failed to construct group by output", err.Error())
+	}
 	if float64(filteredCount) >= 0.3*float64(groupBound) {
 		log.Warn("GroupBy reduce filtered too many results, "+
 			"this may influence the final result seriously",
@@ -303,8 +311,102 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 }
 
 func InitSearchReducer(info *reduce.ResultInfo) SearchReduce {
-	if info.GetGroupByFieldId() > 0 {
+	if info.GetGroupByFieldId() > 0 || info.HasMultiGroupBy() {
 		return &SearchGroupByReduce{}
 	}
 	return &SearchCommonReduce{}
+}
+
+// reduceGroupEntry tracks one composite-key bucket during SearchGroupByReduce.
+// Held inside a map[uint64][]*reduceGroupEntry keyed by hash, so collisions
+// resolve via linear scan with reduce.EqualGroupValues.
+type reduceGroupEntry struct {
+	values []any
+	count  int64
+}
+
+func findReduceGroupEntry(bucket []*reduceGroupEntry, values []any) *reduceGroupEntry {
+	for _, e := range bucket {
+		if reduce.EqualGroupValues(e.values, values) {
+			return e
+		}
+	}
+	return nil
+}
+
+// keyExtractor returns (hash, normalized values) for the row at idx. The hash
+// map drives bucket lookup; the values slice is retained for hash-collision
+// disambiguation via reduce.EqualGroupValues. Values are normalized through
+// reduce.NormalizeScalar so types align with the proxy-side reducer.
+type keyExtractor func(idx int) (uint64, []any)
+
+func buildKeyExtractors(searchResultData []*schemapb.SearchResultData, info *reduce.ResultInfo) []keyExtractor {
+	if info.HasMultiGroupBy() {
+		return buildMultiFieldExtractors(searchResultData, info.GetMultiGroupByFieldIds())
+	}
+	return buildSingleFieldExtractors(searchResultData)
+}
+
+func buildSingleFieldExtractors(searchResultData []*schemapb.SearchResultData) []keyExtractor {
+	// Single-field group-by is the N=1 specialization of the multi-field
+	// extractor. Wrap the GroupByFieldValue iterator as a 1-element iters
+	// slice and reuse the shared factory.
+	extractors := make([]keyExtractor, len(searchResultData))
+	for i := range searchResultData {
+		iter := typeutil.GetDataIterator(searchResultData[i].GetGroupByFieldValue())
+		extractors[i] = reduce.MakeCompositeKeyExtractor([]func(int) any{iter})
+	}
+	return extractors
+}
+
+func buildMultiFieldExtractors(searchResultData []*schemapb.SearchResultData, groupByFieldIDs []int64) []keyExtractor {
+	extractors := make([]keyExtractor, len(searchResultData))
+	for i := range searchResultData {
+		iters := make([]func(int) any, len(groupByFieldIDs))
+		for j, fieldID := range groupByFieldIDs {
+			// Group-by columns ride on proto field 17, separate from FieldsData.
+			fieldData := reduce.FindFieldDataByID(searchResultData[i].GetGroupByFieldValues(), fieldID)
+			if fieldData != nil {
+				iters[j] = typeutil.GetDataIterator(fieldData)
+			}
+		}
+		extractors[i] = reduce.MakeCompositeKeyExtractor(iters)
+	}
+	return extractors
+}
+
+func writeGroupByOutput(ret *schemapb.SearchResultData, acceptedRows []reduce.RowRef, searchResultData []*schemapb.SearchResultData, info *reduce.ResultInfo) error {
+	if info.HasMultiGroupBy() {
+		return reduce.WriteGroupByFieldValues(ret, acceptedRows, searchResultData, info.GetMultiGroupByFieldIds())
+	}
+	if len(acceptedRows) == 0 {
+		if len(searchResultData) == 0 || searchResultData[0].GetGroupByFieldValue() == nil {
+			ret.GroupByFieldValue = nil
+			return nil
+		}
+		gpFieldBuilder, err := typeutil.NewFieldDataBuilder(searchResultData[0].GetGroupByFieldValue().GetType(), true, 0)
+		if err != nil {
+			return err
+		}
+		ret.GroupByFieldValue = gpFieldBuilder.Build()
+		return nil
+	}
+	baseField := searchResultData[acceptedRows[0].ResultIdx].GetGroupByFieldValue()
+	if baseField == nil {
+		ret.GroupByFieldValue = nil
+		return nil
+	}
+	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(baseField.GetType(), true, len(acceptedRows))
+	if err != nil {
+		return err
+	}
+	iterators := make([]func(int) any, len(searchResultData))
+	for i := range searchResultData {
+		iterators[i] = typeutil.GetDataIterator(searchResultData[i].GetGroupByFieldValue())
+	}
+	for _, rowRef := range acceptedRows {
+		gpFieldBuilder.Add(iterators[rowRef.ResultIdx](int(rowRef.RowIdx)))
+	}
+	ret.GroupByFieldValue = gpFieldBuilder.Build()
+	return nil
 }

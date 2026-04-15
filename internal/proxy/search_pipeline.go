@@ -34,6 +34,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/parser/planparserv2"
+	"github.com/milvus-io/milvus/internal/proxy/search_agg"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/function/chain"
 	"github.com/milvus-io/milvus/internal/util/function/models"
@@ -111,6 +112,8 @@ func (n *Node) Run(ctx context.Context, span trace.Span, msg opMsg) (opMsg, erro
 	return outputs, nil
 }
 
+const aggOp = "search_agg"
+
 const (
 	searchReduceOp       = "search_reduce"
 	hybridSearchReduceOp = "hybrid_search_reduce"
@@ -133,6 +136,7 @@ const (
 var opFactory = map[string]func(t *searchTask, params map[string]any) (operator, error){
 	searchReduceOp:       newSearchReduceOperator,
 	hybridSearchReduceOp: newHybridSearchReduceOperator,
+	aggOp:                newAggregateOperator,
 	rerankOp:             newRerankOperator,
 	organizeOp:           newOrganizeOperator,
 	hybridAssembleOp:     newHybridAssembleOperator,
@@ -275,6 +279,246 @@ func (op *hybridSearchReduceOperator) run(ctx context.Context, span trace.Span, 
 		multipleMilvusResults[index] = result
 	}
 	return []any{multipleMilvusResults, searchMetrics}, nil
+}
+
+type aggregateOperator struct {
+	aggCtx *search_agg.SearchAggregationContext
+}
+
+func newAggregateOperator(t *searchTask, _ map[string]any) (operator, error) {
+	if t.aggCtx == nil {
+		return nil, merr.WrapErrServiceInternal("aggregate operator requires non-nil aggCtx")
+	}
+	return &aggregateOperator{aggCtx: t.aggCtx}, nil
+}
+
+func (op *aggregateOperator) run(ctx context.Context, span trace.Span, inputs ...any) ([]any, error) {
+	_, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "aggregateOperator")
+	defer sp.End()
+
+	// Upstream searchReduceOp has already done cross-shard composite-key reduce
+	// and produced a single *milvuspb.SearchResults wrapping one SearchResultData.
+	reducedList := inputs[0].([]*milvuspb.SearchResults)
+	if len(reducedList) == 0 || reducedList[0] == nil || reducedList[0].GetResults() == nil {
+		return nil, merr.WrapErrServiceInternal("aggregateOperator received empty reduced results")
+	}
+	computer := search_agg.NewSearchAggregationComputer(reducedList[0].GetResults(), op.aggCtx)
+	nqAggResults, err := computer.Compute()
+	if err != nil {
+		return nil, err
+	}
+
+	aggBuckets := make([]*schemapb.AggBucket, 0)
+	aggTopks := make([]int64, 0, len(nqAggResults))
+	for _, buckets := range nqAggResults {
+		aggTopks = append(aggTopks, int64(len(buckets)))
+		aggBuckets = append(aggBuckets, serializeAggBuckets(buckets)...)
+	}
+
+	result := &milvuspb.SearchResults{
+		Status: merr.Success(),
+		Results: &schemapb.SearchResultData{
+			NumQueries: op.aggCtx.NQ,
+			Topks:      make([]int64, op.aggCtx.NQ),
+			AggBuckets: aggBuckets,
+			AggTopks:   aggTopks,
+		},
+	}
+	return []any{result}, nil
+}
+
+func serializeAggBuckets(buckets []*search_agg.AggBucketResult) []*schemapb.AggBucket {
+	if len(buckets) == 0 {
+		return nil
+	}
+	serialized := make([]*schemapb.AggBucket, 0, len(buckets))
+	for _, bucket := range buckets {
+		if bucket == nil {
+			continue
+		}
+		serialized = append(serialized, serializeAggBucket(bucket))
+	}
+	return serialized
+}
+
+func serializeAggBucket(bucket *search_agg.AggBucketResult) *schemapb.AggBucket {
+	if bucket == nil {
+		return nil
+	}
+
+	result := &schemapb.AggBucket{
+		Key:       serializeBucketKey(bucket.Key),
+		Count:     bucket.Count,
+		Metrics:   serializeAggMetrics(bucket.Metrics),
+		Hits:      serializeAggHits(bucket.Hits),
+		SubGroups: serializeAggBuckets(bucket.SubGroups),
+	}
+	return result
+}
+
+// serializeAggMetrics maps each metric alias value into the proto MetricValue
+// oneof. Numeric widths collapse: all signed ints → int_val, all floats →
+// double_val. nil (accumulator never received a non-null row) is dropped.
+func serializeAggMetrics(metrics map[string]any) map[string]*schemapb.MetricValue {
+	if len(metrics) == 0 {
+		return nil
+	}
+	out := make(map[string]*schemapb.MetricValue, len(metrics))
+	for alias, v := range metrics {
+		if v == nil {
+			continue
+		}
+		mv := &schemapb.MetricValue{}
+		switch val := v.(type) {
+		case int:
+			mv.Value = &schemapb.MetricValue_IntVal{IntVal: int64(val)}
+		case int8:
+			mv.Value = &schemapb.MetricValue_IntVal{IntVal: int64(val)}
+		case int16:
+			mv.Value = &schemapb.MetricValue_IntVal{IntVal: int64(val)}
+		case int32:
+			mv.Value = &schemapb.MetricValue_IntVal{IntVal: int64(val)}
+		case int64:
+			mv.Value = &schemapb.MetricValue_IntVal{IntVal: val}
+		case float32:
+			mv.Value = &schemapb.MetricValue_DoubleVal{DoubleVal: float64(val)}
+		case float64:
+			mv.Value = &schemapb.MetricValue_DoubleVal{DoubleVal: val}
+		case string:
+			mv.Value = &schemapb.MetricValue_StringVal{StringVal: val}
+		case bool:
+			mv.Value = &schemapb.MetricValue_BoolVal{BoolVal: val}
+		default:
+			// Unknown scalar: fall back to string representation so the SDK
+			// still sees some result rather than a dropped alias.
+			mv.Value = &schemapb.MetricValue_StringVal{StringVal: fmt.Sprintf("%v", val)}
+		}
+		out[alias] = mv
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func serializeBucketKey(key map[int64]interface{}) []*schemapb.BucketKeyEntry {
+	if len(key) == 0 {
+		return nil
+	}
+	fieldIDs := make([]int64, 0, len(key))
+	for fieldID := range key {
+		fieldIDs = append(fieldIDs, fieldID)
+	}
+	sort.Slice(fieldIDs, func(i, j int) bool { return fieldIDs[i] < fieldIDs[j] })
+
+	entries := make([]*schemapb.BucketKeyEntry, 0, len(fieldIDs))
+	for _, fieldID := range fieldIDs {
+		entry := &schemapb.BucketKeyEntry{FieldId: fieldID}
+		switch value := key[fieldID].(type) {
+		case int:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case int8:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case int16:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case int32:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case int64:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: value}
+		case uint:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case uint8:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case uint16:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case uint32:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case uint64:
+			entry.Value = &schemapb.BucketKeyEntry_IntVal{IntVal: int64(value)}
+		case string:
+			entry.Value = &schemapb.BucketKeyEntry_StringVal{StringVal: value}
+		case bool:
+			entry.Value = &schemapb.BucketKeyEntry_BoolVal{BoolVal: value}
+		default:
+			entry.Value = &schemapb.BucketKeyEntry_StringVal{StringVal: fmt.Sprintf("%v", value)}
+		}
+		entries = append(entries, entry)
+	}
+	return entries
+}
+
+func serializeAggHits(hits []*search_agg.HitResult) []*schemapb.AggHit {
+	if len(hits) == 0 {
+		return nil
+	}
+	serialized := make([]*schemapb.AggHit, 0, len(hits))
+	for _, hit := range hits {
+		if hit == nil {
+			continue
+		}
+		aggHit := &schemapb.AggHit{Score: hit.Score}
+		switch pk := hit.PK.(type) {
+		case int64:
+			aggHit.Pk = &schemapb.AggHit_IntPk{IntPk: pk}
+		case string:
+			aggHit.Pk = &schemapb.AggHit_StrPk{StrPk: pk}
+		}
+		aggHit.Fields = serializeAggHitFields(hit.Fields)
+		serialized = append(serialized, aggHit)
+	}
+	return serialized
+}
+
+func serializeAggHitFields(fields map[int64]interface{}) []*schemapb.AggHitField {
+	if len(fields) == 0 {
+		return nil
+	}
+	fieldIDs := make([]int64, 0, len(fields))
+	for fieldID := range fields {
+		fieldIDs = append(fieldIDs, fieldID)
+	}
+	sort.Slice(fieldIDs, func(i, j int) bool { return fieldIDs[i] < fieldIDs[j] })
+
+	serialized := make([]*schemapb.AggHitField, 0, len(fieldIDs))
+	for _, fieldID := range fieldIDs {
+		field := &schemapb.AggHitField{FieldId: fieldID}
+		switch value := fields[fieldID].(type) {
+		case int:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case int8:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case int16:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case int32:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case int64:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: value}
+		case uint:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case uint8:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case uint16:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case uint32:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case uint64:
+			field.Value = &schemapb.AggHitField_IntVal{IntVal: int64(value)}
+		case bool:
+			field.Value = &schemapb.AggHitField_BoolVal{BoolVal: value}
+		case float32:
+			field.Value = &schemapb.AggHitField_FloatVal{FloatVal: value}
+		case float64:
+			field.Value = &schemapb.AggHitField_DoubleVal{DoubleVal: value}
+		case string:
+			field.Value = &schemapb.AggHitField_StringVal{StringVal: value}
+		case []byte:
+			field.Value = &schemapb.AggHitField_BytesVal{BytesVal: value}
+		default:
+			field.Value = &schemapb.AggHitField_StringVal{StringVal: fmt.Sprintf("%v", value)}
+		}
+		serialized = append(serialized, field)
+	}
+	return serialized
 }
 
 type rerankOperator struct {
@@ -1913,6 +2157,26 @@ var highlightNode = &nodeDef{
 	opName:  highlightOp,
 }
 
+var searchWithAggPipe = &pipelineDef{
+	name: "searchWithAgg",
+	nodes: []*nodeDef{
+		{
+			// searchReduceOp performs cross-shard composite-key group reduce
+			// (reduceSearchResultDataWithMultiGroupBy) before hierarchy compute.
+			name:    "reduce",
+			inputs:  []string{pipelineInput, pipelineStorageCost},
+			outputs: []string{"reduced", "metrics"},
+			opName:  searchReduceOp,
+		},
+		{
+			name:    "agg",
+			inputs:  []string{"reduced"},
+			outputs: []string{"result"},
+			opName:  aggOp,
+		},
+	},
+}
+
 var searchPipe = &pipelineDef{
 	name: "search",
 	nodes: []*nodeDef{
@@ -2365,6 +2629,10 @@ var searchWithOrderByPipe = &pipelineDef{
 }
 
 func newBuiltInPipeline(t *searchTask) (*pipeline, error) {
+	if t.aggCtx != nil {
+		return newPipeline(searchWithAggPipe, t)
+	}
+
 	hasOrderBy := len(t.orderByFields) > 0
 
 	// Common search with order_by: reduce → requery → order_by
@@ -2407,6 +2675,10 @@ func newSearchPipeline(t *searchTask) (*pipeline, error) {
 	p, err := newBuiltInPipeline(t)
 	if err != nil {
 		return nil, err
+	}
+
+	if t.aggCtx != nil {
+		return p, nil
 	}
 
 	if t.highlighter != nil {

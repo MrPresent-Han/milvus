@@ -20,6 +20,7 @@ import (
 	"github.com/milvus-io/milvus/internal/agg"
 	"github.com/milvus-io/milvus/internal/parser/planparserv2"
 	"github.com/milvus-io/milvus/internal/proxy/accesslog"
+	"github.com/milvus-io/milvus/internal/proxy/search_agg"
 	"github.com/milvus-io/milvus/internal/proxy/shardclient"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/internal/util/exprutil"
@@ -113,6 +114,8 @@ type searchTask struct {
 
 	storageCost  segcore.StorageCost
 	traceEnabled bool
+
+	aggCtx *search_agg.SearchAggregationContext
 }
 
 func (t *searchTask) CanSkipAllocTimestamp() bool {
@@ -237,6 +240,11 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 		return err
 	}
 	t.OutputFieldsId = outputFieldIDs
+
+	if err = t.initSearchAggregation(); err != nil {
+		log.Debug("init search aggregation failed", zap.Error(err))
+		return err
+	}
 
 	// Currently, we get vectors by requery. Once we support getting vectors from search,
 	// searches with small result size could no longer need requery.
@@ -374,6 +382,49 @@ func (t *searchTask) checkNq(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("%s [%d] is invalid, %w", NQKey, nq, err)
 	}
 	return nq, nil
+}
+
+func (t *searchTask) initSearchAggregation() error {
+	spec := t.request.GetSearchAggregation()
+	if spec == nil {
+		t.aggCtx = nil
+		t.SearchRequest.MultiGroupBy = nil
+		return nil
+	}
+
+	if t.SearchRequest.GetIsAdvanced() {
+		return merr.WrapErrParameterInvalidMsg("search aggregation is not supported for hybrid search")
+	}
+
+	groupByField, err := funcutil.GetAttrByKeyFromRepeatedKV(GroupByFieldKey, t.request.GetSearchParams())
+	if err == nil && strings.TrimSpace(groupByField) != "" {
+		return merr.WrapErrParameterInvalidMsg("group_by_field and search_aggregation cannot be used simultaneously")
+	}
+
+	aggCtx, err := search_agg.BuildSearchAggregationContext(spec, t.schema.CollectionSchema, t.SearchRequest.GetNq())
+	if err != nil {
+		return err
+	}
+	multiGroupBy, err := search_agg.BuildMultiFieldGroupByInfo(spec, t.schema.CollectionSchema)
+	if err != nil {
+		return err
+	}
+	for _, fieldID := range t.SearchRequest.GetOutputFieldsId() {
+		aggCtx.UserOutputFieldIDs[fieldID] = struct{}{}
+	}
+
+	// Append metric source / top_hits sort fields to OutputFieldsId so segcore
+	// writes them into fields_data. Group-by fields are delivered separately
+	// via SearchResultData.group_by_field_values and must NOT be appended here.
+	if extra := aggCtx.ExtraOutputFieldIDs(); len(extra) > 0 {
+		outputSet := typeutil.NewSet[int64](t.SearchRequest.GetOutputFieldsId()...)
+		outputSet.Insert(extra...)
+		t.SearchRequest.OutputFieldsId = outputSet.Collect()
+	}
+
+	t.aggCtx = aggCtx
+	t.SearchRequest.MultiGroupBy = multiGroupBy
+	return nil
 }
 
 func setQueryInfoIfMvEnable(queryInfo *planpb.QueryInfo, t *searchTask, plan *planpb.PlanNode) error {
@@ -795,11 +846,24 @@ func (t *searchTask) initSearchRequest(ctx context.Context) error {
 
 	t.Topk = queryInfo.GetTopk()
 	t.MetricType = queryInfo.GetMetricType()
+	// SearchRequest.MultiGroupBy already references plan.MultiFieldGroupByInfo
+	// after deduplication, so assignment is pointer-level (same message type).
+	queryInfo.MultiGroupBy = t.SearchRequest.GetMultiGroupBy()
+
 	t.queryInfos = append(t.queryInfos, queryInfo)
 	t.DslType = commonpb.DslType_BoolExprV1
 	t.GroupByFieldId = queryInfo.GroupByFieldId
 	t.GroupSize = queryInfo.GroupSize
 
+	// SearchAgg path overrides topK and groupSize based on the level-size product
+	// and leaf TopHits.Size. Delegator/QN use these to cap distinct composite
+	// keys (topK) and docs per composite key (groupSize) respectively.
+	if t.aggCtx != nil {
+		t.SearchRequest.Topk = t.aggCtx.DerivedTopK
+		t.SearchRequest.GroupSize = t.aggCtx.DerivedGroupSize
+		queryInfo.Topk = t.aggCtx.DerivedTopK
+		queryInfo.GroupSize = t.aggCtx.DerivedGroupSize
+	}
 	if embedding.HasNonBM25AndMinHashFunctions(t.schema.Functions, []int64{queryInfo.GetQueryFieldId()}) {
 		ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "Proxy-Search-call-function-udf")
 		defer sp.End()

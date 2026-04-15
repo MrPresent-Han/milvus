@@ -965,6 +965,110 @@ func TestSearchTask_PreExecute(t *testing.T) {
 	})
 }
 
+func TestSearchTask_initSearchAggregation(t *testing.T) {
+	t.Run("group_by_field conflict", func(t *testing.T) {
+		task := &searchTask{
+			SearchRequest: &internalpb.SearchRequest{Nq: 1},
+			request: &milvuspb.SearchRequest{
+				SearchParams:      []*commonpb.KeyValuePair{{Key: GroupByFieldKey, Value: "brand"}},
+				SearchAggregation: &commonpb.SearchAggregationSpec{Fields: []string{"brand"}},
+			},
+			schema: &schemaInfo{
+				CollectionSchema: &schemapb.CollectionSchema{
+					Fields: []*schemapb.FieldSchema{{FieldID: 101, Name: "brand", DataType: schemapb.DataType_VarChar}},
+				},
+			},
+		}
+
+		err := task.initSearchAggregation()
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "group_by_field and search_aggregation cannot be used simultaneously")
+	})
+
+	t.Run("build agg context and agg info", func(t *testing.T) {
+		task := &searchTask{
+			SearchRequest: &internalpb.SearchRequest{Nq: 1, OutputFieldsId: []int64{102}},
+			request: &milvuspb.SearchRequest{
+				SearchAggregation: &commonpb.SearchAggregationSpec{
+					Fields: []string{"brand"},
+					Metrics: map[string]*commonpb.MetricAggSpec{
+						"sum_price": {Op: "sum", FieldName: "price"},
+					},
+					Order: []*commonpb.OrderSpec{{Key: "_key", Direction: "asc"}},
+				},
+			},
+			schema: &schemaInfo{
+				CollectionSchema: &schemapb.CollectionSchema{
+					Fields: []*schemapb.FieldSchema{
+						{FieldID: 101, Name: "brand", DataType: schemapb.DataType_VarChar},
+						{FieldID: 102, Name: "price", DataType: schemapb.DataType_Int64},
+					},
+				},
+			},
+		}
+
+		err := task.initSearchAggregation()
+		require.NoError(t, err)
+		require.NotNil(t, task.aggCtx)
+		require.NotNil(t, task.SearchRequest.GetMultiGroupBy())
+		// Downstream only learns group-by fields; metric sources flow through
+		// OutputFieldsId → fields_data instead.
+		assert.Equal(t, []int64{101}, task.SearchRequest.GetMultiGroupBy().GetGroupByFieldIds())
+		assert.Contains(t, task.SearchRequest.GetOutputFieldsId(), int64(102))
+		_, ok := task.aggCtx.UserOutputFieldIDs[102]
+		assert.True(t, ok)
+	})
+
+	t.Run("metric and top_hits sort fields appended to OutputFieldsId", func(t *testing.T) {
+		// User asks for brand grouping + sum(price) metric + top_hits sorted by stock.
+		// User's output_fields contains only "title" (field 105). Neither price (103)
+		// nor stock (104) is in the user's output_fields, but both must be appended
+		// so segcore writes them into fields_data.
+		task := &searchTask{
+			SearchRequest: &internalpb.SearchRequest{Nq: 1, OutputFieldsId: []int64{105}},
+			request: &milvuspb.SearchRequest{
+				SearchAggregation: &commonpb.SearchAggregationSpec{
+					Fields: []string{"brand"},
+					Metrics: map[string]*commonpb.MetricAggSpec{
+						"sum_price": {Op: "sum", FieldName: "price"},
+					},
+					TopHits: &commonpb.TopHitsSpec{
+						Size: 1,
+						Sort: []*commonpb.SortSpec{{FieldName: "stock", Direction: "desc"}},
+					},
+				},
+			},
+			schema: &schemaInfo{
+				CollectionSchema: &schemapb.CollectionSchema{
+					Fields: []*schemapb.FieldSchema{
+						{FieldID: 101, Name: "brand", DataType: schemapb.DataType_VarChar},
+						{FieldID: 103, Name: "price", DataType: schemapb.DataType_Int64},
+						{FieldID: 104, Name: "stock", DataType: schemapb.DataType_Int64},
+						{FieldID: 105, Name: "title", DataType: schemapb.DataType_VarChar},
+					},
+				},
+			},
+		}
+
+		err := task.initSearchAggregation()
+		require.NoError(t, err)
+
+		output := task.SearchRequest.GetOutputFieldsId()
+		assert.Contains(t, output, int64(103), "metric source field must be appended")
+		assert.Contains(t, output, int64(104), "top_hits sort field must be appended")
+		assert.Contains(t, output, int64(105), "user output field must be preserved")
+		// Group-by field (101) travels via SearchResultData.group_by_field_values,
+		// so it must NOT be appended to OutputFieldsId.
+		assert.NotContains(t, output, int64(101), "group-by field must not leak into OutputFieldsId")
+
+		// UserOutputFieldIDs captures only the user's explicit request.
+		_, hasTitle := task.aggCtx.UserOutputFieldIDs[105]
+		assert.True(t, hasTitle)
+		_, hasPrice := task.aggCtx.UserOutputFieldIDs[103]
+		assert.False(t, hasPrice, "metric source must not appear as a user output field")
+	})
+}
+
 func TestSearchTask_WithFunctions(t *testing.T) {
 	paramtable.Init()
 	paramtable.Get().CredentialCfg.Credential.GetFunc = func() map[string]string {

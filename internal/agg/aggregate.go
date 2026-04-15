@@ -166,6 +166,13 @@ func (fv *FieldValue) IsNull() bool {
 	return fv.isNull
 }
 
+// Value returns the underlying accumulated value (nil when null). Added so
+// external callers (proxy-side search aggregation) can finalize metric results
+// without reimplementing accumulator state. Read-only; does not mutate fv.
+func (fv *FieldValue) Value() any {
+	return fv.val
+}
+
 func (fv *FieldValue) SetNull() {
 	fv.isNull = true
 	fv.val = nil

@@ -33,6 +33,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/mocks"
+	"github.com/milvus-io/milvus/internal/proxy/search_agg"
 	"github.com/milvus-io/milvus/internal/proxy/shardclient"
 	"github.com/milvus-io/milvus/internal/util/function/highlight"
 	"github.com/milvus-io/milvus/internal/util/segcore"
@@ -4198,6 +4199,92 @@ func (s *SearchPipelineSuite) TestNewRequeryOperator_WithoutHighlighter() {
 
 	// Verify only translated output fields are included
 	s.Equal([]string{"title"}, reqOp.outputFieldNames)
+}
+
+func (s *SearchPipelineSuite) TestNewBuiltInPipelineWithAggCtx() {
+	// searchWithAggPipe now chains searchReduceOp → aggregateOp, so the task
+	// needs a schema with a PK so searchReduceOp's factory can initialize.
+	pkField := &schemapb.FieldSchema{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true}
+	task := &searchTask{
+		SearchRequest: &internalpb.SearchRequest{IsAdvanced: false},
+		aggCtx:        search_agg.NewContext(1, nil, nil, nil),
+		schema: &schemaInfo{
+			CollectionSchema: &schemapb.CollectionSchema{Fields: []*schemapb.FieldSchema{pkField}},
+			pkField:          pkField,
+		},
+		queryInfos: []*planpb.QueryInfo{{}},
+	}
+
+	pipeline, err := newBuiltInPipeline(task)
+	s.NoError(err)
+	s.NotNil(pipeline)
+	s.Equal(searchWithAggPipe.name, pipeline.name)
+}
+
+func (s *SearchPipelineSuite) TestNewSearchPipelineWithAggCtxSkipsEndNode() {
+	pkField := &schemapb.FieldSchema{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true}
+	task := &searchTask{
+		SearchRequest: &internalpb.SearchRequest{IsAdvanced: false},
+		aggCtx:        search_agg.NewContext(1, nil, nil, nil),
+		schema: &schemaInfo{
+			CollectionSchema: &schemapb.CollectionSchema{Fields: []*schemapb.FieldSchema{pkField}},
+			pkField:          pkField,
+		},
+		queryInfos:  []*planpb.QueryInfo{{}},
+		highlighter: nil,
+	}
+
+	pipeline, err := newSearchPipeline(task)
+	s.NoError(err)
+	s.NotNil(pipeline)
+	s.Equal(searchWithAggPipe.name, pipeline.name)
+	s.Len(pipeline.nodes, len(searchWithAggPipe.nodes))
+}
+
+func (s *SearchPipelineSuite) TestAggregateOperatorRun() {
+	aggCtx := search_agg.NewContext(1,
+		[]search_agg.LevelContext{{
+			OwnFieldIDs: []int64{101},
+			Size:        100,
+			Metrics: map[string]search_agg.MetricSpec{
+				"sum_value": {Op: "sum", FieldID: 102, FieldType: schemapb.DataType_Int64},
+			},
+			TopHits: &search_agg.TopHitsConfig{Size: 100},
+			Order:   []search_agg.OrderCriterion{{Key: "_key", Dir: "asc"}},
+		}},
+		nil,
+		[]int64{102},
+	)
+	op := &aggregateOperator{aggCtx: aggCtx}
+
+	data := &schemapb.SearchResultData{
+		NumQueries: 1,
+		Topks:      []int64{3},
+		Ids: &schemapb.IDs{IdField: &schemapb.IDs_IntId{IntId: &schemapb.LongArray{
+			Data: []int64{1, 2, 3},
+		}}},
+		Scores: []float32{0.9, 0.8, 0.7},
+		FieldsData: []*schemapb.FieldData{
+			testutils.GenerateScalarFieldDataWithValue(schemapb.DataType_Int64, "value", 102, []int64{10, 20, 30}),
+		},
+		GroupByFieldValues: []*schemapb.FieldData{
+			testutils.GenerateScalarFieldDataWithValue(schemapb.DataType_VarChar, "brand", 101, []string{"A", "A", "B"}),
+		},
+	}
+
+	// aggregateOp consumes the single reduced *milvuspb.SearchResults produced
+	// upstream by searchReduceOp.
+	reduced := &milvuspb.SearchResults{Status: merr.Success(), Results: data}
+	outputs, err := op.run(context.Background(), s.span, []*milvuspb.SearchResults{reduced})
+	s.NoError(err)
+	s.Len(outputs, 1)
+
+	result := outputs[0].(*milvuspb.SearchResults)
+	s.NotNil(result)
+	s.NotNil(result.GetResults())
+	s.Equal(int64(1), result.GetResults().GetNumQueries())
+	s.Equal([]int64{2}, result.GetResults().GetAggTopks())
+	s.Len(result.GetResults().GetAggBuckets(), 2)
 }
 
 func (s *SearchPipelineSuite) TestNewRequeryOperator_WithHighlighterNoDynamicFields() {

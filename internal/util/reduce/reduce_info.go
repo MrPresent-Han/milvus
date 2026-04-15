@@ -5,14 +5,15 @@ import (
 )
 
 type ResultInfo struct {
-	nq             int64
-	topK           int64
-	metricType     string
-	pkType         schemapb.DataType
-	offset         int64
-	groupByFieldId int64
-	groupSize      int64
-	isAdvance      bool
+	nq                   int64
+	topK                 int64
+	metricType           string
+	pkType               schemapb.DataType
+	offset               int64
+	groupByFieldId       int64
+	groupSize            int64
+	isAdvance            bool
+	multiGroupByFieldIds []int64
 }
 
 func NewReduceSearchResultInfo(
@@ -55,6 +56,11 @@ func (r *ResultInfo) WithAdvance(advance bool) *ResultInfo {
 	return r
 }
 
+func (r *ResultInfo) WithMultiGroupByFieldIds(groupByFieldIds []int64) *ResultInfo {
+	r.multiGroupByFieldIds = groupByFieldIds
+	return r
+}
+
 func (r *ResultInfo) GetNq() int64 {
 	return r.nq
 }
@@ -85,6 +91,16 @@ func (r *ResultInfo) GetGroupSize() int64 {
 
 func (r *ResultInfo) GetIsAdvance() bool {
 	return r.isAdvance
+}
+
+// HasMultiGroupBy reports whether the multi-field group-by path is active.
+// Derived from the slice so there is no independent "enabled" flag to keep in sync.
+func (r *ResultInfo) HasMultiGroupBy() bool {
+	return len(r.multiGroupByFieldIds) > 0
+}
+
+func (r *ResultInfo) GetMultiGroupByFieldIds() []int64 {
+	return r.multiGroupByFieldIds
 }
 
 func (r *ResultInfo) SetMetricType(metricType string) {

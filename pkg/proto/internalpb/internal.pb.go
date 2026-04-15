@@ -1217,8 +1217,9 @@ type SearchRequest struct {
 	EntityTtlPhysicalTime   uint64                    `protobuf:"varint,31,opt,name=entity_ttl_physical_time,json=entityTtlPhysicalTime,proto3" json:"entity_ttl_physical_time,omitempty"`
 	// PK filter from proxy: 0 = not checked (backward compat), 1 = has optimizable PK predicate, 2 = no PK predicate.
 	// When 2, delegator can skip plan unmarshal for segment filter optimization.
-	PkFilter   int32      `protobuf:"varint,32,opt,name=pk_filter,json=pkFilter,proto3" json:"pk_filter,omitempty"`
-	SearchType SearchType `protobuf:"varint,33,opt,name=search_type,json=searchType,proto3,enum=milvus.proto.internal.SearchType" json:"search_type,omitempty"`
+	PkFilter     int32                         `protobuf:"varint,32,opt,name=pk_filter,json=pkFilter,proto3" json:"pk_filter,omitempty"`
+	SearchType   SearchType                    `protobuf:"varint,33,opt,name=search_type,json=searchType,proto3,enum=milvus.proto.internal.SearchType" json:"search_type,omitempty"`
+	MultiGroupBy *planpb.MultiFieldGroupByInfo `protobuf:"bytes,34,opt,name=multi_group_by,json=multiGroupBy,proto3" json:"multi_group_by,omitempty"`
 }
 
 func (x *SearchRequest) Reset() {
@@ -1482,6 +1483,13 @@ func (x *SearchRequest) GetSearchType() SearchType {
 		return x.SearchType
 	}
 	return SearchType_DEFAULT
+}
+
+func (x *SearchRequest) GetMultiGroupBy() *planpb.MultiFieldGroupByInfo {
+	if x != nil {
+		return x.MultiGroupBy
+	}
+	return nil
 }
 
 type SubSearchResults struct {
@@ -4643,7 +4651,7 @@ var file_internal_proto_rawDesc = []byte{
 	0x18, 0x0f, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x21, 0x2e, 0x6d, 0x69, 0x6c, 0x76, 0x75, 0x73, 0x2e,
 	0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2e, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x2e, 0x53,
 	0x65, 0x61, 0x72, 0x63, 0x68, 0x54, 0x79, 0x70, 0x65, 0x52, 0x0a, 0x73, 0x65, 0x61, 0x72, 0x63,
-	0x68, 0x54, 0x79, 0x70, 0x65, 0x22, 0xbc, 0x0a, 0x0a, 0x0d, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68,
+	0x68, 0x54, 0x79, 0x70, 0x65, 0x22, 0x8c, 0x0b, 0x0a, 0x0d, 0x53, 0x65, 0x61, 0x72, 0x63, 0x68,
 	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x12, 0x30, 0x0a, 0x04, 0x62, 0x61, 0x73, 0x65, 0x18,
 	0x01, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x1c, 0x2e, 0x6d, 0x69, 0x6c, 0x76, 0x75, 0x73, 0x2e, 0x70,
 	0x72, 0x6f, 0x74, 0x6f, 0x2e, 0x63, 0x6f, 0x6d, 0x6d, 0x6f, 0x6e, 0x2e, 0x4d, 0x73, 0x67, 0x42,
@@ -4727,7 +4735,12 @@ var file_internal_proto_rawDesc = []byte{
 	0x21, 0x20, 0x01, 0x28, 0x0e, 0x32, 0x21, 0x2e, 0x6d, 0x69, 0x6c, 0x76, 0x75, 0x73, 0x2e, 0x70,
 	0x72, 0x6f, 0x74, 0x6f, 0x2e, 0x69, 0x6e, 0x74, 0x65, 0x72, 0x6e, 0x61, 0x6c, 0x2e, 0x53, 0x65,
 	0x61, 0x72, 0x63, 0x68, 0x54, 0x79, 0x70, 0x65, 0x52, 0x0a, 0x73, 0x65, 0x61, 0x72, 0x63, 0x68,
-	0x54, 0x79, 0x70, 0x65, 0x22, 0xbe, 0x02, 0x0a, 0x10, 0x53, 0x75, 0x62, 0x53, 0x65, 0x61, 0x72,
+	0x54, 0x79, 0x70, 0x65, 0x12, 0x4e, 0x0a, 0x0e, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x5f, 0x67, 0x72,
+	0x6f, 0x75, 0x70, 0x5f, 0x62, 0x79, 0x18, 0x22, 0x20, 0x01, 0x28, 0x0b, 0x32, 0x28, 0x2e, 0x6d,
+	0x69, 0x6c, 0x76, 0x75, 0x73, 0x2e, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x2e, 0x70, 0x6c, 0x61, 0x6e,
+	0x2e, 0x4d, 0x75, 0x6c, 0x74, 0x69, 0x46, 0x69, 0x65, 0x6c, 0x64, 0x47, 0x72, 0x6f, 0x75, 0x70,
+	0x42, 0x79, 0x49, 0x6e, 0x66, 0x6f, 0x52, 0x0c, 0x6d, 0x75, 0x6c, 0x74, 0x69, 0x47, 0x72, 0x6f,
+	0x75, 0x70, 0x42, 0x79, 0x22, 0xbe, 0x02, 0x0a, 0x10, 0x53, 0x75, 0x62, 0x53, 0x65, 0x61, 0x72,
 	0x63, 0x68, 0x52, 0x65, 0x73, 0x75, 0x6c, 0x74, 0x73, 0x12, 0x1f, 0x0a, 0x0b, 0x6d, 0x65, 0x74,
 	0x72, 0x69, 0x63, 0x5f, 0x74, 0x79, 0x70, 0x65, 0x18, 0x01, 0x20, 0x01, 0x28, 0x09, 0x52, 0x0a,
 	0x6d, 0x65, 0x74, 0x72, 0x69, 0x63, 0x54, 0x79, 0x70, 0x65, 0x12, 0x1f, 0x0a, 0x0b, 0x6e, 0x75,
@@ -5339,77 +5352,78 @@ func file_internal_proto_rawDescGZIP() []byte {
 var file_internal_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
 var file_internal_proto_msgTypes = make([]protoimpl.MessageInfo, 52)
 var file_internal_proto_goTypes = []interface{}{
-	(SearchType)(0),                     // 0: milvus.proto.internal.SearchType
-	(RateScope)(0),                      // 1: milvus.proto.internal.RateScope
-	(RateType)(0),                       // 2: milvus.proto.internal.RateType
-	(ImportJobState)(0),                 // 3: milvus.proto.internal.ImportJobState
-	(*GetTimeTickChannelRequest)(nil),   // 4: milvus.proto.internal.GetTimeTickChannelRequest
-	(*GetStatisticsChannelRequest)(nil), // 5: milvus.proto.internal.GetStatisticsChannelRequest
-	(*GetDdChannelRequest)(nil),         // 6: milvus.proto.internal.GetDdChannelRequest
-	(*NodeInfo)(nil),                    // 7: milvus.proto.internal.NodeInfo
-	(*InitParams)(nil),                  // 8: milvus.proto.internal.InitParams
-	(*StringList)(nil),                  // 9: milvus.proto.internal.StringList
-	(*GetStatisticsRequest)(nil),        // 10: milvus.proto.internal.GetStatisticsRequest
-	(*GetStatisticsResponse)(nil),       // 11: milvus.proto.internal.GetStatisticsResponse
-	(*CreateAliasRequest)(nil),          // 12: milvus.proto.internal.CreateAliasRequest
-	(*DropAliasRequest)(nil),            // 13: milvus.proto.internal.DropAliasRequest
-	(*AlterAliasRequest)(nil),           // 14: milvus.proto.internal.AlterAliasRequest
-	(*CreateIndexRequest)(nil),          // 15: milvus.proto.internal.CreateIndexRequest
-	(*SubSearchRequest)(nil),            // 16: milvus.proto.internal.SubSearchRequest
-	(*SearchRequest)(nil),               // 17: milvus.proto.internal.SearchRequest
-	(*SubSearchResults)(nil),            // 18: milvus.proto.internal.SubSearchResults
-	(*SearchResults)(nil),               // 19: milvus.proto.internal.SearchResults
-	(*CostAggregation)(nil),             // 20: milvus.proto.internal.CostAggregation
-	(*RetrieveRequest)(nil),             // 21: milvus.proto.internal.RetrieveRequest
-	(*ElementIndices)(nil),              // 22: milvus.proto.internal.ElementIndices
-	(*RetrieveResults)(nil),             // 23: milvus.proto.internal.RetrieveResults
-	(*LoadIndex)(nil),                   // 24: milvus.proto.internal.LoadIndex
-	(*IndexStats)(nil),                  // 25: milvus.proto.internal.IndexStats
-	(*FieldStats)(nil),                  // 26: milvus.proto.internal.FieldStats
-	(*SegmentStats)(nil),                // 27: milvus.proto.internal.SegmentStats
-	(*ChannelTimeTickMsg)(nil),          // 28: milvus.proto.internal.ChannelTimeTickMsg
-	(*CredentialInfo)(nil),              // 29: milvus.proto.internal.CredentialInfo
-	(*ListPolicyRequest)(nil),           // 30: milvus.proto.internal.ListPolicyRequest
-	(*ListPolicyResponse)(nil),          // 31: milvus.proto.internal.ListPolicyResponse
-	(*ShowConfigurationsRequest)(nil),   // 32: milvus.proto.internal.ShowConfigurationsRequest
-	(*ShowConfigurationsResponse)(nil),  // 33: milvus.proto.internal.ShowConfigurationsResponse
-	(*Rate)(nil),                        // 34: milvus.proto.internal.Rate
-	(*ImportFile)(nil),                  // 35: milvus.proto.internal.ImportFile
-	(*ImportRequestInternal)(nil),       // 36: milvus.proto.internal.ImportRequestInternal
-	(*ImportRequest)(nil),               // 37: milvus.proto.internal.ImportRequest
-	(*ImportResponse)(nil),              // 38: milvus.proto.internal.ImportResponse
-	(*GetImportProgressRequest)(nil),    // 39: milvus.proto.internal.GetImportProgressRequest
-	(*ImportTaskProgress)(nil),          // 40: milvus.proto.internal.ImportTaskProgress
-	(*GetImportProgressResponse)(nil),   // 41: milvus.proto.internal.GetImportProgressResponse
-	(*ListImportsRequestInternal)(nil),  // 42: milvus.proto.internal.ListImportsRequestInternal
-	(*ListImportsRequest)(nil),          // 43: milvus.proto.internal.ListImportsRequest
-	(*ListImportsResponse)(nil),         // 44: milvus.proto.internal.ListImportsResponse
-	(*GetSegmentsInfoRequest)(nil),      // 45: milvus.proto.internal.GetSegmentsInfoRequest
-	(*FieldBinlog)(nil),                 // 46: milvus.proto.internal.FieldBinlog
-	(*SegmentInfo)(nil),                 // 47: milvus.proto.internal.SegmentInfo
-	(*GetSegmentsInfoResponse)(nil),     // 48: milvus.proto.internal.GetSegmentsInfoResponse
-	(*GetQuotaMetricsRequest)(nil),      // 49: milvus.proto.internal.GetQuotaMetricsRequest
-	(*GetQuotaMetricsResponse)(nil),     // 50: milvus.proto.internal.GetQuotaMetricsResponse
-	(*FileResourceInfo)(nil),            // 51: milvus.proto.internal.FileResourceInfo
-	(*SyncFileResourceRequest)(nil),     // 52: milvus.proto.internal.SyncFileResourceRequest
-	(*BackupEzkRequest)(nil),            // 53: milvus.proto.internal.BackupEzkRequest
-	(*BackupEzkResponse)(nil),           // 54: milvus.proto.internal.BackupEzkResponse
-	nil,                                 // 55: milvus.proto.internal.SearchResults.ChannelsMvccEntry
-	(*commonpb.Address)(nil),            // 56: milvus.proto.common.Address
-	(*commonpb.KeyValuePair)(nil),       // 57: milvus.proto.common.KeyValuePair
-	(*commonpb.Status)(nil),             // 58: milvus.proto.common.Status
-	(*commonpb.MsgBase)(nil),            // 59: milvus.proto.common.MsgBase
-	(commonpb.DslType)(0),               // 60: milvus.proto.common.DslType
-	(commonpb.ConsistencyLevel)(0),      // 61: milvus.proto.common.ConsistencyLevel
-	(*schemapb.SearchResultData)(nil),   // 62: milvus.proto.schema.SearchResultData
-	(*planpb.Aggregate)(nil),            // 63: milvus.proto.plan.Aggregate
-	(*planpb.OrderByField)(nil),         // 64: milvus.proto.plan.OrderByField
-	(*schemapb.IDs)(nil),                // 65: milvus.proto.schema.IDs
-	(*schemapb.FieldData)(nil),          // 66: milvus.proto.schema.FieldData
-	(*milvuspb.PrivilegeGroupInfo)(nil), // 67: milvus.proto.milvus.PrivilegeGroupInfo
-	(*schemapb.CollectionSchema)(nil),   // 68: milvus.proto.schema.CollectionSchema
-	(commonpb.SegmentState)(0),          // 69: milvus.proto.common.SegmentState
-	(commonpb.SegmentLevel)(0),          // 70: milvus.proto.common.SegmentLevel
+	(SearchType)(0),                      // 0: milvus.proto.internal.SearchType
+	(RateScope)(0),                       // 1: milvus.proto.internal.RateScope
+	(RateType)(0),                        // 2: milvus.proto.internal.RateType
+	(ImportJobState)(0),                  // 3: milvus.proto.internal.ImportJobState
+	(*GetTimeTickChannelRequest)(nil),    // 4: milvus.proto.internal.GetTimeTickChannelRequest
+	(*GetStatisticsChannelRequest)(nil),  // 5: milvus.proto.internal.GetStatisticsChannelRequest
+	(*GetDdChannelRequest)(nil),          // 6: milvus.proto.internal.GetDdChannelRequest
+	(*NodeInfo)(nil),                     // 7: milvus.proto.internal.NodeInfo
+	(*InitParams)(nil),                   // 8: milvus.proto.internal.InitParams
+	(*StringList)(nil),                   // 9: milvus.proto.internal.StringList
+	(*GetStatisticsRequest)(nil),         // 10: milvus.proto.internal.GetStatisticsRequest
+	(*GetStatisticsResponse)(nil),        // 11: milvus.proto.internal.GetStatisticsResponse
+	(*CreateAliasRequest)(nil),           // 12: milvus.proto.internal.CreateAliasRequest
+	(*DropAliasRequest)(nil),             // 13: milvus.proto.internal.DropAliasRequest
+	(*AlterAliasRequest)(nil),            // 14: milvus.proto.internal.AlterAliasRequest
+	(*CreateIndexRequest)(nil),           // 15: milvus.proto.internal.CreateIndexRequest
+	(*SubSearchRequest)(nil),             // 16: milvus.proto.internal.SubSearchRequest
+	(*SearchRequest)(nil),                // 17: milvus.proto.internal.SearchRequest
+	(*SubSearchResults)(nil),             // 18: milvus.proto.internal.SubSearchResults
+	(*SearchResults)(nil),                // 19: milvus.proto.internal.SearchResults
+	(*CostAggregation)(nil),              // 20: milvus.proto.internal.CostAggregation
+	(*RetrieveRequest)(nil),              // 21: milvus.proto.internal.RetrieveRequest
+	(*ElementIndices)(nil),               // 22: milvus.proto.internal.ElementIndices
+	(*RetrieveResults)(nil),              // 23: milvus.proto.internal.RetrieveResults
+	(*LoadIndex)(nil),                    // 24: milvus.proto.internal.LoadIndex
+	(*IndexStats)(nil),                   // 25: milvus.proto.internal.IndexStats
+	(*FieldStats)(nil),                   // 26: milvus.proto.internal.FieldStats
+	(*SegmentStats)(nil),                 // 27: milvus.proto.internal.SegmentStats
+	(*ChannelTimeTickMsg)(nil),           // 28: milvus.proto.internal.ChannelTimeTickMsg
+	(*CredentialInfo)(nil),               // 29: milvus.proto.internal.CredentialInfo
+	(*ListPolicyRequest)(nil),            // 30: milvus.proto.internal.ListPolicyRequest
+	(*ListPolicyResponse)(nil),           // 31: milvus.proto.internal.ListPolicyResponse
+	(*ShowConfigurationsRequest)(nil),    // 32: milvus.proto.internal.ShowConfigurationsRequest
+	(*ShowConfigurationsResponse)(nil),   // 33: milvus.proto.internal.ShowConfigurationsResponse
+	(*Rate)(nil),                         // 34: milvus.proto.internal.Rate
+	(*ImportFile)(nil),                   // 35: milvus.proto.internal.ImportFile
+	(*ImportRequestInternal)(nil),        // 36: milvus.proto.internal.ImportRequestInternal
+	(*ImportRequest)(nil),                // 37: milvus.proto.internal.ImportRequest
+	(*ImportResponse)(nil),               // 38: milvus.proto.internal.ImportResponse
+	(*GetImportProgressRequest)(nil),     // 39: milvus.proto.internal.GetImportProgressRequest
+	(*ImportTaskProgress)(nil),           // 40: milvus.proto.internal.ImportTaskProgress
+	(*GetImportProgressResponse)(nil),    // 41: milvus.proto.internal.GetImportProgressResponse
+	(*ListImportsRequestInternal)(nil),   // 42: milvus.proto.internal.ListImportsRequestInternal
+	(*ListImportsRequest)(nil),           // 43: milvus.proto.internal.ListImportsRequest
+	(*ListImportsResponse)(nil),          // 44: milvus.proto.internal.ListImportsResponse
+	(*GetSegmentsInfoRequest)(nil),       // 45: milvus.proto.internal.GetSegmentsInfoRequest
+	(*FieldBinlog)(nil),                  // 46: milvus.proto.internal.FieldBinlog
+	(*SegmentInfo)(nil),                  // 47: milvus.proto.internal.SegmentInfo
+	(*GetSegmentsInfoResponse)(nil),      // 48: milvus.proto.internal.GetSegmentsInfoResponse
+	(*GetQuotaMetricsRequest)(nil),       // 49: milvus.proto.internal.GetQuotaMetricsRequest
+	(*GetQuotaMetricsResponse)(nil),      // 50: milvus.proto.internal.GetQuotaMetricsResponse
+	(*FileResourceInfo)(nil),             // 51: milvus.proto.internal.FileResourceInfo
+	(*SyncFileResourceRequest)(nil),      // 52: milvus.proto.internal.SyncFileResourceRequest
+	(*BackupEzkRequest)(nil),             // 53: milvus.proto.internal.BackupEzkRequest
+	(*BackupEzkResponse)(nil),            // 54: milvus.proto.internal.BackupEzkResponse
+	nil,                                  // 55: milvus.proto.internal.SearchResults.ChannelsMvccEntry
+	(*commonpb.Address)(nil),             // 56: milvus.proto.common.Address
+	(*commonpb.KeyValuePair)(nil),        // 57: milvus.proto.common.KeyValuePair
+	(*commonpb.Status)(nil),              // 58: milvus.proto.common.Status
+	(*commonpb.MsgBase)(nil),             // 59: milvus.proto.common.MsgBase
+	(commonpb.DslType)(0),                // 60: milvus.proto.common.DslType
+	(commonpb.ConsistencyLevel)(0),       // 61: milvus.proto.common.ConsistencyLevel
+	(*planpb.MultiFieldGroupByInfo)(nil), // 62: milvus.proto.plan.MultiFieldGroupByInfo
+	(*schemapb.SearchResultData)(nil),    // 63: milvus.proto.schema.SearchResultData
+	(*planpb.Aggregate)(nil),             // 64: milvus.proto.plan.Aggregate
+	(*planpb.OrderByField)(nil),          // 65: milvus.proto.plan.OrderByField
+	(*schemapb.IDs)(nil),                 // 66: milvus.proto.schema.IDs
+	(*schemapb.FieldData)(nil),           // 67: milvus.proto.schema.FieldData
+	(*milvuspb.PrivilegeGroupInfo)(nil),  // 68: milvus.proto.milvus.PrivilegeGroupInfo
+	(*schemapb.CollectionSchema)(nil),    // 69: milvus.proto.schema.CollectionSchema
+	(commonpb.SegmentState)(0),           // 70: milvus.proto.common.SegmentState
+	(commonpb.SegmentLevel)(0),           // 71: milvus.proto.common.SegmentLevel
 }
 var file_internal_proto_depIdxs = []int32{
 	56, // 0: milvus.proto.internal.NodeInfo.address:type_name -> milvus.proto.common.Address
@@ -5431,63 +5445,64 @@ var file_internal_proto_depIdxs = []int32{
 	16, // 16: milvus.proto.internal.SearchRequest.sub_reqs:type_name -> milvus.proto.internal.SubSearchRequest
 	61, // 17: milvus.proto.internal.SearchRequest.consistency_level:type_name -> milvus.proto.common.ConsistencyLevel
 	0,  // 18: milvus.proto.internal.SearchRequest.search_type:type_name -> milvus.proto.internal.SearchType
-	62, // 19: milvus.proto.internal.SubSearchResults.result_data:type_name -> milvus.proto.schema.SearchResultData
-	59, // 20: milvus.proto.internal.SearchResults.base:type_name -> milvus.proto.common.MsgBase
-	58, // 21: milvus.proto.internal.SearchResults.status:type_name -> milvus.proto.common.Status
-	20, // 22: milvus.proto.internal.SearchResults.costAggregation:type_name -> milvus.proto.internal.CostAggregation
-	55, // 23: milvus.proto.internal.SearchResults.channels_mvcc:type_name -> milvus.proto.internal.SearchResults.ChannelsMvccEntry
-	18, // 24: milvus.proto.internal.SearchResults.sub_results:type_name -> milvus.proto.internal.SubSearchResults
-	62, // 25: milvus.proto.internal.SearchResults.result_data:type_name -> milvus.proto.schema.SearchResultData
-	59, // 26: milvus.proto.internal.RetrieveRequest.base:type_name -> milvus.proto.common.MsgBase
-	61, // 27: milvus.proto.internal.RetrieveRequest.consistency_level:type_name -> milvus.proto.common.ConsistencyLevel
-	63, // 28: milvus.proto.internal.RetrieveRequest.aggregates:type_name -> milvus.proto.plan.Aggregate
-	64, // 29: milvus.proto.internal.RetrieveRequest.order_by_fields:type_name -> milvus.proto.plan.OrderByField
-	59, // 30: milvus.proto.internal.RetrieveResults.base:type_name -> milvus.proto.common.MsgBase
-	58, // 31: milvus.proto.internal.RetrieveResults.status:type_name -> milvus.proto.common.Status
-	65, // 32: milvus.proto.internal.RetrieveResults.ids:type_name -> milvus.proto.schema.IDs
-	66, // 33: milvus.proto.internal.RetrieveResults.fields_data:type_name -> milvus.proto.schema.FieldData
-	20, // 34: milvus.proto.internal.RetrieveResults.costAggregation:type_name -> milvus.proto.internal.CostAggregation
-	22, // 35: milvus.proto.internal.RetrieveResults.element_indices:type_name -> milvus.proto.internal.ElementIndices
-	59, // 36: milvus.proto.internal.LoadIndex.base:type_name -> milvus.proto.common.MsgBase
-	57, // 37: milvus.proto.internal.LoadIndex.index_params:type_name -> milvus.proto.common.KeyValuePair
-	57, // 38: milvus.proto.internal.IndexStats.index_params:type_name -> milvus.proto.common.KeyValuePair
-	25, // 39: milvus.proto.internal.FieldStats.index_stats:type_name -> milvus.proto.internal.IndexStats
-	59, // 40: milvus.proto.internal.ChannelTimeTickMsg.base:type_name -> milvus.proto.common.MsgBase
-	59, // 41: milvus.proto.internal.ListPolicyRequest.base:type_name -> milvus.proto.common.MsgBase
-	58, // 42: milvus.proto.internal.ListPolicyResponse.status:type_name -> milvus.proto.common.Status
-	67, // 43: milvus.proto.internal.ListPolicyResponse.privilege_groups:type_name -> milvus.proto.milvus.PrivilegeGroupInfo
-	59, // 44: milvus.proto.internal.ShowConfigurationsRequest.base:type_name -> milvus.proto.common.MsgBase
-	58, // 45: milvus.proto.internal.ShowConfigurationsResponse.status:type_name -> milvus.proto.common.Status
-	57, // 46: milvus.proto.internal.ShowConfigurationsResponse.configuations:type_name -> milvus.proto.common.KeyValuePair
-	2,  // 47: milvus.proto.internal.Rate.rt:type_name -> milvus.proto.internal.RateType
-	68, // 48: milvus.proto.internal.ImportRequestInternal.schema:type_name -> milvus.proto.schema.CollectionSchema
-	35, // 49: milvus.proto.internal.ImportRequestInternal.files:type_name -> milvus.proto.internal.ImportFile
-	57, // 50: milvus.proto.internal.ImportRequestInternal.options:type_name -> milvus.proto.common.KeyValuePair
-	35, // 51: milvus.proto.internal.ImportRequest.files:type_name -> milvus.proto.internal.ImportFile
-	57, // 52: milvus.proto.internal.ImportRequest.options:type_name -> milvus.proto.common.KeyValuePair
-	58, // 53: milvus.proto.internal.ImportResponse.status:type_name -> milvus.proto.common.Status
-	58, // 54: milvus.proto.internal.GetImportProgressResponse.status:type_name -> milvus.proto.common.Status
-	3,  // 55: milvus.proto.internal.GetImportProgressResponse.state:type_name -> milvus.proto.internal.ImportJobState
-	40, // 56: milvus.proto.internal.GetImportProgressResponse.task_progresses:type_name -> milvus.proto.internal.ImportTaskProgress
-	58, // 57: milvus.proto.internal.ListImportsResponse.status:type_name -> milvus.proto.common.Status
-	3,  // 58: milvus.proto.internal.ListImportsResponse.states:type_name -> milvus.proto.internal.ImportJobState
-	69, // 59: milvus.proto.internal.SegmentInfo.state:type_name -> milvus.proto.common.SegmentState
-	70, // 60: milvus.proto.internal.SegmentInfo.level:type_name -> milvus.proto.common.SegmentLevel
-	46, // 61: milvus.proto.internal.SegmentInfo.insert_logs:type_name -> milvus.proto.internal.FieldBinlog
-	46, // 62: milvus.proto.internal.SegmentInfo.delta_logs:type_name -> milvus.proto.internal.FieldBinlog
-	46, // 63: milvus.proto.internal.SegmentInfo.stats_logs:type_name -> milvus.proto.internal.FieldBinlog
-	58, // 64: milvus.proto.internal.GetSegmentsInfoResponse.status:type_name -> milvus.proto.common.Status
-	47, // 65: milvus.proto.internal.GetSegmentsInfoResponse.segmentInfos:type_name -> milvus.proto.internal.SegmentInfo
-	59, // 66: milvus.proto.internal.GetQuotaMetricsRequest.base:type_name -> milvus.proto.common.MsgBase
-	58, // 67: milvus.proto.internal.GetQuotaMetricsResponse.status:type_name -> milvus.proto.common.Status
-	51, // 68: milvus.proto.internal.SyncFileResourceRequest.resources:type_name -> milvus.proto.internal.FileResourceInfo
-	59, // 69: milvus.proto.internal.BackupEzkRequest.base:type_name -> milvus.proto.common.MsgBase
-	58, // 70: milvus.proto.internal.BackupEzkResponse.status:type_name -> milvus.proto.common.Status
-	71, // [71:71] is the sub-list for method output_type
-	71, // [71:71] is the sub-list for method input_type
-	71, // [71:71] is the sub-list for extension type_name
-	71, // [71:71] is the sub-list for extension extendee
-	0,  // [0:71] is the sub-list for field type_name
+	62, // 19: milvus.proto.internal.SearchRequest.multi_group_by:type_name -> milvus.proto.plan.MultiFieldGroupByInfo
+	63, // 20: milvus.proto.internal.SubSearchResults.result_data:type_name -> milvus.proto.schema.SearchResultData
+	59, // 21: milvus.proto.internal.SearchResults.base:type_name -> milvus.proto.common.MsgBase
+	58, // 22: milvus.proto.internal.SearchResults.status:type_name -> milvus.proto.common.Status
+	20, // 23: milvus.proto.internal.SearchResults.costAggregation:type_name -> milvus.proto.internal.CostAggregation
+	55, // 24: milvus.proto.internal.SearchResults.channels_mvcc:type_name -> milvus.proto.internal.SearchResults.ChannelsMvccEntry
+	18, // 25: milvus.proto.internal.SearchResults.sub_results:type_name -> milvus.proto.internal.SubSearchResults
+	63, // 26: milvus.proto.internal.SearchResults.result_data:type_name -> milvus.proto.schema.SearchResultData
+	59, // 27: milvus.proto.internal.RetrieveRequest.base:type_name -> milvus.proto.common.MsgBase
+	61, // 28: milvus.proto.internal.RetrieveRequest.consistency_level:type_name -> milvus.proto.common.ConsistencyLevel
+	64, // 29: milvus.proto.internal.RetrieveRequest.aggregates:type_name -> milvus.proto.plan.Aggregate
+	65, // 30: milvus.proto.internal.RetrieveRequest.order_by_fields:type_name -> milvus.proto.plan.OrderByField
+	59, // 31: milvus.proto.internal.RetrieveResults.base:type_name -> milvus.proto.common.MsgBase
+	58, // 32: milvus.proto.internal.RetrieveResults.status:type_name -> milvus.proto.common.Status
+	66, // 33: milvus.proto.internal.RetrieveResults.ids:type_name -> milvus.proto.schema.IDs
+	67, // 34: milvus.proto.internal.RetrieveResults.fields_data:type_name -> milvus.proto.schema.FieldData
+	20, // 35: milvus.proto.internal.RetrieveResults.costAggregation:type_name -> milvus.proto.internal.CostAggregation
+	22, // 36: milvus.proto.internal.RetrieveResults.element_indices:type_name -> milvus.proto.internal.ElementIndices
+	59, // 37: milvus.proto.internal.LoadIndex.base:type_name -> milvus.proto.common.MsgBase
+	57, // 38: milvus.proto.internal.LoadIndex.index_params:type_name -> milvus.proto.common.KeyValuePair
+	57, // 39: milvus.proto.internal.IndexStats.index_params:type_name -> milvus.proto.common.KeyValuePair
+	25, // 40: milvus.proto.internal.FieldStats.index_stats:type_name -> milvus.proto.internal.IndexStats
+	59, // 41: milvus.proto.internal.ChannelTimeTickMsg.base:type_name -> milvus.proto.common.MsgBase
+	59, // 42: milvus.proto.internal.ListPolicyRequest.base:type_name -> milvus.proto.common.MsgBase
+	58, // 43: milvus.proto.internal.ListPolicyResponse.status:type_name -> milvus.proto.common.Status
+	68, // 44: milvus.proto.internal.ListPolicyResponse.privilege_groups:type_name -> milvus.proto.milvus.PrivilegeGroupInfo
+	59, // 45: milvus.proto.internal.ShowConfigurationsRequest.base:type_name -> milvus.proto.common.MsgBase
+	58, // 46: milvus.proto.internal.ShowConfigurationsResponse.status:type_name -> milvus.proto.common.Status
+	57, // 47: milvus.proto.internal.ShowConfigurationsResponse.configuations:type_name -> milvus.proto.common.KeyValuePair
+	2,  // 48: milvus.proto.internal.Rate.rt:type_name -> milvus.proto.internal.RateType
+	69, // 49: milvus.proto.internal.ImportRequestInternal.schema:type_name -> milvus.proto.schema.CollectionSchema
+	35, // 50: milvus.proto.internal.ImportRequestInternal.files:type_name -> milvus.proto.internal.ImportFile
+	57, // 51: milvus.proto.internal.ImportRequestInternal.options:type_name -> milvus.proto.common.KeyValuePair
+	35, // 52: milvus.proto.internal.ImportRequest.files:type_name -> milvus.proto.internal.ImportFile
+	57, // 53: milvus.proto.internal.ImportRequest.options:type_name -> milvus.proto.common.KeyValuePair
+	58, // 54: milvus.proto.internal.ImportResponse.status:type_name -> milvus.proto.common.Status
+	58, // 55: milvus.proto.internal.GetImportProgressResponse.status:type_name -> milvus.proto.common.Status
+	3,  // 56: milvus.proto.internal.GetImportProgressResponse.state:type_name -> milvus.proto.internal.ImportJobState
+	40, // 57: milvus.proto.internal.GetImportProgressResponse.task_progresses:type_name -> milvus.proto.internal.ImportTaskProgress
+	58, // 58: milvus.proto.internal.ListImportsResponse.status:type_name -> milvus.proto.common.Status
+	3,  // 59: milvus.proto.internal.ListImportsResponse.states:type_name -> milvus.proto.internal.ImportJobState
+	70, // 60: milvus.proto.internal.SegmentInfo.state:type_name -> milvus.proto.common.SegmentState
+	71, // 61: milvus.proto.internal.SegmentInfo.level:type_name -> milvus.proto.common.SegmentLevel
+	46, // 62: milvus.proto.internal.SegmentInfo.insert_logs:type_name -> milvus.proto.internal.FieldBinlog
+	46, // 63: milvus.proto.internal.SegmentInfo.delta_logs:type_name -> milvus.proto.internal.FieldBinlog
+	46, // 64: milvus.proto.internal.SegmentInfo.stats_logs:type_name -> milvus.proto.internal.FieldBinlog
+	58, // 65: milvus.proto.internal.GetSegmentsInfoResponse.status:type_name -> milvus.proto.common.Status
+	47, // 66: milvus.proto.internal.GetSegmentsInfoResponse.segmentInfos:type_name -> milvus.proto.internal.SegmentInfo
+	59, // 67: milvus.proto.internal.GetQuotaMetricsRequest.base:type_name -> milvus.proto.common.MsgBase
+	58, // 68: milvus.proto.internal.GetQuotaMetricsResponse.status:type_name -> milvus.proto.common.Status
+	51, // 69: milvus.proto.internal.SyncFileResourceRequest.resources:type_name -> milvus.proto.internal.FileResourceInfo
+	59, // 70: milvus.proto.internal.BackupEzkRequest.base:type_name -> milvus.proto.common.MsgBase
+	58, // 71: milvus.proto.internal.BackupEzkResponse.status:type_name -> milvus.proto.common.Status
+	72, // [72:72] is the sub-list for method output_type
+	72, // [72:72] is the sub-list for method input_type
+	72, // [72:72] is the sub-list for extension type_name
+	72, // [72:72] is the sub-list for extension extendee
+	0,  // [0:72] is the sub-list for field type_name
 }
 
 func init() { file_internal_proto_init() }

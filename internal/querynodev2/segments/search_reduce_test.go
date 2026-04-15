@@ -239,6 +239,164 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 		suite.ElementsMatch([]string{"1", "1", "2", "2", "3", "3", "4"}, res.GroupByFieldValue.GetScalars().GetStringData().Data)
 	})
 
+	suite.Run("reduce_agg_single_field", func() {
+		ids1 := []int64{1, 2, 3}
+		scores1 := []float32{-1.0, -2.0, -3.0}
+		topks1 := []int64{int64(len(ids1))}
+		ids2 := []int64{4, 5, 6}
+		scores2 := []float32{-1.5, -2.5, -3.5}
+		topks2 := []int64{int64(len(ids2))}
+		data1 := mock_segcore.GenSearchResultData(nq, 3, ids1, scores1, topks1)
+		data2 := mock_segcore.GenSearchResultData(nq, 3, ids2, scores2, topks2)
+		data1.GroupByFieldValues = []*schemapb.FieldData{
+			{
+				FieldId: 101,
+				Type:    schemapb.DataType_Int64,
+				Field: &schemapb.FieldData_Scalars{
+					Scalars: &schemapb.ScalarField{
+						Data: &schemapb.ScalarField_LongData{LongData: &schemapb.LongArray{Data: []int64{10, 20, 30}}},
+					},
+				},
+			},
+		}
+		data2.GroupByFieldValues = []*schemapb.FieldData{
+			{
+				FieldId: 101,
+				Type:    schemapb.DataType_Int64,
+				Field: &schemapb.FieldData_Scalars{
+					Scalars: &schemapb.ScalarField{
+						Data: &schemapb.ScalarField_LongData{LongData: &schemapb.LongArray{Data: []int64{10, 40, 50}}},
+					},
+				},
+			},
+		}
+		dataArray := []*schemapb.SearchResultData{data1, data2}
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 3).WithGroupSize(1).WithMultiGroupByFieldIds([]int64{101})
+		searchReduce := InitSearchReducer(reduceInfo)
+		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
+		suite.Nil(err)
+		suite.Equal([]int64{1, 2, 5}, res.Ids.GetIntId().GetData())
+		suite.Equal([]float32{-1.0, -2.0, -2.5}, res.Scores)
+		suite.Nil(res.GroupByFieldValue)
+		suite.Len(res.GroupByFieldValues, 1)
+		suite.Equal(int64(101), res.GroupByFieldValues[0].GetFieldId())
+		suite.Equal([]int64{10, 20, 40}, res.GroupByFieldValues[0].GetScalars().GetLongData().GetData())
+	})
+
+	suite.Run("reduce_agg_multi_field_no_collision", func() {
+		ids1 := []int64{1, 2}
+		scores1 := []float32{-1.0, -2.0}
+		topks1 := []int64{int64(len(ids1))}
+		ids2 := []int64{3, 4}
+		scores2 := []float32{-1.5, -2.5}
+		topks2 := []int64{int64(len(ids2))}
+		data1 := mock_segcore.GenSearchResultData(nq, 2, ids1, scores1, topks1)
+		data2 := mock_segcore.GenSearchResultData(nq, 2, ids2, scores2, topks2)
+		data1.GroupByFieldValues = []*schemapb.FieldData{
+			{
+				FieldId: 101,
+				Type:    schemapb.DataType_Int64,
+				Field: &schemapb.FieldData_Scalars{
+					Scalars: &schemapb.ScalarField{
+						Data: &schemapb.ScalarField_LongData{LongData: &schemapb.LongArray{Data: []int64{1, 12}}},
+					},
+				},
+			},
+			{
+				FieldId: 102,
+				Type:    schemapb.DataType_VarChar,
+				Field: &schemapb.FieldData_Scalars{
+					Scalars: &schemapb.ScalarField{
+						Data: &schemapb.ScalarField_StringData{StringData: &schemapb.StringArray{Data: []string{"23", "3"}}},
+					},
+				},
+			},
+		}
+		data2.GroupByFieldValues = []*schemapb.FieldData{
+			{
+				FieldId: 101,
+				Type:    schemapb.DataType_Int64,
+				Field: &schemapb.FieldData_Scalars{
+					Scalars: &schemapb.ScalarField{
+						Data: &schemapb.ScalarField_LongData{LongData: &schemapb.LongArray{Data: []int64{1, 12}}},
+					},
+				},
+			},
+			{
+				FieldId: 102,
+				Type:    schemapb.DataType_VarChar,
+				Field: &schemapb.FieldData_Scalars{
+					Scalars: &schemapb.ScalarField{
+						Data: &schemapb.ScalarField_StringData{StringData: &schemapb.StringArray{Data: []string{"23", "3"}}},
+					},
+				},
+			},
+		}
+		dataArray := []*schemapb.SearchResultData{data1, data2}
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 2).WithGroupSize(1).WithMultiGroupByFieldIds([]int64{101, 102})
+		searchReduce := InitSearchReducer(reduceInfo)
+		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
+		suite.Nil(err)
+		suite.Equal([]int64{1, 2}, res.Ids.GetIntId().GetData())
+		suite.Equal([]float32{-1.0, -2.0}, res.Scores)
+		suite.Nil(res.GroupByFieldValue)
+		suite.Len(res.GroupByFieldValues, 2)
+		byID := map[int64]*schemapb.FieldData{}
+		for _, fd := range res.GroupByFieldValues {
+			byID[fd.GetFieldId()] = fd
+		}
+		suite.Equal([]int64{1, 12}, byID[101].GetScalars().GetLongData().GetData())
+		suite.Equal([]string{"23", "3"}, byID[102].GetScalars().GetStringData().GetData())
+	})
+
+	suite.Run("reduce_agg_multi_null_merges", func() {
+		// Two rows with null composite keys must merge into the same bucket
+		// (null == null for grouping). groupSize=1 keeps only the highest-scored.
+		ids := []int64{1, 2}
+		scores := []float32{-1.0, -2.0}
+		topks := []int64{int64(len(ids))}
+		data := mock_segcore.GenSearchResultData(nq, 2, ids, scores, topks)
+		data.GroupByFieldValues = []*schemapb.FieldData{
+			{
+				FieldId:   101,
+				Type:      schemapb.DataType_Int64,
+				ValidData: []bool{false, false},
+				Field: &schemapb.FieldData_Scalars{Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_LongData{LongData: &schemapb.LongArray{Data: []int64{0, 0}}},
+				}},
+			},
+		}
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 5).WithGroupSize(1).WithMultiGroupByFieldIds([]int64{101})
+		searchReduce := InitSearchReducer(reduceInfo)
+		res, err := searchReduce.ReduceSearchResultData(context.TODO(), []*schemapb.SearchResultData{data}, reduceInfo)
+		suite.Nil(err)
+		suite.Equal([]int64{1}, res.Ids.GetIntId().GetData(), "null-keyed rows merge; groupSize=1 keeps only best-score")
+	})
+
+	suite.Run("reduce_agg_multi_type_normalization", func() {
+		// int32 column values surface through the iterator as int32; after
+		// reduce.NormalizeScalar both rows hash identically, so two rows
+		// carrying the same int32=42 value land in one bucket.
+		ids := []int64{1, 2}
+		scores := []float32{-1.0, -2.0}
+		topks := []int64{int64(len(ids))}
+		data := mock_segcore.GenSearchResultData(nq, 2, ids, scores, topks)
+		data.GroupByFieldValues = []*schemapb.FieldData{
+			{
+				FieldId: 101,
+				Type:    schemapb.DataType_Int32,
+				Field: &schemapb.FieldData_Scalars{Scalars: &schemapb.ScalarField{
+					Data: &schemapb.ScalarField_IntData{IntData: &schemapb.IntArray{Data: []int32{42, 42}}},
+				}},
+			},
+		}
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 5).WithGroupSize(2).WithMultiGroupByFieldIds([]int64{101})
+		searchReduce := InitSearchReducer(reduceInfo)
+		res, err := searchReduce.ReduceSearchResultData(context.TODO(), []*schemapb.SearchResultData{data}, reduceInfo)
+		suite.Nil(err)
+		suite.Equal([]int64{1, 2}, res.Ids.GetIntId().GetData(), "same int32 value merges via normalization; both rows kept (groupSize=2)")
+	})
+
 	suite.Run("reduce_group_by_empty_input", func() {
 		dataArray := make([]*schemapb.SearchResultData, 0)
 		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(3).WithGroupByField(101)

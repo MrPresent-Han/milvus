@@ -70,6 +70,12 @@ message SearchIteratorV2Info {
   optional float last_bound = 3;
 }
 
+message MultiFieldGroupByInfo {
+  repeated int64 group_by_field_ids = 1;
+  reserved 2;                          // was metric_field_ids — proxy-only concern, never sent downstream
+  reserved "metric_field_ids";
+}
+
 message QueryInfo {
   int64 topk = 1;
   string metric_type = 3;
@@ -88,8 +94,7 @@ message QueryInfo {
   bool strict_cast = 16;
   float search_topk_ratio = 17;
   float refine_topk_ratio = 18;
-  // Multi-field group by: list of field IDs for composite grouping
-  repeated int64 group_by_field_ids = 19;
+  MultiFieldGroupByInfo multi_group_by = 19;
 }
 
 message ColumnInfo {

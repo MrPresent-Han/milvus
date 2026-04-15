@@ -23,6 +23,20 @@ import (
 )
 
 func reduceSearchResult(ctx context.Context, subSearchResultData []*schemapb.SearchResultData, reduceInfo *reduce.ResultInfo) (*milvuspb.SearchResults, error) {
+	if reduceInfo.HasMultiGroupBy() {
+		// SearchAggregation path — composite-key group reduce shares the
+		// topK/groupSize contract with SearchGroupBy but reads/writes the
+		// multi-field channel (proto field 17).
+		return reduceSearchResultDataWithMultiGroupBy(ctx,
+			subSearchResultData,
+			reduceInfo.GetNq(),
+			reduceInfo.GetTopK(),
+			reduceInfo.GetMetricType(),
+			reduceInfo.GetPkType(),
+			reduceInfo.GetOffset(),
+			reduceInfo.GetGroupSize(),
+			reduceInfo.GetMultiGroupByFieldIds())
+	}
 	if reduceInfo.GetGroupByFieldId() > 0 {
 		var ret *milvuspb.SearchResults
 		var err error
@@ -402,6 +416,214 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 	return ret, nil
 }
 
+// reduceSearchResultDataWithMultiGroupBy is the SearchAggregation sibling of
+// reduceSearchResultDataWithGroupBy. Layout mirrors the single-field version
+// but the per-composite-key lookup goes through a uint64 hash map with a
+// secondary-equality fallback to handle collisions, matching the QN-side
+// algorithm. Group-by column values are read from and written back to the
+// multi-field channel (proto field 17 — SearchResultData.group_by_field_values).
+func reduceSearchResultDataWithMultiGroupBy(
+	ctx context.Context,
+	subSearchResultData []*schemapb.SearchResultData,
+	nq, topk int64,
+	metricType string,
+	pkType schemapb.DataType,
+	offset int64,
+	groupSize int64,
+	groupByFieldIDs []int64,
+) (*milvuspb.SearchResults, error) {
+	tr := timerecord.NewTimeRecorder("reduceSearchResultDataWithMultiGroupBy")
+	defer func() {
+		tr.CtxElapse(ctx, "done")
+	}()
+
+	limit := topk - offset
+	log.Ctx(ctx).Debug("reduceSearchResultDataWithMultiGroupBy",
+		zap.Int("subSearchCount", len(subSearchResultData)),
+		zap.Int64("nq", nq),
+		zap.Int64("offset", offset),
+		zap.Int64("limit", limit),
+		zap.Int64("groupSize", groupSize),
+		zap.Int("groupByFieldCount", len(groupByFieldIDs)),
+		zap.String("metricType", metricType))
+
+	ret := &milvuspb.SearchResults{
+		Status: merr.Success(),
+		Results: &schemapb.SearchResultData{
+			NumQueries: nq,
+			TopK:       topk,
+			FieldsData: []*schemapb.FieldData{},
+			Scores:     []float32{},
+			Ids:        &schemapb.IDs{},
+			Topks:      []int64{},
+		},
+	}
+	groupBound := groupSize * limit
+	if err := setupIdListForSearchResult(ret, pkType, groupBound); err != nil {
+		return ret, err
+	}
+
+	if allSearchCount, _, err := checkResultDatas(ctx, subSearchResultData, nq, topk); err != nil {
+		log.Ctx(ctx).Warn("invalid search results", zap.Error(err))
+		return ret, err
+	} else {
+		ret.GetResults().AllSearchCount = allSearchCount
+	}
+
+	// fieldsData template is taken from the first shard that produced data.
+	for _, result := range subSearchResultData {
+		if len(result.GetFieldsData()) > 0 {
+			ret.GetResults().FieldsData = typeutil.PrepareResultFieldData(result.GetFieldsData(), limit)
+			break
+		}
+	}
+
+	subSearchNum := len(subSearchResultData)
+	subSearchNqOffset := make([][]int64, subSearchNum)
+	subSearchKeyExtractors := make([]multiGroupKeyExtractor, subSearchNum)
+	for i := 0; i < subSearchNum; i++ {
+		subSearchNqOffset[i] = make([]int64, subSearchResultData[i].GetNumQueries())
+		for j := int64(1); j < nq; j++ {
+			subSearchNqOffset[i][j] = subSearchNqOffset[i][j-1] + subSearchResultData[i].Topks[j-1]
+		}
+		subSearchKeyExtractors[i] = buildMultiGroupKeyExtractor(subSearchResultData[i], groupByFieldIDs)
+	}
+
+	idxComputers := make([]*typeutil.FieldDataIdxComputer, subSearchNum)
+	for i, srd := range subSearchResultData {
+		idxComputers[i] = typeutil.NewFieldDataIdxComputer(srd.FieldsData)
+	}
+
+	acceptedRows := make([]groupReduceInfo, 0, nq*groupBound)
+	var realTopK int64 = -1
+	var retSize int64
+
+	maxOutputSize := paramtable.Get().QuotaConfig.MaxOutputSize.GetAsInt64()
+
+	for i := int64(0); i < nq; i++ {
+		cursors := make([]int64, subSearchNum)
+		groupBuckets := make(map[uint64][]*multiGroupEntry)
+		skipOffsetHashes := make(map[uint64]bool)
+		totalGroups := int64(0)
+		perNqAccepted := make([]groupReduceInfo, 0, groupBound)
+
+		var j int64
+		for j = 0; j < groupBound; {
+			subSearchIdx, resultDataIdx := selectHighestScoreIndex(ctx, subSearchResultData, subSearchNqOffset, cursors, i)
+			if subSearchIdx == -1 {
+				break
+			}
+			subSearchRes := subSearchResultData[subSearchIdx]
+			id := typeutil.GetPK(subSearchRes.GetIds(), resultDataIdx)
+			score := subSearchRes.GetScores()[resultDataIdx]
+			hash, values := subSearchKeyExtractors[subSearchIdx](int(resultDataIdx))
+
+			if int64(len(skipOffsetHashes)) < offset || skipOffsetHashes[hash] {
+				// offset applies at the composite-key level: the first `offset`
+				// distinct groups are skipped entirely for their full membership.
+				skipOffsetHashes[hash] = true
+			} else {
+				entry := findMultiGroupEntry(groupBuckets[hash], values)
+				isNewGroup := entry == nil
+				if isNewGroup && totalGroups >= limit {
+					// topK distinct groups already reached
+				} else if !isNewGroup && entry.count >= groupSize {
+					// this group is already full
+				} else {
+					if isNewGroup {
+						entry = &multiGroupEntry{values: values}
+						groupBuckets[hash] = append(groupBuckets[hash], entry)
+						totalGroups++
+					}
+					entry.count++
+					perNqAccepted = append(perNqAccepted, groupReduceInfo{
+						subSearchIdx: subSearchIdx,
+						resultIdx:    resultDataIdx,
+						id:           id,
+						score:        score,
+					})
+					j++
+				}
+			}
+			cursors[subSearchIdx]++
+		}
+
+		// Emit accepted rows in descending-score order (already satisfied by
+		// the walking order) to preserve deterministic output.
+		for _, row := range perNqAccepted {
+			subResData := subSearchResultData[row.subSearchIdx]
+			if len(ret.Results.FieldsData) > 0 {
+				fieldIdxs := idxComputers[row.subSearchIdx].Compute(row.resultIdx)
+				retSize += typeutil.AppendFieldData(ret.Results.FieldsData, subResData.FieldsData, row.resultIdx, fieldIdxs...)
+			}
+			typeutil.AppendPKs(ret.Results.Ids, row.id)
+			ret.Results.Scores = append(ret.Results.Scores, row.score)
+			if subResData.ElementIndices != nil {
+				if ret.Results.ElementIndices == nil {
+					ret.Results.ElementIndices = &schemapb.LongArray{Data: make([]int64, 0, limit)}
+				}
+				ret.Results.ElementIndices.Data = append(ret.Results.ElementIndices.Data, subResData.ElementIndices.GetData()[row.resultIdx])
+			}
+			acceptedRows = append(acceptedRows, row)
+		}
+
+		if realTopK != -1 && realTopK != j {
+			log.Ctx(ctx).Warn("Proxy Reduce Search Result", zap.Error(errors.New("the length (topk) between all result of query is different")))
+		}
+		realTopK = j
+		ret.Results.Topks = append(ret.Results.Topks, realTopK)
+
+		if retSize > maxOutputSize {
+			return nil, fmt.Errorf("search results exceed the maxOutputSize Limit %d", maxOutputSize)
+		}
+	}
+
+	// Delegate group-by field-17 output to the shared writer so delegator-side
+	// and proxy-side emit byte-for-byte identical FieldData payloads.
+	writerRefs := make([]reduce.RowRef, len(acceptedRows))
+	for i, row := range acceptedRows {
+		writerRefs[i] = reduce.RowRef{ResultIdx: row.subSearchIdx, RowIdx: row.resultIdx}
+	}
+	if err := reduce.WriteGroupByFieldValues(ret.Results, writerRefs, subSearchResultData, groupByFieldIDs); err != nil {
+		return ret, merr.WrapErrServiceInternal("failed to construct multi-field group-by output", err.Error())
+	}
+
+	ret.Results.TopK = realTopK
+	if !metric.PositivelyRelated(metricType) {
+		for k := range ret.Results.Scores {
+			ret.Results.Scores[k] *= -1
+		}
+	}
+	return ret, nil
+}
+
+type multiGroupKeyExtractor func(idx int) (uint64, []any)
+
+type multiGroupEntry struct {
+	values []any
+	count  int64
+}
+
+func findMultiGroupEntry(bucket []*multiGroupEntry, values []any) *multiGroupEntry {
+	for _, e := range bucket {
+		if reduce.EqualGroupValues(e.values, values) {
+			return e
+		}
+	}
+	return nil
+}
+
+func buildMultiGroupKeyExtractor(data *schemapb.SearchResultData, groupByFieldIDs []int64) multiGroupKeyExtractor {
+	iters := make([]func(int) any, len(groupByFieldIDs))
+	for i, fid := range groupByFieldIDs {
+		fd := reduce.FindFieldDataByID(data.GetGroupByFieldValues(), fid)
+		if fd != nil {
+			iters[i] = typeutil.GetDataIterator(fd)
+		}
+	}
+	return reduce.MakeCompositeKeyExtractor(iters)
+}
+
 func reduceSearchResultDataNoGroupBy(ctx context.Context, subSearchResultData []*schemapb.SearchResultData, nq int64, topk int64, metricType string, pkType schemapb.DataType, offset int64) (*milvuspb.SearchResults, error) {
 	tr := timerecord.NewTimeRecorder("reduceSearchResultData")
 	defer func() {
@@ -614,7 +836,8 @@ func reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResu
 		zap.Int("number of valid search results", len(validSearchResults)))
 	var result *milvuspb.SearchResults
 	result, err = reduceSearchResult(ctx, validSearchResults, reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metricType).WithPkType(pkType).
-		WithOffset(offset).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()).WithAdvance(isAdvance))
+		WithOffset(offset).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()).
+		WithMultiGroupByFieldIds(queryInfo.GetMultiGroupBy().GetGroupByFieldIds()).WithAdvance(isAdvance))
 	if err != nil {
 		log.Warn("failed to reduce search results", zap.Error(err))
 		return nil, err

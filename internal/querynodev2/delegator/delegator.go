@@ -494,6 +494,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 				GroupByFieldId:          subReq.GetGroupByFieldId(),
 				GroupSize:               subReq.GetGroupSize(),
 				FieldId:                 subReq.GetFieldId(),
+				MultiGroupBy:            req.GetReq().GetMultiGroupBy(),
 				IsTopkReduce:            req.GetReq().GetIsTopkReduce(),
 				IsIterator:              req.GetReq().GetIsIterator(),
 				CollectionTtlTimestamps: req.GetReq().GetCollectionTtlTimestamps(),
@@ -519,12 +520,16 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 					return nil, err
 				}
 
+				multiGroupByFieldIDs := []int64(nil)
+				if searchReq.GetReq().GetMultiGroupBy() != nil {
+					multiGroupByFieldIDs = searchReq.GetReq().GetMultiGroupBy().GetGroupByFieldIds()
+				}
 				return segments.ReduceSearchOnQueryNode(ctx,
 					results,
 					reduce.NewReduceSearchResultInfo(searchReq.GetReq().GetNq(),
 						searchReq.GetReq().GetTopk()).WithMetricType(searchReq.GetReq().GetMetricType()).
 						WithGroupByField(searchReq.GetReq().GetGroupByFieldId()).
-						WithGroupSize(searchReq.GetReq().GetGroupSize()))
+						WithGroupSize(searchReq.GetReq().GetGroupSize()).WithMultiGroupByFieldIds(multiGroupByFieldIDs))
 			})
 			futures[index] = future
 		}
