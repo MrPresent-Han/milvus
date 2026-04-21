@@ -8,7 +8,9 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
+	"github.com/milvus-io/milvus/pkg/v2/util/metric"
 )
 
 type SearchReduceUtilTestSuite struct {
@@ -79,8 +81,8 @@ func (struts *SearchReduceUtilTestSuite) TestReduceSearchResultWithEmtpyGroupDat
 		Recalls:          make([]float32, 0),
 		PrimaryFieldName: "",
 	}
-	results, err := reduceSearchResultDataWithGroupBy(context.Background(), []*schemapb.SearchResultData{emptyData},
-		nq, topk, "L2", schemapb.DataType_Int64, 0, 1)
+	results, err := reduceSearchResultDataWithSingleGroupBy(context.Background(), []*schemapb.SearchResultData{emptyData},
+		nq, topk, "L2", schemapb.DataType_Int64, 0, 1, 101)
 	struts.Error(err)
 	struts.ErrorContains(err, "failed to construct group by field data builder")
 	struts.Nil(results.Results.GetGroupByFieldValue())
@@ -135,7 +137,7 @@ func (struts *SearchReduceUtilTestSuite) TestReduceWithEmptyFieldsData() {
 		struts.Equal(0, len(results.Results.FieldsData))
 	}
 
-	// Test reduceSearchResultDataWithGroupBy with empty FieldsData
+	// Test reduceSearchResultDataWithSingleGroupBy with empty FieldsData
 	{
 		// Add GroupByFieldValue to support group by
 		searchResultData1.GroupByFieldValue = &schemapb.FieldData{
@@ -167,7 +169,7 @@ func (struts *SearchReduceUtilTestSuite) TestReduceWithEmptyFieldsData() {
 			},
 		}
 
-		results, err := reduceSearchResultDataWithGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, "L2", schemapb.DataType_Int64, offset, int64(2))
+		results, err := reduceSearchResultDataWithSingleGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, "L2", schemapb.DataType_Int64, offset, int64(2), 101)
 		struts.NoError(err)
 		struts.NotNil(results)
 		// FieldsData should be empty since all inputs were empty
@@ -534,6 +536,203 @@ func (struts *SearchReduceUtilTestSuite) TestReduceAdvanceGroupBy_SingleShardMat
 	for _, s := range multiShardResult.Results.GetScores() {
 		struts.GreaterOrEqual(s, float32(0), "multi-shard L2 score must be in natural direction (>=0); got %v", s)
 	}
+}
+
+// TestReduceSearchResult_MultiGroupBy_OffsetIgnored verifies the core contract
+// introduced alongside the multi-groupBy reduce path: the dispatcher's multi
+// route must be offset-agnostic. The same inputs routed through the dispatcher
+// with any ResultInfo.Offset value must yield bit-equal output.
+//
+// Invariance-style — asserts only "offset has no effect", independent of any
+// specific expected payload, so this test keeps holding even if ordering or
+// shape details are tweaked in the future, as long as offset-independence does.
+func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_MultiGroupBy_OffsetIgnored() {
+	// Two shards covering 5 distinct composite keys (brand, category).
+	// With topK=3 + groupSize=2, an offset-aware path WOULD skip the top
+	// group(s); a correctly-implemented multi path must not.
+	buildShards := func() []*schemapb.SearchResultData {
+		shardA := &schemapb.SearchResultData{
+			NumQueries: 1, TopK: 3,
+			Topks:  []int64{3},
+			Ids:    &schemapb.IDs{IdField: &schemapb.IDs_IntId{IntId: &schemapb.LongArray{Data: []int64{1, 2, 3}}}},
+			Scores: []float32{0.9, 0.7, 0.5},
+			GroupByFieldValues: []*schemapb.FieldData{
+				multiGroupByTestStringField(101, []string{"A", "A", "B"}),
+				multiGroupByTestStringField(102, []string{"X", "Y", "X"}),
+			},
+		}
+		shardB := &schemapb.SearchResultData{
+			NumQueries: 1, TopK: 3,
+			Topks:  []int64{3},
+			Ids:    &schemapb.IDs{IdField: &schemapb.IDs_IntId{IntId: &schemapb.LongArray{Data: []int64{11, 12, 13}}}},
+			Scores: []float32{0.85, 0.65, 0.45},
+			GroupByFieldValues: []*schemapb.FieldData{
+				multiGroupByTestStringField(101, []string{"A", "B", "C"}),
+				multiGroupByTestStringField(102, []string{"X", "Y", "X"}),
+			},
+		}
+		return []*schemapb.SearchResultData{shardA, shardB}
+	}
+
+	runWithOffset := func(offset int64) *schemapb.SearchResultData {
+		info := reduce.NewReduceSearchResultInfo(1, 3).
+			WithMetricType(metric.IP).
+			WithPkType(schemapb.DataType_Int64).
+			WithOffset(offset).
+			WithGroupSize(2).
+			WithMultiGroupByFieldIds([]int64{101, 102})
+		ret, err := reduceSearchResult(context.Background(), buildShards(), info)
+		struts.Require().NoError(err)
+		struts.Require().NotNil(ret)
+		return ret.GetResults()
+	}
+
+	base := runWithOffset(0)
+	for _, off := range []int64{1, 2, 3, 10, 100} {
+		other := runWithOffset(off)
+		struts.Truef(proto.Equal(base, other),
+			"multi-groupBy output must be invariant to offset; offset=%d diverged from offset=0", off)
+	}
+}
+
+// TestReduceSearchResult_SingleGroupBy_FieldIdStampedByReducer verifies that
+// the single-groupBy output's GroupByFieldValue.FieldId matches the value
+// passed via WithGroupByField. This stamp previously happened in the
+// dispatcher; after the refactor, the reducer owns it. We seed the source's
+// GroupByFieldValue with a DIFFERENT FieldId so a regression that copied the
+// source id through (instead of overwriting with the requested id) would fail.
+func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_SingleGroupBy_FieldIdStampedByReducer() {
+	const requestedFieldId int64 = 101
+	const sourceFieldId int64 = 999 // intentionally != requestedFieldId
+
+	shard := &schemapb.SearchResultData{
+		NumQueries: 1, TopK: 2,
+		Topks:  []int64{3},
+		Ids:    &schemapb.IDs{IdField: &schemapb.IDs_IntId{IntId: &schemapb.LongArray{Data: []int64{1, 2, 3}}}},
+		Scores: []float32{0.9, 0.8, 0.7},
+		GroupByFieldValue: &schemapb.FieldData{
+			FieldId: sourceFieldId,
+			Type:    schemapb.DataType_VarChar,
+			Field: &schemapb.FieldData_Scalars{Scalars: &schemapb.ScalarField{
+				Data: &schemapb.ScalarField_StringData{StringData: &schemapb.StringArray{
+					Data: []string{"x", "y", "z"},
+				}},
+			}},
+		},
+	}
+
+	info := reduce.NewReduceSearchResultInfo(1, 2).
+		WithMetricType(metric.IP).
+		WithPkType(schemapb.DataType_Int64).
+		WithGroupByField(requestedFieldId).
+		WithGroupSize(1)
+	ret, err := reduceSearchResult(context.Background(),
+		[]*schemapb.SearchResultData{shard}, info)
+
+	struts.Require().NoError(err)
+	struts.Require().NotNil(ret)
+	gbv := ret.GetResults().GetGroupByFieldValue()
+	struts.Require().NotNil(gbv, "single-groupBy must populate GroupByFieldValue")
+	struts.Equal(requestedFieldId, gbv.GetFieldId(),
+		"FieldId must be stamped with the value from WithGroupByField(%d); got %d",
+		requestedFieldId, gbv.GetFieldId())
+	// Sanity: the multi-field channel is the wrong channel for single-groupBy.
+	struts.Empty(ret.GetResults().GetGroupByFieldValues(),
+		"single-groupBy output must not populate the multi-field channel")
+}
+
+// TestReduceSearchResult_MultiGroupBy_TwoNq_TwoShards_Semantics verifies the
+// multi-groupBy path end-to-end with a realistic nq=2 / shards=2 layout.
+// A single snapshot locks three independent invariants of the multi path:
+//
+//   1. Composite-key equality. Groups are keyed by the FULL (brand, category)
+//      tuple. Rows sharing only the first field (brand=A but category=X vs Y)
+//      must land in distinct groups. findMultiGroupEntry's values-equality
+//      chain is the mechanism — any regression that keys by hash only, or by
+//      a single field, breaks this test.
+//
+//   2. GroupSize cap. Once a group has groupSize (=2) accepted rows, further
+//      rows for the same group are dropped regardless of score (see pk=2 in
+//      nq=0 being skipped while its score 0.8 is higher than later accepted
+//      rows).
+//
+//   3. TopK cap. After topK (=3) distinct groups have been accepted within a
+//      given nq, rows belonging to new groups are rejected (pk=13 in nq=0,
+//      pk=7 in nq=1).
+//
+// Per-nq isolation is validated implicitly: nq=1 starts fresh (bucket state
+// reset), so groups (A,X)/(A,Y)/(B,X) already "seen" in nq=0 do NOT carry
+// over; nq=1 independently fills its own topK budget.
+func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_MultiGroupBy_TwoNq_TwoShards_Semantics() {
+	// shardA flat (Topks=[4,3] splits into nq=0 / nq=1):
+	//   nq=0: (pk=1,0.9,A,X) (pk=2,0.8,A,X) (pk=3,0.7,A,Y) (pk=4,0.6,B,X)
+	//   nq=1: (pk=5,0.95,B,X) (pk=6,0.75,B,Y) (pk=7,0.55,A,X)
+	shardA := &schemapb.SearchResultData{
+		NumQueries: 2, TopK: 3,
+		Topks:  []int64{4, 3},
+		Ids:    &schemapb.IDs{IdField: &schemapb.IDs_IntId{IntId: &schemapb.LongArray{Data: []int64{1, 2, 3, 4, 5, 6, 7}}}},
+		Scores: []float32{0.9, 0.8, 0.7, 0.6, 0.95, 0.75, 0.55},
+		GroupByFieldValues: []*schemapb.FieldData{
+			multiGroupByTestStringField(101, []string{"A", "A", "A", "B", "B", "B", "A"}),
+			multiGroupByTestStringField(102, []string{"X", "X", "Y", "X", "X", "Y", "X"}),
+		},
+	}
+	// shardB flat (Topks=[3,2]):
+	//   nq=0: (pk=11,0.85,A,X) (pk=12,0.65,A,Y) (pk=13,0.55,C,X)
+	//   nq=1: (pk=14,0.90,B,X) (pk=15,0.60,A,Y)
+	shardB := &schemapb.SearchResultData{
+		NumQueries: 2, TopK: 3,
+		Topks:  []int64{3, 2},
+		Ids:    &schemapb.IDs{IdField: &schemapb.IDs_IntId{IntId: &schemapb.LongArray{Data: []int64{11, 12, 13, 14, 15}}}},
+		Scores: []float32{0.85, 0.65, 0.55, 0.90, 0.60},
+		GroupByFieldValues: []*schemapb.FieldData{
+			multiGroupByTestStringField(101, []string{"A", "A", "C", "B", "A"}),
+			multiGroupByTestStringField(102, []string{"X", "Y", "X", "X", "Y"}),
+		},
+	}
+
+	info := reduce.NewReduceSearchResultInfo(2, 3).
+		WithMetricType(metric.IP).
+		WithPkType(schemapb.DataType_Int64).
+		WithGroupSize(2).
+		WithMultiGroupByFieldIds([]int64{101, 102})
+	ret, err := reduceSearchResult(context.Background(),
+		[]*schemapb.SearchResultData{shardA, shardB}, info)
+	struts.Require().NoError(err)
+	struts.Require().NotNil(ret)
+
+	// Expected walk traces (score desc within each nq):
+	//   nq=0 accepts 5 rows:  (A,X)@0.9, (A,X)@0.85, (A,Y)@0.7, (A,Y)@0.65, (B,X)@0.6
+	//        rejects (A,X)@0.8     [(A,X) already full @groupSize=2]
+	//        rejects (C,X)@0.55    [topK=3 distinct groups reached]
+	//   nq=1 accepts 4 rows:  (B,X)@0.95, (B,X)@0.90, (B,Y)@0.75, (A,Y)@0.60
+	//        rejects (A,X)@0.55    [topK=3 distinct groups reached]
+	res := ret.GetResults()
+	struts.Equal([]int64{5, 4}, res.GetTopks(),
+		"per-nq accept counts: nq=0 should accept 5, nq=1 should accept 4")
+	struts.Equal([]int64{1, 11, 3, 12, 4, 5, 14, 6, 15},
+		res.GetIds().GetIntId().GetData(),
+		"rows must appear in strict per-nq score-desc order")
+	struts.Equal([]float32{0.9, 0.85, 0.7, 0.65, 0.6, 0.95, 0.90, 0.75, 0.60},
+		res.GetScores(),
+		"scores must match the accepted rows in emission order")
+
+	// GroupByFieldValues: two columns, row-aligned with Ids/Scores above.
+	struts.Require().Len(res.GetGroupByFieldValues(), 2,
+		"multi-groupBy must populate one FieldData per group-by field id")
+	brand := res.GetGroupByFieldValues()[0]
+	cat := res.GetGroupByFieldValues()[1]
+	struts.Equal(int64(101), brand.GetFieldId(), "column 0 must be stamped with fieldID 101")
+	struts.Equal(int64(102), cat.GetFieldId(), "column 1 must be stamped with fieldID 102")
+	struts.Equal([]string{"A", "A", "A", "A", "B", "B", "B", "B", "A"},
+		brand.GetScalars().GetStringData().GetData(),
+		"brand column must be row-aligned with Ids")
+	struts.Equal([]string{"X", "X", "Y", "Y", "X", "X", "X", "Y", "Y"},
+		cat.GetScalars().GetStringData().GetData(),
+		"category column must be row-aligned with Ids")
+	// Sanity: the singular channel must remain empty for multi-groupBy.
+	struts.Nil(res.GetGroupByFieldValue(),
+		"multi-groupBy output must not populate the single-field channel")
 }
 
 func TestSearchReduceUtilTestSuite(t *testing.T) {

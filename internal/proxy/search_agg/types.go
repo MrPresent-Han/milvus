@@ -111,11 +111,6 @@ type OrderCriterion struct {
 	Dir string
 }
 
-type RowRef struct {
-	ResultIdx int
-	RowIdx    int
-}
-
 type AggBucketResult struct {
 	Key   map[int64]any
 	Count int64

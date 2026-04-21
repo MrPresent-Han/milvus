@@ -99,6 +99,14 @@ func (r *ResultInfo) HasMultiGroupBy() bool {
 	return len(r.multiGroupByFieldIds) > 0
 }
 
+// HasSingleGroupBy reports whether the single-field group-by path is active.
+// Uses the groupByFieldId > 0 sentinel that the proxy-side plan fills in for
+// traditional group-by search; kept as a named helper so dispatch sites do not
+// sprinkle the magic-zero comparison.
+func (r *ResultInfo) HasSingleGroupBy() bool {
+	return r.groupByFieldId > 0
+}
+
 func (r *ResultInfo) GetMultiGroupByFieldIds() []int64 {
 	return r.multiGroupByFieldIds
 }

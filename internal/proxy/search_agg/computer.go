@@ -80,14 +80,14 @@ func (c *SearchAggregationComputer) computeForQi(qi int64) ([]*AggBucketResult, 
 		start += topks[i]
 	}
 	count := topks[qi]
-	rows := make([]RowRef, count)
+	rows := make([]reduce.RowRef, count)
 	for i := int64(0); i < count; i++ {
-		rows[i] = RowRef{ResultIdx: 0, RowIdx: int(start + i)}
+		rows[i] = reduce.RowRef{ResultIdx: 0, RowIdx: start + i}
 	}
 	return c.computeLevel(0, rows)
 }
 
-func (c *SearchAggregationComputer) computeLevel(levelIdx int, rows []RowRef) ([]*AggBucketResult, error) {
+func (c *SearchAggregationComputer) computeLevel(levelIdx int, rows []reduce.RowRef) ([]*AggBucketResult, error) {
 	if levelIdx < 0 || levelIdx >= len(c.ctx.Levels) {
 		return nil, fmt.Errorf("invalid level index %d", levelIdx)
 	}
@@ -168,12 +168,12 @@ func (c *SearchAggregationComputer) computeLevel(levelIdx int, rows []RowRef) ([
 	return output, nil
 }
 
-func (c *SearchAggregationComputer) buildTopHits(rows []RowRef, cfg *TopHitsConfig) ([]*HitResult, error) {
+func (c *SearchAggregationComputer) buildTopHits(rows []reduce.RowRef, cfg *TopHitsConfig) ([]*HitResult, error) {
 	if cfg == nil {
 		return nil, nil
 	}
 
-	sorted := make([]RowRef, len(rows))
+	sorted := make([]reduce.RowRef, len(rows))
 	copy(sorted, rows)
 	if len(cfg.Sort) > 0 {
 		var sortErr error
@@ -209,7 +209,7 @@ func (c *SearchAggregationComputer) buildTopHits(rows []RowRef, cfg *TopHitsConf
 	return hits, nil
 }
 
-func (c *SearchAggregationComputer) compareRowsForTopHits(a, b RowRef, sortCriteria []SortCriterion) (int, error) {
+func (c *SearchAggregationComputer) compareRowsForTopHits(a, b reduce.RowRef, sortCriteria []SortCriterion) (int, error) {
 	for _, criterion := range sortCriteria {
 		av, _, err := c.readValueByFieldID(a, criterion.FieldID)
 		if err != nil {
@@ -267,7 +267,7 @@ func (c *SearchAggregationComputer) compareRowsForTopHits(a, b RowRef, sortCrite
 	return 0, nil
 }
 
-func (c *SearchAggregationComputer) buildHitResult(ref RowRef) (*HitResult, error) {
+func (c *SearchAggregationComputer) buildHitResult(ref reduce.RowRef) (*HitResult, error) {
 	hit := &HitResult{
 		PK:     typeutil.GetPK(c.data.GetIds(), int64(ref.RowIdx)),
 		Score:  c.data.GetScores()[ref.RowIdx],
@@ -288,7 +288,7 @@ func (c *SearchAggregationComputer) buildHitResult(ref RowRef) (*HitResult, erro
 // scalar types via reduce.NormalizeScalar so hashing and equality behave
 // consistently regardless of the raw Go type the iterator surface returns.
 // Null values pass through as nil so grouping treats null == null.
-func (c *SearchAggregationComputer) extractOwnValues(ref RowRef, ownFieldIDs []int64) ([]any, error) {
+func (c *SearchAggregationComputer) extractOwnValues(ref reduce.RowRef, ownFieldIDs []int64) ([]any, error) {
 	values := make([]any, len(ownFieldIDs))
 	for i, fieldID := range ownFieldIDs {
 		raw, isNull, err := c.readValueByFieldID(ref, fieldID)
@@ -323,7 +323,7 @@ func keyValuesToMap(values []any, ownFieldIDs []int64) map[int64]any {
 // per-aggregate input (count uses int64(1), avg expands into sum + count),
 // and call AggregateBase.Update. Null source values skip the row; count(*)
 // is a synthetic always-1 input keyed off CountAllFieldID.
-func (c *SearchAggregationComputer) updateMetrics(bucket *bucketState, ref RowRef, plans []metricPlan) error {
+func (c *SearchAggregationComputer) updateMetrics(bucket *bucketState, ref reduce.RowRef, plans []metricPlan) error {
 	if len(plans) == 0 {
 		return nil
 	}
@@ -382,14 +382,14 @@ func metricAggregateInputs(plan metricPlan, raw any) ([]*agg.FieldValue, error) 
 	}
 }
 
-func (c *SearchAggregationComputer) readValueByFieldID(ref RowRef, fieldID int64) (any, bool, error) {
+func (c *SearchAggregationComputer) readValueByFieldID(ref reduce.RowRef, fieldID int64) (any, bool, error) {
 	if c.data == nil {
 		return nil, true, fmt.Errorf("nil SearchResultData")
 	}
 
 	if fieldID == ScoreFieldID {
 		scores := c.data.GetScores()
-		if ref.RowIdx < 0 || ref.RowIdx >= len(scores) {
+		if ref.RowIdx < 0 || ref.RowIdx >= int64(len(scores)) {
 			return nil, true, fmt.Errorf("score index %d out of range", ref.RowIdx)
 		}
 		return scores[ref.RowIdx], false, nil
@@ -404,7 +404,7 @@ func (c *SearchAggregationComputer) readValueByFieldID(ref RowRef, fieldID int64
 	}
 
 	iter := typeutil.GetDataIterator(fd)
-	value := iter(ref.RowIdx)
+	value := iter(int(ref.RowIdx))
 	if value == nil {
 		return nil, true, nil
 	}
@@ -418,7 +418,7 @@ type bucketState struct {
 	// two entries (sum + count); single-op aliases have one. Order matches
 	// level.metricPlans[i].aggregates so indices align during Update().
 	metricStates map[string][]*agg.FieldValue
-	rows         []RowRef
+	rows         []reduce.RowRef
 }
 
 func newBucketState(key []any, plans []metricPlan) *bucketState {

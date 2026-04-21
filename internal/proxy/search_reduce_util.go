@@ -22,12 +22,58 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
+// reduceMode classifies a reduce request into the four disjoint execution
+// paths below. Kept local to the dispatcher so the switch makes the coverage
+// matrix explicit rather than nesting HasMultiGroupBy / GroupByFieldId /
+// IsAdvance conditions.
+type reduceMode int
+
+const (
+	reduceModeNoGroupBy reduceMode = iota
+	reduceModeSingleGroupBy
+	reduceModeMultiGroupBy
+	reduceModeAdvanceGroupBy
+)
+
+func selectReduceMode(r *reduce.ResultInfo) reduceMode {
+	switch {
+	case r.HasMultiGroupBy():
+		// multi-field composite group-by (SearchAggregation path); takes
+		// precedence because multi and single cannot both be active.
+		return reduceModeMultiGroupBy
+	case r.HasSingleGroupBy() && r.GetIsAdvance():
+		// hybrid-search sub-path: per-search-path scores are not yet fused,
+		// so offset/groupSize cannot be applied here.
+		return reduceModeAdvanceGroupBy
+	case r.HasSingleGroupBy():
+		return reduceModeSingleGroupBy
+	default:
+		return reduceModeNoGroupBy
+	}
+}
+
 func reduceSearchResult(ctx context.Context, subSearchResultData []*schemapb.SearchResultData, reduceInfo *reduce.ResultInfo) (*milvuspb.SearchResults, error) {
-	if reduceInfo.HasMultiGroupBy() {
-		// SearchAggregation path — composite-key group reduce shares the
-		// topK/groupSize contract with SearchGroupBy but reads/writes the
-		// multi-field channel (proto field 17).
+	switch selectReduceMode(reduceInfo) {
+	case reduceModeMultiGroupBy:
+		// Offset is intentionally not forwarded — pagination for the multi-groupBy
+		// path is the responsibility of a downstream pipeline operator, not reduce.
 		return reduceSearchResultDataWithMultiGroupBy(ctx,
+			subSearchResultData,
+			reduceInfo.GetNq(),
+			reduceInfo.GetTopK(),
+			reduceInfo.GetMetricType(),
+			reduceInfo.GetPkType(),
+			reduceInfo.GetGroupSize(),
+			reduceInfo.GetMultiGroupByFieldIds())
+	case reduceModeAdvanceGroupBy:
+		return reduceAdvanceGroupBy(ctx,
+			subSearchResultData,
+			reduceInfo.GetNq(),
+			reduceInfo.GetTopK(),
+			reduceInfo.GetPkType(),
+			reduceInfo.GetMetricType())
+	case reduceModeSingleGroupBy:
+		return reduceSearchResultDataWithSingleGroupBy(ctx,
 			subSearchResultData,
 			reduceInfo.GetNq(),
 			reduceInfo.GetTopK(),
@@ -35,38 +81,16 @@ func reduceSearchResult(ctx context.Context, subSearchResultData []*schemapb.Sea
 			reduceInfo.GetPkType(),
 			reduceInfo.GetOffset(),
 			reduceInfo.GetGroupSize(),
-			reduceInfo.GetMultiGroupByFieldIds())
+			reduceInfo.GetGroupByFieldId())
+	default:
+		return reduceSearchResultDataNoGroupBy(ctx,
+			subSearchResultData,
+			reduceInfo.GetNq(),
+			reduceInfo.GetTopK(),
+			reduceInfo.GetMetricType(),
+			reduceInfo.GetPkType(),
+			reduceInfo.GetOffset())
 	}
-	if reduceInfo.GetGroupByFieldId() > 0 {
-		var ret *milvuspb.SearchResults
-		var err error
-		if reduceInfo.GetIsAdvance() {
-			// for hybrid search group by, we cannot reduce result for results from one single search path,
-			// because the final score has not been accumulated, also, offset cannot be applied
-			ret, err = reduceAdvanceGroupBy(ctx,
-				subSearchResultData, reduceInfo.GetNq(), reduceInfo.GetTopK(), reduceInfo.GetPkType(), reduceInfo.GetMetricType())
-		} else {
-			ret, err = reduceSearchResultDataWithGroupBy(ctx,
-				subSearchResultData,
-				reduceInfo.GetNq(),
-				reduceInfo.GetTopK(),
-				reduceInfo.GetMetricType(),
-				reduceInfo.GetPkType(),
-				reduceInfo.GetOffset(),
-				reduceInfo.GetGroupSize())
-		}
-		if err == nil && ret.GetResults().GetGroupByFieldValue() != nil {
-			ret.Results.GroupByFieldValue.FieldId = reduceInfo.GetGroupByFieldId()
-		}
-		return ret, err
-	}
-	return reduceSearchResultDataNoGroupBy(ctx,
-		subSearchResultData,
-		reduceInfo.GetNq(),
-		reduceInfo.GetTopK(),
-		reduceInfo.GetMetricType(),
-		reduceInfo.GetPkType(),
-		reduceInfo.GetOffset())
 }
 
 func checkResultDatas(ctx context.Context, subSearchResultData []*schemapb.SearchResultData,
@@ -240,11 +264,12 @@ type groupReduceInfo struct {
 	id           MilvusPKType
 }
 
-func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData []*schemapb.SearchResultData,
+func reduceSearchResultDataWithSingleGroupBy(ctx context.Context, subSearchResultData []*schemapb.SearchResultData,
 	nq int64, topk int64, metricType string,
 	pkType schemapb.DataType,
 	offset int64,
 	groupSize int64,
+	groupByFieldId int64,
 ) (*milvuspb.SearchResults, error) {
 	tr := timerecord.NewTimeRecorder("reduceSearchResultData")
 	defer func() {
@@ -413,11 +438,16 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 			ret.Results.Scores[k] *= -1
 		}
 	}
+	// Stamp field id here (not in the dispatcher) so this path stays symmetric
+	// with the multi-groupBy path, which stamps its own ids inside WriteGroupByFieldValues.
+	if ret.GetResults().GetGroupByFieldValue() != nil {
+		ret.Results.GroupByFieldValue.FieldId = groupByFieldId
+	}
 	return ret, nil
 }
 
 // reduceSearchResultDataWithMultiGroupBy is the SearchAggregation sibling of
-// reduceSearchResultDataWithGroupBy. Layout mirrors the single-field version
+// reduceSearchResultDataWithSingleGroupBy. Layout mirrors the single-field version
 // but the per-composite-key lookup goes through a uint64 hash map with a
 // secondary-equality fallback to handle collisions, matching the QN-side
 // algorithm. Group-by column values are read from and written back to the
@@ -428,7 +458,6 @@ func reduceSearchResultDataWithMultiGroupBy(
 	nq, topk int64,
 	metricType string,
 	pkType schemapb.DataType,
-	offset int64,
 	groupSize int64,
 	groupByFieldIDs []int64,
 ) (*milvuspb.SearchResults, error) {
@@ -437,11 +466,13 @@ func reduceSearchResultDataWithMultiGroupBy(
 		tr.CtxElapse(ctx, "done")
 	}()
 
-	limit := topk - offset
+	// Offset/pagination is not the reducer's responsibility — a downstream
+	// pipeline operator applies the group-level OFFSET slice if required.
+	// Reducer always emits up to `topk` distinct groups starting from the top.
+	limit := topk
 	log.Ctx(ctx).Debug("reduceSearchResultDataWithMultiGroupBy",
 		zap.Int("subSearchCount", len(subSearchResultData)),
 		zap.Int64("nq", nq),
-		zap.Int64("offset", offset),
 		zap.Int64("limit", limit),
 		zap.Int64("groupSize", groupSize),
 		zap.Int("groupByFieldCount", len(groupByFieldIDs)),
@@ -503,7 +534,6 @@ func reduceSearchResultDataWithMultiGroupBy(
 	for i := int64(0); i < nq; i++ {
 		cursors := make([]int64, subSearchNum)
 		groupBuckets := make(map[uint64][]*multiGroupEntry)
-		skipOffsetHashes := make(map[uint64]bool)
 		totalGroups := int64(0)
 		perNqAccepted := make([]groupReduceInfo, 0, groupBound)
 
@@ -518,32 +548,27 @@ func reduceSearchResultDataWithMultiGroupBy(
 			score := subSearchRes.GetScores()[resultDataIdx]
 			hash, values := subSearchKeyExtractors[subSearchIdx](int(resultDataIdx))
 
-			if int64(len(skipOffsetHashes)) < offset || skipOffsetHashes[hash] {
-				// offset applies at the composite-key level: the first `offset`
-				// distinct groups are skipped entirely for their full membership.
-				skipOffsetHashes[hash] = true
-			} else {
-				entry := findMultiGroupEntry(groupBuckets[hash], values)
-				isNewGroup := entry == nil
-				if isNewGroup && totalGroups >= limit {
-					// topK distinct groups already reached
-				} else if !isNewGroup && entry.count >= groupSize {
-					// this group is already full
-				} else {
-					if isNewGroup {
-						entry = &multiGroupEntry{values: values}
-						groupBuckets[hash] = append(groupBuckets[hash], entry)
-						totalGroups++
-					}
-					entry.count++
-					perNqAccepted = append(perNqAccepted, groupReduceInfo{
-						subSearchIdx: subSearchIdx,
-						resultIdx:    resultDataIdx,
-						id:           id,
-						score:        score,
-					})
-					j++
+			entry := findMultiGroupEntry(groupBuckets[hash], values)
+			isNewGroup := entry == nil
+			switch {
+			case isNewGroup && totalGroups >= limit:
+				// topK distinct groups already reached
+			case !isNewGroup && entry.count >= groupSize:
+				// this group is already full
+			default:
+				if isNewGroup {
+					entry = &multiGroupEntry{values: values}
+					groupBuckets[hash] = append(groupBuckets[hash], entry)
+					totalGroups++
 				}
+				entry.count++
+				perNqAccepted = append(perNqAccepted, groupReduceInfo{
+					subSearchIdx: subSearchIdx,
+					resultIdx:    resultDataIdx,
+					id:           id,
+					score:        score,
+				})
+				j++
 			}
 			cursors[subSearchIdx]++
 		}
