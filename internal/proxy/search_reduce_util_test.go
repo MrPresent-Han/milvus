@@ -645,20 +645,20 @@ func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_SingleGroupBy_Fi
 // multi-groupBy path end-to-end with a realistic nq=2 / shards=2 layout.
 // A single snapshot locks three independent invariants of the multi path:
 //
-//   1. Composite-key equality. Groups are keyed by the FULL (brand, category)
-//      tuple. Rows sharing only the first field (brand=A but category=X vs Y)
-//      must land in distinct groups. findMultiGroupEntry's values-equality
-//      chain is the mechanism — any regression that keys by hash only, or by
-//      a single field, breaks this test.
+//  1. Composite-key equality. Groups are keyed by the FULL (brand, category)
+//     tuple. Rows sharing only the first field (brand=A but category=X vs Y)
+//     must land in distinct groups. findMultiGroupEntry's values-equality
+//     chain is the mechanism — any regression that keys by hash only, or by
+//     a single field, breaks this test.
 //
-//   2. GroupSize cap. Once a group has groupSize (=2) accepted rows, further
-//      rows for the same group are dropped regardless of score (see pk=2 in
-//      nq=0 being skipped while its score 0.8 is higher than later accepted
-//      rows).
+//  2. GroupSize cap. Once a group has groupSize (=2) accepted rows, further
+//     rows for the same group are dropped regardless of score (see pk=2 in
+//     nq=0 being skipped while its score 0.8 is higher than later accepted
+//     rows).
 //
-//   3. TopK cap. After topK (=3) distinct groups have been accepted within a
-//      given nq, rows belonging to new groups are rejected (pk=13 in nq=0,
-//      pk=7 in nq=1).
+//  3. TopK cap. After topK (=3) distinct groups have been accepted within a
+//     given nq, rows belonging to new groups are rejected (pk=13 in nq=0,
+//     pk=7 in nq=1).
 //
 // Per-nq isolation is validated implicitly: nq=1 starts fresh (bucket state
 // reset), so groups (A,X)/(A,Y)/(B,X) already "seen" in nq=0 do NOT carry

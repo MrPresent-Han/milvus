@@ -388,7 +388,7 @@ func (t *searchTask) initSearchAggregation() error {
 	spec := t.request.GetSearchAggregation()
 	if spec == nil {
 		t.aggCtx = nil
-		t.SearchRequest.MultiGroupBy = nil
+		t.SearchRequest.GroupByFieldIds = nil
 		return nil
 	}
 
@@ -405,10 +405,8 @@ func (t *searchTask) initSearchAggregation() error {
 	if err != nil {
 		return err
 	}
-	multiGroupBy, err := search_agg.BuildMultiFieldGroupByInfo(spec, t.schema.CollectionSchema)
-	if err != nil {
-		return err
-	}
+
+	t.SearchRequest.GroupByFieldIds = aggCtx.AllGroupByFieldIDs()
 	for _, fieldID := range t.SearchRequest.GetOutputFieldsId() {
 		aggCtx.UserOutputFieldIDs[fieldID] = struct{}{}
 	}
@@ -423,7 +421,6 @@ func (t *searchTask) initSearchAggregation() error {
 	}
 
 	t.aggCtx = aggCtx
-	t.SearchRequest.MultiGroupBy = multiGroupBy
 	return nil
 }
 
@@ -846,9 +843,7 @@ func (t *searchTask) initSearchRequest(ctx context.Context) error {
 
 	t.Topk = queryInfo.GetTopk()
 	t.MetricType = queryInfo.GetMetricType()
-	// SearchRequest.MultiGroupBy already references plan.MultiFieldGroupByInfo
-	// after deduplication, so assignment is pointer-level (same message type).
-	queryInfo.MultiGroupBy = t.SearchRequest.GetMultiGroupBy()
+	queryInfo.GroupByFieldIds = t.SearchRequest.GetGroupByFieldIds()
 
 	t.queryInfos = append(t.queryInfos, queryInfo)
 	t.DslType = commonpb.DslType_BoolExprV1
