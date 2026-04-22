@@ -479,11 +479,13 @@ func (s *ConverterSuite) TestGroupByFieldValue_RoundTrip() {
 	})
 	s.Require().NoError(err)
 
-	// Verify GroupByFieldValue is set correctly
-	s.Require().NotNil(exported.GroupByFieldValue)
-	s.Equal("category_id", exported.GroupByFieldValue.FieldName)
-	s.Equal(schemapb.DataType_Int64, exported.GroupByFieldValue.Type)
-	s.Equal([]int64{10, 10, 20, 10, 20}, exported.GroupByFieldValue.GetScalars().GetLongData().GetData())
+	// Unified channel: chain writes the group-by column to the plural slot.
+	// The task output stage downgrades to singular for legacy-wire requests.
+	s.Require().Len(exported.GroupByFieldValues, 1)
+	gbv := exported.GroupByFieldValues[0]
+	s.Equal("category_id", gbv.FieldName)
+	s.Equal(schemapb.DataType_Int64, gbv.Type)
+	s.Equal([]int64{10, 10, 20, 10, 20}, gbv.GetScalars().GetLongData().GetData())
 
 	// Verify GroupByField is NOT in FieldsData
 	for _, fd := range exported.FieldsData {
@@ -529,9 +531,9 @@ func (s *ConverterSuite) TestGroupByFieldValue_RoundTrip_VarChar() {
 	})
 	s.Require().NoError(err)
 
-	s.Require().NotNil(exported.GroupByFieldValue)
+	s.Require().Len(exported.GroupByFieldValues, 1)
 	s.Equal([]string{"electronics", "clothing", "food"},
-		exported.GroupByFieldValue.GetScalars().GetStringData().GetData())
+		exported.GroupByFieldValues[0].GetScalars().GetStringData().GetData())
 	s.Len(exported.FieldsData, 0)
 }
 

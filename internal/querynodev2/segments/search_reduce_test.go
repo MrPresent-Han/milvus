@@ -98,13 +98,14 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 		dataArray := make([]*schemapb.SearchResultData, 0)
 		dataArray = append(dataArray, data1)
 		dataArray = append(dataArray, data2)
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByField(101)
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByFieldIdsFromProto(101, nil)
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
 		suite.Nil(err)
 		suite.ElementsMatch([]int64{1, 2, 3, 4}, res.Ids.GetIntId().Data)
 		suite.ElementsMatch([]float32{-1.0, -2.0, -3.0, -4.0}, res.Scores)
-		suite.ElementsMatch([]int32{2, 3, 4, 5}, res.GroupByFieldValue.GetScalars().GetIntData().Data)
+		suite.Require().Len(res.GroupByFieldValues, 1)
+		suite.ElementsMatch([]int32{2, 3, 4, 5}, res.GroupByFieldValues[0].GetScalars().GetIntData().Data)
 	})
 	suite.Run("reduce_group_by_bool", func() {
 		ids1 := []int64{1, 2}
@@ -142,13 +143,14 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 		dataArray := make([]*schemapb.SearchResultData, 0)
 		dataArray = append(dataArray, data1)
 		dataArray = append(dataArray, data2)
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByField(101)
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByFieldIdsFromProto(101, nil)
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
 		suite.Nil(err)
 		suite.ElementsMatch([]int64{1, 4}, res.Ids.GetIntId().Data)
 		suite.ElementsMatch([]float32{-1.0, -1.0}, res.Scores)
-		suite.ElementsMatch([]bool{true, false}, res.GroupByFieldValue.GetScalars().GetBoolData().Data)
+		suite.Require().Len(res.GroupByFieldValues, 1)
+		suite.ElementsMatch([]bool{true, false}, res.GroupByFieldValues[0].GetScalars().GetBoolData().Data)
 	})
 	suite.Run("reduce_group_by_string", func() {
 		ids1 := []int64{1, 2, 3, 4}
@@ -186,13 +188,14 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 		dataArray := make([]*schemapb.SearchResultData, 0)
 		dataArray = append(dataArray, data1)
 		dataArray = append(dataArray, data2)
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByField(101)
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByFieldIdsFromProto(101, nil)
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
 		suite.Nil(err)
 		suite.ElementsMatch([]int64{1, 2, 3, 4}, res.Ids.GetIntId().Data)
 		suite.ElementsMatch([]float32{-1.0, -2.0, -3.0, -4.0}, res.Scores)
-		suite.ElementsMatch([]string{"1", "2", "3", "4"}, res.GroupByFieldValue.GetScalars().GetStringData().Data)
+		suite.Require().Len(res.GroupByFieldValues, 1)
+		suite.ElementsMatch([]string{"1", "2", "3", "4"}, res.GroupByFieldValues[0].GetScalars().GetStringData().Data)
 	})
 	suite.Run("reduce_group_by_string_with_group_size", func() {
 		ids1 := []int64{1, 2, 3, 4}
@@ -230,13 +233,14 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 		dataArray := make([]*schemapb.SearchResultData, 0)
 		dataArray = append(dataArray, data1)
 		dataArray = append(dataArray, data2)
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(3).WithGroupByField(101)
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(3).WithGroupByFieldIdsFromProto(101, nil)
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
 		suite.Nil(err)
 		suite.ElementsMatch([]int64{1, 4, 2, 5, 3, 6, 7}, res.Ids.GetIntId().Data)
 		suite.ElementsMatch([]float32{-1.0, -1.0, -1.0, -2.0, -3.0, -3.0, -4.0}, res.Scores)
-		suite.ElementsMatch([]string{"1", "1", "2", "2", "3", "3", "4"}, res.GroupByFieldValue.GetScalars().GetStringData().Data)
+		suite.Require().Len(res.GroupByFieldValues, 1)
+		suite.ElementsMatch([]string{"1", "1", "2", "2", "3", "3", "4"}, res.GroupByFieldValues[0].GetScalars().GetStringData().Data)
 	})
 
 	suite.Run("reduce_agg_single_field", func() {
@@ -271,7 +275,7 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 			},
 		}
 		dataArray := []*schemapb.SearchResultData{data1, data2}
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 3).WithGroupSize(1).WithMultiGroupByFieldIds([]int64{101})
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 3).WithGroupSize(1).WithGroupByFieldIds([]int64{101})
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
 		suite.Nil(err)
@@ -333,7 +337,7 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 			},
 		}
 		dataArray := []*schemapb.SearchResultData{data1, data2}
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 2).WithGroupSize(1).WithMultiGroupByFieldIds([]int64{101, 102})
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 2).WithGroupSize(1).WithGroupByFieldIds([]int64{101, 102})
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
 		suite.Nil(err)
@@ -366,7 +370,7 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 				}},
 			},
 		}
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 5).WithGroupSize(1).WithMultiGroupByFieldIds([]int64{101})
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 5).WithGroupSize(1).WithGroupByFieldIds([]int64{101})
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), []*schemapb.SearchResultData{data}, reduceInfo)
 		suite.Nil(err)
@@ -390,7 +394,7 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 				}},
 			},
 		}
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 5).WithGroupSize(2).WithMultiGroupByFieldIds([]int64{101})
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, 5).WithGroupSize(2).WithGroupByFieldIds([]int64{101})
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), []*schemapb.SearchResultData{data}, reduceInfo)
 		suite.Nil(err)
@@ -399,7 +403,7 @@ func (suite *SearchReduceSuite) TestResult_SearchGroupByResult() {
 
 	suite.Run("reduce_group_by_empty_input", func() {
 		dataArray := make([]*schemapb.SearchResultData, 0)
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(3).WithGroupByField(101)
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(3).WithGroupByFieldIdsFromProto(101, nil)
 		searchReduce := InitSearchReducer(reduceInfo)
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), dataArray, reduceInfo)
 		suite.Nil(err)
@@ -506,7 +510,7 @@ func (suite *SearchReduceSuite) TestElementIndices_BackfillNilForEmptyResult() {
 			},
 		}
 
-		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByField(101)
+		reduceInfo := reduce.NewReduceSearchResultInfo(nq, topk).WithGroupSize(1).WithGroupByFieldIdsFromProto(101, nil)
 		searchReduce := &SearchGroupByReduce{}
 		res, err := searchReduce.ReduceSearchResultData(context.TODO(), []*schemapb.SearchResultData{data1, data2}, reduceInfo)
 		suite.NoError(err)

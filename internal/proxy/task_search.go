@@ -116,6 +116,15 @@ type searchTask struct {
 	traceEnabled bool
 
 	aggCtx *search_agg.SearchAggregationContext
+
+	// legacyWire is true when the request came from an SDK that only speaks
+	// the singular group-by proto channel (search_params carries the
+	// GroupByFieldKey keyword and neither GroupByFieldsKey nor
+	// SearchAggregation). The task output stage downgrades the plural
+	// response channel back to singular when this flag is set, preserving
+	// backward compatibility with old-SDK clients that do not yet know how
+	// to read GroupByFieldValues.
+	legacyWire bool
 }
 
 func (t *searchTask) CanSkipAllocTimestamp() bool {
@@ -716,6 +725,16 @@ func (t *searchTask) initSearchRequest(ctx context.Context) error {
 
 	log := log.Ctx(ctx).With(zap.Int64("collID", t.GetCollectionID()), zap.String("collName", t.collectionName))
 
+	// Detect the SDK's group-by wire shape. The old SDK only sends the
+	// GroupByFieldKey (singular) keyword and expects the response group-by
+	// column in SearchResultData.GroupByFieldValue. Presence of the plural
+	// keyword or SearchAggregation indicates a new SDK that reads the plural
+	// channel GroupByFieldValues. The task output stage downgrades plural →
+	// singular when legacyWire is set so old clients keep working.
+	_, singularErr := funcutil.GetAttrByKeyFromRepeatedKV(GroupByFieldKey, t.request.GetSearchParams())
+	_, pluralErr := funcutil.GetAttrByKeyFromRepeatedKV(GroupByFieldsKey, t.request.GetSearchParams())
+	t.legacyWire = singularErr == nil && pluralErr != nil && t.request.GetSearchAggregation() == nil
+
 	plan, queryInfo, offset, isIterator, orderByFields, searchType, err := t.tryGeneratePlan(t.request.GetSearchParams(), t.request.GetDsl(), t.request.GetExprTemplateValues())
 	if err != nil {
 		return err
@@ -1124,11 +1143,14 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 			}
 		}
 	}
-	if t.result.GetResults().GetGroupByFieldValue() != nil &&
-		t.result.GetResults().GetGroupByFieldValue().GetType() == schemapb.DataType_Geometry {
-		if err := validateGeometryFieldSearchResult(&t.result.Results.GroupByFieldValue); err != nil {
-			log.Warn("fail to validate geometry field search result", zap.Error(err))
-			return err
+	// Validate Geometry on all group-by columns. All internal pipeline
+	// stages emit plural; runs before the legacy-wire downgrade below.
+	for i, gbv := range t.result.GetResults().GetGroupByFieldValues() {
+		if gbv != nil && gbv.GetType() == schemapb.DataType_Geometry {
+			if err := validateGeometryFieldSearchResult(&t.result.Results.GroupByFieldValues[i]); err != nil {
+				log.Warn("fail to validate geometry field search result", zap.Error(err))
+				return err
+			}
 		}
 	}
 
@@ -1152,6 +1174,18 @@ func (t *searchTask) PostExecute(ctx context.Context) error {
 		if err != nil {
 			log.Warn("fail to translate timestamp", zap.Error(err))
 			return err
+		}
+	}
+
+	// Legacy-wire downgrade: the old SDK only reads the singular channel
+	// (GroupByFieldValue). All internal pipeline stages emit to the plural
+	// channel; this is the single boundary that moves the 1-element plural
+	// column back into the singular channel so old clients see the group-by
+	// result. New-SDK requests leave the plural channel as-is.
+	if t.legacyWire {
+		if rd := t.result.GetResults(); rd != nil && len(rd.GetGroupByFieldValues()) == 1 {
+			rd.GroupByFieldValue = rd.GroupByFieldValues[0]
+			rd.GroupByFieldValues = nil
 		}
 	}
 

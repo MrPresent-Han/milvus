@@ -84,6 +84,7 @@ func (s *SearchPipelineSuite) TestSearchReduceOp() {
 		[]int64{1},
 		[]*planpb.QueryInfo{{}},
 		nil,
+		false,
 	}
 	_, err := op.run(context.Background(), s.span, []*internalpb.SearchResults{data})
 	s.NoError(err)
@@ -173,6 +174,7 @@ func (s *SearchPipelineSuite) TestRerankOp() {
 		[]int64{1},
 		[]*planpb.QueryInfo{{}},
 		nil,
+		false,
 	}
 
 	data := genTestSearchResultData(nq, topk, schemapb.DataType_Int64, "ts", 103, false)
@@ -2319,9 +2321,11 @@ func (s *SearchPipelineSuite) TestOrderByOperatorWithGroupBy() {
 					},
 				},
 			},
-			// GroupByFieldValue indicates group membership
+			// Group-by column via the plural channel — orderBy reads plural only
+			// after the Step 3.3c.3 redo; task-output boundary handles legacy
+			// wire downgrade.
 			// "A", "A", "B", "C", "C", "C"
-			GroupByFieldValue: &schemapb.FieldData{
+			GroupByFieldValues: []*schemapb.FieldData{{
 				Type: schemapb.DataType_VarChar,
 				Field: &schemapb.FieldData_Scalars{
 					Scalars: &schemapb.ScalarField{
@@ -2330,7 +2334,7 @@ func (s *SearchPipelineSuite) TestOrderByOperatorWithGroupBy() {
 						},
 					},
 				},
-			},
+			}},
 		},
 	}
 
@@ -2352,9 +2356,10 @@ func (s *SearchPipelineSuite) TestOrderByOperatorWithGroupBy() {
 	expectedIds := []int64{3, 4, 5, 6, 1, 2}
 	s.Equal(expectedIds, sortedResult.Results.Ids.GetIntId().Data)
 
-	// Verify group by values are also reordered correctly
+	// Verify group by values are also reordered correctly (plural channel).
 	expectedGroupValues := []string{"B", "C", "C", "C", "A", "A"}
-	actualGroupValues := sortedResult.Results.GroupByFieldValue.GetScalars().GetStringData().Data
+	s.Require().Len(sortedResult.Results.GetGroupByFieldValues(), 1)
+	actualGroupValues := sortedResult.Results.GetGroupByFieldValues()[0].GetScalars().GetStringData().Data
 	s.Equal(expectedGroupValues, actualGroupValues)
 }
 
@@ -3415,11 +3420,11 @@ func (s *SearchPipelineSuite) TestOrderByOperatorWithGroupByInt64() {
 					},
 				},
 			},
-			// GroupByFieldValue with Int64 type
+			// Group-by column via the plural channel (Step 3.3c.3 redo).
 			// Group 100: ids [1,2], prices [30,25]
 			// Group 200: ids [3], price [10]
 			// Group 300: ids [4,5], prices [20,15]
-			GroupByFieldValue: &schemapb.FieldData{
+			GroupByFieldValues: []*schemapb.FieldData{{
 				Type: schemapb.DataType_Int64,
 				Field: &schemapb.FieldData_Scalars{
 					Scalars: &schemapb.ScalarField{
@@ -3428,7 +3433,7 @@ func (s *SearchPipelineSuite) TestOrderByOperatorWithGroupByInt64() {
 						},
 					},
 				},
-			},
+			}},
 		},
 	}
 

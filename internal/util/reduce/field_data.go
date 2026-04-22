@@ -41,6 +41,14 @@ func WriteGroupByFieldValues(
 		var template *schemapb.FieldData
 		for i, srd := range sources {
 			fd := FindFieldDataByID(srd.GetGroupByFieldValues(), fid)
+			// N=1 legacy path: upstream wrote the group-by column to the
+			// singular channel (SearchResultData.group_by_field_value) without
+			// a FieldId stamp. Fall back to that channel so the unified
+			// proxy-side reducer can read legacy inputs and still emit the
+			// plural output downstream consumers expect.
+			if fd == nil && len(fieldIDs) == 1 {
+				fd = srd.GetGroupByFieldValue()
+			}
 			if fd == nil {
 				continue
 			}

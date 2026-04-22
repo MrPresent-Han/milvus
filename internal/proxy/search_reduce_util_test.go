@@ -81,11 +81,12 @@ func (struts *SearchReduceUtilTestSuite) TestReduceSearchResultWithEmtpyGroupDat
 		Recalls:          make([]float32, 0),
 		PrimaryFieldName: "",
 	}
-	results, err := reduceSearchResultDataWithSingleGroupBy(context.Background(), []*schemapb.SearchResultData{emptyData},
-		nq, topk, "L2", schemapb.DataType_Int64, 0, 1, 101)
+	results, err := reduceSearchResultDataWithGroupBy(context.Background(), []*schemapb.SearchResultData{emptyData},
+		nq, topk, "L2", schemapb.DataType_Int64, 0, 1, []int64{101})
 	struts.Error(err)
 	struts.ErrorContains(err, "failed to construct group by field data builder")
-	struts.Nil(results.Results.GetGroupByFieldValue())
+	struts.Empty(results.Results.GetGroupByFieldValues(),
+		"reducer must not populate the plural channel when no group-by column was present in any shard")
 }
 
 // TestReduceWithEmptyFieldsData tests reduce functions when FieldsData is empty (requery scenario)
@@ -169,7 +170,7 @@ func (struts *SearchReduceUtilTestSuite) TestReduceWithEmptyFieldsData() {
 			},
 		}
 
-		results, err := reduceSearchResultDataWithSingleGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, "L2", schemapb.DataType_Int64, offset, int64(2), 101)
+		results, err := reduceSearchResultDataWithGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, "L2", schemapb.DataType_Int64, offset, int64(2), []int64{101})
 		struts.NoError(err)
 		struts.NotNil(results)
 		// FieldsData should be empty since all inputs were empty
@@ -538,18 +539,26 @@ func (struts *SearchReduceUtilTestSuite) TestReduceAdvanceGroupBy_SingleShardMat
 	}
 }
 
-// TestReduceSearchResult_MultiGroupBy_OffsetIgnored verifies the core contract
-// introduced alongside the multi-groupBy reduce path: the dispatcher's multi
-// route must be offset-agnostic. The same inputs routed through the dispatcher
-// with any ResultInfo.Offset value must yield bit-equal output.
+// TestReduceSearchResult_MultiGroupBy_OffsetSemantics pins the two-valued
+// offset contract for the multi-groupBy reduce path:
 //
-// Invariance-style — asserts only "offset has no effect", independent of any
-// specific expected payload, so this test keeps holding even if ordering or
-// shape details are tweaked in the future, as long as offset-independence does.
-func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_MultiGroupBy_OffsetIgnored() {
-	// Two shards covering 5 distinct composite keys (brand, category).
-	// With topK=3 + groupSize=2, an offset-aware path WOULD skip the top
-	// group(s); a correctly-implemented multi path must not.
+//  1. Regular multi-groupBy (not SearchAggregation) honours ResultInfo.Offset:
+//     the first `offset` distinct composite keys (in score-desc walk order)
+//     are skipped before acceptance begins. A subsequent row belonging to an
+//     already-skipped group is also dropped so group-level pagination is
+//     preserved end-to-end.
+//  2. SearchAggregation requests are invariant to offset because the aggOp
+//     downstream handles pagination; the dispatcher zeroes offset before
+//     calling the reducer so the same inputs produce bit-equal output
+//     regardless of the offset set on ResultInfo.
+func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_MultiGroupBy_OffsetSemantics() {
+	// Score-desc walk order of distinct composite keys across the two shards:
+	//   (A,X) @0.9  (shardA pk=1)      ← distinct #1
+	//   (A,X) @0.85 (shardB pk=11)     already seen
+	//   (A,Y) @0.7  (shardA pk=2)      ← distinct #2
+	//   (B,Y) @0.65 (shardB pk=12)     ← distinct #3
+	//   (B,X) @0.5  (shardA pk=3)      ← distinct #4
+	//   (C,X) @0.45 (shardB pk=13)     ← distinct #5
 	buildShards := func() []*schemapb.SearchResultData {
 		shardA := &schemapb.SearchResultData{
 			NumQueries: 1, TopK: 3,
@@ -574,33 +583,46 @@ func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_MultiGroupBy_Off
 		return []*schemapb.SearchResultData{shardA, shardB}
 	}
 
-	runWithOffset := func(offset int64) *schemapb.SearchResultData {
+	runWithOffset := func(offset int64, isAgg bool) *schemapb.SearchResultData {
 		info := reduce.NewReduceSearchResultInfo(1, 3).
 			WithMetricType(metric.IP).
 			WithPkType(schemapb.DataType_Int64).
 			WithOffset(offset).
 			WithGroupSize(2).
-			WithMultiGroupByFieldIds([]int64{101, 102})
+			WithGroupByFieldIds([]int64{101, 102}).
+			WithSearchAggregation(isAgg)
 		ret, err := reduceSearchResult(context.Background(), buildShards(), info)
 		struts.Require().NoError(err)
 		struts.Require().NotNil(ret)
 		return ret.GetResults()
 	}
 
-	base := runWithOffset(0)
+	// Part 1: regular multi-groupBy — offset is applied.
+	base := runWithOffset(0, false)
+	withOffset := runWithOffset(1, false)
+	struts.False(proto.Equal(base, withOffset),
+		"multi-groupBy with offset=1 must diverge from offset=0 (offset applied)")
+	// offset=1 skips the first distinct group (A,X). Rows belonging to (A,X)
+	// — shardA pk=1 and shardB pk=11 — must not appear in the output.
+	ids := withOffset.GetIds().GetIntId().GetData()
+	struts.NotContains(ids, int64(1), "pk=1 belongs to skipped group (A,X)")
+	struts.NotContains(ids, int64(11), "pk=11 belongs to skipped group (A,X)")
+
+	// Part 2: SearchAggregation — offset has no effect.
+	aggBase := runWithOffset(0, true)
 	for _, off := range []int64{1, 2, 3, 10, 100} {
-		other := runWithOffset(off)
-		struts.Truef(proto.Equal(base, other),
-			"multi-groupBy output must be invariant to offset; offset=%d diverged from offset=0", off)
+		aggOther := runWithOffset(off, true)
+		struts.Truef(proto.Equal(aggBase, aggOther),
+			"SearchAggregation output must be invariant to offset; offset=%d diverged from offset=0", off)
 	}
 }
 
 // TestReduceSearchResult_SingleGroupBy_FieldIdStampedByReducer verifies that
-// the single-groupBy output's GroupByFieldValue.FieldId matches the value
-// passed via WithGroupByField. This stamp previously happened in the
-// dispatcher; after the refactor, the reducer owns it. We seed the source's
-// GroupByFieldValue with a DIFFERENT FieldId so a regression that copied the
-// source id through (instead of overwriting with the requested id) would fail.
+// the unified reducer stamps the requested FieldId on its plural-channel
+// output for a single-field (N=1) request, overwriting any id the shard's
+// source GroupByFieldValue happened to carry. After the Step 3.3 unification
+// the reducer always emits to the plural channel regardless of field count,
+// so the singular channel must stay empty.
 func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_SingleGroupBy_FieldIdStampedByReducer() {
 	const requestedFieldId int64 = 101
 	const sourceFieldId int64 = 999 // intentionally != requestedFieldId
@@ -624,21 +646,22 @@ func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_SingleGroupBy_Fi
 	info := reduce.NewReduceSearchResultInfo(1, 2).
 		WithMetricType(metric.IP).
 		WithPkType(schemapb.DataType_Int64).
-		WithGroupByField(requestedFieldId).
+		WithGroupByFieldIdsFromProto(requestedFieldId, nil).
 		WithGroupSize(1)
 	ret, err := reduceSearchResult(context.Background(),
 		[]*schemapb.SearchResultData{shard}, info)
 
 	struts.Require().NoError(err)
 	struts.Require().NotNil(ret)
-	gbv := ret.GetResults().GetGroupByFieldValue()
-	struts.Require().NotNil(gbv, "single-groupBy must populate GroupByFieldValue")
-	struts.Equal(requestedFieldId, gbv.GetFieldId(),
-		"FieldId must be stamped with the value from WithGroupByField(%d); got %d",
-		requestedFieldId, gbv.GetFieldId())
-	// Sanity: the multi-field channel is the wrong channel for single-groupBy.
-	struts.Empty(ret.GetResults().GetGroupByFieldValues(),
-		"single-groupBy output must not populate the multi-field channel")
+	// Plural channel carries the group-by column for N=1 after Step 3.3.
+	gbvs := ret.GetResults().GetGroupByFieldValues()
+	struts.Require().Len(gbvs, 1, "unified reducer must emit exactly one plural-channel column for N=1")
+	struts.Equal(requestedFieldId, gbvs[0].GetFieldId(),
+		"FieldId must be stamped with the value from WithGroupByFieldIdsFromProto(%d, nil); got %d",
+		requestedFieldId, gbvs[0].GetFieldId())
+	// Singular channel must stay empty — unified reducer emits plural only.
+	struts.Nil(ret.GetResults().GetGroupByFieldValue(),
+		"unified reducer must not populate the legacy singular channel")
 }
 
 // TestReduceSearchResult_MultiGroupBy_TwoNq_TwoShards_Semantics verifies the
@@ -695,7 +718,7 @@ func (struts *SearchReduceUtilTestSuite) TestReduceSearchResult_MultiGroupBy_Two
 		WithMetricType(metric.IP).
 		WithPkType(schemapb.DataType_Int64).
 		WithGroupSize(2).
-		WithMultiGroupByFieldIds([]int64{101, 102})
+		WithGroupByFieldIds([]int64{101, 102})
 	ret, err := reduceSearchResult(context.Background(),
 		[]*schemapb.SearchResultData{shardA, shardB}, info)
 	struts.Require().NoError(err)

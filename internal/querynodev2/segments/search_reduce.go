@@ -311,7 +311,7 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 }
 
 func InitSearchReducer(info *reduce.ResultInfo) SearchReduce {
-	if info.GetGroupByFieldId() > 0 || info.HasMultiGroupBy() {
+	if info.HasGroupBy() {
 		return &SearchGroupByReduce{}
 	}
 	return &SearchCommonReduce{}
@@ -340,23 +340,12 @@ func findReduceGroupEntry(bucket []*reduceGroupEntry, values []any) *reduceGroup
 // reduce.NormalizeScalar so types align with the proxy-side reducer.
 type keyExtractor func(idx int) (uint64, []any)
 
+// buildKeyExtractors builds per-shard composite-key extractors for the
+// unified group-by reduce. The multi-field factory handles both N=1 (via
+// singular-channel fallback for legacy segcore output) and N>=2 cases; the
+// separate buildSingleFieldExtractors factory has been subsumed.
 func buildKeyExtractors(searchResultData []*schemapb.SearchResultData, info *reduce.ResultInfo) []keyExtractor {
-	if info.HasMultiGroupBy() {
-		return buildMultiFieldExtractors(searchResultData, info.GetMultiGroupByFieldIds())
-	}
-	return buildSingleFieldExtractors(searchResultData)
-}
-
-func buildSingleFieldExtractors(searchResultData []*schemapb.SearchResultData) []keyExtractor {
-	// Single-field group-by is the N=1 specialization of the multi-field
-	// extractor. Wrap the GroupByFieldValue iterator as a 1-element iters
-	// slice and reuse the shared factory.
-	extractors := make([]keyExtractor, len(searchResultData))
-	for i := range searchResultData {
-		iter := typeutil.GetDataIterator(searchResultData[i].GetGroupByFieldValue())
-		extractors[i] = reduce.MakeCompositeKeyExtractor([]func(int) any{iter})
-	}
-	return extractors
+	return buildMultiFieldExtractors(searchResultData, info.GetGroupByFieldIds())
 }
 
 func buildMultiFieldExtractors(searchResultData []*schemapb.SearchResultData, groupByFieldIDs []int64) []keyExtractor {
@@ -366,6 +355,11 @@ func buildMultiFieldExtractors(searchResultData []*schemapb.SearchResultData, gr
 		for j, fieldID := range groupByFieldIDs {
 			// Group-by columns ride on proto field 17, separate from FieldsData.
 			fieldData := reduce.FindFieldDataByID(searchResultData[i].GetGroupByFieldValues(), fieldID)
+			// N=1 legacy fallback: segcore for a single-field request writes to
+			// the singular channel (GroupByFieldValue) without a FieldId stamp.
+			if fieldData == nil && len(groupByFieldIDs) == 1 {
+				fieldData = searchResultData[i].GetGroupByFieldValue()
+			}
 			if fieldData != nil {
 				iters[j] = typeutil.GetDataIterator(fieldData)
 			}
@@ -375,38 +369,11 @@ func buildMultiFieldExtractors(searchResultData []*schemapb.SearchResultData, gr
 	return extractors
 }
 
+// writeGroupByOutput emits the plural group-by channel unconditionally — the
+// proxy-side builders now consolidate legacy singular ids into the unified
+// slice via WithGroupByFieldIdsFromProto, so HasMultiGroupBy is always true
+// for group-by requests. WriteGroupByFieldValues' singular-channel fallback
+// covers the case where upstream segcore emitted the legacy channel shape.
 func writeGroupByOutput(ret *schemapb.SearchResultData, acceptedRows []reduce.RowRef, searchResultData []*schemapb.SearchResultData, info *reduce.ResultInfo) error {
-	if info.HasMultiGroupBy() {
-		return reduce.WriteGroupByFieldValues(ret, acceptedRows, searchResultData, info.GetMultiGroupByFieldIds())
-	}
-	if len(acceptedRows) == 0 {
-		if len(searchResultData) == 0 || searchResultData[0].GetGroupByFieldValue() == nil {
-			ret.GroupByFieldValue = nil
-			return nil
-		}
-		gpFieldBuilder, err := typeutil.NewFieldDataBuilder(searchResultData[0].GetGroupByFieldValue().GetType(), true, 0)
-		if err != nil {
-			return err
-		}
-		ret.GroupByFieldValue = gpFieldBuilder.Build()
-		return nil
-	}
-	baseField := searchResultData[acceptedRows[0].ResultIdx].GetGroupByFieldValue()
-	if baseField == nil {
-		ret.GroupByFieldValue = nil
-		return nil
-	}
-	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(baseField.GetType(), true, len(acceptedRows))
-	if err != nil {
-		return err
-	}
-	iterators := make([]func(int) any, len(searchResultData))
-	for i := range searchResultData {
-		iterators[i] = typeutil.GetDataIterator(searchResultData[i].GetGroupByFieldValue())
-	}
-	for _, rowRef := range acceptedRows {
-		gpFieldBuilder.Add(iterators[rowRef.ResultIdx](int(rowRef.RowIdx)))
-	}
-	ret.GroupByFieldValue = gpFieldBuilder.Build()
-	return nil
+	return reduce.WriteGroupByFieldValues(ret, acceptedRows, searchResultData, info.GetGroupByFieldIds())
 }

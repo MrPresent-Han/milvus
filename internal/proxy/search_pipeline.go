@@ -163,15 +163,16 @@ func NewNode(info *nodeDef, t *searchTask) (*Node, error) {
 }
 
 type searchReduceOperator struct {
-	traceCtx           context.Context
-	primaryFieldSchema *schemapb.FieldSchema
-	nq                 int64
-	topK               int64
-	offset             int64
-	collectionID       int64
-	partitionIDs       []int64
-	queryInfos         []*planpb.QueryInfo
-	collSchema         *schemapb.CollectionSchema
+	traceCtx            context.Context
+	primaryFieldSchema  *schemapb.FieldSchema
+	nq                  int64
+	topK                int64
+	offset              int64
+	collectionID        int64
+	partitionIDs        []int64
+	queryInfos          []*planpb.QueryInfo
+	collSchema          *schemapb.CollectionSchema
+	isSearchAggregation bool
 }
 
 func newSearchReduceOperator(t *searchTask, _ map[string]any) (operator, error) {
@@ -180,15 +181,16 @@ func newSearchReduceOperator(t *searchTask, _ map[string]any) (operator, error) 
 		return nil, err
 	}
 	return &searchReduceOperator{
-		traceCtx:           t.TraceCtx(),
-		primaryFieldSchema: pkField,
-		nq:                 t.GetNq(),
-		topK:               t.GetTopk(),
-		offset:             t.GetOffset(),
-		collectionID:       t.GetCollectionID(),
-		partitionIDs:       t.GetPartitionIDs(),
-		queryInfos:         t.queryInfos,
-		collSchema:         t.schema.CollectionSchema,
+		traceCtx:            t.TraceCtx(),
+		primaryFieldSchema:  pkField,
+		nq:                  t.GetNq(),
+		topK:                t.GetTopk(),
+		offset:              t.GetOffset(),
+		collectionID:        t.GetCollectionID(),
+		partitionIDs:        t.GetPartitionIDs(),
+		queryInfos:          t.queryInfos,
+		collSchema:          t.schema.CollectionSchema,
+		isSearchAggregation: t.aggCtx != nil,
 	}, nil
 }
 
@@ -199,7 +201,7 @@ func (op *searchReduceOperator) run(ctx context.Context, span trace.Span, inputs
 	metricType := getMetricType(toReduceResults)
 	result, err := reduceResults(
 		op.traceCtx, toReduceResults, op.nq, op.topK, op.offset,
-		metricType, op.primaryFieldSchema.GetDataType(), op.queryInfos[0], false, op.collectionID, op.partitionIDs)
+		metricType, op.primaryFieldSchema.GetDataType(), op.queryInfos[0], false, op.isSearchAggregation, op.collectionID, op.partitionIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -270,7 +272,7 @@ func (op *hybridSearchReduceOperator) run(ctx context.Context, span trace.Span, 
 		subMetricType := getMetricType(internalResults)
 		result, err := reduceResults(
 			op.traceCtx, internalResults, subReq.GetNq(), subReq.GetTopk(), subReq.GetOffset(), subMetricType,
-			op.primaryFieldSchema.GetDataType(), op.queryInfos[index], true, op.collectionID, op.partitionIDs)
+			op.primaryFieldSchema.GetDataType(), op.queryInfos[index], true, false, op.collectionID, op.partitionIDs)
 		if err != nil {
 			return nil, err
 		}
@@ -571,7 +573,10 @@ func fillFieldNames(schema *schemapb.CollectionSchema, resultData *schemapb.Sear
 			}
 		}
 	}
-	if gbv := resultData.GetGroupByFieldValue(); gbv != nil && gbv.GetFieldName() == "" {
+	for _, gbv := range resultData.GetGroupByFieldValues() {
+		if gbv == nil || gbv.GetFieldName() != "" {
+			continue
+		}
 		if name, ok := fieldIDToName[gbv.GetFieldId()]; ok {
 			gbv.FieldName = name
 		}
@@ -1541,11 +1546,17 @@ func (op *orderByOperator) sortGroupsByOrderByFields(result *milvuspb.SearchResu
 		return nil
 	}
 
-	groupByValue := result.GetResults().GetGroupByFieldValue()
-	if groupByValue == nil {
+	// All internal pipeline stages emit to the plural channel. The task
+	// output boundary downgrades to singular for legacy-wire SDK clients,
+	// which runs after orderBy, so this reader sees plural only. orderBy
+	// inspects column 0 because orderBy + multi-field composite key is not
+	// a pipeline combination constructed today.
+	gbvs := result.GetResults().GetGroupByFieldValues()
+	if len(gbvs) == 0 {
 		// No group by field value, fall back to regular sort
 		return op.sortResultsByOrderByFields(result, indices)
 	}
+	groupByValue := gbvs[0]
 
 	// Find group boundaries by detecting when GroupByFieldValue changes
 	// Each group is represented as [startLocalIdx, endLocalIdx) - indices into the 'indices' slice
@@ -1793,9 +1804,10 @@ func (op *orderByOperator) reorderResults(result *milvuspb.SearchResults, indice
 		}
 	}
 
-	// Reorder group by field value if present
-	if groupByValue := results.GetGroupByFieldValue(); groupByValue != nil {
-		if err := reorderFieldData(groupByValue, indices); err != nil {
+	// Reorder every group-by column — all internal stages emit plural; the
+	// task output boundary handles legacy-wire singular downgrade after.
+	for _, gbv := range results.GetGroupByFieldValues() {
+		if err := reorderFieldData(gbv, indices); err != nil {
 			return err
 		}
 	}

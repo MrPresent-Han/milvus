@@ -2465,7 +2465,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 			t.Run(test.description, func(t *testing.T) {
 				reduced, err := reduceSearchResult(context.TODO(), results,
 					reduce.NewReduceSearchResultInfo(nq, topk).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).
-						WithOffset(test.offset).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()))
+						WithOffset(test.offset).WithGroupByFieldIdsFromProto(queryInfo.GetGroupByFieldId(), nil).WithGroupSize(queryInfo.GetGroupSize()))
 				assert.NoError(t, err)
 				assert.Equal(t, test.outData, reduced.GetResults().GetIds().GetIntId().GetData())
 				assert.Equal(t, []int64{test.limit, test.limit}, reduced.GetResults().GetTopks())
@@ -2518,7 +2518,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 			t.Run(test.description, func(t *testing.T) {
 				reduced, err := reduceSearchResult(context.TODO(), results,
 					reduce.NewReduceSearchResultInfo(nq, topk).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).WithOffset(test.offset).
-						WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()))
+						WithGroupByFieldIdsFromProto(queryInfo.GetGroupByFieldId(), nil).WithGroupSize(queryInfo.GetGroupSize()))
 				assert.NoError(t, err)
 				assert.Equal(t, test.outData, reduced.GetResults().GetIds().GetIntId().GetData())
 				assert.Equal(t, []int64{test.outLimit, test.outLimit}, reduced.GetResults().GetTopks())
@@ -2547,7 +2547,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 		}
 
 		reduced, err := reduceSearchResult(context.TODO(), results,
-			reduce.NewReduceSearchResultInfo(nq, topk).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()))
+			reduce.NewReduceSearchResultInfo(nq, topk).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).WithGroupByFieldIdsFromProto(queryInfo.GetGroupByFieldId(), nil).WithGroupSize(queryInfo.GetGroupSize()))
 		assert.NoError(t, err)
 		assert.Equal(t, resultData, reduced.GetResults().GetIds().GetIntId().GetData())
 		assert.Equal(t, []int64{5, 5}, reduced.GetResults().GetTopks())
@@ -2576,7 +2576,7 @@ func TestTaskSearch_reduceSearchResultData(t *testing.T) {
 			GroupByFieldId: -1,
 		}
 		reduced, err := reduceSearchResult(context.TODO(), results,
-			reduce.NewReduceSearchResultInfo(nq, topk).WithMetricType(metric.L2).WithPkType(schemapb.DataType_VarChar).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()))
+			reduce.NewReduceSearchResultInfo(nq, topk).WithMetricType(metric.L2).WithPkType(schemapb.DataType_VarChar).WithGroupByFieldIdsFromProto(queryInfo.GetGroupByFieldId(), nil).WithGroupSize(queryInfo.GetGroupSize()))
 
 		assert.NoError(t, err)
 		assert.Equal(t, resultData, reduced.GetResults().GetIds().GetStrId().GetData())
@@ -2697,11 +2697,14 @@ func TestTaskSearch_reduceGroupBySearchResultData(t *testing.T) {
 				reduce.NewReduceSearchResultInfo(nq, topK).
 					WithMetricType(metric.L2).
 					WithPkType(schemapb.DataType_Int64).
-					WithGroupByField(queryInfo.GetGroupByFieldId()).
+					WithGroupByFieldIdsFromProto(queryInfo.GetGroupByFieldId(), nil).
 					WithGroupSize(queryInfo.GetGroupSize()))
 			resultIDs := reduced.GetResults().GetIds().GetIntId().Data
 			resultScores := reduced.GetResults().GetScores()
-			resultGroupByValues := reduced.GetResults().GetGroupByFieldValue()
+			// Unified reducer emits plural channel; single-field is slot 0.
+			gbvs := reduced.GetResults().GetGroupByFieldValues()
+			require.Len(t, gbvs, 1, "single-field group-by must emit one plural column")
+			resultGroupByValues := gbvs[0]
 			assert.EqualValues(t, tt.expectedIDs, resultIDs)
 			assert.EqualValues(t, tt.expectedScores, resultScores)
 			assert.EqualValues(t, tt.expectedGroupByValues, resultGroupByValues)
@@ -2758,10 +2761,12 @@ func TestTaskSearch_reduceGroupBySearchResultDataWithOffset(t *testing.T) {
 		GroupSize:      1,
 	}
 	reduced, err := reduceSearchResult(context.TODO(), results,
-		reduce.NewReduceSearchResultInfo(nq, limit+offset).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).WithOffset(offset).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()))
+		reduce.NewReduceSearchResultInfo(nq, limit+offset).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).WithOffset(offset).WithGroupByFieldIdsFromProto(queryInfo.GetGroupByFieldId(), nil).WithGroupSize(queryInfo.GetGroupSize()))
 	resultIDs := reduced.GetResults().GetIds().GetIntId().Data
 	resultScores := reduced.GetResults().GetScores()
-	resultGroupByValues := reduced.GetResults().GetGroupByFieldValue().GetScalars().GetLongData().GetData()
+	gbvs := reduced.GetResults().GetGroupByFieldValues()
+	require.Len(t, gbvs, 1, "single-field group-by must emit one plural column")
+	resultGroupByValues := gbvs[0].GetScalars().GetLongData().GetData()
 	assert.EqualValues(t, expectedIDs, resultIDs)
 	assert.EqualValues(t, expectedScores, resultScores)
 	assert.EqualValues(t, expectedGroupByValues, resultGroupByValues)
@@ -2832,11 +2837,13 @@ func TestTaskSearch_reduceGroupBySearchWithGroupSizeMoreThanOne(t *testing.T) {
 				GroupSize:      2,
 			}
 			reduced, err := reduceSearchResult(context.TODO(), results,
-				reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()))
+				reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.L2).WithPkType(schemapb.DataType_Int64).WithGroupByFieldIdsFromProto(queryInfo.GetGroupByFieldId(), nil).WithGroupSize(queryInfo.GetGroupSize()))
 
 			resultIDs := reduced.GetResults().GetIds().GetIntId().Data
 			resultScores := reduced.GetResults().GetScores()
-			resultGroupByValues := reduced.GetResults().GetGroupByFieldValue().GetScalars().GetLongData().GetData()
+			gbvs := reduced.GetResults().GetGroupByFieldValues()
+			require.Len(t, gbvs, 1, "single-field group-by must emit one plural column")
+			resultGroupByValues := gbvs[0].GetScalars().GetLongData().GetData()
 			assert.EqualValues(t, expectedIDs[i], resultIDs)
 			assert.EqualValues(t, expectedScores[i], resultScores)
 			assert.EqualValues(t, expectedGroupByValues[i], resultGroupByValues)
@@ -2897,18 +2904,18 @@ func TestTaskSearch_reduceAdvanceSearchGroupBy(t *testing.T) {
 	groupSize := int64(3)
 
 	reducedRes, err := reduceSearchResult(context.Background(), subSearchResultData,
-		reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.IP).WithPkType(schemapb.DataType_Int64).WithGroupByField(groupByField).WithGroupSize(groupSize).WithAdvance(true))
+		reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.IP).WithPkType(schemapb.DataType_Int64).WithGroupByFieldIdsFromProto(groupByField, nil).WithGroupSize(groupSize).WithAdvance(true))
 	assert.NoError(t, err)
 	// reduce_advance_groupby will only merge results from different delegator without reducing any result
 	assert.Equal(t, 18, len(reducedRes.GetResults().Ids.GetIntId().Data))
 	assert.Equal(t, 18, len(reducedRes.GetResults().GetScores()))
-	assert.Equal(t, 18, len(reducedRes.GetResults().GetGroupByFieldValue().GetScalars().GetStringData().Data))
+	assert.Equal(t, 18, len(reducedRes.GetResults().GetGroupByFieldValues()[0].GetScalars().GetStringData().Data))
 	assert.Equal(t, topK, reducedRes.GetResults().GetTopK())
 	assert.Equal(t, []int64{18}, reducedRes.GetResults().GetTopks())
 
 	assert.Equal(t, []int64{7, 5, 6, 11, 22, 14, 31, 23, 37, 17, 15, 16, 21, 32, 24, 41, 33, 27}, reducedRes.GetResults().Ids.GetIntId().Data)
 	assert.Equal(t, []float32{0.9, 0.7, 0.65, 0.55, 0.52, 0.51, 0.5, 0.45, 0.43, 0.83, 0.72, 0.72, 0.65, 0.63, 0.55, 0.52, 0.51, 0.48}, reducedRes.GetResults().GetScores())
-	assert.Equal(t, []string{"aaa", "bbb", "ccc", "bbb", "bbb", "ccc", "aaa", "ccc", "aaa", "xxx", "bbb", "ddd", "bbb", "bbb", "ddd", "xxx", "ddd", "xxx"}, reducedRes.GetResults().GetGroupByFieldValue().GetScalars().GetStringData().Data)
+	assert.Equal(t, []string{"aaa", "bbb", "ccc", "bbb", "bbb", "ccc", "aaa", "ccc", "aaa", "xxx", "bbb", "ddd", "bbb", "bbb", "ddd", "xxx", "ddd", "xxx"}, reducedRes.GetResults().GetGroupByFieldValues()[0].GetScalars().GetStringData().Data)
 }
 
 func TestTaskSearch_reduceAdvanceSearchGroupByShortCut(t *testing.T) {
@@ -2941,19 +2948,19 @@ func TestTaskSearch_reduceAdvanceSearchGroupByShortCut(t *testing.T) {
 	groupSize := int64(3)
 
 	reducedRes, err := reduceSearchResult(context.Background(), subSearchResultData,
-		reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.IP).WithPkType(schemapb.DataType_Int64).WithGroupByField(groupByField).WithGroupSize(groupSize).WithAdvance(true))
+		reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.IP).WithPkType(schemapb.DataType_Int64).WithGroupByFieldIdsFromProto(groupByField, nil).WithGroupSize(groupSize).WithAdvance(true))
 
 	assert.NoError(t, err)
 	// reduce_advance_groupby will only merge results from different delegator without reducing any result
 	assert.Equal(t, 9, len(reducedRes.GetResults().Ids.GetIntId().Data))
 	assert.Equal(t, 9, len(reducedRes.GetResults().GetScores()))
-	assert.Equal(t, 9, len(reducedRes.GetResults().GetGroupByFieldValue().GetScalars().GetStringData().Data))
+	assert.Equal(t, 9, len(reducedRes.GetResults().GetGroupByFieldValues()[0].GetScalars().GetStringData().Data))
 	assert.Equal(t, topK, reducedRes.GetResults().GetTopK())
 	assert.Equal(t, []int64{9}, reducedRes.GetResults().GetTopks())
 
 	assert.Equal(t, []int64{7, 5, 6, 11, 22, 14, 31, 23, 37}, reducedRes.GetResults().Ids.GetIntId().Data)
 	assert.Equal(t, []float32{0.9, 0.7, 0.65, 0.55, 0.52, 0.51, 0.5, 0.45, 0.43}, reducedRes.GetResults().GetScores())
-	assert.Equal(t, []string{"aaa", "bbb", "ccc", "bbb", "bbb", "ccc", "aaa", "ccc", "aaa"}, reducedRes.GetResults().GetGroupByFieldValue().GetScalars().GetStringData().Data)
+	assert.Equal(t, []string{"aaa", "bbb", "ccc", "bbb", "bbb", "ccc", "aaa", "ccc", "aaa"}, reducedRes.GetResults().GetGroupByFieldValues()[0].GetScalars().GetStringData().Data)
 }
 
 func TestTaskSearch_reduceAdvanceSearchGroupByMultipleNq(t *testing.T) {
@@ -3008,23 +3015,23 @@ func TestTaskSearch_reduceAdvanceSearchGroupByMultipleNq(t *testing.T) {
 	}
 
 	reducedRes, err := reduceSearchResult(context.Background(), subSearchResultData,
-		reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.IP).WithPkType(schemapb.DataType_Int64).WithGroupByField(groupByField).WithGroupSize(groupSize).WithAdvance(true))
+		reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metric.IP).WithPkType(schemapb.DataType_Int64).WithGroupByFieldIdsFromProto(groupByField, nil).WithGroupSize(groupSize).WithAdvance(true))
 	assert.NoError(t, err)
 	// reduce_advance_groupby will only merge results from different delegator without reducing any result
 	assert.Equal(t, 16, len(reducedRes.GetResults().Ids.GetIntId().Data))
 	assert.Equal(t, 16, len(reducedRes.GetResults().GetScores()))
-	assert.Equal(t, 16, len(reducedRes.GetResults().GetGroupByFieldValue().GetScalars().GetStringData().Data))
+	assert.Equal(t, 16, len(reducedRes.GetResults().GetGroupByFieldValues()[0].GetScalars().GetStringData().Data))
 
 	assert.Equal(t, topK, reducedRes.GetResults().GetTopK())
 	assert.Equal(t, []int64{8, 8}, reducedRes.GetResults().GetTopks())
 
 	assert.Equal(t, []int64{7, 5, 6, 11, 17, 15, 16, 21, 14, 31, 23, 37, 32, 24, 41, 33}, reducedRes.GetResults().Ids.GetIntId().Data)
 	assert.Equal(t, []float32{0.9, 0.7, 0.65, 0.55, 0.83, 0.72, 0.72, 0.65, 0.51, 0.5, 0.45, 0.43, 0.63, 0.55, 0.52, 0.51}, reducedRes.GetResults().GetScores())
-	assert.Equal(t, []string{"ccc", "bbb", "ccc", "bbb", "ddd", "bbb", "ddd", "bbb", "aaa", "xxx", "xxx", "aaa", "rrr", "sss", "rrr", "sss"}, reducedRes.GetResults().GetGroupByFieldValue().GetScalars().GetStringData().Data)
+	assert.Equal(t, []string{"ccc", "bbb", "ccc", "bbb", "ddd", "bbb", "ddd", "bbb", "aaa", "xxx", "xxx", "aaa", "rrr", "sss", "rrr", "sss"}, reducedRes.GetResults().GetGroupByFieldValues()[0].GetScalars().GetStringData().Data)
 
 	fmt.Println(reducedRes.GetResults().Ids.GetIntId().Data)
 	fmt.Println(reducedRes.GetResults().GetScores())
-	fmt.Println(reducedRes.GetResults().GetGroupByFieldValue().GetScalars().GetStringData().Data)
+	fmt.Println(reducedRes.GetResults().GetGroupByFieldValues()[0].GetScalars().GetStringData().Data)
 }
 
 func TestSearchTask_ErrExecute(t *testing.T) {

@@ -649,13 +649,15 @@ func ToSearchResultDataWithOptions(df *DataFrame, opts *ExportOptions) (*schemap
 			continue
 		}
 
-		// Export group-by column to GroupByFieldValue
+		// Export group-by column to the plural channel for internal uniformity
+		// with the unified reducer. The task-output boundary downgrades plural
+		// → singular when legacy-wire is in effect.
 		if groupByField != "" && name == groupByField {
 			fieldData, err := exportFieldData(df, name)
 			if err != nil {
 				return nil, err
 			}
-			result.GroupByFieldValue = fieldData
+			result.GroupByFieldValues = []*schemapb.FieldData{fieldData}
 			continue
 		}
 
