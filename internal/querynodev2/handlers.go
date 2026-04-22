@@ -470,10 +470,7 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 
 	tr.CtxElapse(ctx, "start reduce query result, ch="+channel)
 
-	multiGroupByFieldIDs := []int64(nil)
-	if req.GetReq().GetMultiGroupBy() != nil {
-		multiGroupByFieldIDs = req.GetReq().GetMultiGroupBy().GetGroupByFieldIds()
-	}
+	multiGroupByFieldIDs := req.GetReq().GetGroupByFieldIds()
 	resp, err := segments.ReduceSearchOnQueryNode(ctx, results,
 		reduce.NewReduceSearchResultInfo(req.GetReq().GetNq(),
 			req.GetReq().GetTopk()).WithMetricType(req.GetReq().GetMetricType()).WithGroupByField(req.GetReq().GetGroupByFieldId()).

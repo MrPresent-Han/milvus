@@ -9,7 +9,6 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/agg"
 	typeutil2 "github.com/milvus-io/milvus/internal/util/typeutil"
-	"github.com/milvus-io/milvus/pkg/v2/proto/planpb"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
 )
 
@@ -143,21 +142,6 @@ func deriveTopKAndGroupSize(levels []LevelContext) (topK, groupSize int64) {
 		}
 	}
 	return topK, groupSize
-}
-
-// BuildMultiFieldGroupByInfo derives the downstream message sent to Delegator /
-// QN / segcore. Those layers know nothing about aggregation; they only need the
-// flattened list of group-by fields to extract composite keys. The message is
-// defined once in plan.proto and referenced by both internalpb.SearchRequest
-// and planpb.QueryInfo so proxy can pass the same pointer to both.
-func BuildMultiFieldGroupByInfo(spec *commonpb.SearchAggregationSpec, schema *schemapb.CollectionSchema) (*planpb.MultiFieldGroupByInfo, error) {
-	resolved, err := resolveAggregationSpec(spec, schema)
-	if err != nil {
-		return nil, err
-	}
-	return &planpb.MultiFieldGroupByInfo{
-		GroupByFieldIds: resolved.groupByFieldIDs,
-	}, nil
 }
 
 type resolvedAggregationSpec struct {

@@ -241,11 +241,6 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 	t.OutputFieldsId = outputFieldIDs
 
-	if err = t.initSearchAggregation(); err != nil {
-		log.Debug("init search aggregation failed", zap.Error(err))
-		return err
-	}
-
 	// Currently, we get vectors by requery. Once we support getting vectors from search,
 	// searches with small result size could no longer need requery.
 	traceVal, _ := funcutil.GetAttrByKeyFromRepeatedKV(PipelineTraceKey, t.request.GetSearchParams())
@@ -257,6 +252,11 @@ func (t *searchTask) PreExecute(ctx context.Context) error {
 	}
 	if err != nil {
 		log.Debug("init search request failed", zap.Error(err))
+		return err
+	}
+
+	if err = t.initSearchAggregation(); err != nil {
+		log.Debug("init search aggregation failed", zap.Error(err))
 		return err
 	}
 

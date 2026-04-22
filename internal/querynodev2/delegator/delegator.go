@@ -494,7 +494,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 				GroupByFieldId:          subReq.GetGroupByFieldId(),
 				GroupSize:               subReq.GetGroupSize(),
 				FieldId:                 subReq.GetFieldId(),
-				MultiGroupBy:            req.GetReq().GetMultiGroupBy(),
+				GroupByFieldIds:         req.GetReq().GetGroupByFieldIds(),
 				IsTopkReduce:            req.GetReq().GetIsTopkReduce(),
 				IsIterator:              req.GetReq().GetIsIterator(),
 				CollectionTtlTimestamps: req.GetReq().GetCollectionTtlTimestamps(),
@@ -519,11 +519,7 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 				if err != nil {
 					return nil, err
 				}
-
-				multiGroupByFieldIDs := []int64(nil)
-				if searchReq.GetReq().GetMultiGroupBy() != nil {
-					multiGroupByFieldIDs = searchReq.GetReq().GetMultiGroupBy().GetGroupByFieldIds()
-				}
+				multiGroupByFieldIDs := searchReq.GetReq().GetGroupByFieldIds()
 				return segments.ReduceSearchOnQueryNode(ctx,
 					results,
 					reduce.NewReduceSearchResultInfo(searchReq.GetReq().GetNq(),

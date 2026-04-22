@@ -862,7 +862,7 @@ func reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResu
 	var result *milvuspb.SearchResults
 	result, err = reduceSearchResult(ctx, validSearchResults, reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metricType).WithPkType(pkType).
 		WithOffset(offset).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()).
-		WithMultiGroupByFieldIds(queryInfo.GetMultiGroupBy().GetGroupByFieldIds()).WithAdvance(isAdvance))
+		WithMultiGroupByFieldIds(queryInfo.GetGroupByFieldIds()).WithAdvance(isAdvance))
 	if err != nil {
 		log.Warn("failed to reduce search results", zap.Error(err))
 		return nil, err

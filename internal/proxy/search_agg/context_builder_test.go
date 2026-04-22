@@ -49,34 +49,6 @@ func TestBuildSearchAggregationContext(t *testing.T) {
 	require.Equal(t, ScoreFieldID, ctx.Levels[0].TopHits.Sort[0].FieldID)
 }
 
-func TestBuildMultiFieldGroupByInfo(t *testing.T) {
-	schema := testCollectionSchema()
-	spec := &commonpb.SearchAggregationSpec{
-		Fields: []string{"brand"},
-		Metrics: map[string]*commonpb.MetricAggSpec{
-			"sum_stock": {Op: "sum", FieldName: "stock"},
-			"score_avg": {Op: "avg", FieldName: "_score"},
-			"doc_count": {Op: "count", FieldName: "*"},
-		},
-		TopHits: &commonpb.TopHitsSpec{
-			Size: 1,
-			Sort: []*commonpb.SortSpec{
-				{FieldName: "price", Direction: "desc"},
-				{FieldName: "_score", Direction: "desc"},
-			},
-		},
-		SubAggregation: &commonpb.SearchAggregationSpec{
-			Fields: []string{"category"},
-		},
-	}
-
-	info, err := BuildMultiFieldGroupByInfo(spec, schema)
-	require.NoError(t, err)
-	// Only GroupByFieldIds travels downstream; metric / top_hits fields flow
-	// through SearchRequest.OutputFieldsId via segcore's standard fields_data path.
-	require.Equal(t, []int64{101, 102}, info.GetGroupByFieldIds())
-}
-
 func TestBuildSearchAggregationContextDuplicateFieldAcrossLevels(t *testing.T) {
 	schema := testCollectionSchema()
 	spec := &commonpb.SearchAggregationSpec{

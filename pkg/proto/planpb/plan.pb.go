@@ -1040,8 +1040,7 @@ type QueryInfo struct {
 	StrictCast               bool                  `protobuf:"varint,16,opt,name=strict_cast,json=strictCast,proto3" json:"strict_cast,omitempty"`
 	SearchTopkRatio          float32               `protobuf:"fixed32,17,opt,name=search_topk_ratio,json=searchTopkRatio,proto3" json:"search_topk_ratio,omitempty"`
 	RefineTopkRatio          float32               `protobuf:"fixed32,18,opt,name=refine_topk_ratio,json=refineTopkRatio,proto3" json:"refine_topk_ratio,omitempty"`
-	// Multi-field group by: list of field IDs for composite grouping
-	GroupByFieldIds []int64 `protobuf:"varint,19,rep,packed,name=group_by_field_ids,json=groupByFieldIds,proto3" json:"group_by_field_ids,omitempty"`
+	GroupByFieldIds          []int64               `protobuf:"varint,19,rep,packed,name=group_by_field_ids,json=groupByFieldIds,proto3" json:"group_by_field_ids,omitempty"`
 }
 
 func (x *QueryInfo) Reset() {

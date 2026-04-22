@@ -1010,10 +1010,10 @@ func TestSearchTask_initSearchAggregation(t *testing.T) {
 		err := task.initSearchAggregation()
 		require.NoError(t, err)
 		require.NotNil(t, task.aggCtx)
-		require.NotNil(t, task.SearchRequest.GetMultiGroupBy())
+		require.NotEmpty(t, task.SearchRequest.GetGroupByFieldIds())
 		// Downstream only learns group-by fields; metric sources flow through
 		// OutputFieldsId → fields_data instead.
-		assert.Equal(t, []int64{101}, task.SearchRequest.GetMultiGroupBy().GetGroupByFieldIds())
+		assert.Equal(t, []int64{101}, task.SearchRequest.GetGroupByFieldIds())
 		assert.Contains(t, task.SearchRequest.GetOutputFieldsId(), int64(102))
 		_, ok := task.aggCtx.UserOutputFieldIDs[102]
 		assert.True(t, ok)
