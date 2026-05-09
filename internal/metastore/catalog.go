@@ -29,7 +29,7 @@ type RootCoordCatalog interface {
 	GetCollectionByID(ctx context.Context, dbID int64, ts typeutil.Timestamp, collectionID typeutil.UniqueID) (*model.Collection, error)
 	GetCollectionByName(ctx context.Context, dbID int64, dbName string, collectionName string, ts typeutil.Timestamp) (*model.Collection, error)
 	GetCollectionSchemaByVersion(ctx context.Context, collectionID typeutil.UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error)
-	GcCollectionSchemaVersions(ctx context.Context, collectionID typeutil.UniqueID, startVersion int32, dropBeforeVersion int32) error
+	GcCollectionSchemaVersions(ctx context.Context, collectionID typeutil.UniqueID, dropBeforeVersion int32) error
 	// SetupVersionedSchemaStorageIfNeeded idempotently writes the current schema-version snapshot
 	// for a collection created before versioned schema storage existed.
 	// It does not reconstruct historical schema versions.

@@ -97,6 +97,10 @@ func BuildCollectionSchemaVersionPrefix(collectionID typeutil.UniqueID, schemaVe
 	return fmt.Sprintf("%s/%d/%d/", CollectionSchemaVersionMetaPrefix, collectionID, schemaVersion)
 }
 
+func BuildCollectionSchemaVersionGcCursorKey(collectionID typeutil.UniqueID) string {
+	return fmt.Sprintf("%sgc-cursor", BuildCollectionSchemaVersionsPrefix(collectionID))
+}
+
 func BuildCollectionSchemaVersionCollectionKey(collectionID typeutil.UniqueID, schemaVersion int32) string {
 	return fmt.Sprintf("%scollection", BuildCollectionSchemaVersionPrefix(collectionID, schemaVersion))
 }
@@ -810,15 +814,42 @@ func (kc *Catalog) GetCollectionSchemaByVersion(ctx context.Context, collectionI
 	return schema, nil
 }
 
-func (kc *Catalog) GcCollectionSchemaVersions(ctx context.Context, collectionID typeutil.UniqueID, startVersion int32, dropBeforeVersion int32) error {
+func (kc *Catalog) getCollectionSchemaVersionGcCursor(ctx context.Context, collectionID typeutil.UniqueID) (int32, error) {
+	cursorKey := BuildCollectionSchemaVersionGcCursorKey(collectionID)
+	value, err := kc.Txn.Load(ctx, cursorKey)
+	if err != nil {
+		if errors.Is(err, merr.ErrIoKeyNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	cursor, err := strconv.ParseInt(value, 10, 32)
+	if err != nil {
+		return 0, err
+	}
+	if cursor < 0 {
+		return 0, merr.WrapErrParameterInvalidMsg("schema version gc cursor %d is negative", cursor)
+	}
+	return int32(cursor), nil
+}
+
+func (kc *Catalog) GcCollectionSchemaVersions(ctx context.Context, collectionID typeutil.UniqueID, dropBeforeVersion int32) error {
 	if collectionID <= 0 {
 		return merr.WrapErrParameterInvalidMsg("collection id is %d", collectionID)
 	}
-	if startVersion < 0 {
-		return merr.WrapErrParameterInvalidMsg("start version %d is negative", startVersion)
+	if dropBeforeVersion <= 0 {
+		log.Ctx(ctx).Info("TEMP VersionedSchema GC skip non-positive watermark",
+			zap.Int64("collectionID", collectionID),
+			zap.Int32("dropBeforeVersion", dropBeforeVersion))
+		return nil
+	}
+
+	startVersion, err := kc.getCollectionSchemaVersionGcCursor(ctx, collectionID)
+	if err != nil {
+		return err
 	}
 	if dropBeforeVersion <= startVersion {
-		log.Ctx(ctx).Info("TEMP VersionedSchema GC skip caught-up watermark",
+		log.Ctx(ctx).Info("TEMP VersionedSchema GC skip caught-up persisted cursor",
 			zap.Int64("collectionID", collectionID),
 			zap.Int32("startVersion", startVersion),
 			zap.Int32("dropBeforeVersion", dropBeforeVersion))
@@ -837,6 +868,10 @@ func (kc *Catalog) GcCollectionSchemaVersions(ctx context.Context, collectionID 
 			return err
 		}
 		removedVersionCount++
+	}
+	cursorKey := BuildCollectionSchemaVersionGcCursorKey(collectionID)
+	if err := kc.Txn.Save(ctx, cursorKey, strconv.FormatInt(int64(dropBeforeVersion), 10)); err != nil {
+		return err
 	}
 	log.Ctx(ctx).Info("TEMP VersionedSchema GC removed schema version prefixes",
 		zap.Int64("collectionID", collectionID),

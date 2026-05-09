@@ -175,8 +175,6 @@ type MetaTable struct {
 	fileResourceRefCnt    map[int64]int                           // file resource id -> reference count
 	fileResourceVersion   uint64
 
-	versionedSchemaGcCursor map[typeutil.UniqueID]int32
-
 	generalCnt int // sum of product of partition number and shard number
 
 	// collections *collectionDb
@@ -208,7 +206,6 @@ func (mt *MetaTable) reload() error {
 	mt.dbName2Meta = make(map[string]*model.Database)
 	mt.collID2Meta = make(map[UniqueID]*model.Collection)
 	mt.fileResourceRefCnt = make(map[int64]int)
-	mt.versionedSchemaGcCursor = make(map[UniqueID]int32)
 	mt.names = newNameDb()
 	mt.aliases = newNameDb()
 
@@ -689,7 +686,6 @@ func (mt *MetaTable) removeAllNamesIfMatchedInternal(ctx context.Context, collec
 
 func (mt *MetaTable) removeCollectionByIDInternal(ctx context.Context, collectionID UniqueID) {
 	delete(mt.collID2Meta, collectionID)
-	delete(mt.versionedSchemaGcCursor, collectionID)
 	log.Ctx(ctx).Info("delete from collID2Meta",
 		zap.Int64("collectionID", collectionID),
 	)
@@ -942,19 +938,7 @@ func (mt *MetaTable) GcCollectionSchemaVersions(ctx context.Context, collectionI
 	mt.ddLock.Lock()
 	defer mt.ddLock.Unlock()
 
-	startVersion := mt.versionedSchemaGcCursor[collectionID]
-	if startVersion >= dropBeforeVersion {
-		log.Ctx(ctx).Info("TEMP VersionedSchema GC RootCoord cursor already caught up",
-			zap.Int64("collectionID", collectionID),
-			zap.Int32("startVersion", startVersion),
-			zap.Int32("dropBeforeVersion", dropBeforeVersion))
-		return nil
-	}
-	if err := mt.catalog.GcCollectionSchemaVersions(ctx, collectionID, startVersion, dropBeforeVersion); err != nil {
-		return err
-	}
-	mt.versionedSchemaGcCursor[collectionID] = dropBeforeVersion
-	return nil
+	return mt.catalog.GcCollectionSchemaVersions(ctx, collectionID, dropBeforeVersion)
 }
 
 // GetCollectionByIDWithMaxTs get collection, dbName can be ignored if ts is max timestamps
