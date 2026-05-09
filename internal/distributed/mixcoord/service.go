@@ -396,6 +396,10 @@ func (s *Server) DescribeCollectionInternal(ctx context.Context, in *milvuspb.De
 	return s.mixCoord.DescribeCollectionInternal(ctx, in)
 }
 
+func (s *Server) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoordpb.GetCollectionSchemaByVersionRequest) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+	return s.mixCoord.GetCollectionSchemaByVersion(ctx, in)
+}
+
 // ShowCollections gets all collections
 func (s *Server) ShowCollections(ctx context.Context, in *milvuspb.ShowCollectionsRequest) (*milvuspb.ShowCollectionsResponse, error) {
 	return s.mixCoord.ShowCollections(ctx, in)
