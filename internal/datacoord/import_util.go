@@ -876,13 +876,30 @@ func createSortCompactionTask(ctx context.Context,
 		return nil, err
 	}
 
+	schemaVersion := originSegment.GetSchemaVersion()
+	schema, err := handler.GetCollectionSchemaByVersion(ctx, originSegment.GetCollectionID(), schemaVersion)
+	if err != nil {
+		log.Warn("Failed to create sort compaction task because get collection schema version failed", zap.Int32("schemaVersion", schemaVersion), zap.Error(err))
+		return nil, err
+	}
+	if schema == nil {
+		err := merr.WrapErrCollectionNotFound(originSegment.GetCollectionID(), fmt.Sprintf("schema version %d has nil schema", schemaVersion))
+		log.Warn("Failed to create sort compaction task because collection schema version is nil", zap.Error(err))
+		return nil, err
+	}
+	if schema.GetVersion() != schemaVersion {
+		err := merr.WrapErrParameterInvalidMsg("schema version mismatch, expected %d, got %d", schemaVersion, schema.GetVersion())
+		log.Warn("Failed to create sort compaction task because collection schema version mismatches", zap.Error(err))
+		return nil, err
+	}
+
 	startID, _, err := alloc.AllocN(2)
 	if err != nil {
 		log.Warn("Failed to create sort compaction task because allocate id fail", zap.Error(err))
 		return nil, err
 	}
 
-	expectedSize := getExpectedSegmentSize(meta, collection.ID, collection.Schema)
+	expectedSize := getExpectedSegmentSize(meta, collection.ID, schema)
 	task := &datapb.CompactionTask{
 		PlanID:             startID + 1,
 		TriggerID:          startID,
@@ -893,7 +910,7 @@ func createSortCompactionTask(ctx context.Context,
 		CollectionID:       originSegment.GetCollectionID(),
 		PartitionID:        originSegment.GetPartitionID(),
 		Channel:            originSegment.GetInsertChannel(),
-		Schema:             collection.Schema,
+		Schema:             schema,
 		InputSegments:      []int64{originSegment.GetID()},
 		ResultSegments:     []int64{},
 		TotalRows:          originSegment.GetNumOfRows(),

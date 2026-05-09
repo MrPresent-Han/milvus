@@ -18,6 +18,7 @@ package broker
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/cockroachdb/errors"
@@ -25,6 +26,7 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/types"
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/proto/rootcoordpb"
@@ -37,6 +39,7 @@ import (
 type Broker interface {
 	DescribeCollectionInternal(ctx context.Context, collectionID int64) (*milvuspb.DescribeCollectionResponse, error)
 	DescribeCollectionByName(ctx context.Context, dbName, collectionName string) (*milvuspb.DescribeCollectionResponse, error)
+	GetCollectionSchemaByVersion(ctx context.Context, collectionID int64, schemaVersion int32) (*schemapb.CollectionSchema, error)
 	ShowPartitionsInternal(ctx context.Context, collectionID int64) ([]int64, error)
 	ShowCollections(ctx context.Context, dbName string) (*milvuspb.ShowCollectionsResponse, error)
 	ShowCollectionIDs(ctx context.Context, dbNames ...string) (*rootcoordpb.ShowCollectionIDsResponse, error)
@@ -111,6 +114,36 @@ func (b *coordinatorBroker) DescribeCollectionByName(ctx context.Context, dbName
 	}
 
 	return resp, nil
+}
+
+func (b *coordinatorBroker) GetCollectionSchemaByVersion(ctx context.Context, collectionID int64, schemaVersion int32) (*schemapb.CollectionSchema, error) {
+	ctx, cancel := context.WithTimeout(ctx, paramtable.Get().QueryCoordCfg.BrokerTimeout.GetAsDuration(time.Millisecond))
+	defer cancel()
+	log := log.Ctx(ctx).With(zap.Int64("collectionID", collectionID), zap.Int32("schemaVersion", schemaVersion))
+
+	resp, err := b.mixCoord.GetCollectionSchemaByVersion(ctx, &rootcoordpb.GetCollectionSchemaByVersionRequest{
+		Base: commonpbutil.NewMsgBase(
+			commonpbutil.WithMsgType(commonpb.MsgType_DescribeCollection),
+			commonpbutil.WithSourceID(paramtable.GetNodeID()),
+		),
+		CollectionID:  collectionID,
+		SchemaVersion: schemaVersion,
+	})
+	if err := merr.CheckRPCCall(resp, err); err != nil {
+		log.Warn("GetCollectionSchemaByVersion failed", zap.Error(err))
+		return nil, err
+	}
+	if resp.GetSchema() == nil {
+		err := merr.WrapErrCollectionNotFound(collectionID, fmt.Sprintf("schema version %d has nil schema", schemaVersion))
+		log.Warn("GetCollectionSchemaByVersion returned nil schema", zap.Error(err))
+		return nil, err
+	}
+	if resp.GetSchemaVersion() != schemaVersion || resp.GetSchema().GetVersion() != schemaVersion {
+		err := merr.WrapErrParameterInvalidMsg("schema version mismatch, expected %d, response %d, schema %d", schemaVersion, resp.GetSchemaVersion(), resp.GetSchema().GetVersion())
+		log.Warn("GetCollectionSchemaByVersion returned mismatched schema", zap.Error(err))
+		return nil, err
+	}
+	return resp.GetSchema(), nil
 }
 
 func (b *coordinatorBroker) ShowPartitionsInternal(ctx context.Context, collectionID int64) ([]int64, error) {

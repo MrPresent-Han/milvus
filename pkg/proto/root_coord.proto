@@ -8,6 +8,7 @@ import "milvus.proto";
 import "internal.proto";
 import "proxy.proto";
 import "etcd_meta.proto";
+import "schema.proto";
 
 service RootCoord {
   rpc GetComponentStates(milvus.GetComponentStatesRequest) returns (milvus.ComponentStates) {}
@@ -78,6 +79,7 @@ service RootCoord {
      */
     rpc DescribeCollection(milvus.DescribeCollectionRequest) returns (milvus.DescribeCollectionResponse) {}
     rpc DescribeCollectionInternal(milvus.DescribeCollectionRequest) returns (milvus.DescribeCollectionResponse) {}
+    rpc GetCollectionSchemaByVersion(GetCollectionSchemaByVersionRequest) returns (GetCollectionSchemaByVersionResponse) {}
 
     rpc CreateAlias(milvus.CreateAliasRequest) returns (common.Status) {}
     rpc DropAlias(milvus.DropAliasRequest) returns (common.Status) {}
@@ -298,6 +300,19 @@ message CollectionInfoOnPChannel {
 
 message PartitionInfoOnPChannel {
   int64 partition_id = 1;
+}
+
+message GetCollectionSchemaByVersionRequest {
+  common.MsgBase base = 1;
+  int64 collectionID = 2;
+  int32 schemaVersion = 3;
+}
+
+message GetCollectionSchemaByVersionResponse {
+  common.Status status = 1;
+  int64 collectionID = 2;
+  int32 schemaVersion = 3;
+  schema.CollectionSchema schema = 4;
 }
 
 message ShowCollectionIDsRequest {

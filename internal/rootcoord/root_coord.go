@@ -1281,6 +1281,35 @@ func (c *Core) DescribeCollectionInternal(ctx context.Context, in *milvuspb.Desc
 	return c.describeCollectionImpl(ctx, in, true)
 }
 
+func (c *Core) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoordpb.GetCollectionSchemaByVersionRequest) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+	if err := merr.CheckHealthy(c.GetStateCode()); err != nil {
+		return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: merr.Status(err)}, nil
+	}
+	if in.GetCollectionID() <= 0 {
+		return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: merr.Status(merr.WrapErrParameterInvalidMsg("collection id is %d", in.GetCollectionID()))}, nil
+	}
+	if in.GetSchemaVersion() < 0 {
+		return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: merr.Status(merr.WrapErrParameterInvalidMsg("schema version %d is negative", in.GetSchemaVersion()))}, nil
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.Int64("collectionID", in.GetCollectionID()),
+		zap.Int32("schemaVersion", in.GetSchemaVersion()),
+	)
+	schema, err := c.meta.GetCollectionSchemaByVersion(ctx, in.GetCollectionID(), in.GetSchemaVersion())
+	if err != nil {
+		log.Warn("failed to get collection schema version", zap.Error(err))
+		return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: merr.Status(err)}, nil
+	}
+
+	return &rootcoordpb.GetCollectionSchemaByVersionResponse{
+		Status:        merr.Success(),
+		CollectionID:  in.GetCollectionID(),
+		SchemaVersion: in.GetSchemaVersion(),
+		Schema:        schema,
+	}, nil
+}
+
 // ShowCollections list all collection names
 func (c *Core) ShowCollections(ctx context.Context, in *milvuspb.ShowCollectionsRequest) (*milvuspb.ShowCollectionsResponse, error) {
 	if err := merr.CheckHealthy(c.GetStateCode()); err != nil {

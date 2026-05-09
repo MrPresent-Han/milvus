@@ -566,6 +566,38 @@ func (m *CompactionTriggerManager) SubmitClusteringViewToScheduler(ctx context.C
 	)
 }
 
+func (m *CompactionTriggerManager) resolveSingleCompactionTaskSchema(ctx context.Context, view CompactionView, triggerType CompactionTriggerType, collection *collectionInfo, logger *log.MLogger) *schemapb.CollectionSchema {
+	if triggerType.GetCompactionType() != datapb.CompactionType_SortCompaction {
+		return collection.Schema
+	}
+	segments := view.GetSegmentsView()
+	if len(segments) == 0 {
+		logger.Error("failed to resolve sort compaction schema because view has no segments")
+		return nil
+	}
+	segmentID := segments[0].ID
+	segment := m.meta.GetHealthySegment(ctx, segmentID)
+	if segment == nil {
+		logger.Error("failed to resolve sort compaction schema because segment meta is missing", zap.Int64("segmentID", segmentID))
+		return nil
+	}
+	schemaVersion := segment.GetSchemaVersion()
+	schema, err := m.handler.GetCollectionSchemaByVersion(ctx, segment.GetCollectionID(), schemaVersion)
+	if err != nil {
+		logger.Error("failed to resolve sort compaction schema version", zap.Int64("segmentID", segmentID), zap.Int32("schemaVersion", schemaVersion), zap.Error(err))
+		return nil
+	}
+	if schema == nil {
+		logger.Error("failed to resolve sort compaction schema version because schema is nil", zap.Int64("segmentID", segmentID), zap.Int32("schemaVersion", schemaVersion))
+		return nil
+	}
+	if schema.GetVersion() != schemaVersion {
+		logger.Error("failed to resolve sort compaction schema version because schema version mismatches", zap.Int64("segmentID", segmentID), zap.Int32("expected", schemaVersion), zap.Int32("actual", schema.GetVersion()))
+		return nil
+	}
+	return schema
+}
+
 func (m *CompactionTriggerManager) SubmitSingleViewToScheduler(ctx context.Context, view CompactionView, triggerType CompactionTriggerType) {
 	// single view is definitely one-one mapping
 	log := log.Ctx(ctx).With(zap.String("trigger type", triggerType.String()), zap.String("view", view.String()))
@@ -591,12 +623,16 @@ func (m *CompactionTriggerManager) SubmitSingleViewToScheduler(ctx context.Conte
 		log.Info("skip submitting single compaction for external collection", zap.Int64("collectionID", collection.ID))
 		return
 	}
+	schema := m.resolveSingleCompactionTaskSchema(ctx, view, triggerType, collection, log)
+	if schema == nil {
+		return
+	}
 	var totalRows int64 = 0
 	for _, s := range view.GetSegmentsView() {
 		totalRows += s.NumOfRows
 	}
 
-	expectedSize := getExpectedSegmentSize(m.meta, collection.ID, collection.Schema)
+	expectedSize := getExpectedSegmentSize(m.meta, collection.ID, schema)
 	task := &datapb.CompactionTask{
 		PlanID:             startID,
 		TriggerID:          view.(*MixSegmentView).triggerID,
@@ -607,7 +643,7 @@ func (m *CompactionTriggerManager) SubmitSingleViewToScheduler(ctx context.Conte
 		CollectionID:       view.GetGroupLabel().CollectionID,
 		PartitionID:        view.GetGroupLabel().PartitionID,
 		Channel:            view.GetGroupLabel().Channel,
-		Schema:             collection.Schema,
+		Schema:             schema,
 		InputSegments:      lo.Map(view.GetSegmentsView(), func(segmentView *SegmentView, _ int) int64 { return segmentView.ID }),
 		ResultSegments:     []int64{},
 		TotalRows:          totalRows,

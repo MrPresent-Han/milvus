@@ -21,9 +21,10 @@ const (
 
 	PartitionMetaPrefix        = ComponentPrefix + "/partitions"
 	AliasMetaPrefix            = ComponentPrefix + "/aliases"
-	FieldMetaPrefix            = ComponentPrefix + "/fields"
-	StructArrayFieldMetaPrefix = ComponentPrefix + "/struct-array-fields"
-	FunctionMetaPrefix         = ComponentPrefix + "/functions"
+	FieldMetaPrefix                   = ComponentPrefix + "/fields"
+	StructArrayFieldMetaPrefix        = ComponentPrefix + "/struct-array-fields"
+	FunctionMetaPrefix                = ComponentPrefix + "/functions"
+	CollectionSchemaVersionMetaPrefix = ComponentPrefix + "/schema-version"
 
 	// CollectionAliasMetaPrefix210 prefix for collection alias meta
 	CollectionAliasMetaPrefix210 = ComponentPrefix + "/collection-alias"

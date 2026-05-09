@@ -18,6 +18,7 @@ package datacoord
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strconv"
 	"time"
@@ -53,6 +54,7 @@ type Handler interface {
 	CheckShouldDropChannel(ch string) bool
 	FinishDropChannel(ch string, collectionID int64) error
 	GetCollection(ctx context.Context, collectionID UniqueID) (*collectionInfo, error)
+	GetCollectionSchemaByVersion(ctx context.Context, collectionID UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error)
 	GetCurrentSegmentsView(ctx context.Context, channel RWChannel, partitionIDs ...UniqueID) *SegmentsView
 	ListLoadedSegments(ctx context.Context) ([]int64, error)
 	GenSnapshot(ctx context.Context, collectionID UniqueID) (*SnapshotData, error)
@@ -588,6 +590,30 @@ func (h *ServerHandler) GetCollection(ctx context.Context, collectionID UniqueID
 
 	// TODO: the cache should be removed in next step.
 	return h.s.meta.GetCollection(collectionID), nil
+}
+
+func (h *ServerHandler) GetCollectionSchemaByVersion(ctx context.Context, collectionID UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error) {
+	ctx2, cancel := context.WithTimeout(ctx, time.Second*10)
+	defer cancel()
+	var schema *schemapb.CollectionSchema
+	if err := retry.Do(ctx2, func() error {
+		resp, err := h.s.broker.GetCollectionSchemaByVersion(ctx2, collectionID, schemaVersion)
+		if err != nil {
+			log.RatedWarn(60, "failed to get collection schema version", zap.Int64("collectionID", collectionID), zap.Int32("schemaVersion", schemaVersion), zap.Error(err))
+			return err
+		}
+		schema = resp
+		return nil
+	}, retry.Attempts(5)); err != nil {
+		return nil, err
+	}
+	if schema == nil {
+		return nil, merr.WrapErrCollectionNotFound(collectionID, fmt.Sprintf("schema version %d has nil schema", schemaVersion))
+	}
+	if schema.GetVersion() != schemaVersion {
+		return nil, merr.WrapErrParameterInvalidMsg("schema version mismatch, expected %d, got %d", schemaVersion, schema.GetVersion())
+	}
+	return schema, nil
 }
 
 // CheckShouldDropChannel returns whether specified channel is marked to be removed

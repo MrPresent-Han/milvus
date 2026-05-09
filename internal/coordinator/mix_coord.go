@@ -455,6 +455,10 @@ func (s *mixCoordImpl) DescribeCollection(ctx context.Context, req *milvuspb.Des
 	return s.rootcoordServer.DescribeCollection(ctx, req)
 }
 
+func (s *mixCoordImpl) GetCollectionSchemaByVersion(ctx context.Context, req *rootcoordpb.GetCollectionSchemaByVersionRequest) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+	return s.rootcoordServer.GetCollectionSchemaByVersion(ctx, req)
+}
+
 func (s *mixCoordImpl) ShowCollections(ctx context.Context, req *milvuspb.ShowCollectionsRequest) (*milvuspb.ShowCollectionsResponse, error) {
 	return s.rootcoordServer.ShowCollections(ctx, req)
 }

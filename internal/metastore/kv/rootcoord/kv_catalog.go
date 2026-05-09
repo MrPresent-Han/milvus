@@ -89,6 +89,42 @@ func BuildStructArrayFieldKey(collectionId typeutil.UniqueID, fieldId int64) str
 	return fmt.Sprintf("%s/%d/%d", StructArrayFieldMetaPrefix, collectionId, fieldId)
 }
 
+func BuildCollectionSchemaVersionsPrefix(collectionID typeutil.UniqueID) string {
+	return fmt.Sprintf("%s/%d/", CollectionSchemaVersionMetaPrefix, collectionID)
+}
+
+func BuildCollectionSchemaVersionPrefix(collectionID typeutil.UniqueID, schemaVersion int32) string {
+	return fmt.Sprintf("%s/%d/%d/", CollectionSchemaVersionMetaPrefix, collectionID, schemaVersion)
+}
+
+func BuildCollectionSchemaVersionCollectionKey(collectionID typeutil.UniqueID, schemaVersion int32) string {
+	return fmt.Sprintf("%scollection", BuildCollectionSchemaVersionPrefix(collectionID, schemaVersion))
+}
+
+func BuildCollectionSchemaVersionFieldPrefix(collectionID typeutil.UniqueID, schemaVersion int32) string {
+	return fmt.Sprintf("%sfield/", BuildCollectionSchemaVersionPrefix(collectionID, schemaVersion))
+}
+
+func BuildCollectionSchemaVersionFieldKey(collectionID typeutil.UniqueID, schemaVersion int32, fieldID int64) string {
+	return fmt.Sprintf("%s%d", BuildCollectionSchemaVersionFieldPrefix(collectionID, schemaVersion), fieldID)
+}
+
+func BuildCollectionSchemaVersionStructArrayFieldPrefix(collectionID typeutil.UniqueID, schemaVersion int32) string {
+	return fmt.Sprintf("%sstruct-array-field/", BuildCollectionSchemaVersionPrefix(collectionID, schemaVersion))
+}
+
+func BuildCollectionSchemaVersionStructArrayFieldKey(collectionID typeutil.UniqueID, schemaVersion int32, fieldID int64) string {
+	return fmt.Sprintf("%s%d", BuildCollectionSchemaVersionStructArrayFieldPrefix(collectionID, schemaVersion), fieldID)
+}
+
+func BuildCollectionSchemaVersionFunctionPrefix(collectionID typeutil.UniqueID, schemaVersion int32) string {
+	return fmt.Sprintf("%sfunction/", BuildCollectionSchemaVersionPrefix(collectionID, schemaVersion))
+}
+
+func BuildCollectionSchemaVersionFunctionKey(collectionID typeutil.UniqueID, schemaVersion int32, functionID int64) string {
+	return fmt.Sprintf("%s%d", BuildCollectionSchemaVersionFunctionPrefix(collectionID, schemaVersion), functionID)
+}
+
 func BuildAliasKey210(alias string) string {
 	return fmt.Sprintf("%s/%s", CollectionAliasMetaPrefix210, alias)
 }
@@ -174,6 +210,48 @@ func (kc *Catalog) ListDatabases(ctx context.Context, ts typeutil.Timestamp) ([]
 	return dbs, nil
 }
 
+func buildCollectionSchemaVersionKVs(coll *model.Collection) (map[string]string, map[string]string, error) {
+	if coll == nil {
+		return nil, nil, errors.New("collection is nil")
+	}
+
+	bodyKVs := map[string]string{}
+	for _, field := range coll.Fields {
+		fieldInfo := model.MarshalFieldModel(field)
+		v, err := proto.Marshal(fieldInfo)
+		if err != nil {
+			return nil, nil, err
+		}
+		bodyKVs[BuildCollectionSchemaVersionFieldKey(coll.CollectionID, coll.SchemaVersion, field.FieldID)] = string(v)
+	}
+	for _, structArrayField := range coll.StructArrayFields {
+		structArrayFieldInfo := model.MarshalStructArrayFieldModel(structArrayField)
+		v, err := proto.Marshal(structArrayFieldInfo)
+		if err != nil {
+			return nil, nil, err
+		}
+		bodyKVs[BuildCollectionSchemaVersionStructArrayFieldKey(coll.CollectionID, coll.SchemaVersion, structArrayField.FieldID)] = string(v)
+	}
+	for _, function := range coll.Functions {
+		functionInfo := model.MarshalFunctionModel(function)
+		v, err := proto.Marshal(functionInfo)
+		if err != nil {
+			return nil, nil, err
+		}
+		bodyKVs[BuildCollectionSchemaVersionFunctionKey(coll.CollectionID, coll.SchemaVersion, function.ID)] = string(v)
+	}
+
+	collInfo := model.MarshalCollectionModel(coll)
+	v, err := proto.Marshal(collInfo)
+	if err != nil {
+		return nil, nil, err
+	}
+	headerKVs := map[string]string{
+		BuildCollectionSchemaVersionCollectionKey(coll.CollectionID, coll.SchemaVersion): string(v),
+	}
+	return bodyKVs, headerKVs, nil
+}
+
 func (kc *Catalog) CreateCollection(ctx context.Context, coll *model.Collection, ts typeutil.Timestamp) error {
 	if coll.State != pb.CollectionState_CollectionCreated {
 		return fmt.Errorf("collection state should be created, collection name: %s, collection id: %d, state: %s", coll.Name, coll.CollectionID, coll.State)
@@ -233,6 +311,14 @@ func (kc *Catalog) CreateCollection(ctx context.Context, coll *model.Collection,
 		kvs[k] = string(v)
 	}
 
+	schemaBodyKVs, schemaHeaderKVs, err := buildCollectionSchemaVersionKVs(coll)
+	if err != nil {
+		return err
+	}
+	for k, v := range schemaBodyKVs {
+		kvs[k] = v
+	}
+
 	// Due to the limit of etcd txn number, we must split these kvs into several batches.
 	// Save fields/partitions/functions first, then save the collection key last.
 	// If we crash after saving fields but before the collection key, the collection won't be
@@ -248,8 +334,12 @@ func (kc *Catalog) CreateCollection(ctx context.Context, coll *model.Collection,
 		return err
 	}
 
+	headers := map[string]string{k1: string(v1)}
+	for k, v := range schemaHeaderKVs {
+		headers[k] = v
+	}
 	// Save the collection key last — this is the "commit point" that makes the collection visible.
-	return kc.Txn.Save(ctx, k1, string(v1))
+	return kc.Txn.MultiSave(ctx, headers)
 }
 
 func (kc *Catalog) loadCollectionFromDb(ctx context.Context, dbID int64, collectionID typeutil.UniqueID, ts typeutil.Timestamp) (*pb.CollectionInfo, error) {
@@ -425,8 +515,7 @@ func fieldVersionAfter210(collMeta *pb.CollectionInfo) bool {
 	return len(collMeta.GetSchema().GetFields()) <= 0 && len(collMeta.GetSchema().GetStructArrayFields()) <= 0
 }
 
-func (kc *Catalog) listFieldsAfter210(ctx context.Context, collectionID typeutil.UniqueID, ts typeutil.Timestamp) ([]*model.Field, error) {
-	prefix := BuildFieldPrefix(collectionID)
+func (kc *Catalog) listFieldsWithPrefix(ctx context.Context, prefix string) ([]*model.Field, error) {
 	_, values, err := kc.Txn.LoadWithPrefix(ctx, prefix)
 	if err != nil {
 		return nil, err
@@ -436,14 +525,18 @@ func (kc *Catalog) listFieldsAfter210(ctx context.Context, collectionID typeutil
 		if IsTombstone(v) {
 			continue
 		}
-		partitionMeta := &schemapb.FieldSchema{}
-		err := proto.Unmarshal([]byte(v), partitionMeta)
+		fieldMeta := &schemapb.FieldSchema{}
+		err := proto.Unmarshal([]byte(v), fieldMeta)
 		if err != nil {
 			return nil, err
 		}
-		fields = append(fields, model.UnmarshalFieldModel(partitionMeta))
+		fields = append(fields, model.UnmarshalFieldModel(fieldMeta))
 	}
 	return fields, nil
+}
+
+func (kc *Catalog) listFieldsAfter210(ctx context.Context, collectionID typeutil.UniqueID, ts typeutil.Timestamp) ([]*model.Field, error) {
+	return kc.listFieldsWithPrefix(ctx, BuildFieldPrefix(collectionID))
 }
 
 func (kc *Catalog) batchListFieldsAfter210(ctx context.Context, ts typeutil.Timestamp) (map[int64][]*model.Field, error) {
@@ -475,8 +568,7 @@ func (kc *Catalog) batchListFieldsAfter210(ctx context.Context, ts typeutil.Time
 	return ret, nil
 }
 
-func (kc *Catalog) listStructArrayFieldsAfter210(ctx context.Context, collectionID typeutil.UniqueID, ts typeutil.Timestamp) ([]*model.StructArrayField, error) {
-	prefix := BuildStructArrayFieldPrefix(collectionID)
+func (kc *Catalog) listStructArrayFieldsWithPrefix(ctx context.Context, prefix string) ([]*model.StructArrayField, error) {
 	_, values, err := kc.Txn.LoadWithPrefix(ctx, prefix)
 	if err != nil {
 		return nil, err
@@ -486,18 +578,21 @@ func (kc *Catalog) listStructArrayFieldsAfter210(ctx context.Context, collection
 		if IsTombstone(v) {
 			continue
 		}
-		partitionMeta := &schemapb.StructArrayFieldSchema{}
-		err := proto.Unmarshal([]byte(v), partitionMeta)
+		fieldMeta := &schemapb.StructArrayFieldSchema{}
+		err := proto.Unmarshal([]byte(v), fieldMeta)
 		if err != nil {
 			return nil, err
 		}
-		structFields = append(structFields, model.UnmarshalStructArrayFieldModel(partitionMeta))
+		structFields = append(structFields, model.UnmarshalStructArrayFieldModel(fieldMeta))
 	}
 	return structFields, nil
 }
 
-func (kc *Catalog) listFunctions(ctx context.Context, collectionID typeutil.UniqueID, ts typeutil.Timestamp) ([]*model.Function, error) {
-	prefix := BuildFunctionPrefix(collectionID)
+func (kc *Catalog) listStructArrayFieldsAfter210(ctx context.Context, collectionID typeutil.UniqueID, ts typeutil.Timestamp) ([]*model.StructArrayField, error) {
+	return kc.listStructArrayFieldsWithPrefix(ctx, BuildStructArrayFieldPrefix(collectionID))
+}
+
+func (kc *Catalog) listFunctionsWithPrefix(ctx context.Context, prefix string) ([]*model.Function, error) {
 	_, values, err := kc.Txn.LoadWithPrefix(ctx, prefix)
 	if err != nil {
 		return nil, err
@@ -515,6 +610,10 @@ func (kc *Catalog) listFunctions(ctx context.Context, collectionID typeutil.Uniq
 		functions = append(functions, model.UnmarshalFunctionModel(functionSchema))
 	}
 	return functions, nil
+}
+
+func (kc *Catalog) listFunctions(ctx context.Context, collectionID typeutil.UniqueID, ts typeutil.Timestamp) ([]*model.Function, error) {
+	return kc.listFunctionsWithPrefix(ctx, BuildFunctionPrefix(collectionID))
 }
 
 func (kc *Catalog) batchListFunctions(ctx context.Context, ts typeutil.Timestamp) (map[int64][]*model.Function, error) {
@@ -651,6 +750,75 @@ func (kc *Catalog) GetCollectionByID(ctx context.Context, dbID int64, ts typeuti
 	return kc.appendPartitionAndFieldsInfo(ctx, collMeta, ts)
 }
 
+func (kc *Catalog) GetCollectionSchemaByVersion(ctx context.Context, collectionID typeutil.UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error) {
+	collectionKey := BuildCollectionSchemaVersionCollectionKey(collectionID, schemaVersion)
+	collVal, err := kc.Txn.Load(ctx, collectionKey)
+	if err != nil {
+		return nil, merr.WrapErrCollectionNotFound(collectionID, fmt.Sprintf("schema version %d: %s", schemaVersion, err.Error()))
+	}
+	collMeta := &pb.CollectionInfo{}
+	if err := proto.Unmarshal([]byte(collVal), collMeta); err != nil {
+		return nil, err
+	}
+	coll := model.UnmarshalCollectionModel(collMeta)
+	if coll == nil {
+		return nil, merr.WrapErrCollectionNotFound(collectionID, fmt.Sprintf("schema version %d", schemaVersion))
+	}
+
+	var fields []*model.Field
+	var structArrayFields []*model.StructArrayField
+	var functions []*model.Function
+	eg := errgroup.Group{}
+	eg.Go(func() error {
+		var err error
+		fields, err = kc.listFieldsWithPrefix(ctx, BuildCollectionSchemaVersionFieldPrefix(collectionID, schemaVersion))
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		structArrayFields, err = kc.listStructArrayFieldsWithPrefix(ctx, BuildCollectionSchemaVersionStructArrayFieldPrefix(collectionID, schemaVersion))
+		return err
+	})
+	eg.Go(func() error {
+		var err error
+		functions, err = kc.listFunctionsWithPrefix(ctx, BuildCollectionSchemaVersionFunctionPrefix(collectionID, schemaVersion))
+		return err
+	})
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+
+	coll.Fields = fields
+	coll.StructArrayFields = structArrayFields
+	coll.Functions = functions
+	return coll.ToCollectionSchemaPB(), nil
+}
+
+// SetupVersionedSchemaStorageIfNeeded idempotently writes the current schema-version snapshot
+// for a collection created before versioned schema storage existed.
+// It does not reconstruct historical schema versions.
+func (kc *Catalog) SetupVersionedSchemaStorageIfNeeded(ctx context.Context, coll *model.Collection, ts typeutil.Timestamp) error {
+	if coll == nil {
+		return errors.New("collection is nil")
+	}
+	collectionKey := BuildCollectionSchemaVersionCollectionKey(coll.CollectionID, coll.SchemaVersion)
+	if _, err := kc.Txn.Load(ctx, collectionKey); err == nil {
+		return nil
+	}
+
+	bodyKVs, headerKVs, err := buildCollectionSchemaVersionKVs(coll)
+	if err != nil {
+		return err
+	}
+	maxTxnNum := paramtable.Get().MetaStoreCfg.MaxEtcdTxnNum.GetAsInt()
+	if err := etcd.SaveByBatchWithLimit(bodyKVs, maxTxnNum, func(partialKvs map[string]string) error {
+		return kc.Txn.MultiSave(ctx, partialKvs)
+	}); err != nil {
+		return err
+	}
+	return kc.Txn.MultiSave(ctx, headerKVs)
+}
+
 func (kc *Catalog) CollectionExists(ctx context.Context, dbID int64, collectionID typeutil.UniqueID, ts typeutil.Timestamp) bool {
 	_, err := kc.GetCollectionByID(ctx, dbID, ts, collectionID)
 	return err == nil
@@ -708,6 +876,11 @@ func (kc *Catalog) DropCollection(ctx context.Context, collectionInfo *model.Col
 	for _, function := range collectionInfo.Functions {
 		delMetakeysSnap = append(delMetakeysSnap, BuildFunctionKey(collectionInfo.CollectionID, function.ID))
 	}
+	versionedSchemaKeys, _, err := kc.Txn.LoadWithPrefix(ctx, BuildCollectionSchemaVersionsPrefix(collectionInfo.CollectionID))
+	if err != nil {
+		return err
+	}
+	delMetakeysSnap = append(delMetakeysSnap, versionedSchemaKeys...)
 	// delMetakeysSnap = append(delMetakeysSnap, buildPartitionPrefix(collectionInfo.CollectionID))
 	// delMetakeysSnap = append(delMetakeysSnap, buildFieldPrefix(collectionInfo.CollectionID))
 
@@ -755,7 +928,8 @@ func (kc *Catalog) alterModifyCollection(ctx context.Context, oldColl *model.Col
 	if err != nil {
 		return err
 	}
-	saves := map[string]string{newKey: string(value)}
+	headers := map[string]string{newKey: string(value)}
+	bodySaves := map[string]string{}
 	// no default aliases will be created.
 	// save fields info to new path.
 	if fieldModify {
@@ -766,7 +940,7 @@ func (kc *Catalog) alterModifyCollection(ctx context.Context, oldColl *model.Col
 			if err != nil {
 				return err
 			}
-			saves[k] = string(v)
+			bodySaves[k] = string(v)
 		}
 
 		for _, structArrayField := range newColl.StructArrayFields {
@@ -776,7 +950,7 @@ func (kc *Catalog) alterModifyCollection(ctx context.Context, oldColl *model.Col
 			if err != nil {
 				return err
 			}
-			saves[k] = string(v)
+			bodySaves[k] = string(v)
 		}
 		for _, function := range newColl.Functions {
 			k := BuildFunctionKey(newColl.CollectionID, function.ID)
@@ -785,14 +959,30 @@ func (kc *Catalog) alterModifyCollection(ctx context.Context, oldColl *model.Col
 			if err != nil {
 				return err
 			}
-			saves[k] = string(v)
+			bodySaves[k] = string(v)
+		}
+
+		schemaBodyKVs, schemaHeaderKVs, err := buildCollectionSchemaVersionKVs(newColl)
+		if err != nil {
+			return err
+		}
+		for k, v := range schemaBodyKVs {
+			bodySaves[k] = v
+		}
+		for k, v := range schemaHeaderKVs {
+			headers[k] = v
 		}
 	}
 
 	maxTxnNum := paramtable.Get().MetaStoreCfg.MaxEtcdTxnNum.GetAsInt()
-	return etcd.SaveByBatchWithLimit(saves, maxTxnNum, func(partialKvs map[string]string) error {
-		return kc.Txn.MultiSave(ctx, partialKvs)
-	})
+	if len(bodySaves) > 0 {
+		if err := etcd.SaveByBatchWithLimit(bodySaves, maxTxnNum, func(partialKvs map[string]string) error {
+			return kc.Txn.MultiSave(ctx, partialKvs)
+		}); err != nil {
+			return err
+		}
+	}
+	return kc.Txn.MultiSave(ctx, headers)
 }
 
 func (kc *Catalog) AlterCollection(ctx context.Context, oldColl *model.Collection, newColl *model.Collection, alterType metastore.AlterType, ts typeutil.Timestamp, fieldModify bool) error {

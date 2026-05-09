@@ -28,6 +28,7 @@ import (
 	"golang.org/x/exp/maps"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/metastore"
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	"github.com/milvus-io/milvus/internal/streamingcoord/server/balancer/channel"
@@ -92,6 +93,7 @@ type IMetaTable interface {
 	GetCollectionID(ctx context.Context, dbName string, collectionName string) UniqueID
 	GetCollectionByName(ctx context.Context, dbName string, collectionName string, ts Timestamp) (*model.Collection, error)
 	GetCollectionByID(ctx context.Context, dbName string, collectionID UniqueID, ts Timestamp, allowUnavailable bool) (*model.Collection, error)
+	GetCollectionSchemaByVersion(ctx context.Context, collectionID UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error)
 	GetCollectionByIDWithMaxTs(ctx context.Context, collectionID UniqueID) (*model.Collection, error)
 	ListCollections(ctx context.Context, dbName string, ts Timestamp, onlyAvail bool) ([]*model.Collection, error)
 	ListAllAvailCollections(ctx context.Context) map[int64][]int64
@@ -263,6 +265,9 @@ func (mt *MetaTable) reload() error {
 			collection.DBName = dbName // some collections may not have db name or its dbname is not correct, we should fix it here.
 			mt.collID2Meta[collection.CollectionID] = collection
 			if collection.Available() {
+				if err := mt.catalog.SetupVersionedSchemaStorageIfNeeded(mt.ctx, collection, typeutil.MaxTimestamp); err != nil {
+					return err
+				}
 				mt.names.insert(dbName, collection.Name, collection.CollectionID)
 				for _, fileResourceID := range collection.FileResourceIds {
 					mt.fileResourceRefCnt[fileResourceID]++
@@ -333,6 +338,9 @@ func (mt *MetaTable) reloadWithNonDatabase() error {
 	for _, collection := range oldCollections {
 		mt.collID2Meta[collection.CollectionID] = collection
 		if collection.Available() {
+			if err := mt.catalog.SetupVersionedSchemaStorageIfNeeded(mt.ctx, collection, typeutil.MaxTimestamp); err != nil {
+				return err
+			}
 			mt.names.insert(util.DefaultDBName, collection.Name, collection.CollectionID)
 			for _, fileResourceID := range collection.FileResourceIds {
 				mt.fileResourceRefCnt[fileResourceID]++
@@ -895,6 +903,27 @@ func (mt *MetaTable) GetCollectionByID(ctx context.Context, dbName string, colle
 	defer mt.ddLock.RUnlock()
 
 	return mt.getCollectionByIDInternal(ctx, dbName, collectionID, ts, allowUnavailable)
+}
+
+func (mt *MetaTable) GetCollectionSchemaByVersion(ctx context.Context, collectionID UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error) {
+	if collectionID == 0 {
+		return nil, merr.WrapErrParameterInvalidMsg("collection id is 0")
+	}
+	if schemaVersion < 0 {
+		return nil, merr.WrapErrParameterInvalidMsg("schema version %d is negative", schemaVersion)
+	}
+
+	mt.ddLock.RLock()
+	defer mt.ddLock.RUnlock()
+
+	schema, err := mt.catalog.GetCollectionSchemaByVersion(ctx, collectionID, schemaVersion)
+	if err != nil {
+		return nil, err
+	}
+	if schema.GetVersion() != schemaVersion {
+		return nil, merr.WrapErrParameterInvalidMsg("schema version mismatch, expected %d, got %d", schemaVersion, schema.GetVersion())
+	}
+	return schema, nil
 }
 
 // GetCollectionByIDWithMaxTs get collection, dbName can be ignored if ts is max timestamps

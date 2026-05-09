@@ -8,6 +8,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v2/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/milvuspb"
 	"github.com/milvus-io/milvus-proto/go-api/v2/msgpb"
+	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
 	"github.com/milvus-io/milvus/internal/metastore/model"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v2/proto/indexpb"
@@ -27,6 +28,11 @@ type RootCoordCatalog interface {
 	CreateCollection(ctx context.Context, collectionInfo *model.Collection, ts typeutil.Timestamp) error
 	GetCollectionByID(ctx context.Context, dbID int64, ts typeutil.Timestamp, collectionID typeutil.UniqueID) (*model.Collection, error)
 	GetCollectionByName(ctx context.Context, dbID int64, dbName string, collectionName string, ts typeutil.Timestamp) (*model.Collection, error)
+	GetCollectionSchemaByVersion(ctx context.Context, collectionID typeutil.UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error)
+	// SetupVersionedSchemaStorageIfNeeded idempotently writes the current schema-version snapshot
+	// for a collection created before versioned schema storage existed.
+	// It does not reconstruct historical schema versions.
+	SetupVersionedSchemaStorageIfNeeded(ctx context.Context, coll *model.Collection, ts typeutil.Timestamp) error
 	ListCollections(ctx context.Context, dbID int64, ts typeutil.Timestamp) ([]*model.Collection, error)
 	CollectionExists(ctx context.Context, dbID int64, collectionID typeutil.UniqueID, ts typeutil.Timestamp) bool
 	DropCollection(ctx context.Context, collectionInfo *model.Collection, ts typeutil.Timestamp) error

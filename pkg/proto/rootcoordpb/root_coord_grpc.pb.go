@@ -34,6 +34,7 @@ const (
 	RootCoord_HasCollection_FullMethodName                 = "/milvus.proto.rootcoord.RootCoord/HasCollection"
 	RootCoord_DescribeCollection_FullMethodName            = "/milvus.proto.rootcoord.RootCoord/DescribeCollection"
 	RootCoord_DescribeCollectionInternal_FullMethodName    = "/milvus.proto.rootcoord.RootCoord/DescribeCollectionInternal"
+	RootCoord_GetCollectionSchemaByVersion_FullMethodName  = "/milvus.proto.rootcoord.RootCoord/GetCollectionSchemaByVersion"
 	RootCoord_CreateAlias_FullMethodName                   = "/milvus.proto.rootcoord.RootCoord/CreateAlias"
 	RootCoord_DropAlias_FullMethodName                     = "/milvus.proto.rootcoord.RootCoord/DropAlias"
 	RootCoord_AlterAlias_FullMethodName                    = "/milvus.proto.rootcoord.RootCoord/AlterAlias"
@@ -153,6 +154,7 @@ type RootCoordClient interface {
 	// @return CollectionSchema
 	DescribeCollection(ctx context.Context, in *milvuspb.DescribeCollectionRequest, opts ...grpc.CallOption) (*milvuspb.DescribeCollectionResponse, error)
 	DescribeCollectionInternal(ctx context.Context, in *milvuspb.DescribeCollectionRequest, opts ...grpc.CallOption) (*milvuspb.DescribeCollectionResponse, error)
+	GetCollectionSchemaByVersion(ctx context.Context, in *GetCollectionSchemaByVersionRequest, opts ...grpc.CallOption) (*GetCollectionSchemaByVersionResponse, error)
 	CreateAlias(ctx context.Context, in *milvuspb.CreateAliasRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
 	DropAlias(ctx context.Context, in *milvuspb.DropAliasRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
 	AlterAlias(ctx context.Context, in *milvuspb.AlterAliasRequest, opts ...grpc.CallOption) (*commonpb.Status, error)
@@ -344,6 +346,15 @@ func (c *rootCoordClient) DescribeCollection(ctx context.Context, in *milvuspb.D
 func (c *rootCoordClient) DescribeCollectionInternal(ctx context.Context, in *milvuspb.DescribeCollectionRequest, opts ...grpc.CallOption) (*milvuspb.DescribeCollectionResponse, error) {
 	out := new(milvuspb.DescribeCollectionResponse)
 	err := c.cc.Invoke(ctx, RootCoord_DescribeCollectionInternal_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *rootCoordClient) GetCollectionSchemaByVersion(ctx context.Context, in *GetCollectionSchemaByVersionRequest, opts ...grpc.CallOption) (*GetCollectionSchemaByVersionResponse, error) {
+	out := new(GetCollectionSchemaByVersionResponse)
+	err := c.cc.Invoke(ctx, RootCoord_GetCollectionSchemaByVersion_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -947,6 +958,7 @@ type RootCoordServer interface {
 	// @return CollectionSchema
 	DescribeCollection(context.Context, *milvuspb.DescribeCollectionRequest) (*milvuspb.DescribeCollectionResponse, error)
 	DescribeCollectionInternal(context.Context, *milvuspb.DescribeCollectionRequest) (*milvuspb.DescribeCollectionResponse, error)
+	GetCollectionSchemaByVersion(context.Context, *GetCollectionSchemaByVersionRequest) (*GetCollectionSchemaByVersionResponse, error)
 	CreateAlias(context.Context, *milvuspb.CreateAliasRequest) (*commonpb.Status, error)
 	DropAlias(context.Context, *milvuspb.DropAliasRequest) (*commonpb.Status, error)
 	AlterAlias(context.Context, *milvuspb.AlterAliasRequest) (*commonpb.Status, error)
@@ -1073,6 +1085,9 @@ func (UnimplementedRootCoordServer) DescribeCollection(context.Context, *milvusp
 }
 func (UnimplementedRootCoordServer) DescribeCollectionInternal(context.Context, *milvuspb.DescribeCollectionRequest) (*milvuspb.DescribeCollectionResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method DescribeCollectionInternal not implemented")
+}
+func (UnimplementedRootCoordServer) GetCollectionSchemaByVersion(context.Context, *GetCollectionSchemaByVersionRequest) (*GetCollectionSchemaByVersionResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCollectionSchemaByVersion not implemented")
 }
 func (UnimplementedRootCoordServer) CreateAlias(context.Context, *milvuspb.CreateAliasRequest) (*commonpb.Status, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method CreateAlias not implemented")
@@ -1460,6 +1475,24 @@ func _RootCoord_DescribeCollectionInternal_Handler(srv interface{}, ctx context.
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(RootCoordServer).DescribeCollectionInternal(ctx, req.(*milvuspb.DescribeCollectionRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _RootCoord_GetCollectionSchemaByVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCollectionSchemaByVersionRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RootCoordServer).GetCollectionSchemaByVersion(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RootCoord_GetCollectionSchemaByVersion_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RootCoordServer).GetCollectionSchemaByVersion(ctx, req.(*GetCollectionSchemaByVersionRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -2594,6 +2627,10 @@ var RootCoord_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DescribeCollectionInternal",
 			Handler:    _RootCoord_DescribeCollectionInternal_Handler,
+		},
+		{
+			MethodName: "GetCollectionSchemaByVersion",
+			Handler:    _RootCoord_GetCollectionSchemaByVersion_Handler,
 		},
 		{
 			MethodName: "CreateAlias",

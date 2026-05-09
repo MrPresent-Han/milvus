@@ -365,6 +365,9 @@ func (t *mixCompactionTask) SetTask(task *datapb.CompactionTask) {
 func (t *mixCompactionTask) BuildCompactionRequest() (*datapb.CompactionPlan, error) {
 	log := log.With(zap.Int64("triggerID", t.GetTaskProto().GetTriggerID()), zap.Int64("PlanID", t.GetTaskProto().GetPlanID()), zap.Int64("collectionID", t.GetTaskProto().GetCollectionID()))
 	taskProto := t.taskProto.Load().(*datapb.CompactionTask)
+	if taskProto.GetSchema() == nil {
+		return nil, errors.New("compaction task schema is nil")
+	}
 	compactionParams, err := compaction.GenerateJSONParams(taskProto.GetSchema())
 	if err != nil {
 		return nil, err
