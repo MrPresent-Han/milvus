@@ -94,6 +94,7 @@ type IMetaTable interface {
 	GetCollectionByName(ctx context.Context, dbName string, collectionName string, ts Timestamp) (*model.Collection, error)
 	GetCollectionByID(ctx context.Context, dbName string, collectionID UniqueID, ts Timestamp, allowUnavailable bool) (*model.Collection, error)
 	GetCollectionSchemaByVersion(ctx context.Context, collectionID UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error)
+	GcCollectionSchemaVersions(ctx context.Context, collectionID UniqueID, dropBeforeVersion int32) error
 	GetCollectionByIDWithMaxTs(ctx context.Context, collectionID UniqueID) (*model.Collection, error)
 	ListCollections(ctx context.Context, dbName string, ts Timestamp, onlyAvail bool) ([]*model.Collection, error)
 	ListAllAvailCollections(ctx context.Context) map[int64][]int64
@@ -174,6 +175,8 @@ type MetaTable struct {
 	fileResourceRefCnt    map[int64]int                           // file resource id -> reference count
 	fileResourceVersion   uint64
 
+	versionedSchemaGcCursor map[typeutil.UniqueID]int32
+
 	generalCnt int // sum of product of partition number and shard number
 
 	// collections *collectionDb
@@ -205,6 +208,7 @@ func (mt *MetaTable) reload() error {
 	mt.dbName2Meta = make(map[string]*model.Database)
 	mt.collID2Meta = make(map[UniqueID]*model.Collection)
 	mt.fileResourceRefCnt = make(map[int64]int)
+	mt.versionedSchemaGcCursor = make(map[UniqueID]int32)
 	mt.names = newNameDb()
 	mt.aliases = newNameDb()
 
@@ -685,6 +689,7 @@ func (mt *MetaTable) removeAllNamesIfMatchedInternal(ctx context.Context, collec
 
 func (mt *MetaTable) removeCollectionByIDInternal(ctx context.Context, collectionID UniqueID) {
 	delete(mt.collID2Meta, collectionID)
+	delete(mt.versionedSchemaGcCursor, collectionID)
 	log.Ctx(ctx).Info("delete from collID2Meta",
 		zap.Int64("collectionID", collectionID),
 	)
@@ -924,6 +929,32 @@ func (mt *MetaTable) GetCollectionSchemaByVersion(ctx context.Context, collectio
 		return nil, merr.WrapErrParameterInvalidMsg("schema version mismatch, expected %d, got %d", schemaVersion, schema.GetVersion())
 	}
 	return schema, nil
+}
+
+func (mt *MetaTable) GcCollectionSchemaVersions(ctx context.Context, collectionID UniqueID, dropBeforeVersion int32) error {
+	if collectionID <= 0 {
+		return merr.WrapErrParameterInvalidMsg("collection id is %d", collectionID)
+	}
+	if dropBeforeVersion <= 0 {
+		return nil
+	}
+
+	mt.ddLock.Lock()
+	defer mt.ddLock.Unlock()
+
+	startVersion := mt.versionedSchemaGcCursor[collectionID]
+	if startVersion >= dropBeforeVersion {
+		log.Ctx(ctx).Info("TEMP VersionedSchema GC RootCoord cursor already caught up",
+			zap.Int64("collectionID", collectionID),
+			zap.Int32("startVersion", startVersion),
+			zap.Int32("dropBeforeVersion", dropBeforeVersion))
+		return nil
+	}
+	if err := mt.catalog.GcCollectionSchemaVersions(ctx, collectionID, startVersion, dropBeforeVersion); err != nil {
+		return err
+	}
+	mt.versionedSchemaGcCursor[collectionID] = dropBeforeVersion
+	return nil
 }
 
 // GetCollectionByIDWithMaxTs get collection, dbName can be ignored if ts is max timestamps

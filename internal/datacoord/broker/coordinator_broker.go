@@ -40,6 +40,7 @@ type Broker interface {
 	DescribeCollectionInternal(ctx context.Context, collectionID int64) (*milvuspb.DescribeCollectionResponse, error)
 	DescribeCollectionByName(ctx context.Context, dbName, collectionName string) (*milvuspb.DescribeCollectionResponse, error)
 	GetCollectionSchemaByVersion(ctx context.Context, collectionID int64, schemaVersion int32) (*schemapb.CollectionSchema, error)
+	GcCollectionSchemaVersions(ctx context.Context, collectionID int64, dropBeforeVersion int32) error
 	ShowPartitionsInternal(ctx context.Context, collectionID int64) ([]int64, error)
 	ShowCollections(ctx context.Context, dbName string) (*milvuspb.ShowCollectionsResponse, error)
 	ShowCollectionIDs(ctx context.Context, dbNames ...string) (*rootcoordpb.ShowCollectionIDsResponse, error)
@@ -143,7 +144,34 @@ func (b *coordinatorBroker) GetCollectionSchemaByVersion(ctx context.Context, co
 		log.Warn("GetCollectionSchemaByVersion returned mismatched schema", zap.Error(err))
 		return nil, err
 	}
+	log.Info("TEMP VersionedSchema broker received schema",
+		zap.Int32("responseSchemaVersion", resp.GetSchemaVersion()),
+		zap.Int32("loadedSchemaVersion", resp.GetSchema().GetVersion()),
+		zap.Int("fieldCount", len(resp.GetSchema().GetFields())),
+		zap.Int("structArrayFieldCount", len(resp.GetSchema().GetStructArrayFields())),
+		zap.Int("functionCount", len(resp.GetSchema().GetFunctions())))
 	return resp.GetSchema(), nil
+}
+
+func (b *coordinatorBroker) GcCollectionSchemaVersions(ctx context.Context, collectionID int64, dropBeforeVersion int32) error {
+	ctx, cancel := context.WithTimeout(ctx, paramtable.Get().QueryCoordCfg.BrokerTimeout.GetAsDuration(time.Millisecond))
+	defer cancel()
+	log := log.Ctx(ctx).With(zap.Int64("collectionID", collectionID), zap.Int32("dropBeforeVersion", dropBeforeVersion))
+
+	resp, err := b.mixCoord.GcCollectionSchemaVersions(ctx, &rootcoordpb.GcCollectionSchemaVersionsRequest{
+		Base: commonpbutil.NewMsgBase(
+			commonpbutil.WithMsgType(commonpb.MsgType_Undefined),
+			commonpbutil.WithSourceID(paramtable.GetNodeID()),
+		),
+		CollectionID:      collectionID,
+		DropBeforeVersion: dropBeforeVersion,
+	})
+	if err := merr.CheckRPCCall(resp, err); err != nil {
+		log.Warn("TEMP VersionedSchema GC broker failed", zap.Error(err))
+		return err
+	}
+	log.Info("TEMP VersionedSchema GC broker succeeded")
+	return nil
 }
 
 func (b *coordinatorBroker) ShowPartitionsInternal(ctx context.Context, collectionID int64) ([]int64, error) {

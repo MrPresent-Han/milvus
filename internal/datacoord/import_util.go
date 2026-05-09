@@ -892,6 +892,14 @@ func createSortCompactionTask(ctx context.Context,
 		log.Warn("Failed to create sort compaction task because collection schema version mismatches", zap.Error(err))
 		return nil, err
 	}
+	log.Info("TEMP VersionedSchema import SortCompaction resolved input segment schema",
+		zap.Int64("segmentID", originSegment.GetID()),
+		zap.Int64("collectionID", originSegment.GetCollectionID()),
+		zap.Int32("segmentSchemaVersion", schemaVersion),
+		zap.Int32("loadedSchemaVersion", schema.GetVersion()),
+		zap.Int("fieldCount", len(schema.GetFields())),
+		zap.Int("structArrayFieldCount", len(schema.GetStructArrayFields())),
+		zap.Int("functionCount", len(schema.GetFunctions())))
 
 	startID, _, err := alloc.AllocN(2)
 	if err != nil {

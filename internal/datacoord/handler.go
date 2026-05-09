@@ -613,6 +613,13 @@ func (h *ServerHandler) GetCollectionSchemaByVersion(ctx context.Context, collec
 	if schema.GetVersion() != schemaVersion {
 		return nil, merr.WrapErrParameterInvalidMsg("schema version mismatch, expected %d, got %d", schemaVersion, schema.GetVersion())
 	}
+	log.Ctx(ctx2).Info("TEMP VersionedSchema DataCoord handler resolved schema",
+		zap.Int64("collectionID", collectionID),
+		zap.Int32("requestedSchemaVersion", schemaVersion),
+		zap.Int32("loadedSchemaVersion", schema.GetVersion()),
+		zap.Int("fieldCount", len(schema.GetFields())),
+		zap.Int("structArrayFieldCount", len(schema.GetStructArrayFields())),
+		zap.Int("functionCount", len(schema.GetFunctions())))
 	return schema, nil
 }
 

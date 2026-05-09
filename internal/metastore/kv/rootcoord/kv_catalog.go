@@ -315,6 +315,14 @@ func (kc *Catalog) CreateCollection(ctx context.Context, coll *model.Collection,
 	if err != nil {
 		return err
 	}
+	log.Ctx(ctx).Info("TEMP VersionedSchema create collection snapshot",
+		zap.Int64("collectionID", coll.CollectionID),
+		zap.Int32("schemaVersion", coll.SchemaVersion),
+		zap.Int("fieldCount", len(coll.Fields)),
+		zap.Int("structArrayFieldCount", len(coll.StructArrayFields)),
+		zap.Int("functionCount", len(coll.Functions)),
+		zap.Int("bodyKVCount", len(schemaBodyKVs)),
+		zap.Int("headerKVCount", len(schemaHeaderKVs)))
 	for k, v := range schemaBodyKVs {
 		kvs[k] = v
 	}
@@ -791,7 +799,51 @@ func (kc *Catalog) GetCollectionSchemaByVersion(ctx context.Context, collectionI
 	coll.Fields = fields
 	coll.StructArrayFields = structArrayFields
 	coll.Functions = functions
-	return coll.ToCollectionSchemaPB(), nil
+	schema := coll.ToCollectionSchemaPB()
+	log.Ctx(ctx).Info("TEMP VersionedSchema loaded schema snapshot",
+		zap.Int64("collectionID", collectionID),
+		zap.Int32("requestedSchemaVersion", schemaVersion),
+		zap.Int32("loadedSchemaVersion", schema.GetVersion()),
+		zap.Int("fieldCount", len(schema.GetFields())),
+		zap.Int("structArrayFieldCount", len(schema.GetStructArrayFields())),
+		zap.Int("functionCount", len(schema.GetFunctions())))
+	return schema, nil
+}
+
+func (kc *Catalog) GcCollectionSchemaVersions(ctx context.Context, collectionID typeutil.UniqueID, startVersion int32, dropBeforeVersion int32) error {
+	if collectionID <= 0 {
+		return merr.WrapErrParameterInvalidMsg("collection id is %d", collectionID)
+	}
+	if startVersion < 0 {
+		return merr.WrapErrParameterInvalidMsg("start version %d is negative", startVersion)
+	}
+	if dropBeforeVersion <= startVersion {
+		log.Ctx(ctx).Info("TEMP VersionedSchema GC skip caught-up watermark",
+			zap.Int64("collectionID", collectionID),
+			zap.Int32("startVersion", startVersion),
+			zap.Int32("dropBeforeVersion", dropBeforeVersion))
+		return nil
+	}
+
+	removedVersionCount := int32(0)
+	for version := startVersion; version < dropBeforeVersion; version++ {
+		prefix := BuildCollectionSchemaVersionPrefix(collectionID, version)
+		if err := kc.Txn.RemoveWithPrefix(ctx, prefix); err != nil {
+			log.Ctx(ctx).Warn("TEMP VersionedSchema GC failed to remove schema version prefix",
+				zap.Int64("collectionID", collectionID),
+				zap.Int32("schemaVersion", version),
+				zap.String("prefix", prefix),
+				zap.Error(err))
+			return err
+		}
+		removedVersionCount++
+	}
+	log.Ctx(ctx).Info("TEMP VersionedSchema GC removed schema version prefixes",
+		zap.Int64("collectionID", collectionID),
+		zap.Int32("startVersion", startVersion),
+		zap.Int32("dropBeforeVersion", dropBeforeVersion),
+		zap.Int32("removedVersionCount", removedVersionCount))
+	return nil
 }
 
 // SetupVersionedSchemaStorageIfNeeded idempotently writes the current schema-version snapshot
@@ -803,6 +855,10 @@ func (kc *Catalog) SetupVersionedSchemaStorageIfNeeded(ctx context.Context, coll
 	}
 	collectionKey := BuildCollectionSchemaVersionCollectionKey(coll.CollectionID, coll.SchemaVersion)
 	if _, err := kc.Txn.Load(ctx, collectionKey); err == nil {
+		log.Ctx(ctx).Info("TEMP VersionedSchema bootstrap snapshot already exists",
+			zap.Int64("collectionID", coll.CollectionID),
+			zap.Int32("schemaVersion", coll.SchemaVersion),
+			zap.String("collectionKey", collectionKey))
 		return nil
 	}
 
@@ -816,7 +872,18 @@ func (kc *Catalog) SetupVersionedSchemaStorageIfNeeded(ctx context.Context, coll
 	}); err != nil {
 		return err
 	}
-	return kc.Txn.MultiSave(ctx, headerKVs)
+	if err := kc.Txn.MultiSave(ctx, headerKVs); err != nil {
+		return err
+	}
+	log.Ctx(ctx).Info("TEMP VersionedSchema bootstrap snapshot written",
+		zap.Int64("collectionID", coll.CollectionID),
+		zap.Int32("schemaVersion", coll.SchemaVersion),
+		zap.Int("fieldCount", len(coll.Fields)),
+		zap.Int("structArrayFieldCount", len(coll.StructArrayFields)),
+		zap.Int("functionCount", len(coll.Functions)),
+		zap.Int("bodyKVCount", len(bodyKVs)),
+		zap.Int("headerKVCount", len(headerKVs)))
+	return nil
 }
 
 func (kc *Catalog) CollectionExists(ctx context.Context, dbID int64, collectionID typeutil.UniqueID, ts typeutil.Timestamp) bool {
@@ -966,6 +1033,15 @@ func (kc *Catalog) alterModifyCollection(ctx context.Context, oldColl *model.Col
 		if err != nil {
 			return err
 		}
+		log.Ctx(ctx).Info("TEMP VersionedSchema alter collection snapshot",
+			zap.Int64("collectionID", newColl.CollectionID),
+			zap.Int32("oldSchemaVersion", oldColl.SchemaVersion),
+			zap.Int32("newSchemaVersion", newColl.SchemaVersion),
+			zap.Int("fieldCount", len(newColl.Fields)),
+			zap.Int("structArrayFieldCount", len(newColl.StructArrayFields)),
+			zap.Int("functionCount", len(newColl.Functions)),
+			zap.Int("bodyKVCount", len(schemaBodyKVs)),
+			zap.Int("headerKVCount", len(schemaHeaderKVs)))
 		for k, v := range schemaBodyKVs {
 			bodySaves[k] = v
 		}

@@ -303,6 +303,17 @@ func (c *Client) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoord
 	})
 }
 
+func (c *Client) GcCollectionSchemaVersions(ctx context.Context, in *rootcoordpb.GcCollectionSchemaVersionsRequest, opts ...grpc.CallOption) (*commonpb.Status, error) {
+	in = typeutil.Clone(in)
+	commonpbutil.UpdateMsgBase(
+		in.GetBase(),
+		commonpbutil.FillMsgBaseFromClient(paramtable.GetNodeID(), commonpbutil.WithTargetID(c.grpcClient.GetNodeID())),
+	)
+	return wrapGrpcCall(ctx, c, func(client MixCoordClient) (*commonpb.Status, error) {
+		return client.GcCollectionSchemaVersions(ctx, in)
+	})
+}
+
 // ShowCollections list all collection names
 func (c *Client) ShowCollections(ctx context.Context, in *milvuspb.ShowCollectionsRequest, opts ...grpc.CallOption) (*milvuspb.ShowCollectionsResponse, error) {
 	in = typeutil.Clone(in)

@@ -40,6 +40,7 @@ import (
 	"github.com/milvus-io/milvus/pkg/v2/log"
 	"github.com/milvus-io/milvus/pkg/v2/metrics"
 	"github.com/milvus-io/milvus/pkg/v2/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v2/proto/internalpb"
 	"github.com/milvus-io/milvus/pkg/v2/util/conc"
 	"github.com/milvus-io/milvus/pkg/v2/util/funcutil"
 	"github.com/milvus-io/milvus/pkg/v2/util/hardware"
@@ -59,6 +60,7 @@ type GcOption struct {
 	scanInterval     time.Duration        // interval for scan residue for interupted log wrttien
 
 	broker           broker.Broker
+	importMeta       ImportMeta
 	removeObjectPool *conc.Pool[struct{}]
 }
 
@@ -341,6 +343,7 @@ func (gc *garbageCollector) work(ctx context.Context) {
 			gc.recycleUnusedJSONIndexFiles(ctx, signal)
 			gc.recycleUnusedJSONStatsFiles(ctx, signal)
 			gc.recycleSnapshots(ctx, signal)
+			gc.recycleUnusedCollectionSchemaVersions(ctx)
 		})
 	}()
 	go func() {
@@ -492,6 +495,91 @@ func (gc *garbageCollector) runRecycleTaskWithPauser(ctx context.Context, name s
 func (gc *garbageCollector) collectionGCPaused(collectionID int64) bool {
 	collPauseUntil, has := gc.pausedCollection.Get(collectionID)
 	return has && time.Now().Before(collPauseUntil.PauseUntil())
+}
+
+func (gc *garbageCollector) recycleUnusedCollectionSchemaVersions(ctx context.Context) {
+	if !gc.option.enabled || gc.option.broker == nil {
+		return
+	}
+	logger := log.Ctx(ctx).With(zap.String("gcName", "recycleUnusedCollectionSchemaVersions"))
+	for _, collection := range gc.meta.GetCollections() {
+		collectionID := collection.ID
+		if gc.collectionGCPaused(collectionID) {
+			logger.Info("TEMP VersionedSchema GC skip paused collection", zap.Int64("collectionID", collectionID))
+			continue
+		}
+		if gc.option.importMeta != nil {
+			activeImportJobs := gc.option.importMeta.GetJobBy(ctx,
+				WithCollectionID(collectionID),
+				WithoutJobStates(internalpb.ImportJobState_Completed, internalpb.ImportJobState_Failed),
+			)
+			if len(activeImportJobs) > 0 {
+				logger.Info("TEMP VersionedSchema GC skip collection with active import jobs",
+					zap.Int64("collectionID", collectionID),
+					zap.Int("activeImportJobCount", len(activeImportJobs)))
+				continue
+			}
+		}
+
+		currentCollectionSchemaVersion := int32(-1)
+		if collection.Schema != nil {
+			currentCollectionSchemaVersion = collection.Schema.GetVersion()
+		}
+		segments := gc.meta.GetSegmentsOfCollection(ctx, collectionID)
+		if len(segments) == 0 {
+			if currentCollectionSchemaVersion <= 0 {
+				logger.Info("TEMP VersionedSchema GC skip collection without live segments",
+					zap.Int64("collectionID", collectionID),
+					zap.Int32("currentCollectionSchemaVersion", currentCollectionSchemaVersion))
+				continue
+			}
+			logger.Info("TEMP VersionedSchema GC DataCoord empty collection watermark",
+				zap.Int64("collectionID", collectionID),
+				zap.Int32("dropBeforeVersion", currentCollectionSchemaVersion))
+			if err := gc.option.broker.GcCollectionSchemaVersions(ctx, collectionID, currentCollectionSchemaVersion); err != nil {
+				logger.Warn("TEMP VersionedSchema GC DataCoord request failed",
+					zap.Int64("collectionID", collectionID),
+					zap.Int32("dropBeforeVersion", currentCollectionSchemaVersion),
+					zap.Error(err))
+			}
+			continue
+		}
+
+		minSchemaVersion := segments[0].GetSchemaVersion()
+		maxSchemaVersion := minSchemaVersion
+		minSchemaVersionSegmentID := segments[0].GetID()
+		for _, segment := range segments[1:] {
+			schemaVersion := segment.GetSchemaVersion()
+			if schemaVersion < minSchemaVersion {
+				minSchemaVersion = schemaVersion
+				minSchemaVersionSegmentID = segment.GetID()
+			}
+			if schemaVersion > maxSchemaVersion {
+				maxSchemaVersion = schemaVersion
+			}
+		}
+		if minSchemaVersion <= 0 {
+			logger.Info("TEMP VersionedSchema GC skip non-positive watermark",
+				zap.Int64("collectionID", collectionID),
+				zap.Int32("dropBeforeVersion", minSchemaVersion),
+				zap.Int("segmentCount", len(segments)))
+			continue
+		}
+
+		logger.Info("TEMP VersionedSchema GC DataCoord watermark",
+			zap.Int64("collectionID", collectionID),
+			zap.Int32("dropBeforeVersion", minSchemaVersion),
+			zap.Int("segmentCount", len(segments)),
+			zap.Int64("minSchemaVersionSegmentID", minSchemaVersionSegmentID),
+			zap.Int32("maxSegmentSchemaVersion", maxSchemaVersion),
+			zap.Int32("currentCollectionSchemaVersion", currentCollectionSchemaVersion))
+		if err := gc.option.broker.GcCollectionSchemaVersions(ctx, collectionID, minSchemaVersion); err != nil {
+			logger.Warn("TEMP VersionedSchema GC DataCoord request failed",
+				zap.Int64("collectionID", collectionID),
+				zap.Int32("dropBeforeVersion", minSchemaVersion),
+				zap.Error(err))
+		}
+	}
 }
 
 // close stop the garbage collector.

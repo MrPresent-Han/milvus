@@ -595,6 +595,14 @@ func (m *CompactionTriggerManager) resolveSingleCompactionTaskSchema(ctx context
 		logger.Error("failed to resolve sort compaction schema version because schema version mismatches", zap.Int64("segmentID", segmentID), zap.Int32("expected", schemaVersion), zap.Int32("actual", schema.GetVersion()))
 		return nil
 	}
+	logger.Info("TEMP VersionedSchema SortCompaction resolved input segment schema",
+		zap.Int64("segmentID", segmentID),
+		zap.Int64("collectionID", segment.GetCollectionID()),
+		zap.Int32("segmentSchemaVersion", schemaVersion),
+		zap.Int32("loadedSchemaVersion", schema.GetVersion()),
+		zap.Int("fieldCount", len(schema.GetFields())),
+		zap.Int("structArrayFieldCount", len(schema.GetStructArrayFields())),
+		zap.Int("functionCount", len(schema.GetFunctions())))
 	return schema
 }
 

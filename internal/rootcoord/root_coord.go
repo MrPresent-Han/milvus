@@ -1301,6 +1301,11 @@ func (c *Core) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoordpb
 		log.Warn("failed to get collection schema version", zap.Error(err))
 		return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: merr.Status(err)}, nil
 	}
+	log.Info("TEMP VersionedSchema RootCoord RPC loaded schema",
+		zap.Int32("loadedSchemaVersion", schema.GetVersion()),
+		zap.Int("fieldCount", len(schema.GetFields())),
+		zap.Int("structArrayFieldCount", len(schema.GetStructArrayFields())),
+		zap.Int("functionCount", len(schema.GetFunctions())))
 
 	return &rootcoordpb.GetCollectionSchemaByVersionResponse{
 		Status:        merr.Success(),
@@ -1308,6 +1313,29 @@ func (c *Core) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoordpb
 		SchemaVersion: in.GetSchemaVersion(),
 		Schema:        schema,
 	}, nil
+}
+
+func (c *Core) GcCollectionSchemaVersions(ctx context.Context, in *rootcoordpb.GcCollectionSchemaVersionsRequest) (*commonpb.Status, error) {
+	if err := merr.CheckHealthy(c.GetStateCode()); err != nil {
+		return merr.Status(err), nil
+	}
+	if in.GetCollectionID() <= 0 {
+		return merr.Status(merr.WrapErrParameterInvalidMsg("collection id is %d", in.GetCollectionID())), nil
+	}
+	if in.GetDropBeforeVersion() <= 0 {
+		return merr.Success(), nil
+	}
+
+	log := log.Ctx(ctx).With(
+		zap.Int64("collectionID", in.GetCollectionID()),
+		zap.Int32("dropBeforeVersion", in.GetDropBeforeVersion()),
+	)
+	log.Info("TEMP VersionedSchema GC RootCoord request")
+	if err := c.meta.GcCollectionSchemaVersions(ctx, in.GetCollectionID(), in.GetDropBeforeVersion()); err != nil {
+		log.Warn("TEMP VersionedSchema GC RootCoord failed", zap.Error(err))
+		return merr.Status(err), nil
+	}
+	return merr.Success(), nil
 }
 
 // ShowCollections list all collection names

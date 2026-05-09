@@ -400,6 +400,10 @@ func (s *Server) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoord
 	return s.mixCoord.GetCollectionSchemaByVersion(ctx, in)
 }
 
+func (s *Server) GcCollectionSchemaVersions(ctx context.Context, in *rootcoordpb.GcCollectionSchemaVersionsRequest) (*commonpb.Status, error) {
+	return s.mixCoord.GcCollectionSchemaVersions(ctx, in)
+}
+
 // ShowCollections gets all collections
 func (s *Server) ShowCollections(ctx context.Context, in *milvuspb.ShowCollectionsRequest) (*milvuspb.ShowCollectionsResponse, error) {
 	return s.mixCoord.ShowCollections(ctx, in)

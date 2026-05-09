@@ -80,6 +80,7 @@ service RootCoord {
     rpc DescribeCollection(milvus.DescribeCollectionRequest) returns (milvus.DescribeCollectionResponse) {}
     rpc DescribeCollectionInternal(milvus.DescribeCollectionRequest) returns (milvus.DescribeCollectionResponse) {}
     rpc GetCollectionSchemaByVersion(GetCollectionSchemaByVersionRequest) returns (GetCollectionSchemaByVersionResponse) {}
+    rpc GcCollectionSchemaVersions(GcCollectionSchemaVersionsRequest) returns (common.Status) {}
 
     rpc CreateAlias(milvus.CreateAliasRequest) returns (common.Status) {}
     rpc DropAlias(milvus.DropAliasRequest) returns (common.Status) {}
@@ -313,6 +314,12 @@ message GetCollectionSchemaByVersionResponse {
   int64 collectionID = 2;
   int32 schemaVersion = 3;
   schema.CollectionSchema schema = 4;
+}
+
+message GcCollectionSchemaVersionsRequest {
+  common.MsgBase base = 1;
+  int64 collectionID = 2;
+  int32 dropBeforeVersion = 3;
 }
 
 message ShowCollectionIDsRequest {
