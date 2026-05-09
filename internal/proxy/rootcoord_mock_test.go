@@ -604,6 +604,22 @@ func (coord *MixCoordMock) DescribeCollectionInternal(ctx context.Context, req *
 	return coord.DescribeCollection(ctx, req)
 }
 
+func (coord *MixCoordMock) GetCollectionSchemaByVersion(ctx context.Context, req *rootcoordpb.GetCollectionSchemaByVersionRequest, opts ...grpc.CallOption) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+	resp, err := coord.DescribeCollection(ctx, &milvuspb.DescribeCollectionRequest{CollectionID: req.GetCollectionID()})
+	if err != nil {
+		return nil, err
+	}
+	if !merr.Ok(resp.GetStatus()) {
+		return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: resp.GetStatus()}, nil
+	}
+	return &rootcoordpb.GetCollectionSchemaByVersionResponse{
+		Status:        merr.Success(),
+		CollectionID:  req.GetCollectionID(),
+		SchemaVersion: req.GetSchemaVersion(),
+		Schema:        resp.GetSchema(),
+	}, nil
+}
+
 func (coord *MixCoordMock) ShowCollections(ctx context.Context, req *milvuspb.ShowCollectionsRequest, opts ...grpc.CallOption) (*milvuspb.ShowCollectionsResponse, error) {
 	code := coord.state.Load().(commonpb.StateCode)
 	if code != commonpb.StateCode_Healthy {

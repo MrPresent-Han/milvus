@@ -333,6 +333,22 @@ func (m *mockMixCoord) DescribeCollectionInternal(ctx context.Context, req *milv
 	return m.DescribeCollection(ctx, req)
 }
 
+func (m *mockMixCoord) GetCollectionSchemaByVersion(ctx context.Context, req *rootcoordpb.GetCollectionSchemaByVersionRequest) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+	resp, err := m.DescribeCollection(ctx, &milvuspb.DescribeCollectionRequest{CollectionID: req.GetCollectionID()})
+	if err != nil {
+		return nil, err
+	}
+	if !merr.Ok(resp.GetStatus()) {
+		return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: resp.GetStatus()}, nil
+	}
+	return &rootcoordpb.GetCollectionSchemaByVersionResponse{
+		Status:        merr.Success(),
+		CollectionID:  req.GetCollectionID(),
+		SchemaVersion: req.GetSchemaVersion(),
+		Schema:        resp.GetSchema(),
+	}, nil
+}
+
 func (m *mockMixCoord) ShowCollections(ctx context.Context, req *milvuspb.ShowCollectionsRequest) (*milvuspb.ShowCollectionsResponse, error) {
 	return &milvuspb.ShowCollectionsResponse{
 		Status:          merr.Success(),
@@ -1108,6 +1124,17 @@ func (h *mockHandler) GetCollection(_ context.Context, collectionID UniqueID) (*
 		return h.meta.GetCollection(collectionID), nil
 	}
 	return &collectionInfo{ID: collectionID}, nil
+}
+
+func (h *mockHandler) GetCollectionSchemaByVersion(ctx context.Context, collectionID UniqueID, schemaVersion int32) (*schemapb.CollectionSchema, error) {
+	collection, err := h.GetCollection(ctx, collectionID)
+	if err != nil {
+		return nil, err
+	}
+	if collection == nil || collection.Schema == nil {
+		return nil, merr.WrapErrCollectionNotFound(collectionID)
+	}
+	return collection.Schema, nil
 }
 
 func (h *mockHandler) GetCurrentSegmentsView(ctx context.Context, channel RWChannel, partitionIDs ...UniqueID) *SegmentsView {

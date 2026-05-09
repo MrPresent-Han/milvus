@@ -292,6 +292,17 @@ func (c *Client) DescribeCollectionInternal(ctx context.Context, in *milvuspb.De
 	return resp, err
 }
 
+func (c *Client) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoordpb.GetCollectionSchemaByVersionRequest, opts ...grpc.CallOption) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+	in = typeutil.Clone(in)
+	commonpbutil.UpdateMsgBase(
+		in.GetBase(),
+		commonpbutil.FillMsgBaseFromClient(paramtable.GetNodeID(), commonpbutil.WithTargetID(c.grpcClient.GetNodeID())),
+	)
+	return wrapGrpcCall(ctx, c, func(client MixCoordClient) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+		return client.GetCollectionSchemaByVersion(ctx, in)
+	})
+}
+
 // ShowCollections list all collection names
 func (c *Client) ShowCollections(ctx context.Context, in *milvuspb.ShowCollectionsRequest, opts ...grpc.CallOption) (*milvuspb.ShowCollectionsResponse, error) {
 	in = typeutil.Clone(in)

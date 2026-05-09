@@ -138,6 +138,10 @@ func (m *GrpcRootCoordClient) DescribeCollectionInternal(ctx context.Context, in
 	return &milvuspb.DescribeCollectionResponse{}, m.Err
 }
 
+func (m *GrpcRootCoordClient) GetCollectionSchemaByVersion(ctx context.Context, in *rootcoordpb.GetCollectionSchemaByVersionRequest, opts ...grpc.CallOption) (*rootcoordpb.GetCollectionSchemaByVersionResponse, error) {
+	return &rootcoordpb.GetCollectionSchemaByVersionResponse{Status: merr.Success()}, m.Err
+}
+
 func (m *GrpcRootCoordClient) CreateAlias(ctx context.Context, in *milvuspb.CreateAliasRequest, opts ...grpc.CallOption) (*commonpb.Status, error) {
 	return &commonpb.Status{}, m.Err
 }
