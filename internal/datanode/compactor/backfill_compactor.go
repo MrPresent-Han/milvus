@@ -135,21 +135,38 @@ func (t *backfillCompactionTask) Compact() (*datapb.CompactionPlanResult, error)
 		log.Ctx(ctx).Warn("failed to preCompact", zap.Error(err))
 		return nil, err
 	}
-	defer t.functionRunner.Close()
-
 	compactStart := time.Now()
 	log := log.Ctx(ctx).With(
 		zap.Int64("planID", t.GetPlanID()),
 		zap.Int64("collectionID", t.GetCollection()),
 	)
 
-	log.Info("backfill compact start",
+	missingFunctions, droppedFieldIDs, err := t.schemaBumpDecision()
+	if err != nil {
+		log.Warn("failed to decide schema bump action", zap.Error(err))
+		return nil, err
+	}
+
+	log.Info("schema bump compact start",
 		zap.Int64("segmentID", t.plan.GetSegmentBinlogs()[0].GetSegmentID()),
 		zap.Int32("collectionSchemaVersion", t.plan.GetSchema().GetVersion()),
-		zap.Int("numFunctions", len(t.plan.GetFunctions())),
+		zap.Int("missingFunctionCount", len(missingFunctions)),
+		zap.Int64s("droppedFieldIDs", droppedFieldIDs),
 	)
 
-	result, err := t.runBackfillFunction(ctx, t.functionRunner)
+	var result *datapb.CompactionPlanResult
+	if len(missingFunctions) == 0 && len(droppedFieldIDs) == 0 {
+		result = t.runSchemaVersionBumpOnly()
+	} else if len(droppedFieldIDs) > 0 || len(missingFunctions) != 1 {
+		result, err = t.runFullSchemaRewrite(ctx)
+	} else {
+		if err := t.setupFunctionRunner(missingFunctions[0]); err != nil {
+			log.Warn("failed to set up function runner", zap.Error(err))
+			return nil, err
+		}
+		defer t.functionRunner.Close()
+		result, err = t.runBackfillFunction(ctx, t.functionRunner)
+	}
 	if err != nil {
 		log.Warn("backfill compact failed", zap.Error(err), zap.Duration("compact cost", time.Since(compactStart)))
 		return nil, err
@@ -159,7 +176,7 @@ func (t *backfillCompactionTask) Compact() (*datapb.CompactionPlanResult, error)
 	return result, nil
 }
 
-// preCompact validates the compaction plan, checks context, and sets up the function runner.
+// preCompact validates the compaction plan and checks context.
 func (t *backfillCompactionTask) preCompact() error {
 	if ok := funcutil.CheckCtxValid(t.ctx); !ok {
 		return t.ctx.Err()
@@ -175,12 +192,10 @@ func (t *backfillCompactionTask) preCompact() error {
 		return errors.Newf("compaction plan is illegal, segment's field binlogs are empty, planID = %d, segmentID = %d", t.GetPlanID(), segment.GetSegmentID())
 	}
 
-	backfillFunctions := t.plan.GetFunctions()
-	if len(backfillFunctions) != 1 {
-		return errors.New("backfill functions should be exactly one")
-	}
-	backfillFunction := backfillFunctions[0]
+	return nil
+}
 
+func (t *backfillCompactionTask) setupFunctionRunner(backfillFunction *schemapb.FunctionSchema) error {
 	functionRunner, err := function.NewFunctionRunner(t.plan.GetSchema(), backfillFunction)
 	if err != nil {
 		return err
@@ -189,7 +204,6 @@ func (t *backfillCompactionTask) preCompact() error {
 		return errors.New("failed to set up backfill function runner")
 	}
 
-	// Validate function runner
 	if err := t.checkFunctionRunner(functionRunner); err != nil {
 		functionRunner.Close()
 		return err
@@ -239,6 +253,9 @@ func (t *backfillCompactionTask) checkFunctionRunner(functionRunner function.Fun
 }
 
 func (t *backfillCompactionTask) runBackfillFunction(ctx context.Context, functionRunner function.FunctionRunner) (*datapb.CompactionPlanResult, error) {
+	if functionRunner == nil {
+		return nil, errors.New("backfill function runner is not initialized")
+	}
 	switch functionRunner.GetSchema().GetType() {
 	case schemapb.FunctionType_BM25:
 		return t.runBm25Function(ctx, functionRunner)
@@ -282,6 +299,216 @@ func (t *backfillCompactionTask) openBinlogReader(inputFieldID int64) (storage.R
 		storage.WithDownloader(t.chunkManager.MultiRead),
 		storage.WithStorageConfig(t.compactionParams.StorageConfig),
 	)
+}
+
+func (t *backfillCompactionTask) openFullRecordReader(segment *datapb.CompactionSegmentBinlogs) (storage.RecordReader, error) {
+	collectionID := segment.GetCollectionID()
+	partitionID := segment.GetPartitionID()
+	segmentID := segment.GetSegmentID()
+
+	if segment.GetManifest() != "" {
+		return storage.NewManifestRecordReader(t.ctx,
+			segment.GetManifest(),
+			t.plan.GetSchema(),
+			storage.WithCollectionID(collectionID),
+			storage.WithVersion(segment.GetStorageVersion()),
+			storage.WithDownloader(t.chunkManager.MultiRead),
+			storage.WithStorageConfig(t.compactionParams.StorageConfig),
+		)
+	}
+
+	if err := binlog.DecompressBinLogWithRootPath(t.compactionParams.StorageConfig.GetRootPath(),
+		storage.InsertBinlog, collectionID, partitionID,
+		segmentID, segment.GetFieldBinlogs()); err != nil {
+		log.Ctx(t.ctx).Warn("Decompress insert binlog error", zap.Error(err))
+		return nil, err
+	}
+	return storage.NewBinlogRecordReader(t.ctx, segment.GetFieldBinlogs(), t.plan.GetSchema(),
+		storage.WithCollectionID(collectionID),
+		storage.WithVersion(segment.GetStorageVersion()),
+		storage.WithDownloader(t.chunkManager.MultiRead),
+		storage.WithStorageConfig(t.compactionParams.StorageConfig),
+	)
+}
+
+func (t *backfillCompactionTask) schemaBumpDecision() ([]*schemapb.FunctionSchema, []int64, error) {
+	segment := t.plan.GetSegmentBinlogs()[0]
+	existingFields, err := compactionSegmentStorageFields(segment, t.compactionParams.StorageConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	return missingSchemaFunctions(t.plan.GetSchema(), existingFields), droppedSchemaFieldIDs(t.plan.GetSchema(), existingFields), nil
+}
+
+func (t *backfillCompactionTask) runSchemaVersionBumpOnly() *datapb.CompactionPlanResult {
+	segment := t.plan.GetSegmentBinlogs()[0]
+	return &datapb.CompactionPlanResult{
+		PlanID: t.plan.GetPlanID(),
+		State:  datapb.CompactionTaskState_completed,
+		Segments: []*datapb.CompactionSegment{
+			{
+				SegmentID:           segment.GetSegmentID(),
+				NumOfRows:           t.plan.GetTotalRows(),
+				InsertLogs:          segment.GetFieldBinlogs(),
+				Field2StatslogPaths: segment.GetField2StatslogPaths(),
+				Deltalogs:           segment.GetDeltalogs(),
+				Channel:             segment.GetInsertChannel(),
+				StorageVersion:      segment.GetStorageVersion(),
+				Manifest:            segment.GetManifest(),
+				ExpirQuantiles:      segment.GetExpirQuantiles(),
+			},
+		},
+		Type: t.plan.GetType(),
+	}
+}
+
+func (t *backfillCompactionTask) runFullSchemaRewrite(ctx context.Context) (*datapb.CompactionPlanResult, error) {
+	segment := t.plan.GetSegmentBinlogs()[0]
+	collectionID := segment.GetCollectionID()
+	partitionID := segment.GetPartitionID()
+	segmentID := segment.GetSegmentID()
+
+	reader, err := t.openFullRecordReader(segment)
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+
+	existingFields, err := compactionSegmentStorageFields(segment, t.compactionParams.StorageConfig)
+	if err != nil {
+		return nil, err
+	}
+	materializer, err := NewRecordMaterializer(t.plan.GetSchema(), t.plan.GetSchema().GetFunctions(), existingFields)
+	if err != nil {
+		return nil, err
+	}
+	defer materializer.Close()
+
+	writer, err := storage.NewBinlogRecordWriter(ctx,
+		collectionID,
+		partitionID,
+		segmentID,
+		t.plan.GetSchema(),
+		t.logIDAlloc,
+		t.compactionParams.BinLogMaxSize,
+		t.plan.GetTotalRows(),
+		storage.WithUploader(func(ctx context.Context, kvs map[string][]byte) error {
+			return t.chunkManager.MultiWrite(ctx, kvs)
+		}),
+		storage.WithVersion(t.compactionParams.StorageVersion),
+		storage.WithStorageConfig(t.compactionParams.StorageConfig),
+		storage.WithUseLoonFFI(t.compactionParams.UseLoonFFI),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	writerClosed := false
+	defer func() {
+		if !writerClosed {
+			writer.Close()
+		}
+	}()
+
+	var totalRows int64
+	for {
+		record, err := reader.Next()
+		if err != nil {
+			if err == sio.EOF {
+				break
+			}
+			return nil, err
+		}
+
+		wrapped, err := materializer.Wrap(record)
+		if err != nil {
+			record.Release()
+			return nil, err
+		}
+		if err := writer.Write(wrapped); err != nil {
+			releaseWrappedRecord(wrapped, record)
+			return nil, err
+		}
+		totalRows += int64(wrapped.Len())
+		releaseWrappedRecord(wrapped, record)
+	}
+
+	if err := writer.Close(); err != nil {
+		return nil, err
+	}
+	writerClosed = true
+
+	binlogs, stats, bm25stats, manifest, expirQuantiles := writer.GetLogs()
+	if manifest != "" {
+		stats = nil
+		bm25stats = nil
+	}
+
+	insertLogs := storage.SortFieldBinlogs(binlogs)
+	if err := binlog.CompressFieldBinlogs(insertLogs); err != nil {
+		return nil, err
+	}
+
+	var statsLogs []*datapb.FieldBinlog
+	if stats != nil {
+		statsLogs = []*datapb.FieldBinlog{stats}
+		if err := binlog.CompressFieldBinlogs(statsLogs); err != nil {
+			return nil, err
+		}
+	}
+
+	var bm25StatsLogs []*datapb.FieldBinlog
+	if len(bm25stats) > 0 {
+		bm25StatsLogs = lo.Values(bm25stats)
+		if err := binlog.CompressFieldBinlogs(bm25StatsLogs); err != nil {
+			return nil, err
+		}
+	}
+
+	return &datapb.CompactionPlanResult{
+		PlanID: t.plan.GetPlanID(),
+		State:  datapb.CompactionTaskState_completed,
+		Segments: []*datapb.CompactionSegment{
+			{
+				SegmentID:           segmentID,
+				NumOfRows:           totalRows,
+				InsertLogs:          insertLogs,
+				Field2StatslogPaths: statsLogs,
+				Bm25Logs:            bm25StatsLogs,
+				Deltalogs:           segment.GetDeltalogs(),
+				Channel:             segment.GetInsertChannel(),
+				StorageVersion:      t.compactionParams.StorageVersion,
+				Manifest:            manifest,
+				ExpirQuantiles:      expirQuantiles,
+			},
+		},
+		Type: t.plan.GetType(),
+	}, nil
+}
+
+func releaseWrappedRecord(wrapped storage.Record, base storage.Record) {
+	if wrapped != base {
+		wrapped.Release()
+		return
+	}
+	base.Release()
+}
+
+func appendBM25StatsFromArrowArray(stats *storage.BM25Stats, arr arrow.Array) (int, error) {
+	binaryArray, ok := arr.(*array.Binary)
+	if !ok {
+		return 0, errors.Newf("bm25 output field must be arrow binary array, got %T", arr)
+	}
+	memorySize := 0
+	for i := 0; i < binaryArray.Len(); i++ {
+		if binaryArray.IsNull(i) {
+			continue
+		}
+		value := binaryArray.Value(i)
+		stats.AppendBytes(value)
+		memorySize += len(value)
+	}
+	return memorySize, nil
 }
 
 func (t *backfillCompactionTask) processBatch(functionRunner function.FunctionRunner, inputStrs []string, outputFieldID int64) (*storage.InsertData, int, error) {
@@ -678,6 +905,12 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 	stats := storage.NewBM25Stats()
 	var totalRows int64
 	var totalSparseMemorySize int
+	materializer, err := NewRecordMaterializerWithRunners(t.plan.GetSchema(), []function.FunctionRunner{functionRunner}, map[int64]struct{}{})
+	if err != nil {
+		span.End()
+		return nil, err
+	}
+	defer materializer.Close()
 
 	for {
 		// read one batch
@@ -693,48 +926,44 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 		}
 		readDuration += time.Since(readStart)
 
-		// extract input strings from this batch
-		col := record.Column(inputFieldID)
-		if col == nil {
-			record.Release()
-			span.End()
-			return nil, merr.WrapErrServiceInternal(fmt.Sprintf("input field %d not found in record", inputFieldID))
-		}
-		recordStr, ok := col.(*array.String)
-		if !ok {
-			record.Release()
-			span.End()
-			return nil, merr.WrapErrServiceInternal(fmt.Sprintf("input field %d data type must be varchar or text for bm25 function backfill, got %T", inputFieldID, col))
-		}
-		batchStrs := make([]string, record.Len())
-		for i := 0; i < record.Len(); i++ {
-			batchStrs[i] = recordStr.Value(i)
-		}
-		record.Release()
-
-		// compute BM25 for this batch
+		// compute BM25 for this batch through the shared materializer path
 		computeStart := time.Now()
-		insertData, batchMemSize, err := t.processBatch(functionRunner, batchStrs, outputFieldID)
+		wrapped, err := materializer.Wrap(record)
 		computeDuration += time.Since(computeStart)
 		if err != nil {
+			record.Release()
 			span.End()
 			return nil, err
 		}
 
-		// accumulate stats from this batch
-		outputFieldData := insertData.Data[outputFieldID].(*storage.SparseFloatVectorFieldData)
-		stats.AppendBytes(outputFieldData.GetContents()...)
+		outputCol := wrapped.Column(outputFieldID)
+		if outputCol == nil {
+			releaseWrappedRecord(wrapped, record)
+			span.End()
+			return nil, merr.WrapErrServiceInternal(fmt.Sprintf("output field %d not found in materialized record", outputFieldID))
+		}
+		batchMemSize, err := appendBM25StatsFromArrowArray(stats, outputCol)
+		if err != nil {
+			releaseWrappedRecord(wrapped, record)
+			span.End()
+			return nil, err
+		}
 
 		// write this batch
 		writeStart := time.Now()
-		if err := t.writeBatch(writerResult.writer, writerResult.arrowSchema, insertData, writerResult.outputSchema); err != nil {
+		arrowRecord := array.NewRecord(writerResult.arrowSchema, []arrow.Array{outputCol}, int64(wrapped.Len()))
+		if err := writerResult.writer.WriteRecordBatch(arrowRecord); err != nil {
+			arrowRecord.Release()
+			releaseWrappedRecord(wrapped, record)
 			span.End()
 			return nil, err
 		}
+		arrowRecord.Release()
 		writeDuration += time.Since(writeStart)
 
-		totalRows += int64(len(batchStrs))
+		totalRows += int64(wrapped.Len())
 		totalSparseMemorySize += batchMemSize
+		releaseWrappedRecord(wrapped, record)
 	}
 	span.End()
 

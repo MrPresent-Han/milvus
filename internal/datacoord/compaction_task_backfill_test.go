@@ -85,7 +85,7 @@ func (s *BackfillCompactionTaskSuite) SetupSubTest() {
 	s.SetupTest()
 }
 
-func (s *BackfillCompactionTaskSuite) generateBasicTask() *backfillCompactionTask {
+func (s *BackfillCompactionTaskSuite) generateBasicTask() *bumpSchemaVersionTask {
 	schema := &schemapb.CollectionSchema{
 		Name:        "test_backfill_collection",
 		Description: "test collection for backfill compaction",
@@ -111,11 +111,6 @@ func (s *BackfillCompactionTaskSuite) generateBasicTask() *backfillCompactionTas
 		},
 	}
 
-	// Create BM25 function schema
-	// Note: FunctionSchema structure needs to be verified from actual proto definition
-	// For now, we create an empty functions slice
-	functions := []*schemapb.FunctionSchema{}
-
 	compactionTask := &datapb.CompactionTask{
 		PlanID:         1,
 		TriggerID:      19530,
@@ -134,7 +129,7 @@ func (s *BackfillCompactionTaskSuite) generateBasicTask() *backfillCompactionTas
 		Channel: "ch-1",
 	}
 
-	task := newBackfillCompactionTask(compactionTask, s.mockAlloc, s.meta, s.ievm, functions)
+	task := newBumpSchemaVersionTask(compactionTask, s.mockAlloc, s.meta, s.ievm)
 	return task
 }
 

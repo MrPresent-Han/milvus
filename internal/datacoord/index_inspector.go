@@ -159,27 +159,17 @@ func (i *indexInspector) createIndexesForSegment(ctx context.Context, segment *S
 	indexes := i.meta.indexMeta.GetIndexesForCollection(segment.CollectionID, "")
 	indexIDToSegIndexes := i.meta.indexMeta.GetSegmentIndexes(segment.CollectionID, segment.ID)
 
-	// MinSchemaVersion enforcement is only applied while the collection has an in-flight
-	// physical backfill (e.g. AlterCollectionSchema adding a BM25 function): until backfill
-	// writes the new field's data, an index built on the empty binlog would silently return
-	// wrong results. For metadata-only schema changes (e.g. nullable AddCollectionField),
-	// the index builder handles null/default values, so no delay is needed.
-	// Within the physical-backfill branch we still double-check segment binlogs because a
-	// function output field that was backfilled in a previous schema version is already
-	// present in this segment.
-	coll := i.meta.GetCollection(segment.CollectionID)
-	collectionInPhysicalBackfill := coll != nil && coll.Schema != nil && coll.Schema.GetDoPhysicalBackfill()
-	var segmentBinlogFields map[int64]struct{}
+	var segmentStorageFields map[int64]struct{}
 	for _, index := range indexes {
 		if _, ok := indexIDToSegIndexes[index.IndexID]; ok {
 			continue
 		}
-		if collectionInPhysicalBackfill && index.MinSchemaVersion > segment.GetSchemaVersion() {
-			if segmentBinlogFields == nil {
-				segmentBinlogFields = getSegmentBinlogFields(segment)
+		if index.MinSchemaVersion > segment.GetSchemaVersion() {
+			if segmentStorageFields == nil {
+				segmentStorageFields = getSegmentStorageFields(ctx, segment)
 			}
-			if _, hasField := segmentBinlogFields[index.FieldID]; !hasField {
-				log.Ctx(ctx).Info("skip index creation: field data not yet present in segment, waiting for physical backfill",
+			if _, hasField := segmentStorageFields[index.FieldID]; !hasField {
+				log.Ctx(ctx).Info("skip index creation: field data not yet present in segment, waiting for schema bump execution",
 					zap.Int64("segmentID", segment.ID),
 					zap.Int64("indexID", index.IndexID),
 					zap.Int64("fieldID", index.FieldID),
@@ -213,11 +203,14 @@ func (i *indexInspector) createIndexesForSegment(ctx context.Context, segment *S
 }
 
 // getSegmentBinlogFields returns the set of field IDs that have binlog data in the segment.
-// binlog.GetFieldID() is a columnGroupID, not a real field ID; the actual field IDs
-// are always in binlog.GetChildFields().
+// StorageV2/V3 column groups report real field IDs through ChildFields; legacy entries may use FieldID directly.
 func getSegmentBinlogFields(segment *SegmentInfo) map[int64]struct{} {
 	result := make(map[int64]struct{})
 	for _, binlog := range segment.GetBinlogs() {
+		if len(binlog.GetChildFields()) == 0 {
+			result[binlog.GetFieldID()] = struct{}{}
+			continue
+		}
 		for _, childFieldID := range binlog.GetChildFields() {
 			result[childFieldID] = struct{}{}
 		}

@@ -288,6 +288,18 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 	}
 	defer reader.Close()
 
+	existingFields, err := compactionSegmentStorageFields(seg, t.compactionParams.StorageConfig)
+	if err != nil {
+		log.Warn("compact wrong, failed to read segment storage fields", zap.Error(err))
+		return
+	}
+	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
+	if err != nil {
+		log.Warn("compact wrong, failed to init record materializer", zap.Error(err))
+		return
+	}
+	defer materializer.Close()
+
 	hasTTLField := t.ttlFieldID >= common.StartOfUserFieldID
 	var totalRowsRead int64
 
@@ -301,6 +313,19 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 			} else {
 				log.Warn("compact wrong, failed to iter through data", zap.Error(err))
 				return
+			}
+		}
+
+		baseRecord := r
+		r, err = materializer.Wrap(baseRecord)
+		if err != nil {
+			baseRecord.Release()
+			log.Warn("compact wrong, failed to materialize record", zap.Error(err))
+			return
+		}
+		releaseMaterializedRecord := func() {
+			if r != baseRecord {
+				r.Release()
 			}
 		}
 
@@ -364,15 +389,18 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 					return mWriter.Write(rec)
 				}()
 				if err != nil {
+					releaseMaterializedRecord()
 					return 0, 0, err
 				}
 			}
 		} else {
 			err := mWriter.Write(r)
 			if err != nil {
+				releaseMaterializedRecord()
 				return 0, 0, err
 			}
 		}
+		releaseMaterializedRecord()
 	}
 
 	deltalogDeleteEntriesCount := len(delta)

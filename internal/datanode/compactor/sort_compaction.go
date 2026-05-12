@@ -272,6 +272,19 @@ func (t *sortCompactionTask) sortSegment(ctx context.Context) (*datapb.Compactio
 		srw.Close()
 		return nil, err
 	}
+	existingFields, err := compactionSegmentStorageFields(t.plan.GetSegmentBinlogs()[0], t.compactionParams.StorageConfig)
+	if err != nil {
+		log.Warn("error reading segment storage fields", zap.Error(err))
+		srw.Close()
+		return nil, err
+	}
+	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
+	if err != nil {
+		log.Warn("error creating record materializer", zap.Error(err))
+		srw.Close()
+		return nil, err
+	}
+	rr = newMaterializedRecordReader(rr, materializer)
 	defer rr.Close()
 	initReaderCost := time.Since(phaseStart)
 

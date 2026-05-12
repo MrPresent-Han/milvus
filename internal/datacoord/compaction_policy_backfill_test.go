@@ -80,8 +80,8 @@ func (s *BackfillCompactionPolicySuite) TestTrigger() {
 	s.Equal(0, len(gotViews))
 }
 
-func (s *BackfillCompactionPolicySuite) TestBackfillSegmentsViewBasic() {
-	view := &BackfillSegmentsView{
+func (s *BackfillCompactionPolicySuite) TestBumpSchemaVersionViewBasic() {
+	view := &BumpSchemaVersionView{
 		label: &CompactionGroupLabel{
 			CollectionID: 1,
 			PartitionID:  10,
@@ -89,6 +89,7 @@ func (s *BackfillCompactionPolicySuite) TestBackfillSegmentsViewBasic() {
 		},
 		segments:  []*SegmentView{},
 		triggerID: 100,
+		schema:    &schemapb.CollectionSchema{Version: 2},
 	}
 
 	// Test GetGroupLabel
@@ -113,24 +114,24 @@ func (s *BackfillCompactionPolicySuite) TestBackfillSegmentsViewBasic() {
 
 	// Test String
 	str := view.String()
-	s.Contains(str, "BackfillSegmentsView")
+	s.Contains(str, "BumpSchemaVersionView")
 	s.Contains(str, "segments=1")
 	s.Contains(str, "triggerID=100")
 
 	// Test Trigger
 	triggeredView, reason := view.Trigger()
 	s.NotNil(triggeredView)
-	s.Equal("backfill schema version mismatch", reason)
+	s.Equal("segment schema version behind collection schema", reason)
 
 	// Test ForceTrigger
 	forceView, reason := view.ForceTrigger()
 	s.NotNil(forceView)
-	s.Equal("backfill schema version mismatch", reason)
+	s.Equal("segment schema version behind collection schema", reason)
 
 	// Test ForceTriggerAll
 	forceViews, reason := view.ForceTriggerAll()
 	s.Equal(1, len(forceViews))
-	s.Equal("backfill schema version mismatch", reason)
+	s.Equal("segment schema version behind collection schema", reason)
 
 	// Test GetTriggerID
 	triggerID := view.GetTriggerID()
@@ -138,9 +139,7 @@ func (s *BackfillCompactionPolicySuite) TestBackfillSegmentsViewBasic() {
 }
 
 func (s *BackfillCompactionPolicySuite) TestEnable() {
-	// Backfill policy is always enabled regardless of EnableAutoCompaction toggle.
-	// Metadata-only schema version updates are a correctness requirement.
-	// Physical backfill is guarded by EnableAutoCompaction inside Trigger() instead.
+	// Schema-version reconciliation is a correctness requirement, not an auto-compaction option.
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
 	s.True(s.backfillPolicy.Enable())
@@ -152,10 +151,10 @@ func (s *BackfillCompactionPolicySuite) TestEnable() {
 
 func (s *BackfillCompactionPolicySuite) TestName() {
 	// Test Name method
-	s.Equal("BackfillCompaction", s.backfillPolicy.Name())
+	s.Equal("BumpSchemaVersion", s.backfillPolicy.Name())
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithCollectionNoBackfill() {
+func (s *BackfillCompactionPolicySuite) TestTriggerWithCurrentSchemaVersion() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -165,10 +164,9 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithCollectionNoBackfill() {
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            1,
-			DoPhysicalBackfill: true,
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     1,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -177,7 +175,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithCollectionNoBackfill() {
 	}
 	s.backfillPolicy.meta.collections.Insert(collID, coll)
 
-	// Create segment with same schema version (no backfill needed)
+	// Create segment with same schema version.
 	segmentID := int64(101)
 	segment := &SegmentInfo{
 		SegmentInfo: &datapb.SegmentInfo{
@@ -220,10 +218,9 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithCompactingSegment() {
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -276,10 +273,9 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithImportingSegment() {
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -332,10 +328,9 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithInvisibleSegment() {
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -388,10 +383,9 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithUnhealthySegment() {
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -427,7 +421,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithUnhealthySegment() {
 	}
 	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	// AllocID should NOT be called: unhealthy segment is filtered before physical backfill.
+	// AllocID should NOT be called: unhealthy segment is filtered before schema bump.
 	events, err := s.backfillPolicy.Trigger(ctx)
 	s.NoError(err)
 	gotViews, ok := events[TriggerTypeBackfill]
@@ -444,10 +438,9 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithNonFlushedSegment() {
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -483,73 +476,12 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithNonFlushedSegment() {
 	}
 	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	// AllocID should NOT be called: non-flushed segment is filtered before physical backfill.
+	// AllocID should NOT be called: non-flushed segment is filtered before schema bump.
 	events, err := s.backfillPolicy.Trigger(ctx)
 	s.NoError(err)
 	gotViews, ok := events[TriggerTypeBackfill]
 	s.False(ok)
 	s.Nil(gotViews)
-}
-
-func (s *BackfillCompactionPolicySuite) TestGetMissingFunctionsWithChildFields() {
-	// getMissingFunctions must use ChildFields (real field IDs) not FieldID (columnGroupID).
-	schema := &schemapb.CollectionSchema{
-		Fields: []*schemapb.FieldSchema{
-			{FieldID: 100, Name: "pk"},
-			{FieldID: 101, Name: "text"},
-			{FieldID: 102, Name: "sparse"},
-		},
-		Functions: []*schemapb.FunctionSchema{
-			{Name: "bm25_func", OutputFieldIds: []int64{102}},
-		},
-	}
-
-	// Segment with ChildFields containing field 102 → no missing functions
-	segPresent := &SegmentInfo{
-		SegmentInfo: &datapb.SegmentInfo{
-			Binlogs: []*datapb.FieldBinlog{
-				{
-					FieldID:     0, // columnGroupID, not a real field ID
-					ChildFields: []int64{100, 101, 102},
-					Binlogs:     []*datapb.Binlog{{LogPath: "p1"}},
-				},
-			},
-		},
-	}
-	s.Empty(s.backfillPolicy.getMissingFunctions(segPresent, schema))
-
-	// Segment with ChildFields NOT containing field 102 → missing bm25_func
-	segMissing := &SegmentInfo{
-		SegmentInfo: &datapb.SegmentInfo{
-			Binlogs: []*datapb.FieldBinlog{
-				{
-					FieldID:     0,
-					ChildFields: []int64{100, 101},
-					Binlogs:     []*datapb.Binlog{{LogPath: "p1"}},
-				},
-			},
-		},
-	}
-	missing := s.backfillPolicy.getMissingFunctions(segMissing, schema)
-	s.Equal(1, len(missing))
-	s.Equal("bm25_func", missing[0].GetName())
-
-	// Segment where FieldID happens to equal 102 (columnGroupID collision) but
-	// ChildFields does NOT contain 102 → must still report as missing
-	segFalsePositive := &SegmentInfo{
-		SegmentInfo: &datapb.SegmentInfo{
-			Binlogs: []*datapb.FieldBinlog{
-				{
-					FieldID:     102, // columnGroupID, NOT real field 102
-					ChildFields: []int64{100, 101},
-					Binlogs:     []*datapb.Binlog{{LogPath: "p1"}},
-				},
-			},
-		},
-	}
-	missing = s.backfillPolicy.getMissingFunctions(segFalsePositive, schema)
-	s.Equal(1, len(missing))
-	s.Equal("bm25_func", missing[0].GetName())
 }
 
 func (s *BackfillCompactionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
@@ -563,10 +495,9 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -621,32 +552,29 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
 	s.Equal(1, len(gotViews))
 
 	// Verify the view
-	view, ok := gotViews[0].(*BackfillSegmentsView)
+	view, ok := gotViews[0].(*BumpSchemaVersionView)
 	s.True(ok)
 	s.NotNil(view)
 	s.Equal(int64(1), view.GetTriggerID())
 	s.Equal(1, len(view.GetSegmentsView()))
 	s.Equal(segmentID, view.GetSegmentsView()[0].ID)
-	// Verify funcDiff contains the missing function
-	s.Equal(1, len(view.funcDiff.Added))
-	s.Equal("bm25_func", view.funcDiff.Added[0].GetName())
+	s.Equal(int64(1), view.GetTriggerID())
+	s.Equal(coll.Schema.GetVersion(), view.schema.GetVersion())
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerInlineNoPhysicalBackfill() {
-	// TriggerInline must emit an inline-executable view when DoPhysicalBackfill=false.
-	// Trigger() skips this collection entirely; only TriggerInline handles it.
+func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesSchemaBumpForStaleSegment() {
+	// DataCoord schedules every stale flushed segment; DataNode decides no-op, partial backfill, or full rewrite.
 	ctx := context.Background()
 
 	collID := int64(100)
 
-	// Create collection with schema version 2, but DoPhysicalBackfill = false
+	// Create collection with schema version 2.
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Description:        "test collection",
-			Version:            2,
-			DoPhysicalBackfill: false, // No physical backfill
+			Name:        "test_collection",
+			Description: "test collection",
+			Version:     2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -682,31 +610,23 @@ func (s *BackfillCompactionPolicySuite) TestTriggerInlineNoPhysicalBackfill() {
 	}
 	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	// AllocID must NOT be called: DoPhysicalBackfill=false produces only an
-	// inline-executable view (meta-only). TriggerInline handles it; Trigger() skips it.
-	events, err := s.backfillPolicy.TriggerInline(ctx)
+	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
+	events, err := s.backfillPolicy.Trigger(ctx)
 	s.NoError(err)
 
 	views, ok := events[TriggerTypeBackfill]
 	s.Require().True(ok)
 	s.Require().Len(views, 1)
-	bv, ok := views[0].(*BackfillSegmentsView)
+	bv, ok := views[0].(*BumpSchemaVersionView)
 	s.Require().True(ok)
-	s.True(bv.IsInlineExecutable(), "meta-only path must be inline-executable")
-	s.Equal(int32(2), bv.targetSchemaVersion)
+	s.Equal(int64(1), bv.GetTriggerID())
+	s.Equal(coll.Schema.GetVersion(), bv.schema.GetVersion())
 	s.Require().Len(bv.GetSegmentsView(), 1)
 	s.Equal(segmentID, bv.GetSegmentsView()[0].ID)
-
-	// Trigger() must return nothing for this collection (DoPhysicalBackfill=false).
-	triggerEvents, err := s.backfillPolicy.Trigger(ctx)
-	s.NoError(err)
-	s.Empty(triggerEvents[TriggerTypeBackfill])
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerInlineMetadataOnlyWithAutoCompactionDisabled() {
-	// Metadata-only backfill (DoPhysicalBackfill=false) must proceed via TriggerInline
-	// even when EnableAutoCompaction is disabled. Otherwise GetCollectionStatistics
-	// deadlocks waiting for schema version consistency that can never be achieved.
+func (s *BackfillCompactionPolicySuite) TestTriggerSchemaBumpWithAutoCompactionDisabled() {
+	// Schema version bump is a correctness task and must not depend on auto compaction.
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "false")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -715,9 +635,8 @@ func (s *BackfillCompactionPolicySuite) TestTriggerInlineMetadataOnlyWithAutoCom
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Version:            2,
-			DoPhysicalBackfill: false,
+			Name:    "test_collection",
+			Version: 2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "new_field", DataType: schemapb.DataType_VarChar},
@@ -752,24 +671,22 @@ func (s *BackfillCompactionPolicySuite) TestTriggerInlineMetadataOnlyWithAutoCom
 	}
 	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	events, err := s.backfillPolicy.TriggerInline(ctx)
+	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
+	events, err := s.backfillPolicy.Trigger(ctx)
 	s.NoError(err)
-	// TriggerInline must emit inline-executable view regardless of EnableAutoCompaction.
 	views, ok := events[TriggerTypeBackfill]
 	s.Require().True(ok)
 	s.Require().Len(views, 1)
-	bv, ok := views[0].(*BackfillSegmentsView)
+	bv, ok := views[0].(*BumpSchemaVersionView)
 	s.Require().True(ok)
-	s.True(bv.IsInlineExecutable(), "meta-only path must be inline-executable")
-	s.Equal(int32(2), bv.targetSchemaVersion)
+	s.Equal(int64(1), bv.GetTriggerID())
+	s.Equal(coll.Schema.GetVersion(), bv.schema.GetVersion())
 	s.Require().Len(bv.GetSegmentsView(), 1)
 	s.Equal(segmentID, bv.GetSegmentsView()[0].ID)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerPhysicalBackfillWithAutoCompactionDisabled() {
-	// Physical backfill must also proceed when EnableAutoCompaction is disabled.
-	// Backfill is a correctness requirement: without it, segments can never reconcile
-	// missing function output fields and schema version consistency will never be reached.
+func (s *BackfillCompactionPolicySuite) TestTriggerMissingFunctionOutputWithAutoCompactionDisabled() {
+	// DataNode decides whether the schema bump needs function-output backfill.
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "false")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -778,9 +695,8 @@ func (s *BackfillCompactionPolicySuite) TestTriggerPhysicalBackfillWithAutoCompa
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_collection",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:    "test_collection",
+			Version: 2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -822,7 +738,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerPhysicalBackfillWithAutoCompa
 	}
 	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	// AllocID should be called: physical backfill proceeds even with auto compaction disabled
+	// AllocID should be called: stale flushed segment is scheduled even with auto compaction disabled.
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
 
 	events, err := s.backfillPolicy.Trigger(ctx)
@@ -832,24 +748,23 @@ func (s *BackfillCompactionPolicySuite) TestTriggerPhysicalBackfillWithAutoCompa
 	s.NotNil(gotViews)
 	s.Equal(1, len(gotViews))
 
-	view, ok := gotViews[0].(*BackfillSegmentsView)
+	view, ok := gotViews[0].(*BumpSchemaVersionView)
 	s.True(ok)
 	s.Equal(int64(1), view.GetTriggerID())
 	s.Equal(1, len(view.GetSegmentsView()))
 	s.Equal(segmentID, view.GetSegmentsView()[0].ID)
-	s.Equal("bm25_func", view.funcDiff.Added[0].GetName())
+	s.Equal(coll.Schema.GetVersion(), view.schema.GetVersion())
 }
 
-// TestSchemaFrozenAtScanTime verifies that physical-backfill views capture the
-// collection schema at scan time. SubmitBackfillViewToScheduler uses this frozen
-// schema for task.Schema, preventing premature schema-version advancement when the
-// live collection races ahead between scan and submission.
+// TestSchemaFrozenAtScanTime verifies that schema-bump views capture the collection
+// schema at scan time. SubmitBackfillViewToScheduler uses this frozen schema for
+// task.Schema, preventing premature schema-version advancement when the live
+// collection races ahead between scan and submission.
 func (s *BackfillCompactionPolicySuite) TestSchemaFrozenAtScanTime() {
 	ctx := context.Background()
 	collID := int64(200)
 	schemaV1 := &schemapb.CollectionSchema{
-		Version:            1,
-		DoPhysicalBackfill: true,
+		Version: 1,
 		Fields: []*schemapb.FieldSchema{
 			{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 			{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -881,7 +796,7 @@ func (s *BackfillCompactionPolicySuite) TestSchemaFrozenAtScanTime() {
 	s.True(ok)
 	s.Len(views, 1)
 
-	bv, ok := views[0].(*BackfillSegmentsView)
+	bv, ok := views[0].(*BumpSchemaVersionView)
 	s.True(ok)
 	// The frozen schema must match the collection state at scan time (v1), not any
 	// live version the collection might race to before SubmitBackfillViewToScheduler.
@@ -889,21 +804,15 @@ func (s *BackfillCompactionPolicySuite) TestSchemaFrozenAtScanTime() {
 	s.Equal(int32(1), bv.schema.GetVersion())
 }
 
-// TestMultipleMissingFunctionsSkipped verifies that a segment missing more than one
-// function output field is skipped entirely. checkSchemaVersionConsistencyAtRootCoord
-// guarantees schema version increments by exactly 1 per DDL and a single DDL adds at
-// most one function, so len(missingFunctions)>1 is an invariant violation that must not
-// be silently patched.
-func (s *BackfillCompactionPolicySuite) TestMultipleMissingFunctionsSkipped() {
+func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesMultiFunctionSchemaBump() {
 	ctx := context.Background()
 	collID := int64(300)
 
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_multi_func",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:    "test_multi_func",
+			Version: 2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -918,7 +827,7 @@ func (s *BackfillCompactionPolicySuite) TestMultipleMissingFunctionsSkipped() {
 	}
 	s.backfillPolicy.meta.collections.Insert(collID, coll)
 
-	// Segment at version=0, missing both function output fields (102 and 103).
+	// DataCoord only detects stale schema version; DataNode validates function-output field state.
 	segmentID := int64(301)
 	segment := &SegmentInfo{
 		SegmentInfo: &datapb.SegmentInfo{
@@ -934,24 +843,27 @@ func (s *BackfillCompactionPolicySuite) TestMultipleMissingFunctionsSkipped() {
 	}
 	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
 
+	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
 	events, err := s.backfillPolicy.Trigger(ctx)
 	s.NoError(err)
-	// Invariant violation: segment must be skipped, no view emitted.
-	s.Empty(events[TriggerTypeBackfill])
+	views, ok := events[TriggerTypeBackfill]
+	s.Require().True(ok)
+	s.Require().Len(views, 1)
+	bv, ok := views[0].(*BumpSchemaVersionView)
+	s.Require().True(ok)
+	s.Equal(int64(1), bv.GetTriggerID())
+	s.Require().Len(bv.GetSegmentsView(), 1)
+	s.Equal(segmentID, bv.GetSegmentsView()[0].ID)
 }
 
-// TestTriggerInlineSelfHeal verifies the self-heal path: DoPhysicalBackfill=true but
-// segment already has all function output fields → stale SchemaVersion anomaly, fixed
-// via TriggerInline without dispatching a compaction task.
-func (s *BackfillCompactionPolicySuite) TestTriggerInlineSelfHeal() {
+func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesAlreadyMaterializedStaleSegment() {
 	ctx := context.Background()
 	collID := int64(400)
 	coll := &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			Name:               "test_self_heal",
-			Version:            2,
-			DoPhysicalBackfill: true,
+			Name:    "test_self_heal",
+			Version: 2,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64, IsPrimaryKey: true},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -984,21 +896,16 @@ func (s *BackfillCompactionPolicySuite) TestTriggerInlineSelfHeal() {
 	}
 	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	// TriggerInline must emit an inline-executable self-heal view (no AllocID call).
-	events, err := s.backfillPolicy.TriggerInline(ctx)
+	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
+	events, err := s.backfillPolicy.Trigger(ctx)
 	s.NoError(err)
 	views, ok := events[TriggerTypeBackfill]
 	s.Require().True(ok)
 	s.Require().Len(views, 1)
-	bv, ok := views[0].(*BackfillSegmentsView)
+	bv, ok := views[0].(*BumpSchemaVersionView)
 	s.Require().True(ok)
-	s.True(bv.IsInlineExecutable(), "self-heal path must be inline-executable")
-	s.Equal(int32(2), bv.targetSchemaVersion)
+	s.Equal(int64(1), bv.GetTriggerID())
+	s.Equal(coll.Schema.GetVersion(), bv.schema.GetVersion())
 	s.Require().Len(bv.GetSegmentsView(), 1)
 	s.Equal(segmentID, bv.GetSegmentsView()[0].ID)
-
-	// Trigger() must return nothing for this segment (self-heal is TriggerInline only).
-	triggerEvents, err := s.backfillPolicy.Trigger(ctx)
-	s.NoError(err)
-	s.Empty(triggerEvents[TriggerTypeBackfill])
 }

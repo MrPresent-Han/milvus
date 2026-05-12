@@ -112,10 +112,6 @@ func (t CompactionTriggerType) String() string {
 type CompactionPolicy interface {
 	// Enable returns whether this compaction policy is enabled
 	Enable() bool
-	// TriggerInline returns views that can be applied inline (without inspector slots).
-	// Called unconditionally before the isFull() check so metadata-only updates always
-	// proceed regardless of inspector capacity. Non-backfill policies return an empty map.
-	TriggerInline(ctx context.Context) (map[CompactionTriggerType][]CompactionView, error)
 	// Trigger returns views that require inspector slots (actual compaction tasks).
 	// Only called when the inspector is not full.
 	Trigger(ctx context.Context) (map[CompactionTriggerType][]CompactionView, error)
@@ -272,24 +268,12 @@ func (m *CompactionTriggerManager) handleTicker(ctx context.Context, tickerType 
 		return
 	}
 
-	// Step 1: apply inline views unconditionally — these never need inspector slots
-	// (e.g. backfill metadata-only schema-version bumps) and must proceed even when
-	// the inspector queue is full.
-	inlineEvents, err := policy.TriggerInline(ctx)
-	if err != nil {
-		log.Warn("Fail to trigger inline policy", zap.String("policy", policy.Name()), zap.Error(err))
-		return
-	}
-	m.executeInline(ctx, inlineEvents)
-
-	// Step 2: gate normal compaction dispatch on inspector capacity.
 	if m.inspector.isFull() {
 		log.RatedInfo(10, "Skip dispatching compaction events since inspector is full",
 			zap.String("policy", policy.Name()))
 		return
 	}
 
-	// Step 3: trigger and dispatch views that require inspector slots.
 	events, err := policy.Trigger(ctx)
 	if err != nil {
 		log.Warn("Fail to trigger policy", zap.String("policy", policy.Name()), zap.Error(err))
@@ -300,41 +284,6 @@ func (m *CompactionTriggerManager) handleTicker(ctx context.Context, tickerType 
 			continue
 		}
 		m.notify(ctx, triggerType, views)
-	}
-}
-
-// executeInline applies all views returned by TriggerInline directly inside datacoord
-// without consuming inspector slots or notifying the scheduler.
-func (m *CompactionTriggerManager) executeInline(ctx context.Context, events map[CompactionTriggerType][]CompactionView) {
-	for _, views := range events {
-		for _, view := range views {
-			m.applyInlineView(ctx, view)
-		}
-	}
-}
-
-// applyInlineView applies a CompactionView whose IsInlineExecutable() == true
-// directly inside datacoord. Today this is only used by backfillCompactionPolicy
-// for the metadata-only path: bump segment SchemaVersion via meta.UpdateSegment
-// without producing any compaction task.
-func (m *CompactionTriggerManager) applyInlineView(ctx context.Context, view CompactionView) {
-	bv, ok := view.(*BackfillSegmentsView)
-	if !ok {
-		log.Ctx(ctx).Warn("unexpected inline-executable view type, skip",
-			zap.String("actualType", fmt.Sprintf("%T", view)))
-		return
-	}
-	for _, sv := range bv.GetSegmentsView() {
-		if err := m.meta.UpdateSegment(sv.ID, SetSchemaVersion(bv.targetSchemaVersion)); err != nil {
-			log.Ctx(ctx).Error("failed to apply inline backfill schema version update",
-				zap.Int64("segmentID", sv.ID),
-				zap.Int32("newSchemaVersion", bv.targetSchemaVersion),
-				zap.Error(err))
-			continue
-		}
-		log.Ctx(ctx).Info("applied inline backfill schema version update",
-			zap.Int64("segmentID", sv.ID),
-			zap.Int32("newSchemaVersion", bv.targetSchemaVersion))
 	}
 }
 
@@ -721,42 +670,27 @@ func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Con
 		totalRows += s.NumOfRows
 	}
 	expectedSize := getExpectedSegmentSize(m.meta, collection.ID, collection.Schema)
-	bfView, ok := view.(*BackfillSegmentsView)
+	bumpView, ok := view.(*BumpSchemaVersionView)
 	if !ok {
-		log.Warn("unexpected view type for backfill trigger, expected *BackfillSegmentsView",
+		log.Warn("unexpected view type for schema bump trigger, expected *BumpSchemaVersionView",
 			zap.String("actualType", fmt.Sprintf("%T", view)))
 		return
 	}
-	if bfView.funcDiff == nil || len(bfView.funcDiff.Added) != 1 {
-		funcCount := 0
-		if bfView.funcDiff != nil {
-			funcCount = len(bfView.funcDiff.Added)
-		}
-		log.Warn("backfill view must have exactly one function to backfill",
-			zap.Int("funcCount", funcCount))
-		return
-	}
 	task := &datapb.CompactionTask{
-		PlanID:       planID,
-		TriggerID:    bfView.triggerID,
-		State:        datapb.CompactionTaskState_pipelining,
-		StartTime:    time.Now().Unix(),
-		Type:         datapb.CompactionType_BackfillCompaction,
-		CollectionID: view.GetGroupLabel().CollectionID,
-		PartitionID:  view.GetGroupLabel().PartitionID,
-		Channel:      view.GetGroupLabel().Channel,
-		// Use the schema frozen at scan time so completeBackfillCompactionMutation
-		// only advances the segment to the version that was actually backfilled.
-		// Re-using the live collection.Schema here risks advancing the segment's
-		// SchemaVersion beyond what this task backfills if the collection raced
-		// ahead between scan and submission (prevented in practice by PR #48989).
-		Schema:             bfView.schema,
+		PlanID:             planID,
+		TriggerID:          bumpView.triggerID,
+		State:              datapb.CompactionTaskState_pipelining,
+		StartTime:          time.Now().Unix(),
+		Type:               datapb.CompactionType_BackfillCompaction,
+		CollectionID:       view.GetGroupLabel().CollectionID,
+		PartitionID:        view.GetGroupLabel().PartitionID,
+		Channel:            view.GetGroupLabel().Channel,
+		Schema:             bumpView.schema,
 		InputSegments:      lo.Map(view.GetSegmentsView(), func(segmentView *SegmentView, _ int) int64 { return segmentView.ID }),
 		ResultSegments:     []int64{},
 		TotalRows:          totalRows,
 		LastStateStartTime: time.Now().Unix(),
 		MaxSize:            expectedSize,
-		DiffFunctions:      bfView.funcDiff.Added,
 	}
 	err = m.inspector.enqueueCompaction(task)
 	if err != nil {

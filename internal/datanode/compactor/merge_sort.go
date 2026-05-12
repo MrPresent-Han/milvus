@@ -63,6 +63,14 @@ func mergeSortMultipleSegments(ctx context.Context,
 	hasTTLField := ttlFieldID >= common.StartOfUserFieldID
 
 	segmentReaders := make([]storage.RecordReader, len(binlogs))
+	defer func() {
+		for _, r := range segmentReaders {
+			if r != nil {
+				r.Close()
+			}
+		}
+	}()
+
 	segmentFilters := make([]compaction.EntityFilter, len(binlogs))
 	for i, s := range binlogs {
 		var reader storage.RecordReader
@@ -88,7 +96,17 @@ func mergeSortMultipleSegments(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
-		segmentReaders[i] = reader
+		existingFields, err := compactionSegmentStorageFields(s, compactionParams.StorageConfig)
+		if err != nil {
+			reader.Close()
+			return nil, err
+		}
+		materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
+		if err != nil {
+			reader.Close()
+			return nil, err
+		}
+		segmentReaders[i] = newMaterializedRecordReader(reader, materializer)
 		delta, err := compaction.ComposeDeleteFromDeltalogs(ctx, pkField.DataType, s,
 			storage.WithDownloader(binlogIO.Download),
 			storage.WithStorageConfig(compactionParams.StorageConfig))
@@ -97,12 +115,6 @@ func mergeSortMultipleSegments(ctx context.Context,
 		}
 		segmentFilters[i] = compaction.NewEntityFilter(delta, collectionTTL, currentTime)
 	}
-
-	defer func() {
-		for _, r := range segmentReaders {
-			r.Close()
-		}
-	}()
 
 	var predicate func(r storage.Record, ri, i int) bool
 	switch pkField.DataType {

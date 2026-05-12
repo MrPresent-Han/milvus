@@ -458,10 +458,6 @@ func TestIndexInspector_MinSchemaVersionEnforcement(t *testing.T) {
 	m.collections.Insert(collID, &collectionInfo{
 		ID: collID,
 		Schema: &schemapb.CollectionSchema{
-			// DoPhysicalBackfill=true is required for the MinSchemaVersion gate to engage.
-			// Without it the gate is bypassed and indexes are built immediately (the
-			// metadata-only schema-change path).
-			DoPhysicalBackfill: true,
 			Fields: []*schemapb.FieldSchema{
 				{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64},
 				{FieldID: 101, Name: "text", DataType: schemapb.DataType_VarChar},
@@ -475,8 +471,7 @@ func TestIndexInspector_MinSchemaVersionEnforcement(t *testing.T) {
 
 	t.Run("skip index when field data missing from segment", func(t *testing.T) {
 		// Segment with SchemaVersion=1, binlogs have fields 100+101 but NOT 102.
-		// In physical backfill mode, the gate skips index creation until the field's
-		// binlog data is written by backfill.
+		// The gate skips index creation until schema-bump execution writes the field data.
 		segment := &SegmentInfo{
 			SegmentInfo: &datapb.SegmentInfo{
 				ID:            1,
@@ -499,8 +494,8 @@ func TestIndexInspector_MinSchemaVersionEnforcement(t *testing.T) {
 
 	t.Run("return error when field binlogs present but segment schema version still behind", func(t *testing.T) {
 		// Segment with SchemaVersion=1 (behind index.MinSchemaVersion=2) BUT field 102
-		// already exists in binlogs. This is a transient inconsistency window: backfill
-		// has written the field data but the metadata-update tick has not yet bumped
+		// already exists in binlogs. This is a transient inconsistency window: schema-bump
+		// execution has written the field data but the metadata-update tick has not yet bumped
 		// segment.SchemaVersion. The inspector must NOT proceed to build the index in
 		// this window — it returns an error and retries on the next tick by which time
 		// the metadata is expected to have caught up.
