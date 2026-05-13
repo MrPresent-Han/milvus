@@ -1383,7 +1383,7 @@ func (suite *MetaBasicSuite) TestSetSegment() {
 	})
 }
 
-func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
+func (suite *MetaBasicSuite) TestCompleteBumpSchemaVersionCompactionMutation() {
 	// Helper to build a SegmentsInfo containing a single healthy Flushed segment with the given ID.
 	makeSegments := func(segID int64, state commonpb.SegmentState) *SegmentsInfo {
 		segs := NewSegmentsInfo()
@@ -1408,14 +1408,14 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1, 2}, // two inputs — should error
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		result := &datapb.CompactionPlanResult{
 			Segments: []*datapb.CompactionSegment{
 				{SegmentID: 1},
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.Error(err)
 		suite.Nil(infos)
 		suite.Nil(mutation)
@@ -1428,7 +1428,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		result := &datapb.CompactionPlanResult{
 			Segments: []*datapb.CompactionSegment{
@@ -1436,7 +1436,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 				{SegmentID: 2}, // two results — should error
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.Error(err)
 		suite.Nil(infos)
 		suite.Nil(mutation)
@@ -1450,14 +1450,14 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{99},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		result := &datapb.CompactionPlanResult{
 			Segments: []*datapb.CompactionSegment{
 				{SegmentID: 99},
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.Error(err)
 		suite.ErrorIs(err, merr.ErrSegmentNotFound)
 		suite.Nil(infos)
@@ -1471,14 +1471,14 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		result := &datapb.CompactionPlanResult{
 			Segments: []*datapb.CompactionSegment{
 				{SegmentID: 1},
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.Error(err)
 		suite.ErrorIs(err, merr.ErrSegmentNotFound)
 		suite.Nil(infos)
@@ -1492,14 +1492,14 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		result := &datapb.CompactionPlanResult{
 			Segments: []*datapb.CompactionSegment{
 				{SegmentID: 999}, // ID mismatch
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.Error(err)
 		suite.Nil(infos)
 		suite.Nil(mutation)
@@ -1524,7 +1524,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 			Schema: &schemapb.CollectionSchema{
 				Version: 3,
 			},
@@ -1538,7 +1538,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 				},
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.NoError(err)
 		suite.NotNil(mutation)
 		suite.Require().Len(infos, 1)
@@ -1570,7 +1570,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		result := &datapb.CompactionPlanResult{
 			Segments: []*datapb.CompactionSegment{
@@ -1582,7 +1582,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 				},
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.NoError(err)
 		suite.NotNil(mutation)
 		suite.Require().Len(infos, 1)
@@ -1597,7 +1597,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 	})
 
 	suite.Run("v2 crash-replay idempotent - no duplicate bm25 stats", func() {
-		// Simulate crash-replay: datacoord applies the same backfill result twice
+		// Simulate crash-replay: datacoord applies the same schema bump result twice
 		// (crash between etcd write and task state transition). Without the dedup
 		// filter, the second application would append duplicate logID entries to
 		// Bm25Statslogs. Verify that applying the same result twice is a no-op.
@@ -1618,7 +1618,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		result := &datapb.CompactionPlanResult{
 			Segments: []*datapb.CompactionSegment{
@@ -1631,7 +1631,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 
 		// First application
-		infos, _, err := m.completeBackfillCompactionMutation(task, result)
+		infos, _, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.NoError(err)
 		suite.Require().Len(infos, 1)
 		suite.Require().Len(infos[0].GetBm25Statslogs(), 1)
@@ -1641,7 +1641,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		firstLogID := firstFieldBinlog.GetBinlogs()[0].GetLogID()
 
 		// Second application (crash-replay) — same result, must be idempotent
-		infos2, _, err := m.completeBackfillCompactionMutation(task, result)
+		infos2, _, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.NoError(err)
 		suite.Require().Len(infos2, 1)
 		suite.Require().Len(infos2[0].GetBm25Statslogs(), 1,
@@ -1653,7 +1653,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		suite.Equal(firstLogID, secondFieldBinlog.GetBinlogs()[0].GetLogID())
 
 		// Third application — still idempotent
-		infos3, _, err := m.completeBackfillCompactionMutation(task, result)
+		infos3, _, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.NoError(err)
 		suite.Require().Len(infos3[0].GetBm25Statslogs(), 1)
 		suite.Require().Len(infos3[0].GetBm25Statslogs()[0].GetBinlogs(), 1)
@@ -1680,7 +1680,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 		}
 		task := &datapb.CompactionTask{
 			InputSegments: []int64{1},
-			Type:          datapb.CompactionType_BackfillCompaction,
+			Type:          datapb.CompactionType_BumpSchemaVersionCompaction,
 		}
 		const manifestPath = "collection/100/partition/10/segment/1/v3_manifest.json"
 		result := &datapb.CompactionPlanResult{
@@ -1694,7 +1694,7 @@ func (suite *MetaBasicSuite) TestCompleteBackfillCompactionMutation() {
 				},
 			},
 		}
-		infos, mutation, err := m.completeBackfillCompactionMutation(task, result)
+		infos, mutation, err := m.completeBumpSchemaVersionCompactionMutation(task, result)
 		suite.NoError(err)
 		suite.NotNil(mutation)
 		suite.Require().Len(infos, 1)
@@ -2746,7 +2746,7 @@ func TestUpdateSegmentColumnGroupsOperator(t *testing.T) {
 
 	t.Run("drops empty-children existing group and records DroppedBinlogFieldIDs", func(t *testing.T) {
 		// Pre-existing single-child group (fieldID=100 owns child 200) whose
-		// only child is claimed by a new backfill group (fieldID=200). After
+		// only child is claimed by a new schema bump group (fieldID=200). After
 		// stripping, group 100's ChildFields is empty -- the operator must
 		// drop it from segment.Binlogs AND record 100 in DroppedBinlogFieldIDs
 		// so the catalog removes the orphan etcd KV (without it, listBinlogs'

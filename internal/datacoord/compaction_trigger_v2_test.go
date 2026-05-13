@@ -424,7 +424,7 @@ func (s *CompactionTriggerManagerSuite) TestManualTriggerInvalidParams() {
 	s.Equal(int64(0), triggerID)
 }
 
-func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
+func (s *CompactionTriggerManagerSuite) TestSubmitBumpSchemaVersionViewToScheduler() {
 	collectionSchema := &schemapb.CollectionSchema{
 		Name: "test_coll",
 		Fields: []*schemapb.FieldSchema{
@@ -434,7 +434,7 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 			{Name: "bm25_fn", Type: schemapb.FunctionType_BM25, OutputFieldIds: []int64{100}},
 		},
 	}
-	makeBackfillView := func(triggerID int64) *BumpSchemaVersionView {
+	makeBumpSchemaVersionView := func(triggerID int64) *BumpSchemaVersionView {
 		segView := &SegmentView{
 			ID:        200,
 			label:     s.testLabel,
@@ -451,9 +451,9 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 	s.Run("AllocN fails", func() {
 		s.SetupTest()
 		s.mockAlloc.EXPECT().AllocN(int64(1)).Return(int64(0), int64(0), errors.New("alloc error")).Once()
-		view := makeBackfillView(111)
+		view := makeBumpSchemaVersionView(111)
 		// Should return early with no panic — no other mock calls expected.
-		s.triggerManager.SubmitBackfillViewToScheduler(context.Background(), view)
+		s.triggerManager.SubmitBumpSchemaVersionViewToScheduler(context.Background(), view)
 	})
 
 	s.Run("GetCollection fails", func() {
@@ -465,8 +465,8 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 			Return(nil, errors.New("get collection error")).Once()
 		s.triggerManager.handler = handler
 
-		view := makeBackfillView(111)
-		s.triggerManager.SubmitBackfillViewToScheduler(context.Background(), view)
+		view := makeBumpSchemaVersionView(111)
+		s.triggerManager.SubmitBumpSchemaVersionViewToScheduler(context.Background(), view)
 	})
 
 	s.Run("collection is nil", func() {
@@ -478,8 +478,8 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 			Return(nil, nil).Once()
 		s.triggerManager.handler = handler
 
-		view := makeBackfillView(111)
-		s.triggerManager.SubmitBackfillViewToScheduler(context.Background(), view)
+		view := makeBumpSchemaVersionView(111)
+		s.triggerManager.SubmitBumpSchemaVersionViewToScheduler(context.Background(), view)
 	})
 
 	s.Run("collection is external", func() {
@@ -499,29 +499,19 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 			}, nil).Once()
 		s.triggerManager.handler = handler
 
-		view := makeBackfillView(111)
-		s.triggerManager.SubmitBackfillViewToScheduler(context.Background(), view)
+		view := makeBumpSchemaVersionView(111)
+		s.triggerManager.SubmitBumpSchemaVersionViewToScheduler(context.Background(), view)
 	})
 
 	s.Run("view is not BumpSchemaVersionView", func() {
 		s.SetupTest()
-		s.meta.indexMeta = &indexMeta{indexes: make(map[UniqueID]map[UniqueID]*model.Index)}
-		const planID = int64(503)
-		s.mockAlloc.EXPECT().AllocN(int64(1)).Return(planID, planID, nil).Once()
-		handler := NewNMockHandler(s.T())
-		handler.EXPECT().GetCollection(mock.Anything, s.testLabel.CollectionID).
-			Return(&collectionInfo{
-				ID:     s.testLabel.CollectionID,
-				Schema: collectionSchema,
-			}, nil).Once()
-		s.triggerManager.handler = handler
 
 		// Use LevelZeroCompactionView which is NOT a *BumpSchemaVersionView.
-		nonBackfillView := &LevelZeroCompactionView{
+		nonBumpSchemaVersionView := &LevelZeroCompactionView{
 			label:      s.testLabel,
 			l0Segments: []*SegmentView{},
 		}
-		s.triggerManager.SubmitBackfillViewToScheduler(context.Background(), nonBackfillView)
+		s.triggerManager.SubmitBumpSchemaVersionViewToScheduler(context.Background(), nonBumpSchemaVersionView)
 	})
 
 	s.Run("enqueueCompaction fails", func() {
@@ -541,8 +531,8 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 		s.triggerManager.handler = handler
 		s.inspector.EXPECT().enqueueCompaction(mock.Anything).Return(errors.New("enqueue error")).Once()
 
-		view := makeBackfillView(triggerID)
-		s.triggerManager.SubmitBackfillViewToScheduler(context.Background(), view)
+		view := makeBumpSchemaVersionView(triggerID)
+		s.triggerManager.SubmitBumpSchemaVersionViewToScheduler(context.Background(), view)
 	})
 
 	s.Run("success", func() {
@@ -564,7 +554,7 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 			RunAndReturn(func(task *datapb.CompactionTask) error {
 				s.EqualValues(planID, task.GetPlanID())
 				s.EqualValues(triggerID, task.GetTriggerID())
-				s.Equal(datapb.CompactionType_BackfillCompaction, task.GetType())
+				s.Equal(datapb.CompactionType_BumpSchemaVersionCompaction, task.GetType())
 				s.Equal(s.testLabel.CollectionID, task.GetCollectionID())
 				s.Equal(s.testLabel.PartitionID, task.GetPartitionID())
 				s.Equal(s.testLabel.Channel, task.GetChannel())
@@ -573,8 +563,8 @@ func (s *CompactionTriggerManagerSuite) TestSubmitBackfillViewToScheduler() {
 				return nil
 			}).Once()
 
-		view := makeBackfillView(triggerID)
-		s.triggerManager.SubmitBackfillViewToScheduler(context.Background(), view)
+		view := makeBumpSchemaVersionView(triggerID)
+		s.triggerManager.SubmitBumpSchemaVersionViewToScheduler(context.Background(), view)
 	})
 }
 
@@ -589,8 +579,8 @@ func (s *CompactionTriggerManagerSuite) TestHandleTicker() {
 	s.Run("policy disabled", func() {
 		s.SetupTest()
 		mockPolicy := &testCompactionPolicy{enabled: false, policyName: "test-disabled"}
-		s.triggerManager.policies[BackfillTicker] = mockPolicy
-		s.triggerManager.handleTicker(context.Background(), BackfillTicker)
+		s.triggerManager.policies[BumpSchemaVersionTicker] = mockPolicy
+		s.triggerManager.handleTicker(context.Background(), BumpSchemaVersionTicker)
 		// Returns early — no inspector or trigger calls
 	})
 
@@ -602,12 +592,12 @@ func (s *CompactionTriggerManagerSuite) TestHandleTicker() {
 			policyName: "test-full",
 			// Views in Trigger() result are NOT dispatched because isFull() returns true.
 			triggerResult: map[CompactionTriggerType][]CompactionView{
-				TriggerTypeBackfill: {stubDispatchableView{}},
+				TriggerTypeBumpSchemaVersion: {stubDispatchableView{}},
 			},
 		}
-		s.triggerManager.policies[BackfillTicker] = mockPolicy
+		s.triggerManager.policies[BumpSchemaVersionTicker] = mockPolicy
 		s.inspector.EXPECT().isFull().Return(true).Once()
-		s.triggerManager.handleTicker(context.Background(), BackfillTicker)
+		s.triggerManager.handleTicker(context.Background(), BumpSchemaVersionTicker)
 	})
 
 	s.Run("policy trigger error returns before isFull check", func() {
@@ -617,10 +607,10 @@ func (s *CompactionTriggerManagerSuite) TestHandleTicker() {
 			policyName: "test-err",
 			triggerErr: errors.New("trigger error"),
 		}
-		s.triggerManager.policies[BackfillTicker] = mockPolicy
+		s.triggerManager.policies[BumpSchemaVersionTicker] = mockPolicy
 		// isFull() IS called now (step 2, before Trigger). Trigger() errors → no notify().
 		s.inspector.EXPECT().isFull().Return(false).Once()
-		s.triggerManager.handleTicker(context.Background(), BackfillTicker)
+		s.triggerManager.handleTicker(context.Background(), BumpSchemaVersionTicker)
 	})
 
 	s.Run("policy trigger returns no events skips isFull check", func() {
@@ -631,10 +621,10 @@ func (s *CompactionTriggerManagerSuite) TestHandleTicker() {
 			// Nil result — Trigger() returns nothing, notify() is never called.
 			triggerResult: nil,
 		}
-		s.triggerManager.policies[BackfillTicker] = mockPolicy
+		s.triggerManager.policies[BumpSchemaVersionTicker] = mockPolicy
 		// isFull() IS called now (step 2 gate before Trigger). Trigger returns nil → no notify.
 		s.inspector.EXPECT().isFull().Return(false).Once()
-		s.triggerManager.handleTicker(context.Background(), BackfillTicker)
+		s.triggerManager.handleTicker(context.Background(), BumpSchemaVersionTicker)
 	})
 
 	s.Run("policy trigger returns events dispatched when inspector not full", func() {
@@ -643,15 +633,15 @@ func (s *CompactionTriggerManagerSuite) TestHandleTicker() {
 			enabled:    true,
 			policyName: "test-events",
 			triggerResult: map[CompactionTriggerType][]CompactionView{
-				TriggerTypeBackfill: {stubDispatchableView{}},
+				TriggerTypeBumpSchemaVersion: {stubDispatchableView{}},
 			},
 		}
-		s.triggerManager.policies[BackfillTicker] = mockPolicy
+		s.triggerManager.policies[BumpSchemaVersionTicker] = mockPolicy
 		s.inspector.EXPECT().isFull().Return(false).Once()
 		// stubDispatchableView.Trigger() returns nil, so notify() short-circuits
-		// before reaching SubmitBackfillViewToScheduler. We only care here that
+		// before reaching SubmitBumpSchemaVersionViewToScheduler. We only care here that
 		// isFull was consulted and the dispatch path was entered.
-		s.triggerManager.handleTicker(context.Background(), BackfillTicker)
+		s.triggerManager.handleTicker(context.Background(), BumpSchemaVersionTicker)
 	})
 
 }

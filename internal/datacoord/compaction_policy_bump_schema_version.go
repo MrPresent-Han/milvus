@@ -28,29 +28,29 @@ import (
 	"github.com/milvus-io/milvus/pkg/v3/proto/datapb"
 )
 
-type backfillCompactionPolicy struct {
+type bumpSchemaVersionPolicy struct {
 	meta      *meta
 	handler   Handler
 	allocator allocator.Allocator
 }
 
-var _ CompactionPolicy = (*backfillCompactionPolicy)(nil)
+var _ CompactionPolicy = (*bumpSchemaVersionPolicy)(nil)
 
-func newBackfillCompactionPolicy(meta *meta, allocator allocator.Allocator, handler Handler) *backfillCompactionPolicy {
-	return &backfillCompactionPolicy{meta: meta, allocator: allocator, handler: handler}
+func newBumpSchemaVersionPolicy(meta *meta, allocator allocator.Allocator, handler Handler) *bumpSchemaVersionPolicy {
+	return &bumpSchemaVersionPolicy{meta: meta, allocator: allocator, handler: handler}
 }
 
-func (policy *backfillCompactionPolicy) Enable() bool {
+func (policy *bumpSchemaVersionPolicy) Enable() bool {
 	return true
 }
 
-func (policy *backfillCompactionPolicy) Name() string {
+func (policy *bumpSchemaVersionPolicy) Name() string {
 	return "BumpSchemaVersion"
 }
 
 // staleFlushedSegments returns the flushed segments for collectionID whose SchemaVersion
 // lags behind collectionSchemaVersion. L0 segments are excluded (deletes only, no data).
-func (policy *backfillCompactionPolicy) staleFlushedSegments(collectionID int64, collectionSchemaVersion int32) []*chanPartSegments {
+func (policy *bumpSchemaVersionPolicy) staleFlushedSegments(collectionID int64, collectionSchemaVersion int32) []*chanPartSegments {
 	return GetSegmentsChanPart(policy.meta, collectionID, SegmentFilterFunc(func(segment *SegmentInfo) bool {
 		return isSegmentHealthy(segment) &&
 			isFlushed(segment) &&
@@ -62,7 +62,7 @@ func (policy *backfillCompactionPolicy) staleFlushedSegments(collectionID int64,
 	}))
 }
 
-func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[CompactionTriggerType][]CompactionView, error) {
+func (policy *bumpSchemaVersionPolicy) Trigger(ctx context.Context) (map[CompactionTriggerType][]CompactionView, error) {
 	collections := policy.meta.GetCollections()
 	events := make(map[CompactionTriggerType][]CompactionView)
 
@@ -116,7 +116,7 @@ func (policy *backfillCompactionPolicy) Trigger(ctx context.Context) (map[Compac
 			}
 		}
 		if len(views) > 0 {
-			events[TriggerTypeBackfill] = append(events[TriggerTypeBackfill], views...)
+			events[TriggerTypeBumpSchemaVersion] = append(events[TriggerTypeBumpSchemaVersion], views...)
 		}
 	}
 	return events, nil

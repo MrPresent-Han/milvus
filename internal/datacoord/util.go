@@ -28,6 +28,7 @@ import (
 
 	"github.com/milvus-io/milvus-proto/go-api/v3/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v3/milvuspb"
+	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
 	"github.com/milvus-io/milvus/internal/util/vecindexmgr"
 	"github.com/milvus-io/milvus/pkg/v3/common"
 	"github.com/milvus-io/milvus/pkg/v3/log"
@@ -246,6 +247,39 @@ func mergeFieldBinlogs(currentBinlogs []*datapb.FieldBinlog, newBinlogs []*datap
 		}
 	}
 	return currentBinlogs
+}
+
+func filterFieldBinlogsBySchema(schema *schemapb.CollectionSchema, fieldBinlogs []*datapb.FieldBinlog) []*datapb.FieldBinlog {
+	if schema == nil || len(fieldBinlogs) == 0 {
+		return fieldBinlogs
+	}
+	fieldIDs := make(map[int64]struct{}, typeutil.GetTotalFieldsNum(schema))
+	for _, field := range typeutil.GetAllFieldSchemas(schema) {
+		fieldIDs[field.GetFieldID()] = struct{}{}
+	}
+	return filterFieldBinlogsByFieldIDs(fieldBinlogs, fieldIDs, true)
+}
+
+func filterFieldBinlogsByFieldIDs(fieldBinlogs []*datapb.FieldBinlog, fieldIDs map[int64]struct{}, keepMatch bool) []*datapb.FieldBinlog {
+	if len(fieldBinlogs) == 0 || len(fieldIDs) == 0 {
+		return fieldBinlogs
+	}
+	filtered := make([]*datapb.FieldBinlog, 0, len(fieldBinlogs))
+	for _, fieldBinlog := range fieldBinlogs {
+		_, matched := fieldIDs[fieldBinlog.GetFieldID()]
+		if matched == keepMatch {
+			filtered = append(filtered, fieldBinlog)
+		}
+	}
+	return filtered
+}
+
+func fieldBinlogIDSet(fieldBinlogs []*datapb.FieldBinlog) map[int64]struct{} {
+	fieldIDs := make(map[int64]struct{}, len(fieldBinlogs))
+	for _, fieldBinlog := range fieldBinlogs {
+		fieldIDs[fieldBinlog.GetFieldID()] = struct{}{}
+	}
+	return fieldIDs
 }
 
 // filterDuplicateFieldBinlogs removes FieldBinlog entries from newLogs whose (fieldID, logID)

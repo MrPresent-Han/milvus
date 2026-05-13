@@ -37,21 +37,25 @@ import (
 )
 
 type FunctionMaterializer interface {
-	OutputFieldIDs() []int64
 	Materialize(rec storage.Record) (map[int64]arrow.Array, error)
 	Close()
 }
 
 type RecordMaterializer struct {
 	materializers []FunctionMaterializer
+	missingFields []*schemapb.FieldSchema
 }
 
 func NewRecordMaterializer(schema *schemapb.CollectionSchema, functions []*schemapb.FunctionSchema, existingFields map[int64]struct{}) (*RecordMaterializer, error) {
 	materializer := &RecordMaterializer{}
+	materializedFields := make(map[int64]struct{})
 	for _, functionSchema := range functions {
 		missingOutputIndexes := missingFunctionOutputIndexes(functionSchema, existingFields)
 		if len(missingOutputIndexes) == 0 {
 			continue
+		}
+		for _, outputIndex := range missingOutputIndexes {
+			materializedFields[functionSchema.GetOutputFieldIds()[outputIndex]] = struct{}{}
 		}
 
 		runner, err := function.NewFunctionRunner(schema, functionSchema)
@@ -71,11 +75,13 @@ func NewRecordMaterializer(schema *schemapb.CollectionSchema, functions []*schem
 		}
 		materializer.materializers = append(materializer.materializers, functionMaterializer)
 	}
+	materializer.missingFields = missingNonMaterializedSchemaFields(schema, existingFields, materializedFields)
 	return materializer, nil
 }
 
 func NewRecordMaterializerWithRunners(schema *schemapb.CollectionSchema, runners []function.FunctionRunner, existingFields map[int64]struct{}) (*RecordMaterializer, error) {
 	materializer := &RecordMaterializer{}
+	materializedFields := make(map[int64]struct{})
 	for _, runner := range runners {
 		if runner == nil {
 			materializer.Close()
@@ -86,6 +92,9 @@ func NewRecordMaterializerWithRunners(schema *schemapb.CollectionSchema, runners
 		if len(missingOutputIndexes) == 0 {
 			continue
 		}
+		for _, outputIndex := range missingOutputIndexes {
+			materializedFields[functionSchema.GetOutputFieldIds()[outputIndex]] = struct{}{}
+		}
 
 		functionMaterializer, err := newFunctionMaterializer(schema, runner, missingOutputIndexes, false)
 		if err != nil {
@@ -94,11 +103,12 @@ func NewRecordMaterializerWithRunners(schema *schemapb.CollectionSchema, runners
 		}
 		materializer.materializers = append(materializer.materializers, functionMaterializer)
 	}
+	materializer.missingFields = missingNonMaterializedSchemaFields(schema, existingFields, materializedFields)
 	return materializer, nil
 }
 
 func (m *RecordMaterializer) Wrap(rec storage.Record) (storage.Record, error) {
-	if m == nil || len(m.materializers) == 0 {
+	if !m.hasMaterialization() {
 		return rec, nil
 	}
 
@@ -113,6 +123,18 @@ func (m *RecordMaterializer) Wrap(rec storage.Record) (storage.Record, error) {
 			computed[fieldID] = arr
 		}
 	}
+	for _, field := range m.missingFields {
+		fieldID := field.GetFieldID()
+		if _, ok := computed[fieldID]; ok {
+			continue
+		}
+		arr, err := storage.GenerateEmptyArrayFromSchema(field, rec.Len())
+		if err != nil {
+			releaseArrowArrays(computed)
+			return nil, err
+		}
+		computed[fieldID] = arr
+	}
 	if len(computed) == 0 {
 		return rec, nil
 	}
@@ -126,6 +148,10 @@ func (m *RecordMaterializer) Close() {
 	for _, materializer := range m.materializers {
 		materializer.Close()
 	}
+}
+
+func (m *RecordMaterializer) hasMaterialization() bool {
+	return m != nil && (len(m.materializers) > 0 || len(m.missingFields) > 0)
 }
 
 type materializedRecord struct {
@@ -163,18 +189,23 @@ func (r *materializedRecord) Release() {
 type materializedRecordReader struct {
 	base         storage.RecordReader
 	materializer *RecordMaterializer
+	current      storage.Record
 }
 
 var _ storage.RecordReader = (*materializedRecordReader)(nil)
 
 func newMaterializedRecordReader(base storage.RecordReader, materializer *RecordMaterializer) storage.RecordReader {
-	if materializer == nil || len(materializer.materializers) == 0 {
+	if !materializer.hasMaterialization() {
 		return base
 	}
 	return &materializedRecordReader{base: base, materializer: materializer}
 }
 
 func (r *materializedRecordReader) Next() (storage.Record, error) {
+	if r.current != nil {
+		r.current.Release()
+		r.current = nil
+	}
 	rec, err := r.base.Next()
 	if err != nil {
 		return nil, err
@@ -184,10 +215,15 @@ func (r *materializedRecordReader) Next() (storage.Record, error) {
 		rec.Release()
 		return nil, err
 	}
+	r.current = wrapped
 	return wrapped, nil
 }
 
 func (r *materializedRecordReader) Close() error {
+	if r.current != nil {
+		r.current.Release()
+		r.current = nil
+	}
 	r.materializer.Close()
 	return r.base.Close()
 }
@@ -254,14 +290,6 @@ func newBM25FunctionMaterializer(schema *schemapb.CollectionSchema, runner funct
 	}, nil
 }
 
-func (m *bm25FunctionMaterializer) OutputFieldIDs() []int64 {
-	fieldIDs := make([]int64, 0, len(m.missingOutputIndexes))
-	for _, idx := range m.missingOutputIndexes {
-		fieldIDs = append(fieldIDs, m.outputFieldIDs[idx])
-	}
-	return fieldIDs
-}
-
 func (m *bm25FunctionMaterializer) Materialize(rec storage.Record) (map[int64]arrow.Array, error) {
 	inputs, err := stringInputsFromRecord(rec, m.inputFieldID)
 	if err != nil {
@@ -305,6 +333,21 @@ func missingFunctionOutputIndexes(functionSchema *schemapb.FunctionSchema, exist
 		if _, ok := existingFields[outputFieldID]; !ok {
 			missing = append(missing, idx)
 		}
+	}
+	return missing
+}
+
+func missingNonMaterializedSchemaFields(schema *schemapb.CollectionSchema, existingFields map[int64]struct{}, materializedFields map[int64]struct{}) []*schemapb.FieldSchema {
+	missing := make([]*schemapb.FieldSchema, 0)
+	for _, field := range typeutil.GetAllFieldSchemas(schema) {
+		fieldID := field.GetFieldID()
+		if _, ok := existingFields[fieldID]; ok {
+			continue
+		}
+		if _, ok := materializedFields[fieldID]; ok {
+			continue
+		}
+		missing = append(missing, field)
 	}
 	return missing
 }
@@ -362,6 +405,14 @@ func releaseArrowArrays(arrays map[int64]arrow.Array) {
 	for _, arr := range arrays {
 		arr.Release()
 	}
+}
+
+func releaseWrappedRecord(wrapped storage.Record, base storage.Record) {
+	if wrapped != base {
+		wrapped.Release()
+		return
+	}
+	base.Release()
 }
 
 func compactionSegmentStorageFields(segment *datapb.CompactionSegmentBinlogs, storageConfig *indexpb.StorageConfig) (map[int64]struct{}, error) {

@@ -250,37 +250,21 @@ func (t *sortCompactionTask) sortSegment(ctx context.Context) (*datapb.Compactio
 	}
 
 	phaseStart = time.Now()
-	var rr storage.RecordReader
-	// use manifest reader if manifest presents
-	if t.manifest != "" {
-		rr, err = storage.NewManifestRecordReader(ctx, t.manifest, t.plan.Schema,
-			storage.WithVersion(t.segmentStorageVersion),
-			storage.WithDownloader(t.binlogIO.Download),
-			storage.WithStorageConfig(t.compactionParams.StorageConfig),
-			storage.WithCollectionID(t.collectionID),
-		)
-	} else {
-		rr, err = storage.NewBinlogRecordReader(ctx, t.insertLogs, t.plan.Schema,
-			storage.WithVersion(t.segmentStorageVersion),
-			storage.WithDownloader(t.binlogIO.Download),
-			storage.WithStorageConfig(t.compactionParams.StorageConfig),
-			storage.WithCollectionID(t.collectionID),
-		)
-	}
+	rr, existingFields, err := newCompactionSegmentRecordReader(ctx, t.plan.GetSegmentBinlogs()[0], t.plan.Schema, t.compactionParams.StorageConfig,
+		storage.WithVersion(t.segmentStorageVersion),
+		storage.WithDownloader(t.binlogIO.Download),
+		storage.WithStorageConfig(t.compactionParams.StorageConfig),
+		storage.WithCollectionID(t.collectionID),
+	)
 	if err != nil {
 		log.Warn("error creating insert binlog reader", zap.Error(err))
-		srw.Close()
-		return nil, err
-	}
-	existingFields, err := compactionSegmentStorageFields(t.plan.GetSegmentBinlogs()[0], t.compactionParams.StorageConfig)
-	if err != nil {
-		log.Warn("error reading segment storage fields", zap.Error(err))
 		srw.Close()
 		return nil, err
 	}
 	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
 	if err != nil {
 		log.Warn("error creating record materializer", zap.Error(err))
+		rr.Close()
 		srw.Close()
 		return nil, err
 	}

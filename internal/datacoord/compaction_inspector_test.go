@@ -1081,7 +1081,7 @@ func TestGetCompactionTasksNum(t *testing.T) {
 	})
 }
 
-func (s *CompactionPlanHandlerSuite) TestCreateCompactTask_BackfillCompaction() {
+func (s *CompactionPlanHandlerSuite) TestCreateCompactTask_BumpSchemaVersionCompaction() {
 	s.SetupTest()
 	s.mockMeta.EXPECT().CheckAndSetSegmentsCompacting(mock.Anything, mock.Anything).Return(true, true).Maybe()
 
@@ -1093,13 +1093,13 @@ func (s *CompactionPlanHandlerSuite) TestCreateCompactTask_BackfillCompaction() 
 		TriggerID: 1,
 		PlanID:    10,
 		Channel:   "ch-1",
-		Type:      datapb.CompactionType_BackfillCompaction,
+		Type:      datapb.CompactionType_BumpSchemaVersionCompaction,
 	}
 
 	compactTask, err := handler.createCompactTask(t)
 	s.NoError(err)
 	s.NotNil(compactTask)
-	s.Equal(datapb.CompactionType_BackfillCompaction, compactTask.GetTaskProto().GetType())
+	s.Equal(datapb.CompactionType_BumpSchemaVersionCompaction, compactTask.GetTaskProto().GetType())
 }
 
 func (s *CompactionPlanHandlerSuite) TestCreateCompactTask_UnknownType() {

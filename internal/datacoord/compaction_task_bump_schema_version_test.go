@@ -40,11 +40,11 @@ import (
 	"github.com/milvus-io/milvus/pkg/v3/util/merr"
 )
 
-func TestBackfillCompactionTaskSuite(t *testing.T) {
-	suite.Run(t, new(BackfillCompactionTaskSuite))
+func TestBumpSchemaVersionCompactionTaskSuite(t *testing.T) {
+	suite.Run(t, new(BumpSchemaVersionCompactionTaskSuite))
 }
 
-type BackfillCompactionTaskSuite struct {
+type BumpSchemaVersionCompactionTaskSuite struct {
 	suite.Suite
 
 	mockID    atomic.Int64
@@ -54,7 +54,7 @@ type BackfillCompactionTaskSuite struct {
 	ievm      IndexEngineVersionManager
 }
 
-func (s *BackfillCompactionTaskSuite) SetupTest() {
+func (s *BumpSchemaVersionCompactionTaskSuite) SetupTest() {
 	ctx := context.Background()
 	cm := storage.NewLocalChunkManager(objectstorage.RootPath(""))
 	catalog := datacoord.NewCatalog(NewMetaMemoryKV(), "", "")
@@ -81,14 +81,14 @@ func (s *BackfillCompactionTaskSuite) SetupTest() {
 	s.ievm = newIndexEngineVersionManager()
 }
 
-func (s *BackfillCompactionTaskSuite) SetupSubTest() {
+func (s *BumpSchemaVersionCompactionTaskSuite) SetupSubTest() {
 	s.SetupTest()
 }
 
-func (s *BackfillCompactionTaskSuite) generateBasicTask() *bumpSchemaVersionTask {
+func (s *BumpSchemaVersionCompactionTaskSuite) generateBasicTask() *bumpSchemaVersionTask {
 	schema := &schemapb.CollectionSchema{
-		Name:        "test_backfill_collection",
-		Description: "test collection for backfill compaction",
+		Name:        "test_schema_bump_collection",
+		Description: "test collection for schema bump compaction",
 		Version:     2,
 		Fields: []*schemapb.FieldSchema{
 			{
@@ -116,7 +116,7 @@ func (s *BackfillCompactionTaskSuite) generateBasicTask() *bumpSchemaVersionTask
 		TriggerID:      19530,
 		CollectionID:   1,
 		PartitionID:    10,
-		Type:           datapb.CompactionType_BackfillCompaction,
+		Type:           datapb.CompactionType_BumpSchemaVersionCompaction,
 		NodeID:         1,
 		State:          datapb.CompactionTaskState_pipelining,
 		Schema:         schema,
@@ -133,7 +133,7 @@ func (s *BackfillCompactionTaskSuite) generateBasicTask() *bumpSchemaVersionTask
 	return task
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionTaskBasic() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionTaskBasic() {
 	task := s.generateBasicTask()
 
 	// Test basic getters
@@ -150,13 +150,13 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionTaskBasic() {
 	s.Equal(int64(19530), taskProto.GetTriggerID())
 	s.Equal(int64(1), taskProto.GetCollectionID())
 	s.Equal(int64(10), taskProto.GetPartitionID())
-	s.Equal(datapb.CompactionType_BackfillCompaction, taskProto.GetType())
+	s.Equal(datapb.CompactionType_BumpSchemaVersionCompaction, taskProto.GetType())
 	s.Equal(datapb.CompactionTaskState_pipelining, taskProto.GetState())
 	s.Equal([]int64{101}, taskProto.GetInputSegments())
 	s.Equal([]int64{1000}, taskProto.GetResultSegments())
 }
 
-func (s *BackfillCompactionTaskSuite) TestBuildCompactionRequest() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBuildCompactionRequest() {
 	// Add a segment to meta
 	segmentID := int64(101)
 	err := s.meta.AddSegment(context.TODO(), &SegmentInfo{
@@ -189,7 +189,7 @@ func (s *BackfillCompactionTaskSuite) TestBuildCompactionRequest() {
 
 	// Verify plan
 	s.Equal(int64(1), plan.GetPlanID())
-	s.Equal(datapb.CompactionType_BackfillCompaction, plan.GetType())
+	s.Equal(datapb.CompactionType_BumpSchemaVersionCompaction, plan.GetType())
 	s.Equal("ch-1", plan.GetChannel())
 	s.Equal(1, len(plan.GetSegmentBinlogs()))
 	s.Equal(segmentID, plan.GetSegmentBinlogs()[0].GetSegmentID())
@@ -198,7 +198,7 @@ func (s *BackfillCompactionTaskSuite) TestBuildCompactionRequest() {
 	s.NotNil(plan.GetFunctions())
 }
 
-func (s *BackfillCompactionTaskSuite) TestBuildCompactionRequestSegmentNotFound() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBuildCompactionRequestSegmentNotFound() {
 	task := s.generateBasicTask()
 
 	// Try to build compaction request without adding segment to meta
@@ -208,7 +208,7 @@ func (s *BackfillCompactionTaskSuite) TestBuildCompactionRequestSegmentNotFound(
 	s.Contains(err.Error(), "segment not found")
 }
 
-func (s *BackfillCompactionTaskSuite) TestCreateTaskOnWorker() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestCreateTaskOnWorker() {
 	s.Run("CreateTaskOnWorker fail, segment not found", func() {
 		task := s.generateBasicTask()
 		cluster := session.NewMockCluster(s.T())
@@ -283,7 +283,7 @@ func (s *BackfillCompactionTaskSuite) TestCreateTaskOnWorker() {
 	})
 }
 
-func (s *BackfillCompactionTaskSuite) TestQueryTaskOnWorker() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestQueryTaskOnWorker() {
 	s.Run("QueryTaskOnWorker, node not found", func() {
 		task := s.generateBasicTask()
 		task.SetTask(task.ShadowClone(setState(datapb.CompactionTaskState_executing), setNodeID(1)))
@@ -446,7 +446,7 @@ func (s *BackfillCompactionTaskSuite) TestQueryTaskOnWorker() {
 	})
 }
 
-func (s *BackfillCompactionTaskSuite) TestProcess() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestProcess() {
 	s.Run("Process meta_saved state", func() {
 		task := s.generateBasicTask()
 		task.SetTask(task.ShadowClone(setState(datapb.CompactionTaskState_meta_saved)))
@@ -495,7 +495,7 @@ func (s *BackfillCompactionTaskSuite) TestProcess() {
 	})
 }
 
-func (s *BackfillCompactionTaskSuite) TestClean() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestClean() {
 	task := s.generateBasicTask()
 	// Mark segment as compacting
 	s.meta.SetSegmentsCompacting(context.TODO(), []int64{101}, true)
@@ -525,7 +525,7 @@ func (s *BackfillCompactionTaskSuite) TestClean() {
 	s.False(seg.isCompacting)
 }
 
-func (s *BackfillCompactionTaskSuite) TestNeedReAssignNodeID() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestNeedReAssignNodeID() {
 	s.Run("NeedReAssignNodeID, pipelining with nodeID 0", func() {
 		task := s.generateBasicTask()
 		task.SetTask(task.ShadowClone(setState(datapb.CompactionTaskState_pipelining), setNodeID(0)))
@@ -551,7 +551,7 @@ func (s *BackfillCompactionTaskSuite) TestNeedReAssignNodeID() {
 	})
 }
 
-func (s *BackfillCompactionTaskSuite) TestDropTaskOnWorker() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestDropTaskOnWorker() {
 	task := s.generateBasicTask()
 	task.SetTask(task.ShadowClone(setState(datapb.CompactionTaskState_executing), setNodeID(1)))
 	cluster := session.NewMockCluster(s.T())
@@ -559,14 +559,14 @@ func (s *BackfillCompactionTaskSuite) TestDropTaskOnWorker() {
 	task.DropTaskOnWorker(cluster)
 }
 
-func (s *BackfillCompactionTaskSuite) TestSetNodeID() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestSetNodeID() {
 	task := s.generateBasicTask()
 	err := task.SetNodeID(100)
 	s.NoError(err)
 	s.Equal(int64(100), task.GetTaskProto().GetNodeID())
 }
 
-func (s *BackfillCompactionTaskSuite) TestSaveSegmentMeta() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestSaveSegmentMeta() {
 	s.Run("success", func() {
 		segmentID := int64(101)
 		err := s.meta.AddSegment(context.TODO(), &SegmentInfo{
@@ -590,7 +590,7 @@ func (s *BackfillCompactionTaskSuite) TestSaveSegmentMeta() {
 		result := &datapb.CompactionPlanResult{
 			PlanID: 1,
 			State:  datapb.CompactionTaskState_completed,
-			Type:   datapb.CompactionType_BackfillCompaction,
+			Type:   datapb.CompactionType_BumpSchemaVersionCompaction,
 			Segments: []*datapb.CompactionSegment{
 				{
 					SegmentID: segmentID,
@@ -612,7 +612,7 @@ func (s *BackfillCompactionTaskSuite) TestSaveSegmentMeta() {
 		result := &datapb.CompactionPlanResult{
 			PlanID: 1,
 			State:  datapb.CompactionTaskState_completed,
-			Type:   datapb.CompactionType_BackfillCompaction,
+			Type:   datapb.CompactionType_BumpSchemaVersionCompaction,
 			Segments: []*datapb.CompactionSegment{
 				{SegmentID: 101},
 			},
@@ -622,7 +622,7 @@ func (s *BackfillCompactionTaskSuite) TestSaveSegmentMeta() {
 	})
 }
 
-func (s *BackfillCompactionTaskSuite) TestProcessCompleted() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestProcessCompleted() {
 	segmentID := int64(101)
 	err := s.meta.AddSegment(context.TODO(), &SegmentInfo{
 		SegmentInfo: &datapb.SegmentInfo{
@@ -645,7 +645,7 @@ func (s *BackfillCompactionTaskSuite) TestProcessCompleted() {
 	// processCompleted() does NOT reset the compacting flag — that is done by Clean().
 }
 
-func (s *BackfillCompactionTaskSuite) TestUpdateAndSaveTaskMeta() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestUpdateAndSaveTaskMeta() {
 	s.Run("normal state update", func() {
 		task := s.generateBasicTask()
 		err := task.updateAndSaveTaskMeta(setState(datapb.CompactionTaskState_executing))
@@ -676,25 +676,25 @@ func (s *BackfillCompactionTaskSuite) TestUpdateAndSaveTaskMeta() {
 	})
 }
 
-func (s *BackfillCompactionTaskSuite) TestProcessFailed() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestProcessFailed() {
 	task := s.generateBasicTask()
 	task.SetTask(task.ShadowClone(setState(datapb.CompactionTaskState_failed)))
 	s.True(task.processFailed())
 }
 
-func (s *BackfillCompactionTaskSuite) TestGetSlotUsage() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestGetSlotUsage() {
 	task := s.generateBasicTask()
 	s.Equal(int64(1), task.GetSlotUsage())
 }
 
-func (s *BackfillCompactionTaskSuite) TestSetTaskTime() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestSetTaskTime() {
 	task := s.generateBasicTask()
 	now := time.Now()
 	task.SetTaskTime(taskcommon.TimeQueue, now)
 	s.False(task.GetTaskTime(taskcommon.TimeQueue).IsZero())
 }
 
-func (s *BackfillCompactionTaskSuite) TestGetTaskState() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestGetTaskState() {
 	s.Run("pipelining state", func() {
 		task := s.generateBasicTask()
 		task.SetTask(task.ShadowClone(setState(datapb.CompactionTaskState_pipelining)))
@@ -724,14 +724,14 @@ func (s *BackfillCompactionTaskSuite) TestGetTaskState() {
 	})
 }
 
-func (s *BackfillCompactionTaskSuite) TestGetTaskSlot() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestGetTaskSlot() {
 	task := s.generateBasicTask()
 	slot := task.GetTaskSlot()
 	// GetTaskSlot reads from paramtable; default is 1
 	s.GreaterOrEqual(slot, int64(1))
 }
 
-func (s *BackfillCompactionTaskSuite) TestCleanError() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestCleanError() {
 	// Make the compactionTaskMeta catalog fail on SaveCompactionTask so that doClean returns an error.
 	// meta.compactionTaskMeta.catalog is the catalog used by SaveCompactionTask,
 	// separate from meta.catalog which is used by segment operations.
@@ -744,7 +744,7 @@ func (s *BackfillCompactionTaskSuite) TestCleanError() {
 	s.False(result, "Clean() must return false when doClean fails")
 }
 
-func (s *BackfillCompactionTaskSuite) TestResetSegmentCompacting() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestResetSegmentCompacting() {
 	// Add two segments and mark them as compacting.
 	for _, segID := range []int64{101, 102} {
 		err := s.meta.AddSegment(context.TODO(), &SegmentInfo{

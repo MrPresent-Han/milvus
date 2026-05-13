@@ -21,7 +21,6 @@ import (
 	"math"
 	"testing"
 
-	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/suite"
@@ -35,7 +34,6 @@ import (
 	mock_storage "github.com/milvus-io/milvus/internal/mocks/mock_storage"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/storagecommon"
-	"github.com/milvus-io/milvus/internal/util/function"
 	"github.com/milvus-io/milvus/internal/util/initcore"
 	"github.com/milvus-io/milvus/pkg/v3/common"
 	"github.com/milvus-io/milvus/pkg/v3/log"
@@ -45,11 +43,11 @@ import (
 	"github.com/milvus-io/milvus/pkg/v3/util/tsoutil"
 )
 
-func TestBackfillCompactionTaskSuite(t *testing.T) {
-	suite.Run(t, new(BackfillCompactionTaskSuite))
+func TestBumpSchemaVersionCompactionTaskSuite(t *testing.T) {
+	suite.Run(t, new(BumpSchemaVersionCompactionTaskSuite))
 }
 
-type BackfillCompactionTaskSuite struct {
+type BumpSchemaVersionCompactionTaskSuite struct {
 	suite.Suite
 
 	mockBinlogIO *mock_util.MockBinlogIO
@@ -57,14 +55,14 @@ type BackfillCompactionTaskSuite struct {
 	meta           *etcdpb.CollectionMeta
 	multiSegWriter *MultiSegmentWriter
 
-	task *backfillCompactionTask
+	task *bumpSchemaVersionCompactionTask
 }
 
-func (s *BackfillCompactionTaskSuite) SetupSuite() {
+func (s *BumpSchemaVersionCompactionTaskSuite) SetupSuite() {
 	paramtable.Get().Init(paramtable.NewBaseTable())
 }
 
-func (s *BackfillCompactionTaskSuite) setupTest() {
+func (s *BumpSchemaVersionCompactionTaskSuite) setupTest() {
 	s.mockBinlogIO = mock_util.NewMockBinlogIO(s.T())
 
 	s.meta = genTestCollectionMetaWithBM25()
@@ -86,7 +84,7 @@ func (s *BackfillCompactionTaskSuite) setupTest() {
 			InsertChannel:       "test_channel",
 			StorageVersion:      storage.StorageV2,
 		}},
-		Type:                   datapb.CompactionType_BackfillCompaction,
+		Type:                   datapb.CompactionType_BumpSchemaVersionCompaction,
 		Schema:                 s.meta.GetSchema(),
 		PreAllocatedSegmentIDs: &datapb.IDRange{Begin: 19531, End: math.MaxInt64},
 		PreAllocatedLogIDs:     &datapb.IDRange{Begin: 9530, End: 19530},
@@ -108,10 +106,10 @@ func (s *BackfillCompactionTaskSuite) setupTest() {
 	if err != nil {
 		panic(err)
 	}
-	s.task = NewBackfillCompactionTask(context.Background(), cm, plan, compaction.GenParams())
+	s.task = NewBumpSchemaVersionCompactionTask(context.Background(), cm, plan, compaction.GenParams())
 }
 
-func (s *BackfillCompactionTaskSuite) SetupTest() {
+func (s *BumpSchemaVersionCompactionTaskSuite) SetupTest() {
 	// Align with sort_compaction_test fixture: use a per-test temp dir as the local
 	// storage root and disable Loon FFI. Without UseLoonFFI=false, the loon local
 	// filesystem double-prepends the configured root_path onto already-absolute log
@@ -125,7 +123,7 @@ func (s *BackfillCompactionTaskSuite) SetupTest() {
 	s.setupTest()
 }
 
-func (s *BackfillCompactionTaskSuite) TearDownTest() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TearDownTest() {
 	paramtable.Get().Reset(paramtable.Get().CommonCfg.StorageType.Key)
 	paramtable.Get().Reset(paramtable.Get().CommonCfg.UseLoonFFI.Key)
 	paramtable.Get().Reset(paramtable.Get().LocalStorageCfg.Path.Key)
@@ -133,13 +131,13 @@ func (s *BackfillCompactionTaskSuite) TearDownTest() {
 	initcore.CleanArrowFileSystem()
 }
 
-func (s *BackfillCompactionTaskSuite) prepareBackfillCompaction() {
+func (s *BumpSchemaVersionCompactionTaskSuite) prepareBumpSchemaVersionCompaction() {
 	segID := int64(100)
 	s.mockBinlogIO.EXPECT().Upload(mock.Anything, mock.Anything).Return(nil).Maybe()
 
 	// Create multi segment writer with varchar field (input) but without sparse vector field (output)
-	// This simulates a segment that needs backfill
-	s.initSegBufferForBackfill(segID)
+	// This simulates a segment that needs schema bump
+	s.initSegBufferForSchemaBump(segID)
 
 	// Close the writer to finalize segments
 	err := s.multiSegWriter.Close()
@@ -172,7 +170,7 @@ func (s *BackfillCompactionTaskSuite) prepareBackfillCompaction() {
 		zap.Int("insertLogsCount", len(segment.GetInsertLogs())))
 }
 
-func (s *BackfillCompactionTaskSuite) initSegBufferForBackfill(segID int64) {
+func (s *BumpSchemaVersionCompactionTaskSuite) initSegBufferForSchemaBump(segID int64) {
 	// Create schema without sparse vector field (output field)
 	// Only include input field (varchar)
 	schema := &schemapb.CollectionSchema{
@@ -250,8 +248,8 @@ func (s *BackfillCompactionTaskSuite) initSegBufferForBackfill(segID int64) {
 	s.multiSegWriter = multiSegWriter
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionSuccess() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionSuccess() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	result, err := s.task.Compact()
 	s.NoError(err)
@@ -281,28 +279,28 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionSuccess() {
 			"V2 BM25 stats binlog must have non-zero LogID")
 	}
 
-	// The backfilled output field (ID=102) must carry a non-zero LogID in its insert binlog.
+	// The materialized output field (ID=102) must carry a non-zero LogID in its insert binlog.
 	// buildBinlogKvs requires LogID!=0 or LogPath!="" for V2; this guards against regression
 	// where LogID is accidentally left at zero (pre-existing fields are exempt — they were
 	// written by the test setup without LogID allocation).
-	const backfillOutputFieldID = int64(102)
+	const materializedOutputFieldID = int64(102)
 	for _, fl := range segment.GetInsertLogs() {
-		if fl.GetFieldID() == backfillOutputFieldID {
-			s.Require().NotEmpty(fl.GetBinlogs(), "backfilled output field must have at least one binlog entry")
+		if fl.GetFieldID() == materializedOutputFieldID {
+			s.Require().NotEmpty(fl.GetBinlogs(), "materialized output field must have at least one binlog entry")
 			s.NotZero(fl.GetBinlogs()[0].GetLogID(),
-				"V2 backfill insert binlog (fieldID=%d) must have non-zero LogID", backfillOutputFieldID)
+				"V2 schema bump insert binlog (fieldID=%d) must have non-zero LogID", materializedOutputFieldID)
 		}
 	}
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInvalidFunctionCount() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionInvalidFunctionCount() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with zero functions
 	s.task.plan.Functions = []*schemapb.FunctionSchema{}
 	_, err := s.task.Compact()
 	s.Error(err)
-	s.Contains(err.Error(), "backfill functions should be exactly one")
+	s.Contains(err.Error(), "schema bump functions should be exactly one")
 
 	// Test with multiple functions
 	s.task.plan.Functions = []*schemapb.FunctionSchema{
@@ -311,11 +309,11 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInvalidFunctionCount
 	}
 	_, err = s.task.Compact()
 	s.Error(err)
-	s.Contains(err.Error(), "backfill functions should be exactly one")
+	s.Contains(err.Error(), "schema bump functions should be exactly one")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInvalidInputField() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionInvalidInputField() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with wrong input field type (Int64 instead of VarChar)
 	s.task.plan.Functions = []*schemapb.FunctionSchema{{
@@ -330,8 +328,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInvalidInputField() 
 	s.Contains(err.Error(), "input field data type must be varchar")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInvalidOutputField() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionInvalidOutputField() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with wrong output field type (VarChar instead of SparseFloatVector)
 	s.task.plan.Functions = []*schemapb.FunctionSchema{{
@@ -346,8 +344,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInvalidOutputField()
 	s.Contains(err.Error(), "output field data type must be sparse float vector")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionMultipleInputFields() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionMultipleInputFields() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with multiple input fields
 	s.task.plan.Functions = []*schemapb.FunctionSchema{{
@@ -362,8 +360,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionMultipleInputFields(
 	s.Contains(err.Error(), "bm25 function should have exactly one input field")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionMultipleOutputFields() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionMultipleOutputFields() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with multiple output fields
 	s.task.plan.Functions = []*schemapb.FunctionSchema{{
@@ -378,8 +376,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionMultipleOutputFields
 	s.Contains(err.Error(), "bm25 function should only have one output field")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInputFieldNotFound() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionInputFieldNotFound() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with non-existent input field ID
 	s.task.plan.Functions = []*schemapb.FunctionSchema{{
@@ -394,8 +392,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionInputFieldNotFound()
 	s.Contains(err.Error(), "input field not found in schema")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionOutputFieldNotFound() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionOutputFieldNotFound() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with non-existent output field ID
 	s.task.plan.Functions = []*schemapb.FunctionSchema{{
@@ -410,8 +408,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionOutputFieldNotFound(
 	s.Contains(err.Error(), "no output field")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionUnsupportedFunctionType() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionUnsupportedFunctionType() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with unsupported function type
 	s.task.plan.Functions = []*schemapb.FunctionSchema{{
@@ -426,7 +424,7 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionUnsupportedFunctionT
 	s.Contains(err.Error(), "unknown functionRunner type")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionEmptySegmentBinlogs() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionEmptySegmentBinlogs() {
 	// Test with empty segment binlogs
 	s.task.plan.SegmentBinlogs = nil
 
@@ -434,8 +432,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionEmptySegmentBinlogs(
 	s.Error(err)
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionEmptyColumnGroups() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionEmptyColumnGroups() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Create segment binlogs with empty field binlogs to trigger empty field binlogs error
 	s.task.plan.SegmentBinlogs = []*datapb.CompactionSegmentBinlogs{
@@ -454,8 +452,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionEmptyColumnGroups() 
 	s.Contains(err.Error(), "segment's field binlogs are empty")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionMultipleSegments() {
-	s.prepareBackfillCompaction()
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionMultipleSegments() {
+	s.prepareBumpSchemaVersionCompaction()
 
 	// Test with multiple segments (should fail, must have exactly one)
 	s.task.plan.SegmentBinlogs = []*datapb.CompactionSegmentBinlogs{
@@ -483,8 +481,8 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionMultipleSegments() {
 	s.Contains(err.Error(), "but got 2 segments")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBackfillCompactionContextCanceled() {
-	// Cancel context before compact (before prepareBackfillCompaction)
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBumpSchemaVersionCompactionContextCanceled() {
+	// Cancel context before compact (before prepareBumpSchemaVersionCompaction)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	s.task.ctx = ctx
@@ -496,7 +494,7 @@ func (s *BackfillCompactionTaskSuite) TestBackfillCompactionContextCanceled() {
 	s.ErrorIs(err, context.Canceled)
 }
 
-func TestBackfillCompactionTaskBasic(t *testing.T) {
+func TestBumpSchemaVersionCompactionTaskBasic(t *testing.T) {
 	ctx := context.Background()
 
 	meta := genTestCollectionMetaWithBM25()
@@ -512,7 +510,7 @@ func TestBackfillCompactionTaskBasic(t *testing.T) {
 			InsertChannel:  "test_channel",
 			StorageVersion: storage.StorageV2,
 		}},
-		Type:                   datapb.CompactionType_BackfillCompaction,
+		Type:                   datapb.CompactionType_BumpSchemaVersionCompaction,
 		Schema:                 meta.GetSchema(),
 		PreAllocatedSegmentIDs: &datapb.IDRange{Begin: 19531, End: math.MaxInt64},
 		PreAllocatedLogIDs:     &datapb.IDRange{Begin: 9530, End: 19530},
@@ -530,64 +528,16 @@ func TestBackfillCompactionTaskBasic(t *testing.T) {
 	}
 
 	mockCM := mock_storage.NewMockChunkManager(t)
-	task := NewBackfillCompactionTask(ctx, mockCM, plan, compaction.GenParams())
+	task := NewBumpSchemaVersionCompactionTask(ctx, mockCM, plan, compaction.GenParams())
 	assert.NotNil(t, task)
 	assert.Equal(t, int64(1000), task.GetPlanID())
 	assert.Equal(t, int64(1), task.GetCollection())
 	assert.Equal(t, "test_channel", task.GetChannelName())
-	assert.Equal(t, datapb.CompactionType_BackfillCompaction, task.GetCompactionType())
+	assert.Equal(t, datapb.CompactionType_BumpSchemaVersionCompaction, task.GetCompactionType())
 	assert.Equal(t, int64(1), task.GetSlotUsage())
 }
 
-func (s *BackfillCompactionTaskSuite) TestProcessBatch() {
-	s.Run("success", func() {
-		s.setupTest()
-		mockRunner := function.NewMockFunctionRunner(s.T())
-		sparseArray := &schemapb.SparseFloatArray{
-			Contents: [][]byte{{1, 2, 3, 4}},
-			Dim:      100,
-		}
-		mockRunner.EXPECT().BatchRun([]string{"hello world"}).Return([]interface{}{sparseArray}, nil)
-
-		insertData, memSize, err := s.task.processBatch(mockRunner, []string{"hello world"}, 102)
-		s.NoError(err)
-		s.Greater(memSize, 0)
-		s.NotNil(insertData)
-		s.NotNil(insertData.Data[102])
-	})
-
-	s.Run("BatchRun error", func() {
-		s.setupTest()
-		mockRunner := function.NewMockFunctionRunner(s.T())
-		mockRunner.EXPECT().BatchRun([]string{"test"}).Return(nil, errors.New("batch run failed"))
-
-		_, _, err := s.task.processBatch(mockRunner, []string{"test"}, 102)
-		s.Error(err)
-		s.Contains(err.Error(), "batch run failed")
-	})
-
-	s.Run("wrong output count", func() {
-		s.setupTest()
-		mockRunner := function.NewMockFunctionRunner(s.T())
-		mockRunner.EXPECT().BatchRun([]string{"test"}).Return([]interface{}{nil, nil}, nil)
-
-		_, _, err := s.task.processBatch(mockRunner, []string{"test"}, 102)
-		s.Error(err)
-		s.Contains(err.Error(), "exactly one output")
-	})
-
-	s.Run("wrong output type", func() {
-		s.setupTest()
-		mockRunner := function.NewMockFunctionRunner(s.T())
-		mockRunner.EXPECT().BatchRun([]string{"test"}).Return([]interface{}{"not_sparse"}, nil)
-
-		_, _, err := s.task.processBatch(mockRunner, []string{"test"}, 102)
-		s.Error(err)
-		s.Contains(err.Error(), "unexpected output type")
-	})
-}
-
-func (s *BackfillCompactionTaskSuite) TestFinalizeMergedLogs() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestFinalizeMergedLogs() {
 	s.setupTest()
 
 	segment := &datapb.CompactionSegmentBinlogs{
@@ -632,7 +582,7 @@ func (s *BackfillCompactionTaskSuite) TestFinalizeMergedLogs() {
 // TestFinalizeMergedLogsCrashReplay verifies that re-running finalizeMergedLogs
 // when the segment already contains the output field (DC crashed after AlterSegments
 // but before task-state transition) does not produce duplicate InsertLog entries.
-func (s *BackfillCompactionTaskSuite) TestFinalizeMergedLogsCrashReplay() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestFinalizeMergedLogsCrashReplay() {
 	s.setupTest()
 
 	// Segment state after first successful run: field 102 already present in etcd.
@@ -668,7 +618,7 @@ func (s *BackfillCompactionTaskSuite) TestFinalizeMergedLogsCrashReplay() {
 
 // TestFinalizeMergedLogsV3CrashReplay verifies crash-replay dedup for V3 column groups
 // where the output field is identified via ChildFields rather than FieldID directly.
-func (s *BackfillCompactionTaskSuite) TestFinalizeMergedLogsV3CrashReplay() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestFinalizeMergedLogsV3CrashReplay() {
 	s.setupTest()
 
 	// V3: column group 102 already present in segment after first run.
@@ -694,7 +644,7 @@ func (s *BackfillCompactionTaskSuite) TestFinalizeMergedLogsV3CrashReplay() {
 	}
 }
 
-func (s *BackfillCompactionTaskSuite) TestBuildMergedLogsV2() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBuildMergedLogsV2() {
 	s.setupTest()
 
 	segment := &datapb.CompactionSegmentBinlogs{
@@ -704,7 +654,7 @@ func (s *BackfillCompactionTaskSuite) TestBuildMergedLogsV2() {
 		},
 	}
 	// Simulate a V2 writer result: one column group with explicit paths, logIDs, and file sizes.
-	writerResult := &backfillWriterResult{
+	writerResult := &bumpSchemaVersionWriterResult{
 		columnGroups: []storagecommon.ColumnGroup{
 			{GroupID: 102, Fields: []int64{102}},
 		},
@@ -738,7 +688,7 @@ func (s *BackfillCompactionTaskSuite) TestBuildMergedLogsV2() {
 	s.Equal(int64(3), mergedBm25[0].GetBinlogs()[0].GetLogSize(), "BM25 log size should equal len(bytes)")
 }
 
-func (s *BackfillCompactionTaskSuite) TestBuildMergedLogsV3() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBuildMergedLogsV3() {
 	s.setupTest()
 
 	segment := &datapb.CompactionSegmentBinlogs{
@@ -747,7 +697,7 @@ func (s *BackfillCompactionTaskSuite) TestBuildMergedLogsV3() {
 			{FieldID: 100, Binlogs: []*datapb.Binlog{{LogPath: "original/100", EntriesNum: 1000}}},
 		},
 	}
-	writerResult := &backfillWriterResult{
+	writerResult := &bumpSchemaVersionWriterResult{
 		columnGroups: []storagecommon.ColumnGroup{
 			{GroupID: 102, Fields: []int64{102}},
 		},
@@ -765,19 +715,19 @@ func (s *BackfillCompactionTaskSuite) TestBuildMergedLogsV3() {
 	// V3 binlog presence marker must carry a non-zero LogID so buildBinlogKvs validation
 	// passes (requires LogID!=0 AND LogPath=="" for V3 segments).
 	s.NotZero(mergedInsert[1].GetBinlogs()[0].GetLogID(),
-		"V3 backfill binlog presence marker must have non-zero LogID")
+		"V3 schema bump binlog presence marker must have non-zero LogID")
 
 	s.Equal(1, len(mergedBm25))
 	s.Equal(int64(102), mergedBm25[0].GetFieldID())
 }
 
-func (s *BackfillCompactionTaskSuite) TestCompleteAndStop() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestCompleteAndStop() {
 	s.setupTest()
 	s.task.Complete()
 	s.task.Stop()
 }
 
-func (s *BackfillCompactionTaskSuite) TestGetStorageConfig() {
+func (s *BumpSchemaVersionCompactionTaskSuite) TestGetStorageConfig() {
 	s.setupTest()
 	s.NotNil(s.task.GetStorageConfig())
 }

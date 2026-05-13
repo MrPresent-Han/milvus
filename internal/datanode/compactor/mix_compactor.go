@@ -262,37 +262,18 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 	}
 	entityFilter := compaction.NewEntityFilter(delta, t.plan.GetCollectionTtl(), t.currentTime)
 
-	var reader storage.RecordReader
-	if seg.GetManifest() != "" {
-		reader, err = storage.NewManifestRecordReader(ctx,
-			seg.GetManifest(),
-			t.plan.GetSchema(),
-			storage.WithCollectionID(t.collectionID),
-			storage.WithDownloader(t.binlogIO.Download),
-			storage.WithVersion(seg.GetStorageVersion()),
-			storage.WithStorageConfig(t.compactionParams.StorageConfig),
-		)
-	} else {
-		reader, err = storage.NewBinlogRecordReader(ctx,
-			seg.GetFieldBinlogs(),
-			t.plan.GetSchema(),
-			storage.WithCollectionID(t.collectionID),
-			storage.WithDownloader(t.binlogIO.Download),
-			storage.WithVersion(seg.GetStorageVersion()),
-			storage.WithStorageConfig(t.compactionParams.StorageConfig),
-		)
-	}
+	reader, existingFields, err := newCompactionSegmentRecordReader(ctx, seg, t.plan.GetSchema(), t.compactionParams.StorageConfig,
+		storage.WithCollectionID(t.collectionID),
+		storage.WithDownloader(t.binlogIO.Download),
+		storage.WithVersion(seg.GetStorageVersion()),
+		storage.WithStorageConfig(t.compactionParams.StorageConfig),
+	)
 	if err != nil {
 		log.Warn("compact wrong, failed to new insert binlogs reader", zap.Error(err))
 		return
 	}
 	defer reader.Close()
 
-	existingFields, err := compactionSegmentStorageFields(seg, t.compactionParams.StorageConfig)
-	if err != nil {
-		log.Warn("compact wrong, failed to read segment storage fields", zap.Error(err))
-		return
-	}
 	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
 	if err != nil {
 		log.Warn("compact wrong, failed to init record materializer", zap.Error(err))
@@ -322,11 +303,6 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 			baseRecord.Release()
 			log.Warn("compact wrong, failed to materialize record", zap.Error(err))
 			return
-		}
-		releaseMaterializedRecord := func() {
-			if r != baseRecord {
-				r.Release()
-			}
 		}
 
 		totalRowsRead += int64(r.Len())
@@ -389,18 +365,18 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 					return mWriter.Write(rec)
 				}()
 				if err != nil {
-					releaseMaterializedRecord()
+					releaseWrappedRecord(r, baseRecord)
 					return 0, 0, err
 				}
 			}
 		} else {
 			err := mWriter.Write(r)
 			if err != nil {
-				releaseMaterializedRecord()
+				releaseWrappedRecord(r, baseRecord)
 				return 0, 0, err
 			}
 		}
-		releaseMaterializedRecord()
+		releaseWrappedRecord(r, baseRecord)
 	}
 
 	deltalogDeleteEntriesCount := len(delta)

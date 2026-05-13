@@ -73,32 +73,13 @@ func mergeSortMultipleSegments(ctx context.Context,
 
 	segmentFilters := make([]compaction.EntityFilter, len(binlogs))
 	for i, s := range binlogs {
-		var reader storage.RecordReader
-		if s.GetManifest() != "" {
-			reader, err = storage.NewManifestRecordReader(ctx,
-				s.GetManifest(),
-				plan.GetSchema(),
-				storage.WithCollectionID(collectionID),
-				storage.WithDownloader(binlogIO.Download),
-				storage.WithVersion(s.StorageVersion),
-				storage.WithStorageConfig(compactionParams.StorageConfig),
-			)
-		} else {
-			reader, err = storage.NewBinlogRecordReader(ctx,
-				s.GetFieldBinlogs(),
-				plan.GetSchema(),
-				storage.WithCollectionID(collectionID),
-				storage.WithDownloader(binlogIO.Download),
-				storage.WithVersion(s.StorageVersion),
-				storage.WithStorageConfig(compactionParams.StorageConfig),
-			)
-		}
+		reader, existingFields, err := newCompactionSegmentRecordReader(ctx, s, plan.GetSchema(), compactionParams.StorageConfig,
+			storage.WithCollectionID(collectionID),
+			storage.WithDownloader(binlogIO.Download),
+			storage.WithVersion(s.StorageVersion),
+			storage.WithStorageConfig(compactionParams.StorageConfig),
+		)
 		if err != nil {
-			return nil, err
-		}
-		existingFields, err := compactionSegmentStorageFields(s, compactionParams.StorageConfig)
-		if err != nil {
-			reader.Close()
 			return nil, err
 		}
 		materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
@@ -106,7 +87,8 @@ func mergeSortMultipleSegments(ctx context.Context,
 			reader.Close()
 			return nil, err
 		}
-		segmentReaders[i] = newMaterializedRecordReader(reader, materializer)
+		reader = newMaterializedRecordReader(reader, materializer)
+		segmentReaders[i] = reader
 		delta, err := compaction.ComposeDeleteFromDeltalogs(ctx, pkField.DataType, s,
 			storage.WithDownloader(binlogIO.Download),
 			storage.WithStorageConfig(compactionParams.StorageConfig))

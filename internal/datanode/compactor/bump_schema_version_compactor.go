@@ -26,12 +26,10 @@ import (
 
 	"github.com/apache/arrow/go/v17/arrow"
 	"github.com/apache/arrow/go/v17/arrow/array"
-	"github.com/apache/arrow/go/v17/arrow/memory"
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
 	"go.opentelemetry.io/otel"
 	"go.uber.org/zap"
-	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
 	"github.com/milvus-io/milvus/internal/allocator"
@@ -53,17 +51,17 @@ import (
 	"github.com/milvus-io/milvus/pkg/v3/util/typeutil"
 )
 
-// backfillWriter abstracts the packed writer interface for V2/V3 compatibility.
+// schemaBumpWriter abstracts the packed writer interface for V2/V3 compatibility.
 // Both packed.PackedWriter (V2) and packed.FFIPackedWriter (V3) implement WriteRecordBatch,
 // but their Close signatures differ, so we use wrappers for both.
 // Manifest() returns the V3 manifest path after Close(); V2 always returns "".
-type backfillWriter interface {
+type schemaBumpWriter interface {
 	WriteRecordBatch(arrow.Record) error
 	Close() error
 	Manifest() string
 }
 
-// ffiWriterWrapper wraps packed.FFIPackedWriter to implement backfillWriter,
+// ffiWriterWrapper wraps packed.FFIPackedWriter to implement schemaBumpWriter,
 // capturing the manifest string returned by Close.
 type ffiWriterWrapper struct {
 	writer   *packed.FFIPackedWriter
@@ -87,7 +85,7 @@ func (w *ffiWriterWrapper) Manifest() string {
 	return w.manifest
 }
 
-// v2WriterWrapper wraps packed.PackedWriter to implement backfillWriter.
+// v2WriterWrapper wraps packed.PackedWriter to implement schemaBumpWriter.
 // Manifest() always returns "" for V2 segments (no manifest concept).
 // fileSizes is populated by Close() via CloseAndTell, indexed by column group order.
 type v2WriterWrapper struct {
@@ -113,7 +111,7 @@ func (w *v2WriterWrapper) Manifest() string {
 	return ""
 }
 
-type backfillCompactionTask struct {
+type bumpSchemaVersionCompactionTask struct {
 	ctx              context.Context
 	cancel           context.CancelFunc
 	plan             *datapb.CompactionPlan
@@ -124,11 +122,11 @@ type backfillCompactionTask struct {
 	chunkManager     storage.ChunkManager
 }
 
-func (t *backfillCompactionTask) Compact() (*datapb.CompactionPlanResult, error) {
+func (t *bumpSchemaVersionCompactionTask) Compact() (*datapb.CompactionPlanResult, error) {
 	if !funcutil.CheckCtxValid(t.ctx) {
 		return nil, t.ctx.Err()
 	}
-	ctx, span := otel.Tracer(typeutil.DataNodeRole).Start(t.ctx, fmt.Sprintf("BackfillCompact-%d", t.GetPlanID()))
+	ctx, span := otel.Tracer(typeutil.DataNodeRole).Start(t.ctx, fmt.Sprintf("BumpSchemaVersionCompact-%d", t.GetPlanID()))
 	defer span.End()
 
 	if err := t.preCompact(); err != nil {
@@ -141,7 +139,7 @@ func (t *backfillCompactionTask) Compact() (*datapb.CompactionPlanResult, error)
 		zap.Int64("collectionID", t.GetCollection()),
 	)
 
-	missingFunctions, droppedFieldIDs, err := t.schemaBumpDecision()
+	missingFunctions, droppedFieldIDs, existingFields, err := t.schemaBumpDecision()
 	if err != nil {
 		log.Warn("failed to decide schema bump action", zap.Error(err))
 		return nil, err
@@ -158,33 +156,33 @@ func (t *backfillCompactionTask) Compact() (*datapb.CompactionPlanResult, error)
 	if len(missingFunctions) == 0 && len(droppedFieldIDs) == 0 {
 		result = t.runSchemaVersionBumpOnly()
 	} else if len(droppedFieldIDs) > 0 || len(missingFunctions) != 1 {
-		result, err = t.runFullSchemaRewrite(ctx)
+		result, err = t.runFullSchemaRewrite(ctx, existingFields)
 	} else {
 		if err := t.setupFunctionRunner(missingFunctions[0]); err != nil {
 			log.Warn("failed to set up function runner", zap.Error(err))
 			return nil, err
 		}
 		defer t.functionRunner.Close()
-		result, err = t.runBackfillFunction(ctx, t.functionRunner)
+		result, err = t.runMissingFunctionMaterialization(ctx, t.functionRunner)
 	}
 	if err != nil {
-		log.Warn("backfill compact failed", zap.Error(err), zap.Duration("compact cost", time.Since(compactStart)))
+		log.Warn("schema bump compact failed", zap.Error(err), zap.Duration("compact cost", time.Since(compactStart)))
 		return nil, err
 	}
 
-	log.Info("backfill compact done", zap.Duration("compact cost", time.Since(compactStart)))
+	log.Info("schema bump compact done", zap.Duration("compact cost", time.Since(compactStart)))
 	return result, nil
 }
 
 // preCompact validates the compaction plan and checks context.
-func (t *backfillCompactionTask) preCompact() error {
+func (t *bumpSchemaVersionCompactionTask) preCompact() error {
 	if ok := funcutil.CheckCtxValid(t.ctx); !ok {
 		return t.ctx.Err()
 	}
 
 	// Check segment binlogs: must have exactly one segment
 	if len(t.plan.GetSegmentBinlogs()) != 1 {
-		return errors.Newf("backfill compaction plan is illegal, must have exactly one segment, but got %d segments, planID = %d", len(t.plan.GetSegmentBinlogs()), t.GetPlanID())
+		return errors.Newf("schema bump compaction plan is illegal, must have exactly one segment, but got %d segments, planID = %d", len(t.plan.GetSegmentBinlogs()), t.GetPlanID())
 	}
 
 	segment := t.plan.GetSegmentBinlogs()[0]
@@ -195,13 +193,13 @@ func (t *backfillCompactionTask) preCompact() error {
 	return nil
 }
 
-func (t *backfillCompactionTask) setupFunctionRunner(backfillFunction *schemapb.FunctionSchema) error {
-	functionRunner, err := function.NewFunctionRunner(t.plan.GetSchema(), backfillFunction)
+func (t *bumpSchemaVersionCompactionTask) setupFunctionRunner(missingFunction *schemapb.FunctionSchema) error {
+	functionRunner, err := function.NewFunctionRunner(t.plan.GetSchema(), missingFunction)
 	if err != nil {
 		return err
 	}
 	if functionRunner == nil {
-		return errors.New("failed to set up backfill function runner")
+		return errors.New("failed to set up missing function runner")
 	}
 
 	if err := t.checkFunctionRunner(functionRunner); err != nil {
@@ -213,7 +211,7 @@ func (t *backfillCompactionTask) setupFunctionRunner(backfillFunction *schemapb.
 	return nil
 }
 
-func (t *backfillCompactionTask) checkFunctionRunner(functionRunner function.FunctionRunner) error {
+func (t *bumpSchemaVersionCompactionTask) checkFunctionRunner(functionRunner function.FunctionRunner) error {
 	switch functionRunner.GetSchema().GetType() {
 	case schemapb.FunctionType_BM25:
 		functionSchema := functionRunner.GetSchema()
@@ -229,7 +227,7 @@ func (t *backfillCompactionTask) checkFunctionRunner(functionRunner function.Fun
 			return errors.New("input field not found in schema")
 		}
 		if inputField.GetDataType() != schemapb.DataType_VarChar && inputField.GetDataType() != schemapb.DataType_Text {
-			return errors.New("input field data type must be varchar or text for bm25 function backfill")
+			return errors.New("input field data type must be varchar or text for bm25 materialization")
 		}
 
 		// 2. Check outputFieldIDs: must have exactly one, and type must be SparseFloatVector
@@ -243,7 +241,7 @@ func (t *backfillCompactionTask) checkFunctionRunner(functionRunner function.Fun
 			return errors.New("output field not found in schema")
 		}
 		if outputField.GetDataType() != schemapb.DataType_SparseFloatVector {
-			return errors.New("output field data type must be sparse float vector for bm25 function backfill")
+			return errors.New("output field data type must be sparse float vector for bm25 materialization")
 		}
 
 		return nil
@@ -252,9 +250,9 @@ func (t *backfillCompactionTask) checkFunctionRunner(functionRunner function.Fun
 	}
 }
 
-func (t *backfillCompactionTask) runBackfillFunction(ctx context.Context, functionRunner function.FunctionRunner) (*datapb.CompactionPlanResult, error) {
+func (t *bumpSchemaVersionCompactionTask) runMissingFunctionMaterialization(ctx context.Context, functionRunner function.FunctionRunner) (*datapb.CompactionPlanResult, error) {
 	if functionRunner == nil {
-		return nil, errors.New("backfill function runner is not initialized")
+		return nil, errors.New("missing function runner is not initialized")
 	}
 	switch functionRunner.GetSchema().GetType() {
 	case schemapb.FunctionType_BM25:
@@ -264,83 +262,36 @@ func (t *backfillCompactionTask) runBackfillFunction(ctx context.Context, functi
 	}
 }
 
-func (t *backfillCompactionTask) openBinlogReader(inputFieldID int64) (storage.RecordReader, error) {
+func (t *bumpSchemaVersionCompactionTask) openBinlogReader(inputFieldID int64) (storage.RecordReader, error) {
 	inputField := typeutil.GetField(t.plan.GetSchema(), inputFieldID)
+	inputSchema := &schemapb.CollectionSchema{Fields: []*schemapb.FieldSchema{inputField}}
+	reader, _, err := t.openRecordReader(t.plan.GetSegmentBinlogs()[0], inputSchema)
+	return reader, err
+}
 
-	segment := t.plan.GetSegmentBinlogs()[0]
-	collectionID := segment.GetCollectionID()
-	partitionID := segment.GetPartitionID()
-	segmentID := segment.GetSegmentID()
-
-	inputSchema := &schemapb.CollectionSchema{Fields: []*schemapb.FieldSchema{
-		inputField,
-	}}
-
-	if segment.GetManifest() != "" {
-		return storage.NewManifestRecordReader(t.ctx,
-			segment.GetManifest(),
-			inputSchema,
-			storage.WithCollectionID(collectionID),
-			storage.WithVersion(segment.GetStorageVersion()),
-			storage.WithDownloader(t.chunkManager.MultiRead),
-			storage.WithStorageConfig(t.compactionParams.StorageConfig),
-		)
-	}
-
-	if err := binlog.DecompressBinLogWithRootPath(t.compactionParams.StorageConfig.GetRootPath(),
-		storage.InsertBinlog, collectionID, partitionID,
-		segmentID, segment.GetFieldBinlogs()); err != nil {
-		log.Ctx(t.ctx).Warn("Decompress insert binlog error", zap.Error(err))
-		return nil, err
-	}
-	return storage.NewBinlogRecordReader(t.ctx, segment.GetFieldBinlogs(), inputSchema,
-		storage.WithCollectionID(collectionID),
+func (t *bumpSchemaVersionCompactionTask) openRecordReader(segment *datapb.CompactionSegmentBinlogs, schema *schemapb.CollectionSchema) (storage.RecordReader, map[int64]struct{}, error) {
+	reader, existingFields, err := newCompactionSegmentRecordReader(t.ctx, segment, schema, t.compactionParams.StorageConfig,
+		storage.WithCollectionID(segment.GetCollectionID()),
 		storage.WithVersion(segment.GetStorageVersion()),
 		storage.WithDownloader(t.chunkManager.MultiRead),
 		storage.WithStorageConfig(t.compactionParams.StorageConfig),
 	)
+	if err != nil {
+		log.Ctx(t.ctx).Warn("failed to open compaction segment reader", zap.Error(err))
+	}
+	return reader, existingFields, err
 }
 
-func (t *backfillCompactionTask) openFullRecordReader(segment *datapb.CompactionSegmentBinlogs) (storage.RecordReader, error) {
-	collectionID := segment.GetCollectionID()
-	partitionID := segment.GetPartitionID()
-	segmentID := segment.GetSegmentID()
-
-	if segment.GetManifest() != "" {
-		return storage.NewManifestRecordReader(t.ctx,
-			segment.GetManifest(),
-			t.plan.GetSchema(),
-			storage.WithCollectionID(collectionID),
-			storage.WithVersion(segment.GetStorageVersion()),
-			storage.WithDownloader(t.chunkManager.MultiRead),
-			storage.WithStorageConfig(t.compactionParams.StorageConfig),
-		)
-	}
-
-	if err := binlog.DecompressBinLogWithRootPath(t.compactionParams.StorageConfig.GetRootPath(),
-		storage.InsertBinlog, collectionID, partitionID,
-		segmentID, segment.GetFieldBinlogs()); err != nil {
-		log.Ctx(t.ctx).Warn("Decompress insert binlog error", zap.Error(err))
-		return nil, err
-	}
-	return storage.NewBinlogRecordReader(t.ctx, segment.GetFieldBinlogs(), t.plan.GetSchema(),
-		storage.WithCollectionID(collectionID),
-		storage.WithVersion(segment.GetStorageVersion()),
-		storage.WithDownloader(t.chunkManager.MultiRead),
-		storage.WithStorageConfig(t.compactionParams.StorageConfig),
-	)
-}
-
-func (t *backfillCompactionTask) schemaBumpDecision() ([]*schemapb.FunctionSchema, []int64, error) {
+func (t *bumpSchemaVersionCompactionTask) schemaBumpDecision() ([]*schemapb.FunctionSchema, []int64, map[int64]struct{}, error) {
 	segment := t.plan.GetSegmentBinlogs()[0]
 	existingFields, err := compactionSegmentStorageFields(segment, t.compactionParams.StorageConfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
-	return missingSchemaFunctions(t.plan.GetSchema(), existingFields), droppedSchemaFieldIDs(t.plan.GetSchema(), existingFields), nil
+	return missingSchemaFunctions(t.plan.GetSchema(), existingFields), droppedSchemaFieldIDs(t.plan.GetSchema(), existingFields), existingFields, nil
 }
 
-func (t *backfillCompactionTask) runSchemaVersionBumpOnly() *datapb.CompactionPlanResult {
+func (t *bumpSchemaVersionCompactionTask) runSchemaVersionBumpOnly() *datapb.CompactionPlanResult {
 	segment := t.plan.GetSegmentBinlogs()[0]
 	return &datapb.CompactionPlanResult{
 		PlanID: t.plan.GetPlanID(),
@@ -362,22 +313,23 @@ func (t *backfillCompactionTask) runSchemaVersionBumpOnly() *datapb.CompactionPl
 	}
 }
 
-func (t *backfillCompactionTask) runFullSchemaRewrite(ctx context.Context) (*datapb.CompactionPlanResult, error) {
+func (t *bumpSchemaVersionCompactionTask) runFullSchemaRewrite(ctx context.Context, existingFields map[int64]struct{}) (*datapb.CompactionPlanResult, error) {
 	segment := t.plan.GetSegmentBinlogs()[0]
 	collectionID := segment.GetCollectionID()
 	partitionID := segment.GetPartitionID()
 	segmentID := segment.GetSegmentID()
 
-	reader, err := t.openFullRecordReader(segment)
+	reader, _, err := newCompactionSegmentRecordReaderWithFields(t.ctx, segment, t.plan.GetSchema(), t.compactionParams.StorageConfig, existingFields,
+		storage.WithCollectionID(collectionID),
+		storage.WithVersion(segment.GetStorageVersion()),
+		storage.WithDownloader(t.chunkManager.MultiRead),
+		storage.WithStorageConfig(t.compactionParams.StorageConfig),
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer reader.Close()
 
-	existingFields, err := compactionSegmentStorageFields(segment, t.compactionParams.StorageConfig)
-	if err != nil {
-		return nil, err
-	}
 	materializer, err := NewRecordMaterializer(t.plan.GetSchema(), t.plan.GetSchema().GetFunctions(), existingFields)
 	if err != nil {
 		return nil, err
@@ -486,14 +438,6 @@ func (t *backfillCompactionTask) runFullSchemaRewrite(ctx context.Context) (*dat
 	}, nil
 }
 
-func releaseWrappedRecord(wrapped storage.Record, base storage.Record) {
-	if wrapped != base {
-		wrapped.Release()
-		return
-	}
-	base.Release()
-}
-
 func appendBM25StatsFromArrowArray(stats *storage.BM25Stats, arr arrow.Array) (int, error) {
 	binaryArray, ok := arr.(*array.Binary)
 	if !ok {
@@ -511,41 +455,9 @@ func appendBM25StatsFromArrowArray(stats *storage.BM25Stats, arr arrow.Array) (i
 	return memorySize, nil
 }
 
-func (t *backfillCompactionTask) processBatch(functionRunner function.FunctionRunner, inputStrs []string, outputFieldID int64) (*storage.InsertData, int, error) {
-	// run function on this batch
-	output, err := functionRunner.BatchRun(inputStrs)
-	if err != nil {
-		return nil, 0, err
-	}
-	if len(output) != 1 {
-		return nil, 0, errors.New("bm25 function backfill should return exactly one output")
-	}
-	outputSparseArray, ok := output[0].(*schemapb.SparseFloatArray)
-	if !ok {
-		return nil, 0, errors.New("unexpected output type from BM25 function runner, expected SparseFloatArray")
-	}
-
-	// build output field data
-	outputFieldData := &storage.SparseFloatVectorFieldData{
-		SparseFloatArray: schemapb.SparseFloatArray{
-			Contents: outputSparseArray.GetContents(),
-			Dim:      outputSparseArray.GetDim(),
-		},
-	}
-
-	// build insert data
-	insertData := &storage.InsertData{
-		Data: make(map[int64]storage.FieldData),
-	}
-	insertData.Data[outputFieldID] = outputFieldData
-	sparseFieldMemorySize := proto.Size(&outputFieldData.SparseFloatArray)
-
-	return insertData, sparseFieldMemorySize, nil
-}
-
-// backfillWriterResult holds the writer and associated metadata needed after writing.
-type backfillWriterResult struct {
-	writer         backfillWriter
+// bumpSchemaVersionWriterResult holds the writer and associated metadata needed after writing.
+type bumpSchemaVersionWriterResult struct {
+	writer         schemaBumpWriter
 	arrowSchema    *arrow.Schema
 	outputSchema   *schemapb.CollectionSchema
 	columnGroups   []storagecommon.ColumnGroup
@@ -558,7 +470,7 @@ type backfillWriterResult struct {
 	v3Stats        []packed.StatEntry // V3 only: stats to commit atomically with column groups
 }
 
-func (t *backfillCompactionTask) setupWriter(outputField *schemapb.FieldSchema, outputFieldID int64, segment *datapb.CompactionSegmentBinlogs, collectionID, partitionID, segmentID int64) (*backfillWriterResult, error) {
+func (t *bumpSchemaVersionCompactionTask) setupWriter(outputField *schemapb.FieldSchema, outputFieldID int64, segment *datapb.CompactionSegmentBinlogs, collectionID, partitionID, segmentID int64) (*bumpSchemaVersionWriterResult, error) {
 	outputSchema := &schemapb.CollectionSchema{Fields: []*schemapb.FieldSchema{
 		outputField,
 	}}
@@ -601,7 +513,7 @@ func (t *backfillCompactionTask) setupWriter(outputField *schemapb.FieldSchema, 
 		storageVersion = storage.StorageV2 // force V2 path for V2 segment on V3 cluster
 	}
 
-	result := &backfillWriterResult{
+	result := &bumpSchemaVersionWriterResult{
 		arrowSchema:    arrowSchema,
 		outputSchema:   outputSchema,
 		columnGroups:   newColumnGroups,
@@ -614,13 +526,13 @@ func (t *backfillCompactionTask) setupWriter(outputField *schemapb.FieldSchema, 
 		// so the transaction reads the existing manifest and merges new columns in.
 		basePath, existingVersion, err := packed.UnmarshalManifestPath(existingManifest)
 		if err != nil {
-			return nil, merr.WrapErrServiceInternal("failed to parse existing manifest for V3 backfill", err.Error())
+			return nil, merr.WrapErrServiceInternal("failed to parse existing manifest for V3 schema bump", err.Error())
 		}
 		ffiWriter, err := packed.NewFFIPackedWriter(basePath, existingVersion, arrowSchema, newColumnGroups, t.compactionParams.StorageConfig, pluginContext)
 		if err != nil {
 			return nil, err
 		}
-		// The output field is a new addition to the existing manifest (backfill).
+		// The output field is a new addition to the existing manifest (schema bump).
 		// Use AddColumnGroup semantics so Loon does not require the count to match
 		// the existing groups in the manifest.
 		ffiWriter.AsNewColumnGroups()
@@ -628,7 +540,7 @@ func (t *backfillCompactionTask) setupWriter(outputField *schemapb.FieldSchema, 
 		result.basePath = basePath
 	} else {
 		// V2: use PackedWriter with explicit file paths.
-		// TODO(backfill): no file-size rotation — all rows land in one Parquet file per
+		// TODO(schema-bump): no file-size rotation — all rows land in one Parquet file per
 		// column group regardless of segment size. Fix by splitting at BinLogMaxSize (64MB)
 		// and allocating a new LogID+path per chunk, like MultiSegmentWriter.rotateWriter.
 		logIdStart, _, err := t.logIDAlloc.Alloc(uint32(len(newColumnGroups)))
@@ -662,19 +574,7 @@ func (t *backfillCompactionTask) setupWriter(outputField *schemapb.FieldSchema, 
 	return result, nil
 }
 
-func (t *backfillCompactionTask) writeBatch(writer backfillWriter, arrowSchema *arrow.Schema, insertData *storage.InsertData, outputSchema *schemapb.CollectionSchema) error {
-	builder := array.NewRecordBuilder(memory.DefaultAllocator, arrowSchema)
-	defer builder.Release()
-	err := storage.BuildRecord(builder, insertData, outputSchema)
-	if err != nil {
-		return err
-	}
-	arrowRecord := builder.NewRecord()
-	defer arrowRecord.Release()
-	return writer.WriteRecordBatch(arrowRecord)
-}
-
-func (t *backfillCompactionTask) updateStats(stats *storage.BM25Stats, collectionID, partitionID, segmentID, outputFieldID int64, writerResult *backfillWriterResult) ([]byte, string, int64, error) {
+func (t *bumpSchemaVersionCompactionTask) updateStats(stats *storage.BM25Stats, collectionID, partitionID, segmentID, outputFieldID int64, writerResult *bumpSchemaVersionWriterResult) ([]byte, string, int64, error) {
 	cli := t.chunkManager
 	statsID, _, err := t.logIDAlloc.Alloc(uint32(1))
 	if err != nil {
@@ -723,7 +623,7 @@ func (t *backfillCompactionTask) updateStats(stats *storage.BM25Stats, collectio
 	return bytes, bm25LogPathForResult, statsID, nil
 }
 
-func (t *backfillCompactionTask) buildMergedLogsV2(segment *datapb.CompactionSegmentBinlogs, writerResult *backfillWriterResult, sparseFieldMemorySize int, totalRows int64, bytes []byte, bm25LogPathForResult string, bm25LogID int64, outputFieldID int64) ([]*datapb.FieldBinlog, []*datapb.FieldBinlog, error) {
+func (t *bumpSchemaVersionCompactionTask) buildMergedLogsV2(segment *datapb.CompactionSegmentBinlogs, writerResult *bumpSchemaVersionWriterResult, sparseFieldMemorySize int, totalRows int64, bytes []byte, bm25LogPathForResult string, bm25LogID int64, outputFieldID int64) ([]*datapb.FieldBinlog, []*datapb.FieldBinlog, error) {
 	newInsertLogs := make(map[int64]*datapb.FieldBinlog)
 	for i, columnGroup := range writerResult.columnGroups {
 		fileSize := writerResult.fileSizes[i]
@@ -751,9 +651,9 @@ func (t *backfillCompactionTask) buildMergedLogsV2(segment *datapb.CompactionSeg
 	return t.finalizeMergedLogs(segment, newInsertLogs, totalRows, bytes, bm25LogPathForResult, bm25LogID, outputFieldID)
 }
 
-func (t *backfillCompactionTask) buildMergedLogsV3(segment *datapb.CompactionSegmentBinlogs, writerResult *backfillWriterResult, sparseFieldMemorySize int, totalRows int64, bytes []byte, bm25LogPathForResult string, bm25LogID int64, outputFieldID int64) ([]*datapb.FieldBinlog, []*datapb.FieldBinlog, error) {
+func (t *bumpSchemaVersionCompactionTask) buildMergedLogsV3(segment *datapb.CompactionSegmentBinlogs, writerResult *bumpSchemaVersionWriterResult, sparseFieldMemorySize int, totalRows int64, bytes []byte, bm25LogPathForResult string, bm25LogID int64, outputFieldID int64) ([]*datapb.FieldBinlog, []*datapb.FieldBinlog, error) {
 	// V3: data is tracked by the manifest. Binlog entries in etcd serve as field-presence
-	// markers used by getSegmentBinlogFields (backfill detection). Each entry must have
+	// markers used by getSegmentBinlogFields (schema bump detection). Each entry must have
 	// LogID!=0 and LogPath=="" to pass buildBinlogKvs validation — allocate a real ID from
 	// logIDAlloc (same allocator used for V2 LogIDs) so the entry is properly persisted.
 	logIDStart, _, err := t.logIDAlloc.Alloc(uint32(len(writerResult.columnGroups)))
@@ -779,7 +679,7 @@ func (t *backfillCompactionTask) buildMergedLogsV3(segment *datapb.CompactionSeg
 	return t.finalizeMergedLogs(segment, newInsertLogs, totalRows, bytes, bm25LogPathForResult, bm25LogID, outputFieldID)
 }
 
-func (t *backfillCompactionTask) finalizeMergedLogs(segment *datapb.CompactionSegmentBinlogs, newInsertLogs map[int64]*datapb.FieldBinlog, totalRows int64, bytes []byte, bm25LogPathForResult string, bm25LogID int64, outputFieldID int64) ([]*datapb.FieldBinlog, []*datapb.FieldBinlog, error) {
+func (t *bumpSchemaVersionCompactionTask) finalizeMergedLogs(segment *datapb.CompactionSegmentBinlogs, newInsertLogs map[int64]*datapb.FieldBinlog, totalRows int64, bytes []byte, bm25LogPathForResult string, bm25LogID int64, outputFieldID int64) ([]*datapb.FieldBinlog, []*datapb.FieldBinlog, error) {
 	// build new Bm25Logs
 	bm25FileSize := int64(len(bytes))
 	newBm25Logs := []*datapb.FieldBinlog{
@@ -811,7 +711,7 @@ func (t *backfillCompactionTask) finalizeMergedLogs(segment *datapb.CompactionSe
 	dedupedNew := newInsertLogsList[:0]
 	for _, fb := range newInsertLogsList {
 		if _, ok := existingFields[fb.GetFieldID()]; ok {
-			log.Warn("backfill crash-replay: output field already in segment binlogs, skipping duplicate",
+			log.Warn("schema bump crash-replay: output field already in segment binlogs, skipping duplicate",
 				zap.Int64("fieldID", fb.GetFieldID()),
 				zap.Int64("segmentID", segment.GetSegmentID()))
 			continue
@@ -824,7 +724,7 @@ func (t *backfillCompactionTask) finalizeMergedLogs(segment *datapb.CompactionSe
 			}
 		}
 		if childDup {
-			log.Warn("backfill crash-replay: output field already in segment binlogs, skipping duplicate",
+			log.Warn("schema bump crash-replay: output field already in segment binlogs, skipping duplicate",
 				zap.Int64("fieldID", fb.GetFieldID()),
 				zap.Int64("segmentID", segment.GetSegmentID()))
 			continue
@@ -838,18 +738,18 @@ func (t *backfillCompactionTask) finalizeMergedLogs(segment *datapb.CompactionSe
 	return mergedInsertLogs, newBm25Logs, nil
 }
 
-func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRunner function.FunctionRunner) (*datapb.CompactionPlanResult, error) {
+func (t *bumpSchemaVersionCompactionTask) runBm25Function(ctx context.Context, functionRunner function.FunctionRunner) (*datapb.CompactionPlanResult, error) {
 	// 1. set up function schema — duplicate checks from checkFunctionRunner so this path cannot panic
 	//    if schema/runner state diverges or call sites change.
 	functionSchema := functionRunner.GetSchema()
 	inputFieldIDs := functionSchema.GetInputFieldIds()
 	if len(inputFieldIDs) != 1 {
-		return nil, errors.Newf("bm25 backfill: expected exactly one input field, got %d (planID=%d)", len(inputFieldIDs), t.plan.GetPlanID())
+		return nil, errors.Newf("bm25 materialization: expected exactly one input field, got %d (planID=%d)", len(inputFieldIDs), t.plan.GetPlanID())
 	}
 	inputFieldID := inputFieldIDs[0]
 	outputFieldIDs := functionSchema.GetOutputFieldIds()
 	if len(outputFieldIDs) != 1 {
-		return nil, errors.Newf("bm25 backfill: expected exactly one output field, got %d (planID=%d)", len(outputFieldIDs), t.plan.GetPlanID())
+		return nil, errors.Newf("bm25 materialization: expected exactly one output field, got %d (planID=%d)", len(outputFieldIDs), t.plan.GetPlanID())
 	}
 	outputFieldID := outputFieldIDs[0]
 	outputField := typeutil.GetField(t.plan.GetSchema(), outputFieldID)
@@ -886,7 +786,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 	}
 
 	// Log effective storage version (may differ from cluster version for V2-origin segments).
-	log.Info("backfill writer setup",
+	log.Info("schema bump writer setup",
 		zap.Int64("effectiveStorageVersion", writerResult.storageVersion),
 		zap.Int64("clusterStorageVersion", t.compactionParams.StorageVersion),
 		zap.Bool("segmentHasManifest", segment.GetManifest() != ""),
@@ -901,7 +801,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 	}()
 
 	// 5. batch loop: read → compute → write → accumulate stats
-	_, span := otel.Tracer(typeutil.DataNodeRole).Start(ctx, "BackfillCompact.batchProcess")
+	_, span := otel.Tracer(typeutil.DataNodeRole).Start(ctx, "BumpSchemaVersionCompact.batchProcess")
 	stats := storage.NewBM25Stats()
 	var totalRows int64
 	var totalSparseMemorySize int
@@ -968,7 +868,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 	span.End()
 
 	// 6. write stats file (must happen before Close for V3 — stats are committed atomically)
-	_, span2 := otel.Tracer(typeutil.DataNodeRole).Start(ctx, "BackfillCompact.updateStats")
+	_, span2 := otel.Tracer(typeutil.DataNodeRole).Start(ctx, "BumpSchemaVersionCompact.updateStats")
 	startTime := time.Now()
 	bytes, bm25LogPathForResult, bm25LogID, err := t.updateStats(stats, collectionID, partitionID, segmentID, outputFieldID, writerResult)
 	updateStatsDuration = time.Since(startTime)
@@ -977,7 +877,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 		return nil, err
 	}
 
-	log.Info("backfill bm25 stats written",
+	log.Info("schema bump bm25 stats written",
 		zap.String("bm25LogPath", bm25LogPathForResult),
 		zap.Int64("bm25LogID", bm25LogID),
 		zap.Int("bm25StatsBytes", len(bytes)),
@@ -994,7 +894,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 	// For V2: capture on-disk compressed file sizes written by CloseAndTell.
 	if v2w, ok := writerResult.writer.(*v2WriterWrapper); ok {
 		writerResult.fileSizes = v2w.fileSizes
-		log.Info("backfill V2 insert binlogs written",
+		log.Info("schema bump V2 insert binlogs written",
 			zap.Strings("logPaths", writerResult.paths),
 			zap.Int64s("logIDs", writerResult.logIDs),
 			zap.Int64s("fileSizeBytes", v2w.fileSizes),
@@ -1004,7 +904,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 	// Read the manifest produced by Close(); "" for V2, real path for V3.
 	manifestPath := writerResult.writer.Manifest()
 	if manifestPath != "" {
-		log.Info("backfill V3 writer closed, manifest produced", zap.String("manifestPath", manifestPath))
+		log.Info("schema bump V3 writer closed, manifest produced", zap.String("manifestPath", manifestPath))
 	}
 
 	// For V3: register BM25 stats in manifest (version N+1 → N+2).
@@ -1015,7 +915,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 		if err != nil {
 			return nil, merr.WrapErrServiceInternal("failed to add BM25 stats to V3 manifest", err.Error())
 		}
-		log.Info("backfill V3 bm25 stats added to manifest",
+		log.Info("schema bump V3 bm25 stats added to manifest",
 			zap.String("oldManifest", manifestPath),
 			zap.String("newManifest", newManifest),
 		)
@@ -1062,7 +962,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 		},
 		Type: t.plan.GetType(),
 	}
-	log.Info("backfill compaction completed",
+	log.Info("schema bump compaction completed",
 		zap.Int64("numOfRows", totalRows),
 		zap.Int("mergedInsertLogsCount", len(mergedInsertLogs)),
 		zap.Int("mergedBm25LogsCount", len(mergedBm25Logs)),
@@ -1078,7 +978,7 @@ func (t *backfillCompactionTask) runBm25Function(ctx context.Context, functionRu
 	return ret, nil
 }
 
-func (t *backfillCompactionTask) Complete() {
+func (t *bumpSchemaVersionCompactionTask) Complete() {
 	if t.done != nil {
 		select {
 		case t.done <- struct{}{}:
@@ -1087,7 +987,7 @@ func (t *backfillCompactionTask) Complete() {
 	}
 }
 
-func (t *backfillCompactionTask) Stop() {
+func (t *bumpSchemaVersionCompactionTask) Stop() {
 	if t.cancel != nil {
 		t.cancel()
 	}
@@ -1096,11 +996,11 @@ func (t *backfillCompactionTask) Stop() {
 	}
 }
 
-func (t *backfillCompactionTask) GetPlanID() typeutil.UniqueID {
+func (t *bumpSchemaVersionCompactionTask) GetPlanID() typeutil.UniqueID {
 	return t.plan.GetPlanID()
 }
 
-func (t *backfillCompactionTask) GetCollection() typeutil.UniqueID {
+func (t *bumpSchemaVersionCompactionTask) GetCollection() typeutil.UniqueID {
 	// Get collection ID from the first segment binlog
 	if len(t.plan.GetSegmentBinlogs()) > 0 {
 		return t.plan.GetSegmentBinlogs()[0].GetCollectionID()
@@ -1108,27 +1008,27 @@ func (t *backfillCompactionTask) GetCollection() typeutil.UniqueID {
 	return 0
 }
 
-func (t *backfillCompactionTask) GetChannelName() string {
+func (t *bumpSchemaVersionCompactionTask) GetChannelName() string {
 	return t.plan.GetChannel()
 }
 
-func (t *backfillCompactionTask) GetCompactionType() datapb.CompactionType {
+func (t *bumpSchemaVersionCompactionTask) GetCompactionType() datapb.CompactionType {
 	return t.plan.GetType()
 }
 
-func (t *backfillCompactionTask) GetSlotUsage() int64 {
+func (t *bumpSchemaVersionCompactionTask) GetSlotUsage() int64 {
 	return t.plan.GetSlotUsage()
 }
 
-func (t *backfillCompactionTask) GetStorageConfig() *indexpb.StorageConfig {
+func (t *bumpSchemaVersionCompactionTask) GetStorageConfig() *indexpb.StorageConfig {
 	return t.compactionParams.StorageConfig
 }
 
-var _ Compactor = (*backfillCompactionTask)(nil)
+var _ Compactor = (*bumpSchemaVersionCompactionTask)(nil)
 
-func NewBackfillCompactionTask(ctx context.Context, cm storage.ChunkManager, plan *datapb.CompactionPlan, compactionParams compaction.Params) *backfillCompactionTask {
+func NewBumpSchemaVersionCompactionTask(ctx context.Context, cm storage.ChunkManager, plan *datapb.CompactionPlan, compactionParams compaction.Params) *bumpSchemaVersionCompactionTask {
 	ctx, cancel := context.WithCancel(ctx)
-	return &backfillCompactionTask{
+	return &bumpSchemaVersionCompactionTask{
 		ctx:              ctx,
 		cancel:           cancel,
 		plan:             plan,

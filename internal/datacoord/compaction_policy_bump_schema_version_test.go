@@ -33,20 +33,20 @@ import (
 	"github.com/milvus-io/milvus/pkg/v3/util/typeutil"
 )
 
-func TestBackfillCompactionPolicySuite(t *testing.T) {
-	suite.Run(t, new(BackfillCompactionPolicySuite))
+func TestBumpSchemaVersionPolicySuite(t *testing.T) {
+	suite.Run(t, new(BumpSchemaVersionPolicySuite))
 }
 
-type BackfillCompactionPolicySuite struct {
+type BumpSchemaVersionPolicySuite struct {
 	suite.Suite
 
 	mockAlloc      *allocator.MockAllocator
 	handler        *NMockHandler
 	testLabel      *CompactionGroupLabel
-	backfillPolicy *backfillCompactionPolicy
+	bumpSchemaVersionPolicy *bumpSchemaVersionPolicy
 }
 
-func (s *BackfillCompactionPolicySuite) SetupTest() {
+func (s *BumpSchemaVersionPolicySuite) SetupTest() {
 	s.testLabel = &CompactionGroupLabel{
 		CollectionID: 1,
 		PartitionID:  10,
@@ -67,20 +67,20 @@ func (s *BackfillCompactionPolicySuite) SetupTest() {
 	s.mockAlloc = newMockAllocator(s.T())
 	mockHandler := NewNMockHandler(s.T())
 	s.handler = mockHandler
-	s.backfillPolicy = newBackfillCompactionPolicy(meta, s.mockAlloc, mockHandler)
+	s.bumpSchemaVersionPolicy = newBumpSchemaVersionPolicy(meta, s.mockAlloc, mockHandler)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTrigger() {
+func (s *BumpSchemaVersionPolicySuite) TestTrigger() {
 	// Test basic trigger with no collections
-	events, err := s.backfillPolicy.Trigger(context.Background())
+	events, err := s.bumpSchemaVersionPolicy.Trigger(context.Background())
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.False(ok)
 	s.Nil(gotViews)
 	s.Equal(0, len(gotViews))
 }
 
-func (s *BackfillCompactionPolicySuite) TestBumpSchemaVersionViewBasic() {
+func (s *BumpSchemaVersionPolicySuite) TestBumpSchemaVersionViewBasic() {
 	view := &BumpSchemaVersionView{
 		label: &CompactionGroupLabel{
 			CollectionID: 1,
@@ -138,23 +138,23 @@ func (s *BackfillCompactionPolicySuite) TestBumpSchemaVersionViewBasic() {
 	s.Equal(int64(100), triggerID)
 }
 
-func (s *BackfillCompactionPolicySuite) TestEnable() {
+func (s *BumpSchemaVersionPolicySuite) TestEnable() {
 	// Schema-version reconciliation is a correctness requirement, not an auto-compaction option.
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
-	s.True(s.backfillPolicy.Enable())
+	s.True(s.bumpSchemaVersionPolicy.Enable())
 
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "false")
-	s.True(s.backfillPolicy.Enable())
+	s.True(s.bumpSchemaVersionPolicy.Enable())
 	paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
 }
 
-func (s *BackfillCompactionPolicySuite) TestName() {
+func (s *BumpSchemaVersionPolicySuite) TestName() {
 	// Test Name method
-	s.Equal("BumpSchemaVersion", s.backfillPolicy.Name())
+	s.Equal("BumpSchemaVersion", s.bumpSchemaVersionPolicy.Name())
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithCurrentSchemaVersion() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerWithCurrentSchemaVersion() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -173,7 +173,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithCurrentSchemaVersion() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment with same schema version.
 	segmentID := int64(101)
@@ -200,16 +200,16 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithCurrentSchemaVersion() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.False(ok)
 	s.Nil(gotViews)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithCompactingSegment() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerWithCompactingSegment() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -227,7 +227,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithCompactingSegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment that is compacting (should be filtered out)
 	segmentID := int64(101)
@@ -255,16 +255,16 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithCompactingSegment() {
 		},
 	}
 	segment.isCompacting = true // Mark as compacting
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.False(ok)
 	s.Nil(gotViews)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithImportingSegment() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerWithImportingSegment() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -282,7 +282,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithImportingSegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment that is importing (should be filtered out)
 	segmentID := int64(101)
@@ -310,16 +310,16 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithImportingSegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.False(ok)
 	s.Nil(gotViews)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithInvisibleSegment() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerWithInvisibleSegment() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -337,7 +337,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithInvisibleSegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment that is invisible (should be filtered out)
 	segmentID := int64(101)
@@ -365,16 +365,16 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithInvisibleSegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.False(ok)
 	s.Nil(gotViews)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithUnhealthySegment() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerWithUnhealthySegment() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -392,7 +392,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithUnhealthySegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment that is not healthy (should be filtered out)
 	segmentID := int64(101)
@@ -419,17 +419,17 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithUnhealthySegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	// AllocID should NOT be called: unhealthy segment is filtered before schema bump.
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.False(ok)
 	s.Nil(gotViews)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithNonFlushedSegment() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerWithNonFlushedSegment() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -447,7 +447,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithNonFlushedSegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment that is not flushed (should be filtered out)
 	segmentID := int64(101)
@@ -474,17 +474,17 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithNonFlushedSegment() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	// AllocID should NOT be called: non-flushed segment is filtered before schema bump.
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.False(ok)
 	s.Nil(gotViews)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "true")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -511,7 +511,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment with outdated schema version 1, binlogs only have field 101 (missing 102)
 	segmentID := int64(101)
@@ -539,14 +539,14 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	// Setup allocator mock
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
 
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.True(ok)
 	s.NotNil(gotViews)
 	s.Equal(1, len(gotViews))
@@ -562,8 +562,8 @@ func (s *BackfillCompactionPolicySuite) TestTriggerWithOutdatedSchemaVersion() {
 	s.Equal(coll.Schema.GetVersion(), view.schema.GetVersion())
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesSchemaBumpForStaleSegment() {
-	// DataCoord schedules every stale flushed segment; DataNode decides no-op, partial backfill, or full rewrite.
+func (s *BumpSchemaVersionPolicySuite) TestTriggerSchedulesSchemaBumpForStaleSegment() {
+	// DataCoord schedules every stale flushed segment; DataNode decides no-op, partial bumpSchemaVersion, or full rewrite.
 	ctx := context.Background()
 
 	collID := int64(100)
@@ -581,7 +581,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesSchemaBumpForStaleSe
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Create segment with outdated schema version 1
 	segmentID := int64(101)
@@ -608,13 +608,13 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesSchemaBumpForStaleSe
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
 
-	views, ok := events[TriggerTypeBackfill]
+	views, ok := events[TriggerTypeBumpSchemaVersion]
 	s.Require().True(ok)
 	s.Require().Len(views, 1)
 	bv, ok := views[0].(*BumpSchemaVersionView)
@@ -625,7 +625,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesSchemaBumpForStaleSe
 	s.Equal(segmentID, bv.GetSegmentsView()[0].ID)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerSchemaBumpWithAutoCompactionDisabled() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerSchemaBumpWithAutoCompactionDisabled() {
 	// Schema version bump is a correctness task and must not depend on auto compaction.
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "false")
@@ -643,7 +643,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchemaBumpWithAutoCompactionD
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	segmentID := int64(101)
 	segment := &SegmentInfo{
@@ -669,12 +669,12 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchemaBumpWithAutoCompactionD
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	views, ok := events[TriggerTypeBackfill]
+	views, ok := events[TriggerTypeBumpSchemaVersion]
 	s.Require().True(ok)
 	s.Require().Len(views, 1)
 	bv, ok := views[0].(*BumpSchemaVersionView)
@@ -685,8 +685,8 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchemaBumpWithAutoCompactionD
 	s.Equal(segmentID, bv.GetSegmentsView()[0].ID)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerMissingFunctionOutputWithAutoCompactionDisabled() {
-	// DataNode decides whether the schema bump needs function-output backfill.
+func (s *BumpSchemaVersionPolicySuite) TestTriggerMissingFunctionOutputWithAutoCompactionDisabled() {
+	// DataNode decides whether the schema bump needs function-output bumpSchemaVersion.
 	ctx := context.Background()
 	paramtable.Get().Save(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key, "false")
 	defer paramtable.Get().Reset(paramtable.Get().DataCoordCfg.EnableAutoCompaction.Key)
@@ -710,7 +710,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerMissingFunctionOutputWithAuto
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	segmentID := int64(101)
 	segment := &SegmentInfo{
@@ -736,14 +736,14 @@ func (s *BackfillCompactionPolicySuite) TestTriggerMissingFunctionOutputWithAuto
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	// AllocID should be called: stale flushed segment is scheduled even with auto compaction disabled.
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
 
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	gotViews, ok := events[TriggerTypeBackfill]
+	gotViews, ok := events[TriggerTypeBumpSchemaVersion]
 	s.True(ok)
 	s.NotNil(gotViews)
 	s.Equal(1, len(gotViews))
@@ -757,10 +757,10 @@ func (s *BackfillCompactionPolicySuite) TestTriggerMissingFunctionOutputWithAuto
 }
 
 // TestSchemaFrozenAtScanTime verifies that schema-bump views capture the collection
-// schema at scan time. SubmitBackfillViewToScheduler uses this frozen schema for
+// schema at scan time. SubmitBumpSchemaVersionViewToScheduler uses this frozen schema for
 // task.Schema, preventing premature schema-version advancement when the live
 // collection races ahead between scan and submission.
-func (s *BackfillCompactionPolicySuite) TestSchemaFrozenAtScanTime() {
+func (s *BumpSchemaVersionPolicySuite) TestSchemaFrozenAtScanTime() {
 	ctx := context.Background()
 	collID := int64(200)
 	schemaV1 := &schemapb.CollectionSchema{
@@ -774,7 +774,7 @@ func (s *BackfillCompactionPolicySuite) TestSchemaFrozenAtScanTime() {
 			{Name: "bm25_v1", OutputFieldIds: []int64{102}},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, &collectionInfo{ID: collID, Schema: schemaV1})
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, &collectionInfo{ID: collID, Schema: schemaV1})
 	segment := &SegmentInfo{
 		SegmentInfo: &datapb.SegmentInfo{
 			ID: int64(201), CollectionID: collID, PartitionID: 10,
@@ -787,24 +787,24 @@ func (s *BackfillCompactionPolicySuite) TestSchemaFrozenAtScanTime() {
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(int64(201), segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(int64(201), segment)
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
 
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	views, ok := events[TriggerTypeBackfill]
+	views, ok := events[TriggerTypeBumpSchemaVersion]
 	s.True(ok)
 	s.Len(views, 1)
 
 	bv, ok := views[0].(*BumpSchemaVersionView)
 	s.True(ok)
 	// The frozen schema must match the collection state at scan time (v1), not any
-	// live version the collection might race to before SubmitBackfillViewToScheduler.
+	// live version the collection might race to before SubmitBumpSchemaVersionViewToScheduler.
 	s.NotNil(bv.schema)
 	s.Equal(int32(1), bv.schema.GetVersion())
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesMultiFunctionSchemaBump() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerSchedulesMultiFunctionSchemaBump() {
 	ctx := context.Background()
 	collID := int64(300)
 
@@ -825,7 +825,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesMultiFunctionSchemaB
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// DataCoord only detects stale schema version; DataNode validates function-output field state.
 	segmentID := int64(301)
@@ -841,12 +841,12 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesMultiFunctionSchemaB
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	views, ok := events[TriggerTypeBackfill]
+	views, ok := events[TriggerTypeBumpSchemaVersion]
 	s.Require().True(ok)
 	s.Require().Len(views, 1)
 	bv, ok := views[0].(*BumpSchemaVersionView)
@@ -856,7 +856,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesMultiFunctionSchemaB
 	s.Equal(segmentID, bv.GetSegmentsView()[0].ID)
 }
 
-func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesAlreadyMaterializedStaleSegment() {
+func (s *BumpSchemaVersionPolicySuite) TestTriggerSchedulesAlreadyMaterializedStaleSegment() {
 	ctx := context.Background()
 	collID := int64(400)
 	coll := &collectionInfo{
@@ -874,7 +874,7 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesAlreadyMaterializedS
 			},
 		},
 	}
-	s.backfillPolicy.meta.collections.Insert(collID, coll)
+	s.bumpSchemaVersionPolicy.meta.collections.Insert(collID, coll)
 
 	// Segment at version=1 (stale) but already has field 102 present in binlogs.
 	segmentID := int64(401)
@@ -894,12 +894,12 @@ func (s *BackfillCompactionPolicySuite) TestTriggerSchedulesAlreadyMaterializedS
 			},
 		},
 	}
-	s.backfillPolicy.meta.segments.SetSegment(segmentID, segment)
+	s.bumpSchemaVersionPolicy.meta.segments.SetSegment(segmentID, segment)
 
 	s.mockAlloc.EXPECT().AllocID(mock.Anything).Return(int64(1), nil)
-	events, err := s.backfillPolicy.Trigger(ctx)
+	events, err := s.bumpSchemaVersionPolicy.Trigger(ctx)
 	s.NoError(err)
-	views, ok := events[TriggerTypeBackfill]
+	views, ok := events[TriggerTypeBumpSchemaVersion]
 	s.Require().True(ok)
 	s.Require().Len(views, 1)
 	bv, ok := views[0].(*BumpSchemaVersionView)

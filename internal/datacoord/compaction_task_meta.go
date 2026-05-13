@@ -96,13 +96,13 @@ func (csm *compactionTaskMeta) reloadFromKV() error {
 		// - Level0DeleteCompaction tasks never use PreAllocatedSegmentIDs and must be ignored here,
 		//   otherwise unfinished L0 delete compaction tasks created before upgrade will be
 		//   incorrectly marked as failed on reload.
-		// - BackfillCompaction is an in-place update of the original segment — no new segment
-		//   ID is allocated. Without this exception, an in-progress backfill task would be killed
-		//   on every datacoord restart, preventing backfill from ever completing under restart loops.
+		// - BumpSchemaVersionCompaction is an in-place update of the original segment — no new segment
+		//   ID is allocated. Without this exception, an in-progress schema bump task would be killed
+		//   on every datacoord restart, preventing schema bump from ever completing under restart loops.
 		if !isCompactionTaskFinished(task) &&
 			task.PreAllocatedSegmentIDs == nil &&
 			task.GetType() != datapb.CompactionType_Level0DeleteCompaction &&
-			task.GetType() != datapb.CompactionType_BackfillCompaction {
+			task.GetType() != datapb.CompactionType_BumpSchemaVersionCompaction {
 			log.Warn("PreAllocatedSegmentIDs is nil, mark the task as failed",
 				zap.Int64("taskID", task.GetPlanID()),
 				zap.String("type", task.GetType().String()),

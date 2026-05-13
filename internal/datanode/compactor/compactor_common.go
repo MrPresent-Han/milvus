@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
 	"github.com/milvus-io/milvus/internal/allocator"
@@ -29,11 +30,105 @@ import (
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/pkg/v3/common"
 	"github.com/milvus-io/milvus/pkg/v3/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v3/proto/indexpb"
 	"github.com/milvus-io/milvus/pkg/v3/util/tsoutil"
 	"github.com/milvus-io/milvus/pkg/v3/util/typeutil"
 )
 
 const compactionBatchSize = 100
+
+// Storage readers do not share compaction's schema-reconciliation contract, so filter physical fields before opening them.
+func newCompactionSegmentRecordReader(ctx context.Context, segment *datapb.CompactionSegmentBinlogs, schema *schemapb.CollectionSchema, storageConfig *indexpb.StorageConfig, opts ...storage.RwOption) (storage.RecordReader, map[int64]struct{}, error) {
+	existingFields, err := compactionSegmentStorageFields(segment, storageConfig)
+	if err != nil {
+		return nil, nil, err
+	}
+	return newCompactionSegmentRecordReaderWithFields(ctx, segment, schema, storageConfig, existingFields, opts...)
+}
+
+func newCompactionSegmentRecordReaderWithFields(ctx context.Context, segment *datapb.CompactionSegmentBinlogs, schema *schemapb.CollectionSchema, storageConfig *indexpb.StorageConfig, existingFields map[int64]struct{}, opts ...storage.RwOption) (storage.RecordReader, map[int64]struct{}, error) {
+	readSchema := compactionReadSchema(schema, existingFields)
+
+	if segment.GetManifest() != "" {
+		reader, err := storage.NewManifestRecordReader(ctx, segment.GetManifest(), readSchema, opts...)
+		return reader, existingFields, err
+	}
+
+	readFields := collectionSchemaFields(readSchema)
+	fieldBinlogs := filterCompactionFieldBinlogs(segment.GetFieldBinlogs(), readFields)
+	rootPath := ""
+	if storageConfig != nil {
+		rootPath = storageConfig.GetRootPath()
+	}
+	if err := binlog.DecompressBinLogWithRootPath(rootPath, storage.InsertBinlog,
+		segment.GetCollectionID(), segment.GetPartitionID(), segment.GetSegmentID(), fieldBinlogs); err != nil {
+		return nil, nil, err
+	}
+
+	reader, err := storage.NewBinlogRecordReader(ctx, fieldBinlogs, readSchema, opts...)
+	return reader, existingFields, err
+}
+
+func compactionReadSchema(schema *schemapb.CollectionSchema, existingFields map[int64]struct{}) *schemapb.CollectionSchema {
+	if schema == nil {
+		return nil
+	}
+	readSchema := proto.Clone(schema).(*schemapb.CollectionSchema)
+
+	fields := make([]*schemapb.FieldSchema, 0, len(readSchema.GetFields()))
+	for _, field := range readSchema.GetFields() {
+		if compactionFieldReadable(field, existingFields) {
+			fields = append(fields, field)
+		}
+	}
+	readSchema.Fields = fields
+
+	structFields := make([]*schemapb.StructArrayFieldSchema, 0, len(readSchema.GetStructArrayFields()))
+	for _, structField := range readSchema.GetStructArrayFields() {
+		childFields := make([]*schemapb.FieldSchema, 0, len(structField.GetFields()))
+		for _, field := range structField.GetFields() {
+			if compactionFieldReadable(field, existingFields) {
+				childFields = append(childFields, field)
+			}
+		}
+		if len(childFields) > 0 {
+			structField.Fields = childFields
+			structFields = append(structFields, structField)
+		}
+	}
+	readSchema.StructArrayFields = structFields
+	return readSchema
+}
+
+func compactionFieldReadable(field *schemapb.FieldSchema, existingFields map[int64]struct{}) bool {
+	_, ok := existingFields[field.GetFieldID()]
+	return ok
+}
+
+func filterCompactionFieldBinlogs(fieldBinlogs []*datapb.FieldBinlog, readFields map[int64]struct{}) []*datapb.FieldBinlog {
+	filtered := make([]*datapb.FieldBinlog, 0, len(fieldBinlogs))
+	for _, fieldBinlog := range fieldBinlogs {
+		if compactionFieldBinlogReadable(fieldBinlog, readFields) {
+			filtered = append(filtered, fieldBinlog)
+		}
+	}
+	return filtered
+}
+
+func compactionFieldBinlogReadable(fieldBinlog *datapb.FieldBinlog, readFields map[int64]struct{}) bool {
+	if fieldBinlog == nil {
+		return false
+	}
+	if _, ok := readFields[fieldBinlog.GetFieldID()]; ok {
+		return true
+	}
+	for _, childFieldID := range fieldBinlog.GetChildFields() {
+		if _, ok := readFields[childFieldID]; ok {
+			return true
+		}
+	}
+	return false
+}
 
 type EntityFilter struct {
 	deletedPkTs map[interface{}]typeutil.Timestamp // pk2ts

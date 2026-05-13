@@ -49,7 +49,7 @@ const (
 	TriggerTypeSort
 	TriggerTypeForceMerge
 	TriggerTypeStorageVersionUpgrade
-	TriggerTypeBackfill
+	TriggerTypeBumpSchemaVersion
 )
 
 type TickerType int8
@@ -58,7 +58,7 @@ const (
 	L0Ticker TickerType = iota + 1
 	ClusteringTicker
 	SingleTicker
-	BackfillTicker
+	BumpSchemaVersionTicker
 	StorageVersionTicker
 )
 
@@ -74,8 +74,8 @@ func (t CompactionTriggerType) GetCompactionType() datapb.CompactionType {
 		return datapb.CompactionType_SortCompaction
 	case TriggerTypeStorageVersionUpgrade:
 		return datapb.CompactionType_MixCompaction
-	case TriggerTypeBackfill:
-		return datapb.CompactionType_BackfillCompaction
+	case TriggerTypeBumpSchemaVersion:
+		return datapb.CompactionType_BumpSchemaVersionCompaction
 	default:
 		return datapb.CompactionType_MixCompaction
 	}
@@ -101,8 +101,8 @@ func (t CompactionTriggerType) String() string {
 		return "ForceMerge"
 	case TriggerTypeStorageVersionUpgrade:
 		return "StorageVersionUpgrade"
-	case TriggerTypeBackfill:
-		return "Backfill"
+	case TriggerTypeBumpSchemaVersion:
+		return "BumpSchemaVersion"
 	default:
 		return ""
 	}
@@ -145,7 +145,7 @@ type CompactionTriggerManager struct {
 	singlePolicy                *singleCompactionPolicy
 	forceMergePolicy            *forceMergeCompactionPolicy
 	upgradeStorageVersionPolicy *storageVersionUpgradePolicy
-	backfillPolicy              *backfillCompactionPolicy
+	bumpSchemaVersionPolicy     *bumpSchemaVersionPolicy
 
 	cancel  context.CancelFunc
 	closeWg sync.WaitGroup
@@ -169,13 +169,13 @@ func NewCompactionTriggerManager(alloc allocator.Allocator, handler Handler, ins
 
 	m.forceMergePolicy = newForceMergeCompactionPolicy(meta, m.allocator, m.handler)
 	m.upgradeStorageVersionPolicy = newStorageVersionUpgradePolicy(meta, m.allocator, m.handler, versionManager)
-	m.backfillPolicy = newBackfillCompactionPolicy(meta, m.allocator, m.handler)
+	m.bumpSchemaVersionPolicy = newBumpSchemaVersionPolicy(meta, m.allocator, m.handler)
 
 	// Initialize policies map for ticker handling
 	m.policies[L0Ticker] = m.l0Policy
 	m.policies[ClusteringTicker] = m.clusteringPolicy
 	m.policies[SingleTicker] = m.singlePolicy
-	m.policies[BackfillTicker] = m.backfillPolicy
+	m.policies[BumpSchemaVersionTicker] = m.bumpSchemaVersionPolicy
 	m.policies[StorageVersionTicker] = m.upgradeStorageVersionPolicy
 	return m
 }
@@ -223,8 +223,8 @@ func (m *CompactionTriggerManager) loop(ctx context.Context) {
 	defer singleTicker.Stop()
 	storageVersionTicker := time.NewTicker(Params.DataCoordCfg.MixCompactionTriggerInterval.GetAsDuration(time.Second))
 	defer storageVersionTicker.Stop()
-	backfillTicker := time.NewTicker(Params.DataCoordCfg.BackfillCompactionTriggerInterval.GetAsDuration(time.Second))
-	defer backfillTicker.Stop()
+	bumpSchemaVersionTicker := time.NewTicker(Params.DataCoordCfg.BumpSchemaVersionCompactionTriggerInterval.GetAsDuration(time.Second))
+	defer bumpSchemaVersionTicker.Stop()
 	log.Info("Compaction trigger manager start")
 	for {
 		select {
@@ -239,8 +239,8 @@ func (m *CompactionTriggerManager) loop(ctx context.Context) {
 			m.handleTicker(ctx, SingleTicker)
 		case <-storageVersionTicker.C:
 			m.handleTicker(ctx, StorageVersionTicker)
-		case <-backfillTicker.C:
-			m.handleTicker(ctx, BackfillTicker)
+		case <-bumpSchemaVersionTicker.C:
+			m.handleTicker(ctx, BumpSchemaVersionTicker)
 		case segID := <-getStatsTaskChSingleton():
 			log.Info("receive new segment to trigger sort compaction", zap.Int64("segmentID", segID))
 			view := m.singlePolicy.triggerSegmentSortCompaction(ctx, segID)
@@ -370,8 +370,8 @@ func (m *CompactionTriggerManager) notify(ctx context.Context, eventType Compact
 					m.SubmitSingleViewToScheduler(ctx, outView, eventType)
 				case TriggerTypeForceMerge:
 					m.SubmitForceMergeViewToScheduler(ctx, outView)
-				case TriggerTypeBackfill:
-					m.SubmitBackfillViewToScheduler(ctx, outView)
+				case TriggerTypeBumpSchemaVersion:
+					m.SubmitBumpSchemaVersionViewToScheduler(ctx, outView)
 				}
 			}
 		}
@@ -645,8 +645,14 @@ func (m *CompactionTriggerManager) SubmitForceMergeViewToScheduler(ctx context.C
 	)
 }
 
-func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Context, view CompactionView) {
+func (m *CompactionTriggerManager) SubmitBumpSchemaVersionViewToScheduler(ctx context.Context, view CompactionView) {
 	log := log.Ctx(ctx).With(zap.String("view", view.String()))
+	bumpView, ok := view.(*BumpSchemaVersionView)
+	if !ok {
+		log.Warn("unexpected view type for schema bump trigger, expected *BumpSchemaVersionView",
+			zap.String("actualType", fmt.Sprintf("%T", view)))
+		return
+	}
 	planID, _, err := m.allocator.AllocN(1)
 	if err != nil {
 		log.Warn("Failed to submit compaction view to scheduler because allocate id fail", zap.Error(err))
@@ -662,7 +668,7 @@ func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Con
 		return
 	}
 	if collection.IsExternal() {
-		log.Info("skip submitting backfill compaction for external collection", zap.Int64("collectionID", collection.ID))
+		log.Info("skip submitting schema bump compaction for external collection", zap.Int64("collectionID", collection.ID))
 		return
 	}
 	var totalRows int64 = 0
@@ -670,18 +676,12 @@ func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Con
 		totalRows += s.NumOfRows
 	}
 	expectedSize := getExpectedSegmentSize(m.meta, collection.ID, collection.Schema)
-	bumpView, ok := view.(*BumpSchemaVersionView)
-	if !ok {
-		log.Warn("unexpected view type for schema bump trigger, expected *BumpSchemaVersionView",
-			zap.String("actualType", fmt.Sprintf("%T", view)))
-		return
-	}
 	task := &datapb.CompactionTask{
 		PlanID:             planID,
 		TriggerID:          bumpView.triggerID,
 		State:              datapb.CompactionTaskState_pipelining,
 		StartTime:          time.Now().Unix(),
-		Type:               datapb.CompactionType_BackfillCompaction,
+		Type:               datapb.CompactionType_BumpSchemaVersionCompaction,
 		CollectionID:       view.GetGroupLabel().CollectionID,
 		PartitionID:        view.GetGroupLabel().PartitionID,
 		Channel:            view.GetGroupLabel().Channel,
@@ -701,7 +701,7 @@ func (m *CompactionTriggerManager) SubmitBackfillViewToScheduler(ctx context.Con
 			zap.Error(err))
 		return
 	}
-	log.Info("Finish to submit a backfill compaction task",
+	log.Info("Finish to submit a schema bump compaction task",
 		zap.Int64("triggerID", task.GetTriggerID()),
 		zap.Int64("planID", task.GetPlanID()),
 		zap.String("type", task.GetType().String()),

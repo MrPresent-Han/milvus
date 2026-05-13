@@ -209,7 +209,7 @@ const (
 	CompactionType_SortCompaction                       CompactionType = 9
 	CompactionType_PartitionKeySortCompaction           CompactionType = 10
 	CompactionType_ClusteringPartitionKeySortCompaction CompactionType = 11
-	CompactionType_BackfillCompaction                   CompactionType = 12
+	CompactionType_BumpSchemaVersionCompaction          CompactionType = 12
 )
 
 // Enum value maps for CompactionType.
@@ -226,7 +226,7 @@ var (
 		9:  "SortCompaction",
 		10: "PartitionKeySortCompaction",
 		11: "ClusteringPartitionKeySortCompaction",
-		12: "BackfillCompaction",
+		12: "BumpSchemaVersionCompaction",
 	}
 	CompactionType_value = map[string]int32{
 		"UndefinedCompaction":                  0,
@@ -240,7 +240,7 @@ var (
 		"SortCompaction":                       9,
 		"PartitionKeySortCompaction":           10,
 		"ClusteringPartitionKeySortCompaction": 11,
-		"BackfillCompaction":                   12,
+		"BumpSchemaVersionCompaction":          12,
 	}
 )
 

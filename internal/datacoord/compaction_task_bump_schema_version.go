@@ -75,7 +75,7 @@ func (t *bumpSchemaVersionTask) GetTaskProto() *datapb.CompactionTask {
 }
 
 func (t *bumpSchemaVersionTask) GetTaskSlot() int64 {
-	return paramtable.Get().DataCoordCfg.BackfillCompactionSlotUsage.GetAsInt64()
+	return paramtable.Get().DataCoordCfg.BumpSchemaVersionCompactionSlotUsage.GetAsInt64()
 }
 
 func (t *bumpSchemaVersionTask) SetTaskTime(timeType taskcommon.TimeType, time time.Time) {
@@ -141,7 +141,7 @@ func (t *bumpSchemaVersionTask) BuildCompactionRequest() (*datapb.CompactionPlan
 	plan.PreAllocatedLogIDs = logIDRange
 	plan.BeginLogID = logIDRange.Begin
 	WrapPluginContext(taskProto.GetCollectionID(), taskProto.GetSchema().GetProperties(), plan)
-	log.Info("Compaction handler refreshed backfill compaction plan", zap.Int64("maxSize", plan.GetMaxSize()),
+	log.Info("Compaction handler refreshed schema bump compaction plan", zap.Int64("maxSize", plan.GetMaxSize()),
 		zap.Any("PreAllocatedLogIDs", logIDRange), zap.Int64s("inputSegments", taskProto.GetInputSegments()))
 	return plan, nil
 }
@@ -348,7 +348,7 @@ func (t *bumpSchemaVersionTask) Process() bool {
 	}
 	currentState := t.GetTaskProto().GetState().String()
 	if currentState != lastState {
-		log.Info("backfill compaction task state changed", zap.String("lastState", lastState), zap.String("currentState", currentState))
+		log.Info("schema bump compaction task state changed", zap.String("lastState", lastState), zap.String("currentState", currentState))
 	}
 	return processResult
 }
