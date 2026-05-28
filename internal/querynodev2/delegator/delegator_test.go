@@ -24,6 +24,8 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/bytedance/mockey"
 	"github.com/cockroachdb/errors"
 	"github.com/samber/lo"
@@ -2082,6 +2084,16 @@ func newBM25FunctionSchema() *schemapb.FunctionSchema {
 	}
 }
 
+func newAdditionalBM25FunctionSchema() *schemapb.FunctionSchema {
+	return &schemapb.FunctionSchema{
+		Type:             schemapb.FunctionType_BM25,
+		InputFieldNames:  []string{"text"},
+		InputFieldIds:    []int64{101},
+		OutputFieldNames: []string{"sparse_additive"},
+		OutputFieldIds:   []int64{105},
+	}
+}
+
 func newMinHashFunctionSchema() *schemapb.FunctionSchema {
 	return &schemapb.FunctionSchema{
 		Type:             schemapb.FunctionType_MinHash,
@@ -2118,6 +2130,80 @@ func TestBuildFunctionRuntimeStateAddsMinHashRunner(t *testing.T) {
 	require.Contains(t, state.functionRunners, int64(104))
 	assert.Equal(t, schemapb.FunctionType_MinHash, state.functionFieldType[104])
 	assert.Contains(t, state.analyzerRunners, int64(101))
+}
+
+func TestBM25FunctionSetAdditiveValidation(t *testing.T) {
+	base := newBM25FunctionSet(newFunctionRuntimeTestSchema(newBM25FunctionSchema()))
+
+	assert.True(t, newBM25FunctionSet(newFunctionRuntimeTestSchema(newBM25FunctionSchema())).IsSupersetOf(base))
+	assert.True(t, newBM25FunctionSet(newFunctionRuntimeTestSchema(newBM25FunctionSchema(), newAdditionalBM25FunctionSchema())).IsSupersetOf(base))
+
+	changed := proto.Clone(newBM25FunctionSchema()).(*schemapb.FunctionSchema)
+	changed.InputFieldIds = []int64{103}
+	assert.False(t, newBM25FunctionSet(newFunctionRuntimeTestSchema(changed)).IsSupersetOf(base))
+	assert.False(t, newBM25FunctionSet(newFunctionRuntimeTestSchema()).IsSupersetOf(base))
+}
+
+func TestBM25FunctionSetSignatureIncludesAnalyzerParams(t *testing.T) {
+	baseSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema())
+	changedSchema := proto.Clone(baseSchema).(*schemapb.CollectionSchema)
+	changedSchema.Fields[1].TypeParams = []*commonpb.KeyValuePair{
+		{Key: common.MaxLengthKey, Value: "256"},
+		{Key: common.EnableAnalyzerKey, Value: "true"},
+		{Key: common.AnalyzerParamKey, Value: `{"tokenizer":"standard"}`},
+	}
+
+	base := newBM25FunctionSet(baseSchema)
+	changed := newBM25FunctionSet(changedSchema)
+	assert.False(t, changed.IsSupersetOf(base))
+}
+
+func TestBM25FunctionSetSignatureNormalizesParamOrder(t *testing.T) {
+	baseSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema())
+	changedSchema := proto.Clone(baseSchema).(*schemapb.CollectionSchema)
+	changedSchema.Fields[1].TypeParams = []*commonpb.KeyValuePair{
+		{Key: common.AnalyzerParamKey, Value: "{}"},
+		{Key: common.EnableAnalyzerKey, Value: "true"},
+		{Key: common.MaxLengthKey, Value: "256"},
+	}
+
+	base := newBM25FunctionSet(baseSchema)
+	changed := newBM25FunctionSet(changedSchema)
+	assert.True(t, changed.IsSupersetOf(base))
+}
+
+func TestUpdateSchemaRejectsNonAdditiveBM25FunctionChange(t *testing.T) {
+	paramtable.Init()
+	paramtable.SetNodeID(1)
+	workerManager := cluster.NewMockManager(t)
+	oldRunner := function.NewMockFunctionRunner(t)
+	oldRunner.EXPECT().Close().Maybe()
+	oldSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema())
+	sd := &shardDelegator{
+		collectionID:  1000,
+		vchannelName:  "test-channel",
+		collection:    segments.NewCollectionWithoutSegcoreForTest(1000, oldSchema),
+		lifetime:      lifetime.NewLifetime(lifetime.Working),
+		distribution:  NewDistribution("test-channel", NewChannelQueryView(nil, nil, nil, initialTargetVersion)),
+		workerManager: workerManager,
+		functionState: &functionRuntimeState{
+			functionRunners:   map[int64]function.FunctionRunner{102: oldRunner},
+			functionFieldType: map[int64]schemapb.FunctionType{102: schemapb.FunctionType_BM25},
+			analyzerRunners:   map[int64]function.Analyzer{},
+		},
+		idfOracle:                 NewIDFOracle("test-channel", oldSchema.GetFunctions()),
+		deleteBuffer:              deletebuffer.NewListDeleteBuffer[*deletebuffer.Item](0, 0, []string{"1", "test-channel"}),
+		tsCond:                    syncutil.NewContextCond(&sync.Mutex{}),
+		latestRequiredMVCCTimeTick: atomic.NewUint64(0),
+	}
+	defer sd.Close()
+
+	changed := proto.Clone(newBM25FunctionSchema()).(*schemapb.FunctionSchema)
+	changed.InputFieldIds = []int64{103}
+	err := sd.UpdateSchema(context.Background(), newFunctionRuntimeTestSchema(changed), 100)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unsupported non-additive BM25 function schema change")
+	assert.True(t, sd.functionState.hasFunctionRunner(102))
 }
 
 func TestUpdateSchemaSyncsFunctionRuntimeState(t *testing.T) {

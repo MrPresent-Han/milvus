@@ -30,13 +30,16 @@ import (
 	"io"
 	"os"
 	"path"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"go.uber.org/atomic"
 	"go.uber.org/zap"
+	"google.golang.org/protobuf/proto"
 
+	"github.com/milvus-io/milvus-proto/go-api/v3/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
 	"github.com/milvus-io/milvus/internal/storage"
 	"github.com/milvus-io/milvus/internal/storagev2/packed"
@@ -73,7 +76,82 @@ type IDFOracle interface {
 	Close()
 }
 
+type bm25FunctionSet map[typeutil.UniqueID]string
+
 type bm25Stats map[int64]*storage.BM25Stats
+
+func newBM25FunctionSet(schema *schemapb.CollectionSchema) bm25FunctionSet {
+	result := make(bm25FunctionSet)
+	if schema == nil {
+		return result
+	}
+	for _, function := range schema.GetFunctions() {
+		if function.GetType() != schemapb.FunctionType_BM25 || len(function.GetOutputFieldIds()) == 0 {
+			continue
+		}
+		result[function.GetOutputFieldIds()[0]] = bm25FunctionSignature(schema, function)
+	}
+	return result
+}
+
+func (s bm25FunctionSet) IsSupersetOf(old bm25FunctionSet) bool {
+	for outputFieldID, oldSignature := range old {
+		newSignature, ok := s[outputFieldID]
+		if !ok || newSignature != oldSignature {
+			return false
+		}
+	}
+	return true
+}
+
+func (s bm25FunctionSet) Equal(other bm25FunctionSet) bool {
+	return len(s) == len(other) && s.IsSupersetOf(other)
+}
+
+func bm25FunctionSignature(schema *schemapb.CollectionSchema, function *schemapb.FunctionSchema) string {
+	inputFields := make([]*schemapb.FieldSchema, 0, len(function.GetInputFieldIds()))
+	for _, fieldID := range function.GetInputFieldIds() {
+		if schema == nil {
+			continue
+		}
+		if field := typeutil.GetField(schema, fieldID); field != nil {
+			inputFields = append(inputFields, normalizeBM25SignatureField(field))
+		}
+	}
+	payload := &schemapb.CollectionSchema{
+		Fields:    inputFields,
+		Functions: []*schemapb.FunctionSchema{normalizeBM25SignatureFunction(function)},
+	}
+	bytes, err := proto.MarshalOptions{Deterministic: true}.Marshal(payload)
+	if err != nil {
+		return fmt.Sprintf("marshal-error:%v", err)
+	}
+	return string(bytes)
+}
+
+func normalizeBM25SignatureFunction(function *schemapb.FunctionSchema) *schemapb.FunctionSchema {
+	cloned := proto.Clone(function).(*schemapb.FunctionSchema)
+	sort.Slice(cloned.Params, func(i, j int) bool {
+		return cloned.Params[i].GetKey() < cloned.Params[j].GetKey()
+	})
+	return cloned
+}
+
+func normalizeBM25SignatureField(field *schemapb.FieldSchema) *schemapb.FieldSchema {
+	cloned := proto.Clone(field).(*schemapb.FieldSchema)
+	sortKeyValuePairs(cloned.TypeParams)
+	sortKeyValuePairs(cloned.IndexParams)
+	return cloned
+}
+
+func sortKeyValuePairs(kvs []*commonpb.KeyValuePair) {
+	sort.Slice(kvs, func(i, j int) bool {
+		if kvs[i].GetKey() == kvs[j].GetKey() {
+			return kvs[i].GetValue() < kvs[j].GetValue()
+		}
+		return kvs[i].GetKey() < kvs[j].GetKey()
+	})
+}
 
 func (s bm25Stats) Merge(stats bm25Stats) {
 	for fieldID, newstats := range stats {

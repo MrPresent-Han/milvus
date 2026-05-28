@@ -1427,6 +1427,15 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 	sd.schemaChangeMutex.Lock()
 	defer sd.schemaChangeMutex.Unlock()
 
+	if sd.idfOracle != nil {
+		oldSet := newBM25FunctionSet(sd.collection.Schema())
+		newSet := newBM25FunctionSet(schema)
+		if !newSet.IsSupersetOf(oldSet) {
+			newFunctionState.Close()
+			return merr.WrapErrServiceInternal("unsupported non-additive BM25 function schema change on loaded collection")
+		}
+	}
+
 	// set updated schema version as load barrier
 	// prevent concurrent load segment with old schema
 	sd.schemaVersion = schVersion
