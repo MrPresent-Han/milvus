@@ -2021,6 +2021,115 @@ func TestDelegatorSuite(t *testing.T) {
 	suite.Run(t, new(DelegatorSuite))
 }
 
+func TestBuildFunctionRuntimeStateAddsBM25AndAnalyzerRunners(t *testing.T) {
+	paramtable.Init()
+	schema := &schemapb.CollectionSchema{
+		Name: "TestCollection",
+		Fields: []*schemapb.FieldSchema{
+			{
+				Name:         "id",
+				FieldID:      100,
+				IsPrimaryKey: true,
+				DataType:     schemapb.DataType_Int64,
+				AutoID:       true,
+			},
+			{
+				Name:     "text",
+				FieldID:  101,
+				DataType: schemapb.DataType_VarChar,
+				TypeParams: []*commonpb.KeyValuePair{
+					{Key: common.MaxLengthKey, Value: "256"},
+					{Key: common.EnableAnalyzerKey, Value: "true"},
+					{Key: common.AnalyzerParamKey, Value: "{}"},
+				},
+			},
+			{
+				Name:     "sparse",
+				FieldID:  102,
+				DataType: schemapb.DataType_SparseFloatVector,
+			},
+			{
+				Name:     "standalone_text",
+				FieldID:  103,
+				DataType: schemapb.DataType_VarChar,
+				TypeParams: []*commonpb.KeyValuePair{
+					{Key: common.MaxLengthKey, Value: "256"},
+					{Key: common.EnableAnalyzerKey, Value: "true"},
+					{Key: common.AnalyzerParamKey, Value: "{}"},
+				},
+			},
+		},
+		Functions: []*schemapb.FunctionSchema{
+			{
+				Type:             schemapb.FunctionType_BM25,
+				InputFieldNames:  []string{"text"},
+				InputFieldIds:    []int64{101},
+				OutputFieldNames: []string{"sparse"},
+				OutputFieldIds:   []int64{102},
+			},
+		},
+	}
+
+	state, err := buildFunctionRuntimeState(schema)
+	require.NoError(t, err)
+	defer state.Close()
+
+	require.Contains(t, state.functionRunners, int64(102))
+	assert.Equal(t, schemapb.FunctionType_BM25, state.functionFieldType[102])
+	require.Contains(t, state.analyzerRunners, int64(101))
+	require.Contains(t, state.analyzerRunners, int64(103))
+	assert.Same(t, state.functionRunners[102], state.analyzerRunners[101])
+}
+
+func TestBuildFunctionRuntimeStateAddsMinHashRunner(t *testing.T) {
+	paramtable.Init()
+	schema := &schemapb.CollectionSchema{
+		Name: "TestCollection",
+		Fields: []*schemapb.FieldSchema{
+			{
+				Name:         "id",
+				FieldID:      100,
+				IsPrimaryKey: true,
+				DataType:     schemapb.DataType_Int64,
+				AutoID:       true,
+			},
+			{
+				Name:     "text",
+				FieldID:  101,
+				DataType: schemapb.DataType_VarChar,
+				TypeParams: []*commonpb.KeyValuePair{
+					{Key: common.MaxLengthKey, Value: "256"},
+				},
+			},
+			{
+				Name:     "minhash",
+				FieldID:  102,
+				DataType: schemapb.DataType_BinaryVector,
+				TypeParams: []*commonpb.KeyValuePair{
+					{Key: common.DimKey, Value: "128"},
+				},
+			},
+		},
+		Functions: []*schemapb.FunctionSchema{
+			{
+				Type:             schemapb.FunctionType_MinHash,
+				InputFieldNames:  []string{"text"},
+				InputFieldIds:    []int64{101},
+				OutputFieldNames: []string{"minhash"},
+				OutputFieldIds:   []int64{102},
+			},
+		},
+	}
+
+	state, err := buildFunctionRuntimeState(schema)
+	require.NoError(t, err)
+	defer state.Close()
+
+	require.Contains(t, state.functionRunners, int64(102))
+	assert.Equal(t, schemapb.FunctionType_MinHash, state.functionFieldType[102])
+	assert.NotContains(t, state.analyzerRunners, int64(101))
+}
+
 func TestDelegatorSearchBM25InvalidMetricType(t *testing.T) {
 	paramtable.Init()
 	searchReq := &querypb.SearchRequest{

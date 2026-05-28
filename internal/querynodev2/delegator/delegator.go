@@ -222,6 +222,81 @@ func (sd *shardDelegator) Stopped() bool {
 	return sd.NotStopped(sd.lifetime.GetState()) != nil
 }
 
+type functionRuntimeState struct {
+	functionRunners   map[UniqueID]function.FunctionRunner
+	functionFieldType map[UniqueID]schemapb.FunctionType
+	analyzerRunners   map[UniqueID]function.Analyzer
+}
+
+func buildFunctionRuntimeState(schema *schemapb.CollectionSchema) (*functionRuntimeState, error) {
+	state := &functionRuntimeState{
+		functionRunners:   make(map[UniqueID]function.FunctionRunner),
+		functionFieldType: make(map[UniqueID]schemapb.FunctionType),
+		analyzerRunners:   make(map[UniqueID]function.Analyzer),
+	}
+
+	for _, tf := range schema.GetFunctions() {
+		switch tf.GetType() {
+		case schemapb.FunctionType_BM25:
+			functionRunner, err := function.NewFunctionRunner(schema, tf)
+			if err != nil {
+				state.Close()
+				return nil, err
+			}
+			outputFieldID := tf.GetOutputFieldIds()[0]
+			inputFieldID := tf.GetInputFieldIds()[0]
+			state.functionRunners[outputFieldID] = functionRunner
+			state.analyzerRunners[inputFieldID] = functionRunner.(function.Analyzer)
+			state.functionFieldType[outputFieldID] = schemapb.FunctionType_BM25
+		case schemapb.FunctionType_MinHash:
+			functionRunner, err := function.NewFunctionRunner(schema, tf)
+			if err != nil {
+				state.Close()
+				return nil, err
+			}
+			outputFieldID := tf.GetOutputFieldIds()[0]
+			state.functionRunners[outputFieldID] = functionRunner
+			state.functionFieldType[outputFieldID] = schemapb.FunctionType_MinHash
+		}
+	}
+
+	for _, field := range schema.GetFields() {
+		helper := typeutil.CreateFieldSchemaHelper(field)
+		if helper.EnableAnalyzer() && state.analyzerRunners[field.GetFieldID()] == nil {
+			analyzerRunner, err := function.NewAnalyzerRunner(field)
+			if err != nil {
+				state.Close()
+				return nil, err
+			}
+			state.analyzerRunners[field.GetFieldID()] = analyzerRunner
+		}
+	}
+
+	return state, nil
+}
+
+func (s *functionRuntimeState) Close() {
+	if s == nil {
+		return
+	}
+	closed := typeutil.NewSet[function.FunctionRunner]()
+	for _, runner := range s.functionRunners {
+		if runner == nil || closed.Contain(runner) {
+			continue
+		}
+		runner.Close()
+		closed.Insert(runner)
+	}
+	for _, analyzer := range s.analyzerRunners {
+		runner, ok := analyzer.(function.FunctionRunner)
+		if !ok || runner == nil || closed.Contain(runner) {
+			continue
+		}
+		runner.Close()
+		closed.Insert(runner)
+	}
+}
+
 // Start sets delegator to working state.
 func (sd *shardDelegator) Start() {
 	sd.lifetime.SetState(lifetime.Working)
@@ -1193,6 +1268,12 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 	defer sd.lifetime.Done()
 
 	log.Info("delegator received update schema event")
+	log.Info("[backfill-e2e] delegator received update schema event",
+		zap.Uint64("schemaVersion", schVersion),
+		zap.Int("functionCount", len(schema.GetFunctions())),
+		zap.Int("functionRunnerCount", len(sd.functionRunners)),
+		zap.Int("functionFieldTypeCount", len(sd.functionFieldType)),
+		zap.Int("analyzerRunnerCount", len(sd.analyzerRunners)))
 
 	sd.schemaChangeMutex.Lock()
 	defer sd.schemaChangeMutex.Unlock()
@@ -1387,9 +1468,6 @@ func NewShardDelegator(ctx context.Context, collectionID UniqueID, replicaID Uni
 		chunkManager:               chunkManager,
 		partitionStats:             make(map[UniqueID]*storage.PartitionStatsSnapshot),
 		excludedSegments:           excludedSegments,
-		functionRunners:            make(map[int64]function.FunctionRunner),
-		analyzerRunners:            make(map[UniqueID]function.Analyzer),
-		functionFieldType:          make(map[int64]schemapb.FunctionType),
 		l0ForwardPolicy:            policy,
 		postLoadSem:                postLoadSem,
 		postLoadConfigHandler:      postLoadConfigHandler,
@@ -1397,40 +1475,17 @@ func NewShardDelegator(ctx context.Context, collectionID UniqueID, replicaID Uni
 		latestRequiredMVCCTimeTick: atomic.NewUint64(0),
 	}
 
-	hasBM25Field := false
-	for _, tf := range collection.Schema().GetFunctions() {
-		if tf.GetType() == schemapb.FunctionType_BM25 {
-			functionRunner, err := function.NewFunctionRunner(collection.Schema(), tf)
-			if err != nil {
-				return nil, err
-			}
-			sd.functionRunners[tf.OutputFieldIds[0]] = functionRunner
-			// bm25 input field could use same runner between function and analyzer.
-			sd.analyzerRunners[tf.InputFieldIds[0]] = functionRunner.(function.Analyzer)
-			if tf.GetType() == schemapb.FunctionType_BM25 {
-				sd.functionFieldType[tf.OutputFieldIds[0]] = schemapb.FunctionType_BM25
-			}
-			hasBM25Field = true
-		} else if tf.GetType() == schemapb.FunctionType_MinHash {
-			functionRunner, err := function.NewFunctionRunner(collection.Schema(), tf)
-			if err != nil {
-				return nil, err
-			}
-			sd.functionRunners[tf.OutputFieldIds[0]] = functionRunner
-			sd.functionFieldType[tf.OutputFieldIds[0]] = schemapb.FunctionType_MinHash
-		}
+	functionState, err := buildFunctionRuntimeState(collection.Schema())
+	if err != nil {
+		return nil, err
 	}
+	sd.functionRunners = functionState.functionRunners
+	sd.functionFieldType = functionState.functionFieldType
+	sd.analyzerRunners = functionState.analyzerRunners
 
-	for _, field := range collection.Schema().GetFields() {
-		helper := typeutil.CreateFieldSchemaHelper(field)
-		if helper.EnableAnalyzer() && sd.analyzerRunners[field.GetFieldID()] == nil {
-			analyzerRunner, err := function.NewAnalyzerRunner(field)
-			if err != nil {
-				return nil, err
-			}
-			sd.analyzerRunners[field.GetFieldID()] = analyzerRunner
-		}
-	}
+	hasBM25Field := lo.ContainsBy(collection.Schema().GetFunctions(), func(tf *schemapb.FunctionSchema) bool {
+		return tf.GetType() == schemapb.FunctionType_BM25
+	})
 
 	if hasBM25Field {
 		sd.idfOracle = NewIDFOracle(sd.vchannelName, collection.Schema().GetFunctions())
