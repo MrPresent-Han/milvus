@@ -38,8 +38,10 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
 	"github.com/milvus-io/milvus/internal/distributed/streaming"
 	"github.com/milvus-io/milvus/internal/querynodev2/cluster"
+	"github.com/milvus-io/milvus/internal/querynodev2/delegator/deletebuffer"
 	"github.com/milvus-io/milvus/internal/querynodev2/segments"
 	"github.com/milvus-io/milvus/internal/storage"
+	"github.com/milvus-io/milvus/internal/util/function"
 	"github.com/milvus-io/milvus/internal/util/streamrpc"
 	"github.com/milvus-io/milvus/pkg/v3/common"
 	"github.com/milvus-io/milvus/pkg/v3/mq/msgstream"
@@ -2021,9 +2023,8 @@ func TestDelegatorSuite(t *testing.T) {
 	suite.Run(t, new(DelegatorSuite))
 }
 
-func TestBuildFunctionRuntimeStateAddsBM25AndAnalyzerRunners(t *testing.T) {
-	paramtable.Init()
-	schema := &schemapb.CollectionSchema{
+func newFunctionRuntimeTestSchema(functions ...*schemapb.FunctionSchema) *schemapb.CollectionSchema {
+	return &schemapb.CollectionSchema{
 		Name: "TestCollection",
 		Fields: []*schemapb.FieldSchema{
 			{
@@ -2058,17 +2059,42 @@ func TestBuildFunctionRuntimeStateAddsBM25AndAnalyzerRunners(t *testing.T) {
 					{Key: common.AnalyzerParamKey, Value: "{}"},
 				},
 			},
-		},
-		Functions: []*schemapb.FunctionSchema{
 			{
-				Type:             schemapb.FunctionType_BM25,
-				InputFieldNames:  []string{"text"},
-				InputFieldIds:    []int64{101},
-				OutputFieldNames: []string{"sparse"},
-				OutputFieldIds:   []int64{102},
+				Name:     "minhash",
+				FieldID:  104,
+				DataType: schemapb.DataType_BinaryVector,
+				TypeParams: []*commonpb.KeyValuePair{
+					{Key: common.DimKey, Value: "128"},
+				},
 			},
 		},
+		Functions: functions,
 	}
+}
+
+func newBM25FunctionSchema() *schemapb.FunctionSchema {
+	return &schemapb.FunctionSchema{
+		Type:             schemapb.FunctionType_BM25,
+		InputFieldNames:  []string{"text"},
+		InputFieldIds:    []int64{101},
+		OutputFieldNames: []string{"sparse"},
+		OutputFieldIds:   []int64{102},
+	}
+}
+
+func newMinHashFunctionSchema() *schemapb.FunctionSchema {
+	return &schemapb.FunctionSchema{
+		Type:             schemapb.FunctionType_MinHash,
+		InputFieldNames:  []string{"text"},
+		InputFieldIds:    []int64{101},
+		OutputFieldNames: []string{"minhash"},
+		OutputFieldIds:   []int64{104},
+	}
+}
+
+func TestBuildFunctionRuntimeStateAddsBM25AndAnalyzerRunners(t *testing.T) {
+	paramtable.Init()
+	schema := newFunctionRuntimeTestSchema(newBM25FunctionSchema())
 
 	state, err := buildFunctionRuntimeState(schema)
 	require.NoError(t, err)
@@ -2083,51 +2109,53 @@ func TestBuildFunctionRuntimeStateAddsBM25AndAnalyzerRunners(t *testing.T) {
 
 func TestBuildFunctionRuntimeStateAddsMinHashRunner(t *testing.T) {
 	paramtable.Init()
-	schema := &schemapb.CollectionSchema{
-		Name: "TestCollection",
-		Fields: []*schemapb.FieldSchema{
-			{
-				Name:         "id",
-				FieldID:      100,
-				IsPrimaryKey: true,
-				DataType:     schemapb.DataType_Int64,
-				AutoID:       true,
-			},
-			{
-				Name:     "text",
-				FieldID:  101,
-				DataType: schemapb.DataType_VarChar,
-				TypeParams: []*commonpb.KeyValuePair{
-					{Key: common.MaxLengthKey, Value: "256"},
-				},
-			},
-			{
-				Name:     "minhash",
-				FieldID:  102,
-				DataType: schemapb.DataType_BinaryVector,
-				TypeParams: []*commonpb.KeyValuePair{
-					{Key: common.DimKey, Value: "128"},
-				},
-			},
-		},
-		Functions: []*schemapb.FunctionSchema{
-			{
-				Type:             schemapb.FunctionType_MinHash,
-				InputFieldNames:  []string{"text"},
-				InputFieldIds:    []int64{101},
-				OutputFieldNames: []string{"minhash"},
-				OutputFieldIds:   []int64{102},
-			},
-		},
-	}
+	schema := newFunctionRuntimeTestSchema(newMinHashFunctionSchema())
 
 	state, err := buildFunctionRuntimeState(schema)
 	require.NoError(t, err)
 	defer state.Close()
 
-	require.Contains(t, state.functionRunners, int64(102))
-	assert.Equal(t, schemapb.FunctionType_MinHash, state.functionFieldType[102])
-	assert.NotContains(t, state.analyzerRunners, int64(101))
+	require.Contains(t, state.functionRunners, int64(104))
+	assert.Equal(t, schemapb.FunctionType_MinHash, state.functionFieldType[104])
+	assert.Contains(t, state.analyzerRunners, int64(101))
+}
+
+func TestUpdateSchemaSyncsFunctionRuntimeState(t *testing.T) {
+	paramtable.Init()
+	paramtable.SetNodeID(1)
+	worker := cluster.NewMockWorker(t)
+	worker.EXPECT().UpdateSchema(mock.Anything, mock.AnythingOfType("*querypb.UpdateSchemaRequest")).Return(merr.Success(), nil).Once()
+	workerManager := cluster.NewMockManager(t)
+	workerManager.EXPECT().GetWorker(mock.Anything, int64(1)).Return(worker, nil).Once()
+	oldRunner := function.NewMockFunctionRunner(t)
+	oldRunner.EXPECT().Close().Once()
+	sd := &shardDelegator{
+		collectionID:  1000,
+		vchannelName:  "test-channel",
+		lifetime:      lifetime.NewLifetime(lifetime.Working),
+		distribution:  NewDistribution("test-channel", NewChannelQueryView(nil, nil, nil, initialTargetVersion)),
+		workerManager: workerManager,
+		functionState: &functionRuntimeState{
+			functionRunners:   map[int64]function.FunctionRunner{999: oldRunner},
+			functionFieldType: map[int64]schemapb.FunctionType{999: schemapb.FunctionType_BM25},
+			analyzerRunners:   map[int64]function.Analyzer{},
+		},
+		deleteBuffer:               deletebuffer.NewListDeleteBuffer[*deletebuffer.Item](0, 0, []string{"1", "test-channel"}),
+		tsCond:                     syncutil.NewContextCond(&sync.Mutex{}),
+		latestRequiredMVCCTimeTick: atomic.NewUint64(0),
+	}
+	defer sd.Close()
+
+	err := sd.UpdateSchema(context.Background(), newFunctionRuntimeTestSchema(newBM25FunctionSchema(), newMinHashFunctionSchema()), 100)
+	require.NoError(t, err)
+
+	require.True(t, sd.functionState.hasFunctionRunner(102))
+	require.True(t, sd.functionState.hasFunctionRunner(104))
+	assert.True(t, sd.functionState.hasFunctionType(102, schemapb.FunctionType_BM25))
+	assert.True(t, sd.functionState.hasFunctionType(104, schemapb.FunctionType_MinHash))
+	require.True(t, sd.functionState.hasAnalyzerRunner(101))
+	require.True(t, sd.functionState.hasAnalyzerRunner(103))
+	assert.True(t, sd.functionState.functionRunnerAliasesAnalyzer(102, 101))
 }
 
 func TestDelegatorSearchBM25InvalidMetricType(t *testing.T) {
@@ -2142,7 +2170,9 @@ func TestDelegatorSearchBM25InvalidMetricType(t *testing.T) {
 	searchReq.Req.MetricType = metric.IP
 
 	sd := &shardDelegator{
-		functionFieldType:          map[int64]schemapb.FunctionType{101: schemapb.FunctionType_BM25},
+		functionState: &functionRuntimeState{
+			functionFieldType: map[int64]schemapb.FunctionType{101: schemapb.FunctionType_BM25},
+		},
 		latestRequiredMVCCTimeTick: atomic.NewUint64(0),
 	}
 

@@ -156,14 +156,7 @@ type shardDelegator struct {
 	growingSegmentLock sync.RWMutex
 	partitionStatsMut  sync.RWMutex
 
-	// outputFieldId -> functionRunner map for search function field
-	functionRunners map[UniqueID]function.FunctionRunner
-
-	// outputFieldId -> function type map
-	functionFieldType map[UniqueID]schemapb.FunctionType
-
-	// analyzerFieldID -> analyzerRunner map for run analyzer.
-	analyzerRunners map[UniqueID]function.Analyzer
+	functionState *functionRuntimeState
 
 	// current forward policy
 	l0ForwardPolicy string
@@ -223,6 +216,7 @@ func (sd *shardDelegator) Stopped() bool {
 }
 
 type functionRuntimeState struct {
+	mu                sync.RWMutex
 	functionRunners   map[UniqueID]function.FunctionRunner
 	functionFieldType map[UniqueID]schemapb.FunctionType
 	analyzerRunners   map[UniqueID]function.Analyzer
@@ -295,6 +289,170 @@ func (s *functionRuntimeState) Close() {
 		runner.Close()
 		closed.Insert(runner)
 	}
+}
+
+func (s *functionRuntimeState) counts() (int, int, int) {
+	if s == nil {
+		return 0, 0, 0
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return len(s.functionRunners), len(s.functionFieldType), len(s.analyzerRunners)
+}
+
+func (s *functionRuntimeState) hasFunctionRunner(fieldID UniqueID) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.functionRunners[fieldID]
+	return ok
+}
+
+func (s *functionRuntimeState) hasAnalyzerRunner(fieldID UniqueID) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	_, ok := s.analyzerRunners[fieldID]
+	return ok
+}
+
+func (s *functionRuntimeState) functionRunnerAliasesAnalyzer(functionFieldID, analyzerFieldID UniqueID) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	runner, ok := s.functionRunners[functionFieldID]
+	if !ok {
+		return false
+	}
+	analyzer, ok := s.analyzerRunners[analyzerFieldID]
+	if !ok {
+		return false
+	}
+	runnerAnalyzer, ok := runner.(function.Analyzer)
+	return ok && runnerAnalyzer == analyzer
+}
+
+func (s *functionRuntimeState) hasFunctionType(fieldID UniqueID, functionType schemapb.FunctionType) bool {
+	if s == nil {
+		return false
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.functionFieldType[fieldID] == functionType
+}
+
+func (s *functionRuntimeState) swap(newState *functionRuntimeState) *functionRuntimeState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	oldState := &functionRuntimeState{
+		functionRunners:   s.functionRunners,
+		functionFieldType: s.functionFieldType,
+		analyzerRunners:   s.analyzerRunners,
+	}
+	s.functionRunners = newState.functionRunners
+	s.functionFieldType = newState.functionFieldType
+	s.analyzerRunners = newState.analyzerRunners
+	return oldState
+}
+
+func (s *functionRuntimeState) withSearchFunction(fieldID UniqueID, run func(schemapb.FunctionType, function.FunctionRunner, bool) error) error {
+	if s == nil {
+		return nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	functionType := s.functionFieldType[fieldID]
+	if functionType == schemapb.FunctionType_Unknown {
+		return nil
+	}
+	runner, ok := s.functionRunners[fieldID]
+	return run(functionType, runner, ok)
+}
+
+func (sd *shardDelegator) prepareSearchFunction(req *internalpb.SearchRequest) (float64, bool, error) {
+	var avgdl float64
+	isBM25 := false
+	err := sd.functionState.withSearchFunction(req.GetFieldId(), func(functionType schemapb.FunctionType, functionRunner function.FunctionRunner, ok bool) error {
+		switch functionType {
+		case schemapb.FunctionType_BM25:
+			isBM25 = true
+			if req.GetMetricType() != metric.BM25 && req.GetMetricType() != metric.EMPTY {
+				return merr.WrapErrParameterInvalid("BM25", req.GetMetricType(), "must use BM25 metric type when searching against BM25 Function output field")
+			}
+			if !ok {
+				return fmt.Errorf("functionRunner not found for field: %d", req.GetFieldId())
+			}
+			var buildErr error
+			avgdl, buildErr = sd.buildBM25IDFWithRunner(req, functionRunner)
+			return buildErr
+		case schemapb.FunctionType_MinHash:
+			if req.GetMetricType() != metric.MHJACCARD && req.GetMetricType() != metric.EMPTY {
+				return merr.WrapErrParameterInvalid("MHJACCARD", req.GetMetricType(), "must use MHJACCARD metric type when searching against MinHash Function output field")
+			}
+			if !ok {
+				return fmt.Errorf("functionRunner not found for field: %d", req.GetFieldId())
+			}
+			return sd.parseMinHashWithRunner(req, functionRunner)
+		default:
+			return nil
+		}
+	})
+	return avgdl, isBM25 && avgdl <= 0, err
+}
+
+func (s *functionRuntimeState) setFunctionRunnersForTest(functionRunners map[UniqueID]function.FunctionRunner) map[UniqueID]function.FunctionRunner {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	old := s.functionRunners
+	s.functionRunners = functionRunners
+	return old
+}
+
+func (s *functionRuntimeState) withFunctionRunner(fieldID UniqueID, run func(function.FunctionRunner) error) (bool, error) {
+	if s == nil {
+		return false, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	runner, ok := s.functionRunners[fieldID]
+	if !ok {
+		return false, nil
+	}
+	return true, run(runner)
+}
+
+func (s *functionRuntimeState) withRequiredFunctionRunner(fieldID UniqueID, run func(function.FunctionRunner) error) error {
+	ok, err := s.withFunctionRunner(fieldID, run)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return fmt.Errorf("functionRunner not found for field: %d", fieldID)
+	}
+	return nil
+}
+
+func (s *functionRuntimeState) withAnalyzerRunner(fieldID UniqueID, run func(function.Analyzer) error) (bool, error) {
+	if s == nil {
+		return false, nil
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	analyzer, ok := s.analyzerRunners[fieldID]
+	if !ok {
+		return false, nil
+	}
+	return true, run(analyzer)
 }
 
 // Start sets delegator to working state.
@@ -427,28 +585,13 @@ func (sd *shardDelegator) search(ctx context.Context, req *querypb.SearchRequest
 		)
 	}
 
-	if sd.functionFieldType[req.GetReq().GetFieldId()] == schemapb.FunctionType_BM25 {
-		if req.GetReq().GetMetricType() != metric.BM25 && req.GetReq().GetMetricType() != metric.EMPTY {
-			return nil, merr.WrapErrParameterInvalid("BM25", req.GetReq().GetMetricType(), "must use BM25 metric type when searching against BM25 Function output field")
-		}
-		// build idf for bm25 search
-		avgdl, err := sd.buildBM25IDF(req.GetReq())
-		if err != nil {
-			return nil, err
-		}
-
-		if avgdl <= 0 {
-			log.Warn("search bm25 from empty data, skip search", zap.String("channel", sd.vchannelName), zap.Float64("avgdl", avgdl))
-			return []*internalpb.SearchResults{}, nil
-		}
-	} else if sd.functionFieldType[req.GetReq().GetFieldId()] == schemapb.FunctionType_MinHash {
-		if req.GetReq().GetMetricType() != metric.MHJACCARD && req.GetReq().GetMetricType() != metric.EMPTY {
-			return nil, merr.WrapErrParameterInvalid("MHJACCARD", req.GetReq().GetMetricType(), "must use MHJACCARD metric type when searching against MinHash Function output field")
-		}
-		err := sd.parseMinHash(req.GetReq())
-		if err != nil {
-			return nil, err
-		}
+	avgdl, skipSearch, err := sd.prepareSearchFunction(req.GetReq())
+	if err != nil {
+		return nil, err
+	}
+	if skipSearch {
+		log.Warn("search bm25 from empty data, skip search", zap.String("channel", sd.vchannelName), zap.Float64("avgdl", avgdl))
+		return []*internalpb.SearchResults{}, nil
 	}
 
 	// get final sealedNum after possible segment prune
@@ -481,7 +624,7 @@ func (sd *shardDelegator) search(ctx context.Context, req *querypb.SearchRequest
 	}
 
 	const isSecondStageSearch = false
-	req, err := optimizers.OptimizeSearchParams(ctx, req, sd.queryHook, effectiveSegmentNum, isSecondStageSearch, sd.getVectorFieldDim)
+	req, err = optimizers.OptimizeSearchParams(ctx, req, sd.queryHook, effectiveSegmentNum, isSecondStageSearch, sd.getVectorFieldDim)
 	if err != nil {
 		log.Warn("failed to optimize search params", zap.Error(err))
 		return nil, err
@@ -1268,12 +1411,18 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 	defer sd.lifetime.Done()
 
 	log.Info("delegator received update schema event")
+	functionRunnerCount, functionFieldTypeCount, analyzerRunnerCount := sd.functionState.counts()
 	log.Info("[backfill-e2e] delegator received update schema event",
 		zap.Uint64("schemaVersion", schVersion),
 		zap.Int("functionCount", len(schema.GetFunctions())),
-		zap.Int("functionRunnerCount", len(sd.functionRunners)),
-		zap.Int("functionFieldTypeCount", len(sd.functionFieldType)),
-		zap.Int("analyzerRunnerCount", len(sd.analyzerRunners)))
+		zap.Int("functionRunnerCount", functionRunnerCount),
+		zap.Int("functionFieldTypeCount", functionFieldTypeCount),
+		zap.Int("analyzerRunnerCount", analyzerRunnerCount))
+
+	newFunctionState, err := buildFunctionRuntimeState(schema)
+	if err != nil {
+		return err
+	}
 
 	sd.schemaChangeMutex.Lock()
 	defer sd.schemaChangeMutex.Unlock()
@@ -1308,6 +1457,7 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 			return nodeReq
 		})
 	if err != nil {
+		newFunctionState.Close()
 		return err
 	}
 
@@ -1316,8 +1466,13 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 		status, err := worker.UpdateSchema(ctx, req)
 		return (*StatusWrapper)(status), err
 	}, "UpdateSchema", log)
+	if err != nil {
+		newFunctionState.Close()
+		return err
+	}
 
-	return err
+	sd.functionState.swap(newFunctionState).Close()
+	return nil
 }
 
 type StatusWrapper commonpb.Status
@@ -1351,11 +1506,7 @@ func (sd *shardDelegator) Close() {
 		sd.idfOracle.Close()
 	}
 
-	if sd.functionRunners != nil {
-		for _, function := range sd.functionRunners {
-			function.Close()
-		}
-	}
+	sd.functionState.Close()
 
 	// clean up l0 segment in delete buffer
 	start := time.Now()
@@ -1479,9 +1630,7 @@ func NewShardDelegator(ctx context.Context, collectionID UniqueID, replicaID Uni
 	if err != nil {
 		return nil, err
 	}
-	sd.functionRunners = functionState.functionRunners
-	sd.functionFieldType = functionState.functionFieldType
-	sd.analyzerRunners = functionState.analyzerRunners
+	sd.functionState = functionState
 
 	hasBM25Field := lo.ContainsBy(collection.Schema().GetFunctions(), func(tf *schemapb.FunctionSchema) bool {
 		return tf.GetType() == schemapb.FunctionType_BM25
@@ -1534,23 +1683,21 @@ func (sd *shardDelegator) hasTextFields() bool {
 }
 
 func (sd *shardDelegator) RunAnalyzer(ctx context.Context, req *querypb.RunAnalyzerRequest) ([]*milvuspb.AnalyzerResult, error) {
-	analyzer, ok := sd.analyzerRunners[req.GetFieldId()]
-	if !ok {
-		return nil, fmt.Errorf("analyzer runner for field %d not exist, now only support run analyzer by field if field was bm25/minhash input field", req.GetFieldId())
-	}
-
 	var result [][]*milvuspb.AnalyzerToken
+	var analyzeErr error
 	texts := lo.Map(req.GetPlaceholder(), func(bytes []byte, _ int) string {
 		return string(bytes)
 	})
 
-	var err error
-	if len(analyzer.GetInputFields()) == 1 {
-		result, err = analyzer.BatchAnalyze(req.WithDetail, req.WithHash, texts)
-	} else {
+	ok, err := sd.functionState.withAnalyzerRunner(req.GetFieldId(), func(analyzer function.Analyzer) error {
+		if len(analyzer.GetInputFields()) == 1 {
+			result, analyzeErr = analyzer.BatchAnalyze(req.WithDetail, req.WithHash, texts)
+			return analyzeErr
+		}
+
 		analyzerNames := req.GetAnalyzerNames()
 		if len(analyzerNames) == 0 {
-			return nil, merr.WrapErrAsInputError(fmt.Errorf("analyzer names must be set for multi analyzer"))
+			return merr.WrapErrAsInputError(fmt.Errorf("analyzer names must be set for multi analyzer"))
 		}
 
 		if len(analyzerNames) == 1 && len(texts) > 1 {
@@ -1559,11 +1706,14 @@ func (sd *shardDelegator) RunAnalyzer(ctx context.Context, req *querypb.RunAnaly
 				analyzerNames[i] = req.AnalyzerNames[0]
 			}
 		}
-		result, err = analyzer.BatchAnalyze(req.WithDetail, req.WithHash, texts, analyzerNames)
-	}
-
+		result, analyzeErr = analyzer.BatchAnalyze(req.WithDetail, req.WithHash, texts, analyzerNames)
+		return analyzeErr
+	})
 	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return nil, fmt.Errorf("analyzer runner for field %d not exist, now only support run analyzer by field if field was bm25/minhash input field", req.GetFieldId())
 	}
 
 	return lo.Map(result, func(tokens []*milvuspb.AnalyzerToken, _ int) *milvuspb.AnalyzerResult {
