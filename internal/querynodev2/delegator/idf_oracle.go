@@ -67,6 +67,7 @@ type IDFOracle interface {
 	// Internally handles: streaming download → local disk → optional parse → register.
 	// Idempotent: skips if segment already loaded.
 	LoadSealed(ctx context.Context, segmentID int64, loadInfo *querypb.SegmentLoadInfo, cm storage.ChunkManager) error
+	SyncFunctions(functions []*schemapb.FunctionSchema) error
 
 	BuildIDF(fieldID int64, tfs *schemapb.SparseFloatArray) ([][]byte, float64, error)
 
@@ -274,6 +275,18 @@ func newBm25Stats(functions []*schemapb.FunctionSchema) bm25Stats {
 	return stats
 }
 
+func (s bm25Stats) AddMissingFunctions(functions []*schemapb.FunctionSchema) {
+	for _, function := range functions {
+		if function.GetType() != schemapb.FunctionType_BM25 || len(function.GetOutputFieldIds()) == 0 {
+			continue
+		}
+		fieldID := function.GetOutputFieldIds()[0]
+		if _, ok := s[fieldID]; !ok {
+			s[fieldID] = storage.NewBM25Stats()
+		}
+	}
+}
+
 type idfTarget struct {
 	sync.RWMutex
 	snapshot *snapshot
@@ -356,6 +369,14 @@ func (o *idfOracle) RegisterGrowing(segmentID int64, stats bm25Stats) {
 	o.current.Merge(stats)
 	o.Unlock()
 	o.syncResource()
+}
+
+func (o *idfOracle) SyncFunctions(functions []*schemapb.FunctionSchema) error {
+	o.Lock()
+	o.current.AddMissingFunctions(functions)
+	o.Unlock()
+	o.syncResource()
+	return nil
 }
 
 // LoadSealed loads BM25 stats for a sealed segment from remote storage to local disk.

@@ -2069,6 +2069,11 @@ func newFunctionRuntimeTestSchema(functions ...*schemapb.FunctionSchema) *schema
 					{Key: common.DimKey, Value: "128"},
 				},
 			},
+			{
+				Name:     "sparse_additive",
+				FieldID:  105,
+				DataType: schemapb.DataType_SparseFloatVector,
+			},
 		},
 		Functions: functions,
 	}
@@ -2179,6 +2184,7 @@ func TestUpdateSchemaRejectsNonAdditiveBM25FunctionChange(t *testing.T) {
 	oldRunner := function.NewMockFunctionRunner(t)
 	oldRunner.EXPECT().Close().Maybe()
 	oldSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema())
+	oldOracle := NewIDFOracle("test-channel", oldSchema.GetFunctions())
 	sd := &shardDelegator{
 		collectionID:  1000,
 		vchannelName:  "test-channel",
@@ -2191,7 +2197,7 @@ func TestUpdateSchemaRejectsNonAdditiveBM25FunctionChange(t *testing.T) {
 			functionFieldType: map[int64]schemapb.FunctionType{102: schemapb.FunctionType_BM25},
 			analyzerRunners:   map[int64]function.Analyzer{},
 		},
-		idfOracle:                 NewIDFOracle("test-channel", oldSchema.GetFunctions()),
+		idfOracle:                 oldOracle,
 		deleteBuffer:              deletebuffer.NewListDeleteBuffer[*deletebuffer.Item](0, 0, []string{"1", "test-channel"}),
 		tsCond:                    syncutil.NewContextCond(&sync.Mutex{}),
 		latestRequiredMVCCTimeTick: atomic.NewUint64(0),
@@ -2204,6 +2210,77 @@ func TestUpdateSchemaRejectsNonAdditiveBM25FunctionChange(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported non-additive BM25 function schema change")
 	assert.True(t, sd.functionState.hasFunctionRunner(102))
+	assert.Same(t, oldOracle, sd.idfOracle)
+}
+
+func TestUpdateSchemaSyncsAdditiveIDFOracleFunctions(t *testing.T) {
+	paramtable.Init()
+	paramtable.SetNodeID(1)
+	worker := cluster.NewMockWorker(t)
+	worker.EXPECT().UpdateSchema(mock.Anything, mock.AnythingOfType("*querypb.UpdateSchemaRequest")).Return(merr.Success(), nil).Once()
+	workerManager := cluster.NewMockManager(t)
+	workerManager.EXPECT().GetWorker(mock.Anything, int64(1)).Return(worker, nil).Once()
+	oldSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema())
+	sd := &shardDelegator{
+		collectionID:  1000,
+		vchannelName:  "test-channel",
+		collection:    segments.NewCollectionWithoutSegcoreForTest(1000, oldSchema),
+		lifetime:      lifetime.NewLifetime(lifetime.Working),
+		distribution:  NewDistribution("test-channel", NewChannelQueryView(nil, nil, nil, initialTargetVersion)),
+		workerManager: workerManager,
+		functionState: &functionRuntimeState{
+			functionRunners:   map[int64]function.FunctionRunner{},
+			functionFieldType: map[int64]schemapb.FunctionType{},
+			analyzerRunners:   map[int64]function.Analyzer{},
+		},
+		idfOracle:                 NewIDFOracle("test-channel", oldSchema.GetFunctions()),
+		deleteBuffer:              deletebuffer.NewListDeleteBuffer[*deletebuffer.Item](0, 0, []string{"1", "test-channel"}),
+		tsCond:                    syncutil.NewContextCond(&sync.Mutex{}),
+		latestRequiredMVCCTimeTick: atomic.NewUint64(0),
+	}
+	defer sd.Close()
+
+	newSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema(), newAdditionalBM25FunctionSchema())
+	err := sd.UpdateSchema(context.Background(), newSchema, 100)
+	require.NoError(t, err)
+
+	_, _, err = sd.idfOracle.BuildIDF(105, &schemapb.SparseFloatArray{Contents: [][]byte{typeutil.CreateAndSortSparseFloatRow(map[uint32]float32{7: 1})}, Dim: 1})
+	require.NoError(t, err)
+}
+
+func TestUpdateSchemaDoesNotSyncIDFOracleWhenWorkerUpdateFails(t *testing.T) {
+	paramtable.Init()
+	paramtable.SetNodeID(1)
+	worker := cluster.NewMockWorker(t)
+	worker.EXPECT().UpdateSchema(mock.Anything, mock.AnythingOfType("*querypb.UpdateSchemaRequest")).Return(merr.Status(merr.WrapErrServiceInternal("mocked")), merr.WrapErrServiceInternal("mocked")).Once()
+	workerManager := cluster.NewMockManager(t)
+	workerManager.EXPECT().GetWorker(mock.Anything, int64(1)).Return(worker, nil).Once()
+	oldSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema())
+	sd := &shardDelegator{
+		collectionID:  1000,
+		vchannelName:  "test-channel",
+		collection:    segments.NewCollectionWithoutSegcoreForTest(1000, oldSchema),
+		lifetime:      lifetime.NewLifetime(lifetime.Working),
+		distribution:  NewDistribution("test-channel", NewChannelQueryView(nil, nil, nil, initialTargetVersion)),
+		workerManager: workerManager,
+		functionState: &functionRuntimeState{
+			functionRunners:   map[int64]function.FunctionRunner{},
+			functionFieldType: map[int64]schemapb.FunctionType{},
+			analyzerRunners:   map[int64]function.Analyzer{},
+		},
+		idfOracle:                 NewIDFOracle("test-channel", oldSchema.GetFunctions()),
+		deleteBuffer:              deletebuffer.NewListDeleteBuffer[*deletebuffer.Item](0, 0, []string{"1", "test-channel"}),
+		tsCond:                    syncutil.NewContextCond(&sync.Mutex{}),
+		latestRequiredMVCCTimeTick: atomic.NewUint64(0),
+	}
+	defer sd.Close()
+
+	newSchema := newFunctionRuntimeTestSchema(newBM25FunctionSchema(), newAdditionalBM25FunctionSchema())
+	err := sd.UpdateSchema(context.Background(), newSchema, 100)
+	require.Error(t, err)
+
+	_, _, err = sd.idfOracle.BuildIDF(105, &schemapb.SparseFloatArray{Contents: [][]byte{typeutil.CreateAndSortSparseFloatRow(map[uint32]float32{7: 1})}, Dim: 1})
+	require.Error(t, err)
 }
 
 func TestUpdateSchemaSyncsFunctionRuntimeState(t *testing.T) {
@@ -2218,6 +2295,7 @@ func TestUpdateSchemaSyncsFunctionRuntimeState(t *testing.T) {
 	sd := &shardDelegator{
 		collectionID:  1000,
 		vchannelName:  "test-channel",
+		collection:    segments.NewCollectionWithoutSegcoreForTest(1000, newFunctionRuntimeTestSchema()),
 		lifetime:      lifetime.NewLifetime(lifetime.Working),
 		distribution:  NewDistribution("test-channel", NewChannelQueryView(nil, nil, nil, initialTargetVersion)),
 		workerManager: workerManager,

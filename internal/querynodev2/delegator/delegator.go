@@ -1427,13 +1427,11 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 	sd.schemaChangeMutex.Lock()
 	defer sd.schemaChangeMutex.Unlock()
 
-	if sd.idfOracle != nil {
-		oldSet := newBM25FunctionSet(sd.collection.Schema())
-		newSet := newBM25FunctionSet(schema)
-		if !newSet.IsSupersetOf(oldSet) {
-			newFunctionState.Close()
-			return merr.WrapErrServiceInternal("unsupported non-additive BM25 function schema change on loaded collection")
-		}
+	oldSet := newBM25FunctionSet(sd.collection.Schema())
+	newSet := newBM25FunctionSet(schema)
+	if sd.idfOracle != nil && !newSet.IsSupersetOf(oldSet) {
+		newFunctionState.Close()
+		return merr.WrapErrServiceInternal("unsupported non-additive BM25 function schema change on loaded collection")
 	}
 
 	// set updated schema version as load barrier
@@ -1480,6 +1478,12 @@ func (sd *shardDelegator) UpdateSchema(ctx context.Context, schema *schemapb.Col
 		return err
 	}
 
+	if sd.idfOracle != nil && !newSet.Equal(oldSet) {
+		if err := sd.idfOracle.SyncFunctions(schema.GetFunctions()); err != nil {
+			newFunctionState.Close()
+			return err
+		}
+	}
 	sd.functionState.swap(newFunctionState).Close()
 	return nil
 }

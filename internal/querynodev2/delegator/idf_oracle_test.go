@@ -26,7 +26,9 @@ import (
 	"time"
 
 	"github.com/cockroachdb/errors"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
@@ -456,4 +458,79 @@ func (suite *IDFOracleSuite) TestLoadSealedFailureCleanup() {
 
 func TestIDFOracle(t *testing.T) {
 	suite.Run(t, new(IDFOracleSuite))
+}
+
+func TestIDFSyncFunctionsAddsNewBM25Field(t *testing.T) {
+	idfOracle := NewIDFOracle("test-channel", []*schemapb.FunctionSchema{{
+		Type:           schemapb.FunctionType_BM25,
+		InputFieldIds:  []int64{101},
+		OutputFieldIds: []int64{102},
+	}}).(*idfOracle)
+	idfOracle.dirPath = t.TempDir()
+	idfOracle.Start()
+	defer idfOracle.Close()
+
+	oldStats := storage.NewBM25Stats()
+	oldStats.Append(map[uint32]float32{1: 1})
+	idfOracle.current[102] = oldStats
+
+	err := idfOracle.SyncFunctions([]*schemapb.FunctionSchema{
+		{
+			Type:           schemapb.FunctionType_BM25,
+			InputFieldIds:  []int64{101},
+			OutputFieldIds: []int64{102},
+		},
+		{
+			Type:           schemapb.FunctionType_BM25,
+			InputFieldIds:  []int64{103},
+			OutputFieldIds: []int64{104},
+		},
+	})
+	require.NoError(t, err)
+
+	existing, err := idfOracle.current.GetStats(102)
+	require.NoError(t, err)
+	assert.Same(t, oldStats, existing)
+	added, err := idfOracle.current.GetStats(104)
+	require.NoError(t, err)
+	require.NotNil(t, added)
+	assert.Equal(t, int64(0), added.NumRow())
+
+	sparse := typeutil.CreateAndSortSparseFloatRow(map[uint32]float32{7: 1})
+	_, avgdl, err := idfOracle.BuildIDF(104, &schemapb.SparseFloatArray{Contents: [][]byte{sparse}, Dim: 1})
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), avgdl)
+}
+
+func TestBuildIDFNewFieldAfterSyncFunctions(t *testing.T) {
+	idfOracle := NewIDFOracle("test-channel", []*schemapb.FunctionSchema{{
+		Type:           schemapb.FunctionType_BM25,
+		InputFieldIds:  []int64{101},
+		OutputFieldIds: []int64{102},
+	}}).(*idfOracle)
+	idfOracle.dirPath = t.TempDir()
+	idfOracle.Start()
+	defer idfOracle.Close()
+
+	sparse := typeutil.CreateAndSortSparseFloatRow(map[uint32]float32{7: 1})
+	_, _, err := idfOracle.BuildIDF(104, &schemapb.SparseFloatArray{Contents: [][]byte{sparse}, Dim: 1})
+	require.Error(t, err)
+
+	err = idfOracle.SyncFunctions([]*schemapb.FunctionSchema{
+		{
+			Type:           schemapb.FunctionType_BM25,
+			InputFieldIds:  []int64{101},
+			OutputFieldIds: []int64{102},
+		},
+		{
+			Type:           schemapb.FunctionType_BM25,
+			InputFieldIds:  []int64{103},
+			OutputFieldIds: []int64{104},
+		},
+	})
+	require.NoError(t, err)
+
+	_, avgdl, err := idfOracle.BuildIDF(104, &schemapb.SparseFloatArray{Contents: [][]byte{sparse}, Dim: 1})
+	require.NoError(t, err)
+	assert.Equal(t, float64(0), avgdl)
 }
