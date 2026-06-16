@@ -159,6 +159,7 @@ func NewNode(info *nodeDef, t *searchTask) (*Node, error) {
 type searchReduceOperator struct {
 	traceCtx           context.Context
 	primaryFieldSchema *schemapb.FieldSchema
+	schema             *schemapb.CollectionSchema
 	nq                 int64
 	topK               int64
 	offset             int64
@@ -175,6 +176,7 @@ func newSearchReduceOperator(t *searchTask, _ map[string]any) (operator, error) 
 	return &searchReduceOperator{
 		traceCtx:           t.TraceCtx(),
 		primaryFieldSchema: pkField,
+		schema:             t.schema.CollectionSchema,
 		nq:                 t.GetNq(),
 		topK:               t.GetTopk(),
 		offset:             t.GetOffset(),
@@ -191,7 +193,7 @@ func (op *searchReduceOperator) run(ctx context.Context, span trace.Span, inputs
 	metricType := getMetricType(toReduceResults)
 	result, err := reduceResults(
 		op.traceCtx, toReduceResults, op.nq, op.topK, op.offset,
-		metricType, op.primaryFieldSchema.GetDataType(), op.queryInfos[0], false, op.collectionID, op.partitionIDs)
+		metricType, op.primaryFieldSchema.GetDataType(), op.queryInfos[0], false, op.collectionID, op.partitionIDs, op.schema)
 	if err != nil {
 		return nil, err
 	}
@@ -202,6 +204,7 @@ type hybridSearchReduceOperator struct {
 	traceCtx           context.Context
 	subReqs            []*internalpb.SubSearchRequest
 	primaryFieldSchema *schemapb.FieldSchema
+	schema             *schemapb.CollectionSchema
 	collectionID       int64
 	partitionIDs       []int64
 	queryInfos         []*planpb.QueryInfo
@@ -216,6 +219,7 @@ func newHybridSearchReduceOperator(t *searchTask, _ map[string]any) (operator, e
 		traceCtx:           t.TraceCtx(),
 		subReqs:            t.GetSubReqs(),
 		primaryFieldSchema: pkField,
+		schema:             t.schema.CollectionSchema,
 		collectionID:       t.GetCollectionID(),
 		partitionIDs:       t.GetPartitionIDs(),
 		queryInfos:         t.queryInfos,
@@ -258,7 +262,7 @@ func (op *hybridSearchReduceOperator) run(ctx context.Context, span trace.Span, 
 		subMetricType := getMetricType(internalResults)
 		result, err := reduceResults(
 			op.traceCtx, internalResults, subReq.GetNq(), subReq.GetTopk(), subReq.GetOffset(), subMetricType,
-			op.primaryFieldSchema.GetDataType(), op.queryInfos[index], true, op.collectionID, op.partitionIDs)
+			op.primaryFieldSchema.GetDataType(), op.queryInfos[index], true, op.collectionID, op.partitionIDs, op.schema)
 		if err != nil {
 			return nil, err
 		}

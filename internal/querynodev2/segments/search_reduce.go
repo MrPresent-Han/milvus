@@ -215,11 +215,17 @@ func (sbr *SearchGroupByReduce) ReduceSearchResultData(ctx context.Context, sear
 			resultOffsets[i][j] = resultOffsets[i][j-1] + searchResultData[i].Topks[j-1]
 		}
 		ret.AllSearchCount += searchResultData[i].GetAllSearchCount()
+		if err := reduce.ValidateGroupByFieldValue(searchResultData[i], info.GetGroupByFieldType(), info.IsGroupByFieldTypeSet()); err != nil {
+			return nil, err
+		}
 		groupByValIterator[i] = typeutil.GetDataIterator(searchResultData[i].GetGroupByFieldValue())
 	}
-	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(searchResultData[0].GetGroupByFieldValue().GetType(), true, int(info.GetTopK()))
+	if !info.IsGroupByFieldTypeSet() {
+		return ret, merr.WrapErrServiceInternal("missing expected group by field type for group by reduce")
+	}
+	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(info.GetGroupByFieldType(), true, int(info.GetTopK()))
 	if err != nil {
-		return ret, merr.WrapErrServiceInternal("failed to construct group by field data builder, this is abnormal as segcore should always set up a group by field, no matter data status, check code on qn", err.Error())
+		return ret, merr.WrapErrServiceInternal("failed to construct group by field data builder", err.Error())
 	}
 
 	idxComputers := make([]*typeutil.FieldDataIdxComputer, len(searchResultData))

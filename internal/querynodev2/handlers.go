@@ -465,10 +465,20 @@ func (node *QueryNode) searchChannel(ctx context.Context, req *querypb.SearchReq
 		req.GetSegmentIDs(),
 	))
 
-	resp, err := segments.ReduceSearchOnQueryNode(ctx, results,
-		reduce.NewReduceSearchResultInfo(req.GetReq().GetNq(),
-			req.GetReq().GetTopk()).WithMetricType(req.GetReq().GetMetricType()).WithGroupByField(req.GetReq().GetGroupByFieldId()).
-			WithGroupSize(req.GetReq().GetGroupSize()).WithAdvance(req.GetReq().GetIsAdvanced()))
+	reduceInfo := reduce.NewReduceSearchResultInfo(req.GetReq().GetNq(),
+		req.GetReq().GetTopk()).WithMetricType(req.GetReq().GetMetricType()).WithGroupByField(req.GetReq().GetGroupByFieldId()).
+		WithGroupSize(req.GetReq().GetGroupSize()).WithAdvance(req.GetReq().GetIsAdvanced())
+	if req.GetReq().GetGroupByFieldId() > 0 {
+		collection := node.manager.Collection.Get(req.GetReq().GetCollectionID())
+		if collection == nil {
+			return nil, merr.WrapErrCollectionNotFound(req.GetReq().GetCollectionID())
+		}
+		reduceInfo, err = reduceInfo.WithGroupByFieldTypeFromSearchPlan(collection.Schema(), req.GetReq().GetSerializedExprPlan())
+		if err != nil {
+			return nil, err
+		}
+	}
+	resp, err := segments.ReduceSearchOnQueryNode(ctx, results, reduceInfo)
 	if err != nil {
 		return nil, err
 	}

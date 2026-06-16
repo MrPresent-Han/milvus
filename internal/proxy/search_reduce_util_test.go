@@ -160,9 +160,9 @@ func (struts *SearchReduceUtilTestSuite) TestReduceSearchResultWithEmtpyGroupDat
 		PrimaryFieldName: "",
 	}
 	results, err := reduceSearchResultDataWithGroupBy(context.Background(), []*schemapb.SearchResultData{emptyData},
-		nq, topk, "L2", schemapb.DataType_Int64, 0, 1)
+		nq, topk, "L2", schemapb.DataType_Int64, 0, 1, schemapb.DataType_None, false)
 	struts.Error(err)
-	struts.ErrorContains(err, "failed to construct group by field data builder")
+	struts.ErrorContains(err, "missing expected group by field type")
 	struts.Nil(results.Results.GetGroupByFieldValue())
 }
 
@@ -247,7 +247,7 @@ func (struts *SearchReduceUtilTestSuite) TestReduceWithEmptyFieldsData() {
 			},
 		}
 
-		results, err := reduceSearchResultDataWithGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, "L2", schemapb.DataType_Int64, offset, int64(2))
+		results, err := reduceSearchResultDataWithGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, "L2", schemapb.DataType_Int64, offset, int64(2), schemapb.DataType_VarChar, true)
 		struts.NoError(err)
 		struts.NotNil(results)
 		// FieldsData should be empty since all inputs were empty
@@ -256,7 +256,7 @@ func (struts *SearchReduceUtilTestSuite) TestReduceWithEmptyFieldsData() {
 
 	// Test reduceAdvanceGroupBy with empty FieldsData
 	{
-		results, err := reduceAdvanceGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, schemapb.DataType_Int64, "L2")
+		results, err := reduceAdvanceGroupBy(ctx, []*schemapb.SearchResultData{searchResultData1, searchResultData2}, nq, topK, schemapb.DataType_Int64, "L2", schemapb.DataType_VarChar, true)
 		struts.NoError(err)
 		struts.NotNil(results)
 		// FieldsData should be empty since all inputs were empty

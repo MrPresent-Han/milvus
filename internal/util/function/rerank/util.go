@@ -25,7 +25,7 @@ import (
 	"strings"
 
 	"github.com/milvus-io/milvus-proto/go-api/v2/schemapb"
-	"github.com/milvus-io/milvus/pkg/v2/log"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 	"github.com/milvus-io/milvus/pkg/v2/util/merr"
 	"github.com/milvus-io/milvus/pkg/v2/util/metric"
 	"github.com/milvus-io/milvus/pkg/v2/util/typeutil"
@@ -300,7 +300,10 @@ func newGroupingIDScores[T PKType](idScores map[T]float32, idLocations map[T]IDL
 	buckets := make(map[interface{}]*Group[T])
 	for _, id := range ids {
 		score := idScores[id]
-		groupVal := idGroup[id]
+		groupVal, ok := idGroup[id]
+		if !ok {
+			return nil, fmt.Errorf("missing group by value for id %v", id)
+		}
 		if buckets[groupVal] == nil {
 			buckets[groupVal] = &Group[T]{
 				idList:    make([]T, 0),
@@ -537,8 +540,10 @@ func getPKType(collSchema *schemapb.CollectionSchema) (schemapb.DataType, error)
 func genIdGroupingMap(multipSearchResultData []*schemapb.SearchResultData) (map[any]any, error) {
 	idGroupValue := map[any]any{}
 	for _, result := range multipSearchResultData {
+		if err := reduce.ValidateGroupByFieldValue(result, schemapb.DataType_None, false); err != nil {
+			return nil, err
+		}
 		if result.GetGroupByFieldValue() == nil {
-			log.Warn("Group value is nil, this is due to empty results in search reduce phase")
 			continue
 		}
 		size := typeutil.GetSizeOfIDs(result.Ids)

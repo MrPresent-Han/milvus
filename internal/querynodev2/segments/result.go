@@ -56,7 +56,7 @@ func ReduceSearchResults(ctx context.Context, results []*internalpb.SearchResult
 		return result != nil && result.GetSlicedBlob() != nil
 	})
 
-	if len(results) == 1 {
+	if len(results) == 1 && info.GetGroupByFieldId() <= 0 {
 		log.Debug("Shortcut return ReduceSearchResults", zap.Any("result info", info))
 		return results[0], nil
 	}

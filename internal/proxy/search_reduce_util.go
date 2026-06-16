@@ -60,7 +60,8 @@ func reduceSearchResult(ctx context.Context, subSearchResultData []*schemapb.Sea
 			// for hybrid search group by, we cannot reduce result for results from one single search path,
 			// because the final score has not been accumulated, also, offset cannot be applied
 			return reduceAdvanceGroupBy(ctx,
-				subSearchResultData, reduceInfo.GetNq(), reduceInfo.GetTopK(), reduceInfo.GetPkType(), reduceInfo.GetMetricType())
+				subSearchResultData, reduceInfo.GetNq(), reduceInfo.GetTopK(), reduceInfo.GetPkType(), reduceInfo.GetMetricType(),
+				reduceInfo.GetGroupByFieldType(), reduceInfo.IsGroupByFieldTypeSet())
 		}
 		return reduceSearchResultDataWithGroupBy(ctx,
 			subSearchResultData,
@@ -69,7 +70,9 @@ func reduceSearchResult(ctx context.Context, subSearchResultData []*schemapb.Sea
 			reduceInfo.GetMetricType(),
 			reduceInfo.GetPkType(),
 			reduceInfo.GetOffset(),
-			reduceInfo.GetGroupSize())
+			reduceInfo.GetGroupSize(),
+			reduceInfo.GetGroupByFieldType(),
+			reduceInfo.IsGroupByFieldTypeSet())
 	}
 	return reduceSearchResultDataNoGroupBy(ctx,
 		subSearchResultData,
@@ -105,8 +108,14 @@ func checkResultDatas(ctx context.Context, subSearchResultData []*schemapb.Searc
 
 func reduceAdvanceGroupBy(ctx context.Context, subSearchResultData []*schemapb.SearchResultData,
 	nq int64, topK int64, pkType schemapb.DataType, metricType string,
+	groupByFieldType schemapb.DataType, groupByFieldTypeSet bool,
 ) (*milvuspb.SearchResults, error) {
 	log.Ctx(ctx).Debug("reduceAdvanceGroupBY", zap.Int("len(subSearchResultData)", len(subSearchResultData)), zap.Int64("nq", nq))
+	for _, data := range subSearchResultData {
+		if err := reduce.ValidateGroupByFieldValue(data, groupByFieldType, groupByFieldTypeSet); err != nil {
+			return nil, err
+		}
+	}
 	// for advance group by, offset is not applied, so just return when there's only one channel
 	if len(subSearchResultData) == 1 {
 		return &milvuspb.SearchResults{
@@ -165,9 +174,12 @@ func reduceAdvanceGroupBy(ctx context.Context, subSearchResultData []*schemapb.S
 		}
 	}
 
-	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(subSearchResultData[0].GetGroupByFieldValue().GetType(), true, int(limit))
+	if !groupByFieldTypeSet {
+		return ret, merr.WrapErrServiceInternal("missing expected group by field type for hybrid group by reduce")
+	}
+	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(groupByFieldType, true, int(limit))
 	if err != nil {
-		return ret, merr.WrapErrServiceInternal("failed to construct group by field data builder, this is abnormal as segcore should always set up a group by field, no matter data status, check code on qn", err.Error())
+		return ret, merr.WrapErrServiceInternal("failed to construct group by field data builder", err.Error())
 	}
 	// reducing nq * topk results
 	for nqIdx := int64(0); nqIdx < nq; nqIdx++ {
@@ -222,6 +234,8 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 	pkType schemapb.DataType,
 	offset int64,
 	groupSize int64,
+	groupByFieldType schemapb.DataType,
+	groupByFieldTypeSet bool,
 ) (*milvuspb.SearchResults, error) {
 	tr := timerecord.NewTimeRecorder("reduceSearchResultData")
 	defer func() {
@@ -258,6 +272,11 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 	} else {
 		ret.GetResults().AllSearchCount = allSearchCount
 	}
+	for _, data := range subSearchResultData {
+		if err := reduce.ValidateGroupByFieldValue(data, groupByFieldType, groupByFieldTypeSet); err != nil {
+			return ret, err
+		}
+	}
 	hasElementIndices, err := checkElementIndices(subSearchResultData)
 	if err != nil {
 		return ret, err
@@ -290,9 +309,12 @@ func reduceSearchResultDataWithGroupBy(ctx context.Context, subSearchResultData 
 		subSearchGroupByValIterator[i] = typeutil.GetDataIterator(subSearchResultData[i].GetGroupByFieldValue())
 	}
 
-	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(subSearchResultData[0].GetGroupByFieldValue().GetType(), true, int(limit))
+	if !groupByFieldTypeSet {
+		return ret, merr.WrapErrServiceInternal("missing expected group by field type for group by reduce")
+	}
+	gpFieldBuilder, err := typeutil.NewFieldDataBuilder(groupByFieldType, true, int(limit))
 	if err != nil {
-		return ret, merr.WrapErrServiceInternal("failed to construct group by field data builder, this is abnormal as segcore should always set up a group by field, no matter data status, check code on qn", err.Error())
+		return ret, merr.WrapErrServiceInternal("failed to construct group by field data builder", err.Error())
 	}
 
 	idxComputers := make([]*typeutil.FieldDataIdxComputer, subSearchNum)
@@ -577,7 +599,7 @@ func fillInEmptyResult(numQueries int64) *milvuspb.SearchResults {
 	}
 }
 
-func reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResults, nq, topK, offset int64, metricType string, pkType schemapb.DataType, queryInfo *planpb.QueryInfo, isAdvance bool, collectionID int64, partitionIDs []int64) (*milvuspb.SearchResults, error) {
+func reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResults, nq, topK, offset int64, metricType string, pkType schemapb.DataType, queryInfo *planpb.QueryInfo, isAdvance bool, collectionID int64, partitionIDs []int64, schema *schemapb.CollectionSchema) (*milvuspb.SearchResults, error) {
 	ctx, sp := otel.Tracer(typeutil.ProxyRole).Start(ctx, "reduceResults")
 	defer sp.End()
 
@@ -599,9 +621,16 @@ func reduceResults(ctx context.Context, toReduceResults []*internalpb.SearchResu
 		zap.Int64("collection", collectionID),
 		zap.Int64s("partitionIDs", partitionIDs),
 		zap.Int("number of valid search results", len(validSearchResults)))
-	var result *milvuspb.SearchResults
-	result, err = reduceSearchResult(ctx, validSearchResults, reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metricType).WithPkType(pkType).
-		WithOffset(offset).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()).WithAdvance(isAdvance))
+	groupByFieldType, groupByFieldTypeSet, err := reduce.ResolveGroupByFieldType(schema, queryInfo.GetGroupByFieldId(), queryInfo.GetJsonType())
+	if err != nil {
+		return nil, err
+	}
+	reduceInfo := reduce.NewReduceSearchResultInfo(nq, topK).WithMetricType(metricType).WithPkType(pkType).
+		WithOffset(offset).WithGroupByField(queryInfo.GetGroupByFieldId()).WithGroupSize(queryInfo.GetGroupSize()).WithAdvance(isAdvance)
+	if groupByFieldTypeSet {
+		reduceInfo.WithGroupByFieldType(groupByFieldType)
+	}
+	result, err := reduceSearchResult(ctx, validSearchResults, reduceInfo)
 	if err != nil {
 		log.Warn("failed to reduce search results", zap.Error(err))
 		return nil, err

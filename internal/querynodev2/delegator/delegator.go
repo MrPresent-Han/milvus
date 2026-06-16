@@ -526,12 +526,15 @@ func (sd *shardDelegator) Search(ctx context.Context, req *querypb.SearchRequest
 					return nil, err
 				}
 
-				return segments.ReduceSearchOnQueryNode(ctx,
-					results,
-					reduce.NewReduceSearchResultInfo(searchReq.GetReq().GetNq(),
-						searchReq.GetReq().GetTopk()).WithMetricType(searchReq.GetReq().GetMetricType()).
-						WithGroupByField(searchReq.GetReq().GetGroupByFieldId()).
-						WithGroupSize(searchReq.GetReq().GetGroupSize()))
+				reduceInfo, err := reduce.NewReduceSearchResultInfo(searchReq.GetReq().GetNq(),
+					searchReq.GetReq().GetTopk()).WithMetricType(searchReq.GetReq().GetMetricType()).
+					WithGroupByField(searchReq.GetReq().GetGroupByFieldId()).
+					WithGroupSize(searchReq.GetReq().GetGroupSize()).
+					WithGroupByFieldTypeFromSearchPlan(sd.collection.Schema(), searchReq.GetReq().GetSerializedExprPlan())
+				if err != nil {
+					return nil, err
+				}
+				return segments.ReduceSearchOnQueryNode(ctx, results, reduceInfo)
 			})
 			futures[index] = future
 		}
