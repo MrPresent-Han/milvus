@@ -292,6 +292,10 @@ message AlterCollectionMessageHeader {
     CacheExpirations cache_expirations = 4;
     repeated int64 flushed_segment_ids = 5; // will be filled by wal shard manager.
     repeated int64 dropped_field_ids = 6; // field IDs removed by this alter operation, used to cascade-delete indexes in ack callback.
+    // Optional. Present only when this alter adds backfilled (function-output) fields:
+    // it declares the field set so the ack callback registers the bump_defence gate
+    // (message declares, ack registers). Absent for any other alter -> no gate action.
+    FieldBackfill field_backfill = 7;
 }
 
 // AlterCollectionMessageBody is the body of alter collection message.
@@ -812,6 +816,12 @@ message BatchUpdateManifestMessageHeader {
 // BatchUpdateManifestMessageBody is the body of batch update manifest message.
 message BatchUpdateManifestMessageBody {
     repeated BatchUpdateManifestItem items = 1;
+}
+
+// FieldBackfill declares the field set an AlterCollection message backfills, so the
+// message's ack callback can register the bump_defence gate for those fields.
+message FieldBackfill {
+    repeated int64 field_ids = 1;
 }
 
 // BatchUpdateManifestItem is an item in batch update manifest message.

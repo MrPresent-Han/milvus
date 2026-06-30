@@ -1,0 +1,48 @@
+// Licensed to the LF AI & Data foundation under one
+// or more contributor license agreements. See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership. The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License. You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+package coordinator
+
+import (
+	"context"
+	"fmt"
+)
+
+// Primitive-only registration entry point. The registration site lives in rootcoord,
+// which cannot import the coordinator package (import cycle: coordinator imports it).
+// So it depends on a small primitive-only BackfillAtomicGateRegistrar interface defined
+// in its own package; *BackfillAtomicGate satisfies it structurally via this method (no
+// BackfillRound type crosses the package boundary).
+
+// RegisterWatermark registers a round whose writes are expressed as a schema-version
+// watermark (internal add_function_field; the DDL auto-starts the bump-schema
+// compaction). It is called from the AlterCollection ack callback (message declares,
+// ack registers), so a failed broadcast never arms a gate and a registration failure is
+// retried by the ack loop. vectorFieldIDs is the subset of fieldIDs with a vector data
+// type — those additionally hold the round until their index covers every pre-tick
+// sealed segment.
+//
+// roundID is a unique allocated ID; the round's Source ("watermark:<V>", the schema
+// version uniquely identifies the schema-change round) provides idempotency on retry.
+func (r *BackfillAtomicGate) RegisterWatermark(ctx context.Context, collectionID, roundID int64, fieldIDs, vectorFieldIDs []int64, watermark int32, schemaChangeTimeTick uint64) error {
+	return r.Register(ctx, &BackfillRound{
+		CollectionID: collectionID,
+		RoundID:      roundID,
+		Source:       fmt.Sprintf("watermark:%d", watermark),
+		Fields:       fieldIDs,
+		Scope:        NewWatermarkScope(watermark, schemaChangeTimeTick, vectorFieldIDs),
+	})
+}

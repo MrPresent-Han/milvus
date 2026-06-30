@@ -27,6 +27,7 @@ import (
 	"github.com/bytedance/mockey"
 	"github.com/cockroachdb/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/milvus-io/milvus-proto/go-api/v3/commonpb"
 	"github.com/milvus-io/milvus-proto/go-api/v3/milvuspb"
@@ -38,6 +39,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/testutil"
 	"github.com/milvus-io/milvus/pkg/v3/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v3/proto/indexpb"
+	"github.com/milvus-io/milvus/pkg/v3/proto/proxypb"
 	"github.com/milvus-io/milvus/pkg/v3/util/etcd"
 	"github.com/milvus-io/milvus/pkg/v3/util/merr"
 	"github.com/milvus-io/milvus/pkg/v3/util/paramtable"
@@ -665,4 +667,23 @@ func TestMixCoord_ExternalCollectionRefreshMethods(t *testing.T) {
 		assert.NotNil(t, resp)
 		assert.Equal(t, 0, len(resp.GetJobs()))
 	})
+}
+
+func TestMixCoordPushGatedFields(t *testing.T) {
+	// mixCoordImpl implements ProxyGatePusher by fanning the gated set out through the
+	// proxy meta-cache invalidation with the defence payload.
+	var got *proxypb.InvalidateCollMetaCacheRequest
+	m := mockey.Mock((*mixCoordImpl).InvalidateCollectionMetaCache).To(
+		func(s *mixCoordImpl, ctx context.Context, req *proxypb.InvalidateCollMetaCacheRequest) (*commonpb.Status, error) {
+			got = req
+			return &commonpb.Status{}, nil
+		}).Build()
+	defer m.UnPatch()
+
+	s := &mixCoordImpl{}
+	require.NoError(t, s.PushGatedFields(context.Background(), 100, []int64{10, 11}))
+	require.NotNil(t, got)
+	assert.Equal(t, int64(100), got.GetCollectionID())
+	assert.True(t, got.GetDefenceUpdate())
+	assert.Equal(t, []int64{10, 11}, got.GetDefenceGatedFields())
 }

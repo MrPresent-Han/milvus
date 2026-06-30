@@ -137,15 +137,26 @@ func (c *Core) broadcastAlterCollectionSchemaAdd(ctx context.Context, broadcaste
 	channels := make([]string, 0, len(coll.VirtualChannelNames)+1)
 	channels = append(channels, streaming.WAL().ControlChannel())
 	channels = append(channels, coll.VirtualChannelNames...)
+	header := &messagespb.AlterCollectionMessageHeader{
+		DbId:         coll.DBID,
+		CollectionId: coll.CollectionID,
+		UpdateMask: &fieldmaskpb.FieldMask{
+			Paths: []string{message.FieldMaskCollectionSchema, message.FieldMaskCollectionProperties},
+		},
+		CacheExpirations: cacheExpirations,
+	}
+	// bump_defence: a newly-added FUNCTION OUTPUT field must be gated until the
+	// bump-schema backfill covers every segment. The message DECLARES the field and the
+	// ack callback registers the gate (same pattern as the Spark field_backfill): a
+	// failed broadcast never arms a gate, a registration failure is retried by the ack
+	// loop, and the ack knows the DDL's WAL timetick (the write-side checkpoint
+	// threshold). A regular plain add_field (unbound) is born correctly-served as
+	// NULL -> no declaration, no gate.
+	if plan.HasField() && plan.Field.GetIsFunctionOutput() {
+		header.FieldBackfill = &messagespb.FieldBackfill{FieldIds: []int64{plan.Field.GetFieldID()}}
+	}
 	msg := message.NewAlterCollectionMessageBuilderV2().
-		WithHeader(&messagespb.AlterCollectionMessageHeader{
-			DbId:         coll.DBID,
-			CollectionId: coll.CollectionID,
-			UpdateMask: &fieldmaskpb.FieldMask{
-				Paths: []string{message.FieldMaskCollectionSchema, message.FieldMaskCollectionProperties},
-			},
-			CacheExpirations: cacheExpirations,
-		}).
+		WithHeader(header).
 		WithBody(&messagespb.AlterCollectionMessageBody{
 			Updates: &messagespb.AlterCollectionMessageUpdates{
 				Schema:     schema,
@@ -156,6 +167,38 @@ func (c *Core) broadcastAlterCollectionSchemaAdd(ctx context.Context, broadcaste
 		MustBuildBroadcast()
 	if _, err := broadcaster.Broadcast(ctx, msg); err != nil {
 		return err
+	}
+	return nil
+}
+
+// registerFunctionFieldGate registers the bump_defence watermark round declared by an
+// AlterCollection message (header.field_backfill). It runs in the ack callback: the
+// message declares, the ack registers -- so a failed broadcast never arms a gate, and an
+// error returned here propagates into the ack retry loop (fail-closed without failing
+// the user DDL). The round carries the DDL's WAL timetick as its time axis (growing
+// segments and vector-index coverage are cut on it) and the schema the DDL produced, so
+// the gated fields with a vector data type are recorded on the round — those
+// additionally hold it until their index covers every pre-tick sealed segment.
+// NOTE: the F-in-load_fields guard is deferred; registering unconditionally for a
+// function output field over-protects (safe direction), never leaks a partial.
+func (c *Core) registerFunctionFieldGate(ctx context.Context, collectionID int64, fieldIDs []int64, schema *schemapb.CollectionSchema, schemaChangeTimeTick uint64) error {
+	if c.backfillGate == nil || len(fieldIDs) == 0 {
+		return nil
+	}
+	roundID, err := c.idAllocator.AllocOne()
+	if err != nil {
+		return merr.Wrap(err, "allocate bump_defence roundID")
+	}
+	gated := typeutil.NewUniqueSet(fieldIDs...)
+	vectorFieldIDs := make([]int64, 0, len(fieldIDs))
+	for _, field := range schema.GetFields() {
+		if gated.Contain(field.GetFieldID()) && typeutil.IsVectorType(field.GetDataType()) {
+			vectorFieldIDs = append(vectorFieldIDs, field.GetFieldID())
+		}
+	}
+	if err := c.backfillGate.RegisterWatermark(ctx, collectionID, roundID, fieldIDs, vectorFieldIDs,
+		schema.GetVersion(), schemaChangeTimeTick); err != nil {
+		return merr.Wrap(err, "register bump_defence gate for added field")
 	}
 	return nil
 }
