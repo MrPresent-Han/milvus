@@ -295,6 +295,7 @@ if [[ ${RUN_CPPLINT} == "ON" ]]; then
   fi
   echo "clang-format check passed!"
 else
+  jobs=4	
   # compile and build
   if [ "$CMAKE_GENERATOR" = "Ninja" ]; then
     ninja -j ${jobs} install || exit 1

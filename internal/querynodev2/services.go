@@ -1838,8 +1838,12 @@ func (node *QueryNode) UpdateIndex(ctx context.Context, req *querypb.UpdateIndex
 		return merr.Status(err), nil
 	}
 	var firstErr error
+	channel := req.GetChannel()
 	for _, segment := range node.manager.Segment.GetBy(segments.SegmentFilterFunc(func(s segments.Segment) bool {
-		return s.Collection() == req.GetCollectionID()
+		// Scope to the source vchannel's segments only: the cursor is per-vchannel, so one
+		// channel's version must not advance another channel's segments' monotonic guard.
+		return s.Collection() == req.GetCollectionID() &&
+			(channel == "" || s.Shard().VirtualName() == channel)
 	})) {
 		if err := segment.UpdateIndexMetaBlob(blob, version); err != nil {
 			log.Warn(ctx, "failed to update segment index meta",
@@ -1855,21 +1859,41 @@ func (node *QueryNode) UpdateIndex(ctx context.Context, req *querypb.UpdateIndex
 }
 
 // catchUpSegmentIndexMeta applies the delegator's current full index list to the named
-// newly-published segments (which missed the DDL fan-out while loading). The per-segment
-// monotonic version guard makes it idempotent.
+// newly-published segments (which missed the DDL fan-out while loading). It goes through the
+// SAME collection-meta update path as the normal fan-out so the node's collection-level meta
+// (CCollection) is advanced too — otherwise plan creation's collection-level gate
+// (col->get_index_meta()->HasField) throws FieldNotLoaded before ever consulting the segment.
+// The per-segment monotonic version guard keeps it idempotent.
 func (node *QueryNode) catchUpSegmentIndexMeta(ctx context.Context, req *querypb.UpdateIndexRequest) *commonpb.Status {
-	collection := node.manager.Collection.Get(req.GetCollectionID())
-	if collection == nil {
+	if node.manager.Collection.Get(req.GetCollectionID()) == nil {
 		return merr.Success() // released; nothing to catch up
 	}
-	// Union the caught-up DDL fields into the worker's current index meta (which already
-	// carries the base indexes each segment loaded) so applying it never drops the base.
-	addMeta := segments.ComposeIndexMeta(ctx, req.GetCatchupIndexInfos(), collection.Schema())
-	meta := collection.UnionIndexMeta(addMeta)
-	if meta == nil {
+	actions := make([]*querypb.UpdateIndexRequest_Action, 0, len(req.GetCatchupIndexInfos()))
+	for _, info := range req.GetCatchupIndexInfos() {
+		if info == nil {
+			continue
+		}
+		actions = append(actions, &querypb.UpdateIndexRequest_Action{
+			Op: &querypb.UpdateIndexRequest_Action_AddIndexRequest{
+				AddIndexRequest: &querypb.UpdateIndexRequest_AddIndex{IndexInfo: info},
+			},
+		})
+	}
+	// Merge into the collection meta (per-vchannel monotonic) and get the full meta + version.
+	newMeta, version, err := node.manager.Collection.UpdateIndex(req.GetCollectionID(), &querypb.UpdateIndexRequest{
+		CollectionID:   req.GetCollectionID(),
+		Channel:        req.GetChannel(),
+		Actions:        actions,
+		IndexBarrierTs: req.GetIndexBarrierTs(),
+	})
+	if err != nil {
+		mlog.Warn(ctx, "catch-up: failed to update collection index meta", mlog.Err(err))
+		return merr.Status(err)
+	}
+	if newMeta == nil {
 		return merr.Success()
 	}
-	blob, err := proto.Marshal(meta)
+	blob, err := proto.Marshal(newMeta)
 	if err != nil {
 		mlog.Warn(ctx, "catch-up: failed to marshal collection index meta", mlog.Err(err))
 		return merr.Status(err)
@@ -1880,7 +1904,7 @@ func (node *QueryNode) catchUpSegmentIndexMeta(ctx context.Context, req *querypb
 		if seg == nil {
 			continue
 		}
-		if err := seg.UpdateIndexMetaBlob(blob, req.GetIndexBarrierTs()); err != nil {
+		if err := seg.UpdateIndexMetaBlob(blob, version); err != nil {
 			mlog.Warn(ctx, "catch-up segment index meta failed", mlog.Int64("segmentID", segID), mlog.Err(err))
 			if firstErr == nil {
 				firstErr = err

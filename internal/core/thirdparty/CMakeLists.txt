@@ -20,7 +20,7 @@ else ()
     set(EP_LOG_OPTIONS)
 endif ()
 
-set(MAKE_BUILD_ARGS "-j6")
+set(MAKE_BUILD_ARGS "-j4")
 
 include(FetchContent)
 set(FETCHCONTENT_BASE_DIR  ${MILVUS_BINARY_DIR}/3rdparty_download)

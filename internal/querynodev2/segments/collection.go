@@ -197,8 +197,11 @@ func (m *collectionManager) UpdateIndex(collectionID int64, req *querypb.UpdateI
 		return nil, 0, merr.WrapErrCollectionNotFound(collectionID, "collection not found in querynode collection manager")
 	}
 
+	// Per-vchannel cursor: a DDL ts is only monotonic within its own PChannel, so gate
+	// this vchannel's update against this vchannel's cursor (a nil-map read yields 0).
+	channel := req.GetChannel()
 	version := req.GetIndexBarrierTs()
-	cur := collection.indexMetaVersion.Load()
+	cur := collection.indexMetaVersion[channel]
 	if version > cur {
 		// Newer: merge every field of this DDL and advance the collection-object meta.
 		if newMeta := mergeIndexActions(collection.indexMeta.Load(), req.GetActions()); newMeta != nil {
@@ -206,7 +209,10 @@ func (m *collectionManager) UpdateIndex(collectionID int64, req *querypb.UpdateI
 				return nil, 0, err
 			}
 			collection.indexMeta.Store(newMeta)
-			collection.indexMetaVersion.Store(version)
+			if collection.indexMetaVersion == nil {
+				collection.indexMetaVersion = make(map[string]uint64)
+			}
+			collection.indexMetaVersion[channel] = version
 			return newMeta, version, nil
 		}
 	}
@@ -300,13 +306,6 @@ func unionIndexMeta(base, add *segcorepb.CollectionIndexMeta) *segcorepb.Collect
 		out.MaxIndexRowCount = add.GetMaxIndexRowCount()
 	}
 	return out
-}
-
-// UnionIndexMeta merges add into this collection's current index meta without dropping
-// existing fields, so a publication catch-up can add DDL fields to a segment while keeping
-// the base indexes it already loaded.
-func (c *Collection) UnionIndexMeta(add *segcorepb.CollectionIndexMeta) *segcorepb.CollectionIndexMeta {
-	return unionIndexMeta(c.indexMeta.Load(), add)
 }
 
 // ShouldUpdateCollectionSchema reports whether an UpdateSchema payload would
@@ -458,11 +457,12 @@ type Collection struct {
 	loadFields typeutil.Set[int64]
 
 	// indexMeta is the Go-side copy of the collection index meta, used to merge
-	// single-index UpdateIndex deltas into a full CollectionIndexMeta before pushing
-	// to ccollection + segments. indexMetaVersion is the monotonic apply cursor
-	// (index_barrier_ts).
+	// UpdateIndex deltas into a full CollectionIndexMeta before pushing to ccollection +
+	// segments. indexMetaVersion is the monotonic apply cursor keyed by source vchannel:
+	// a DDL ts (index_barrier_ts) is only comparable within one PChannel, so each vchannel
+	// gets its own cursor. Guarded by collectionManager.mut (its only accessor).
 	indexMeta        atomic.Pointer[segcorepb.CollectionIndexMeta]
-	indexMetaVersion atomic.Uint64
+	indexMetaVersion map[string]uint64
 
 	refCount *atomic.Uint32
 }

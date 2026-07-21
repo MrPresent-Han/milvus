@@ -770,7 +770,7 @@ dataCoord:
     expiry:
       tolerance: -1 # tolerant duration in hours for expiry data, negative value means no toleration and equivalent to zero
     bumpSchemaVersion:
-      enabled: false # Enable schema version bump compaction
+      enabled: true # Enable schema version bump compaction
       triggerInterval: 20 # The time interval in seconds for trigger schema bump compaction
     single:
       ratio:
@@ -1053,7 +1053,7 @@ common:
       splitByAvgSize:
         enabled: true # enable split by average size policy in storage v2
         threshold: 1024 # split by average size policy threshold(in bytes) in storage v2
-    useLoonFFI: false
+    useLoonFFI: true
     enableGrowingSourceFlush: true # enable flushing growing segment payload from QueryNode growing source through StorageV3 manifest path
   # Default value: auto
   # Valid values: [auto, avx512, avx2, avx, sse4_2]

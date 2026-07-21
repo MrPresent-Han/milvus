@@ -216,7 +216,7 @@ func (s *CollectionManagerSuite) TestUpdateIndex() {
 		s.NoError(err)
 		s.Require().NotNil(meta)
 		s.Equal(uint64(100), version)
-		s.Equal(uint64(100), s.cm.Get(1).indexMetaVersion.Load())
+		s.Equal(uint64(100), s.cm.Get(1).indexMetaVersion[""])
 		found := false
 		for _, m := range meta.GetIndexMetas() {
 			if m.GetFieldID() == vecInfo.GetFieldID() {
@@ -227,18 +227,18 @@ func (s *CollectionManagerSuite) TestUpdateIndex() {
 	})
 
 	s.Run("stale_version_returns_current_meta_without_advancing", func() {
-		cur := s.cm.Get(1).indexMetaVersion.Load()
+		cur := s.cm.Get(1).indexMetaVersion[""]
 		s.Require().NotZero(cur)
 		meta, version, err := s.cm.UpdateIndex(1, addReq(cur-1, vecInfo))
 		s.NoError(err)
 		// Stale returns the CURRENT meta+version so the caller can idempotently re-fan.
 		s.NotNil(meta)
 		s.Equal(cur, version)
-		s.Equal(cur, s.cm.Get(1).indexMetaVersion.Load())
+		s.Equal(cur, s.cm.Get(1).indexMetaVersion[""])
 	})
 
 	s.Run("newer_version_but_noop_action_returns_current_without_advancing", func() {
-		cur := s.cm.Get(1).indexMetaVersion.Load()
+		cur := s.cm.Get(1).indexMetaVersion[""]
 		// DropIndex merges to nil (deferred to V2), so even a newer barrier must not
 		// advance the version; the current meta is returned for idempotent re-fan.
 		req := &querypb.UpdateIndexRequest{
@@ -256,7 +256,7 @@ func (s *CollectionManagerSuite) TestUpdateIndex() {
 		s.NoError(err)
 		s.NotNil(meta)
 		s.Equal(cur, version)
-		s.Equal(cur, s.cm.Get(1).indexMetaVersion.Load())
+		s.Equal(cur, s.cm.Get(1).indexMetaVersion[""])
 	})
 
 	s.Run("collection_not_found", func() {

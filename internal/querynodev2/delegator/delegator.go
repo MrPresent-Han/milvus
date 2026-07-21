@@ -335,12 +335,16 @@ func (sd *shardDelegator) catchUpIndexMeta(ctx context.Context, infos []*indexpb
 		req := &querypb.UpdateIndexRequest{
 			Base:              commonpbutil.NewMsgBase(commonpbutil.WithSourceID(paramtable.GetNodeID())),
 			CollectionID:      sd.collectionID,
+			Channel:           sd.vchannelName,
 			CatchupIndexInfos: infos,
 			CatchupSegmentIds: segmentIDs,
 			IndexBarrierTs:    barrierTs,
 		}
 		req.GetBase().TargetID = nodeID
-		if _, err := worker.UpdateIndex(ctx, req); err != nil {
+		// Apply failures come back in Status with a nil gRPC error, so check both — a
+		// swallowed failure would silently publish a stale segment.
+		status, err := worker.UpdateIndex(ctx, req)
+		if err := merr.CheckRPCCall(status, err); err != nil {
 			mlog.Warn(ctx, "catch-up index meta failed", mlog.FieldNodeID(nodeID), mlog.Err(err))
 		}
 	}
@@ -1333,6 +1337,7 @@ func (sd *shardDelegator) UpdateIndex(ctx context.Context, fieldIndexes []*index
 	req := &querypb.UpdateIndexRequest{
 		Base:           commonpbutil.NewMsgBase(commonpbutil.WithSourceID(paramtable.GetNodeID())),
 		CollectionID:   sd.collectionID,
+		Channel:        sd.vchannelName,
 		Actions:        actions,
 		IndexBarrierTs: indexBarrierTs,
 	}

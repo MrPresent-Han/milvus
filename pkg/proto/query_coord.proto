@@ -1060,6 +1060,10 @@ message UpdateIndexRequest {
     // (segments that missed the DDL fan-out while still loading). Set instead of actions.
     repeated index.IndexInfo catchup_index_infos = 5;
     repeated int64 catchup_segment_ids = 6;
+    // Source vchannel of this update. The index-meta cursor is per-vchannel (a DDL ts is only
+    // monotonic within one PChannel), so the receiver gates/apply-fans only this vchannel's
+    // segments against this vchannel's cursor.
+    string channel = 7;
 }
 
 message RunAnalyzerRequest{
