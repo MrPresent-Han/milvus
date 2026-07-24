@@ -58,7 +58,7 @@ func (s *BM25FunctionRunnerSuite) TestBatchRun() {
 		Name:          "test",
 		Type:          schemapb.FunctionType_BM25,
 		InputFieldIds: []int64{101},
-	})
+	}, "")
 	s.Error(err)
 
 	runner, err := NewFunctionRunner(s.schema, &schemapb.FunctionSchema{
@@ -66,7 +66,7 @@ func (s *BM25FunctionRunnerSuite) TestBatchRun() {
 		Type:           schemapb.FunctionType_BM25,
 		InputFieldIds:  []int64{101},
 		OutputFieldIds: []int64{102},
-	})
+	}, "")
 
 	s.NoError(err)
 
@@ -100,7 +100,7 @@ func (s *BM25FunctionRunnerSuite) TestBatchAnalyze() {
 		Type:           schemapb.FunctionType_BM25,
 		InputFieldIds:  []int64{101},
 		OutputFieldIds: []int64{102},
-	})
+	}, "")
 	s.NoError(err)
 
 	analyzer, ok := runner.(Analyzer)

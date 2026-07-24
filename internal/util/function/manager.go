@@ -947,7 +947,8 @@ func BuildEmbeddingRunner(schema *schemapb.CollectionSchema, fn *schemapb.Functi
 
 	schema = proto.Clone(schema).(*schemapb.CollectionSchema)
 	fn = proto.Clone(fn).(*schemapb.FunctionSchema)
-	return NewFunctionRunner(schema, fn)
+	// ingest (StreamingNode) runs in sync/close mode only; resources come from the global map.
+	return NewFunctionRunner(schema, fn, "")
 }
 
 func BuildEmbeddingRunners(schema *schemapb.CollectionSchema) ([]FunctionRunner, error) {

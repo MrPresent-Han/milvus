@@ -25,6 +25,7 @@ func mergeSortMultipleSegments(ctx context.Context,
 	plan *datapb.CompactionPlan,
 	collectionID, partitionID, maxRows int64,
 	binlogIO io.BinlogIO,
+	cm storage.ChunkManager,
 	binlogs []*datapb.CompactionSegmentBinlogs,
 	tr *timerecord.TimeRecorder,
 	currentTime time.Time,
@@ -61,6 +62,15 @@ func mergeSortMultipleSegments(ctx context.Context,
 	ttlFieldID := getTTLFieldID(plan.GetSchema())
 	hasTTLField := ttlFieldID >= common.StartOfUserFieldID
 
+	// analyzer resource leases, released AFTER segmentReaders close (defer registered before the
+	// segmentReaders defer → LIFO → readers/tokenizers close first, resource files freed last).
+	var releaseFuncs []func()
+	defer func() {
+		for _, release := range releaseFuncs {
+			release()
+		}
+	}()
+
 	segmentReaders := make([]storage.RecordReader, len(binlogs))
 	defer func() {
 		for _, r := range segmentReaders {
@@ -81,7 +91,13 @@ func mergeSortMultipleSegments(ctx context.Context,
 		if err != nil {
 			return nil, err
 		}
-		materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
+		analyzerExtraInfo, releaseResources, err := prepareAnalyzerExtraInfo(ctx, cm, plan, compactionParams.StorageConfig.GetRootPath(), existingFields)
+		if err != nil {
+			reader.Close()
+			return nil, err
+		}
+		releaseFuncs = append(releaseFuncs, releaseResources)
+		materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields, analyzerExtraInfo)
 		if err != nil {
 			reader.Close()
 			return nil, err

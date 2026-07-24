@@ -63,6 +63,7 @@ var _ Compactor = (*clusteringCompactionTask)(nil)
 
 type clusteringCompactionTask struct {
 	binlogIO   io.BinlogIO
+	cm         storage.ChunkManager
 	logIDAlloc allocator.Interface
 	segIDAlloc allocator.Interface
 
@@ -165,6 +166,7 @@ func newClusterBuffer(id int, writer *MultiSegmentWriter, clusteringKeyFieldStat
 func NewClusteringCompactionTask(
 	ctx context.Context,
 	binlogIO io.BinlogIO,
+	cm storage.ChunkManager,
 	plan *datapb.CompactionPlan,
 	compactionParams compaction.Params,
 ) *clusteringCompactionTask {
@@ -173,6 +175,7 @@ func NewClusteringCompactionTask(
 		ctx:              ctx,
 		cancel:           cancel,
 		binlogIO:         binlogIO,
+		cm:               cm,
 		plan:             plan,
 		tr:               timerecord.NewTimeRecorder("clustering_compaction"),
 		done:             make(chan struct{}, 1),
@@ -619,7 +622,14 @@ func (t *clusteringCompactionTask) mappingSegment(
 		mlog.Warn(context.TODO(), "new binlog record reader wrong", mlog.Err(err))
 		return err
 	}
-	materializer, err := NewRecordMaterializer(t.plan.Schema, t.plan.Schema.GetFunctions(), existingFields)
+	analyzerExtraInfo, releaseResources, err := prepareAnalyzerExtraInfo(ctx, t.cm, t.plan, t.compactionParams.StorageConfig.GetRootPath(), existingFields)
+	if err != nil {
+		rr.Close()
+		mlog.Warn(ctx, "prepare analyzer resources wrong", mlog.Err(err))
+		return err
+	}
+	defer releaseResources() // deferred before rr.Close (reader owns materializer.Close) → LIFO releases files last
+	materializer, err := NewRecordMaterializer(t.plan.Schema, t.plan.Schema.GetFunctions(), existingFields, analyzerExtraInfo)
 	if err != nil {
 		rr.Close()
 		mlog.Warn(ctx, "new record materializer wrong", mlog.Err(err))

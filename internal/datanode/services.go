@@ -275,6 +275,7 @@ func (node *DataNode) CompactionV2(ctx context.Context, req *datapb.CompactionPl
 			task = compactor.NewClusteringCompactionTask(
 				taskCtx,
 				binlogIO,
+				cm,
 				req,
 				compactionParams,
 			)

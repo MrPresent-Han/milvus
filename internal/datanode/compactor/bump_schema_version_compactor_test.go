@@ -905,12 +905,11 @@ func (s *BumpSchemaVersionCompactionTaskSuite) TestSelectFullRewriteRecordDropsD
 	deleteTs := tsoutil.ComposeTSByTime(currentTime.Add(time.Second))
 	entityFilter := compaction.NewEntityFilter(map[any]typeutil.Timestamp{int64(2): deleteTs}, int64(time.Minute), currentTime, 0)
 
-	selection, ttlValues, err := selectFullRewriteRecord(record, pkField, entityFilter, 102, true, nil)
+	selection, err := selectFullRewriteRecord(record, pkField, entityFilter, 102, true)
 	s.Require().NoError(err)
 	s.Require().NotNil(selection)
 	s.Equal(2, selection.Len())
 	s.Equal([]rowRange{{start: 0, end: 1}, {start: 4, end: 5}}, selection.ranges)
-	s.Equal([]int64{keptTTLField, keptTTLField}, ttlValues)
 	s.Equal(1, entityFilter.GetDeletedCount())
 	s.Equal(2, entityFilter.GetExpiredCount())
 }

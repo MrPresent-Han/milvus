@@ -82,7 +82,7 @@ func (s *ClusteringCompactionTaskSuite) setupTest() {
 		return end, nil
 	}).Maybe()
 
-	s.task = NewClusteringCompactionTask(context.Background(), s.mockBinlogIO, nil, compaction.GenParams())
+	s.task = NewClusteringCompactionTask(context.Background(), s.mockBinlogIO, nil, nil, compaction.GenParams())
 
 	params, err := compaction.GenerateJSONParams(nil)
 	if err != nil {

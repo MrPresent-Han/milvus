@@ -132,7 +132,10 @@ func runOne(
 	data *storage.InsertData,
 	assignFn func(*schemapb.CollectionSchema, *schemapb.FunctionSchema, function.FunctionRunner, []any, *storage.InsertData) error,
 ) error {
-	runner, err := function.NewFunctionRunner(schema, fn)
+	// TODO(finding-6b): import + external-table run on the DataNode and must thread a
+	// task-local analyzer extraInfo for remote-resource BM25/MinHash in ref mode. "" keeps
+	// the pre-existing global-map behavior until that sibling fix lands.
+	runner, err := function.NewFunctionRunner(schema, fn, "")
 	if err != nil {
 		return merr.Wrapf(err, "%s runner", fn.GetType())
 	}

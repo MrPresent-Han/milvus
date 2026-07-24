@@ -260,7 +260,16 @@ func (t *sortCompactionTask) sortSegment(ctx context.Context) (*datapb.Compactio
 		srw.Close()
 		return nil, err
 	}
-	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
+	analyzerExtraInfo, releaseResources, err := prepareAnalyzerExtraInfo(ctx, t.cm, t.plan, t.compactionParams.StorageConfig.GetRootPath(), existingFields)
+	if err != nil {
+		log.Warn(ctx, "error preparing analyzer resources", mlog.Err(err))
+		rr.Close()
+		srw.Close()
+		return nil, err
+	}
+	defer releaseResources() // deferred before rr.Close() (which owns materializer.Close) → LIFO releases files last
+
+	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields, analyzerExtraInfo)
 	if err != nil {
 		log.Warn(ctx, "error creating record materializer", mlog.Err(err))
 		rr.Close()

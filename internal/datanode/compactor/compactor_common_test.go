@@ -1,6 +1,7 @@
 package compactor
 
 import (
+	"context"
 	"testing"
 
 	"github.com/cockroachdb/errors"
@@ -9,6 +10,7 @@ import (
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
 	"github.com/milvus-io/milvus/pkg/v3/common"
 	"github.com/milvus-io/milvus/pkg/v3/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v3/proto/internalpb"
 )
 
 func TestCompactionSegmentBinlogFieldsUsesChildFields(t *testing.T) {
@@ -105,6 +107,62 @@ func TestMissingSchemaFunctionsAndDroppedFields(t *testing.T) {
 
 	dropped := droppedSchemaFieldIDs(schema, existingFields)
 	require.Equal(t, []int64{droppedUserField}, dropped)
+}
+
+func bm25AnalyzerTestSchema() *schemapb.CollectionSchema {
+	return &schemapb.CollectionSchema{
+		Fields: []*schemapb.FieldSchema{
+			{FieldID: 100, Name: "text", DataType: schemapb.DataType_VarChar},
+			{FieldID: 101, Name: "sparse", DataType: schemapb.DataType_SparseFloatVector},
+		},
+		Functions: []*schemapb.FunctionSchema{{
+			Name:           "bm25",
+			Type:           schemapb.FunctionType_BM25,
+			InputFieldIds:  []int64{100},
+			OutputFieldIds: []int64{101},
+		}},
+	}
+}
+
+func TestMaterializerNeedsAnalyzerResources(t *testing.T) {
+	schema := bm25AnalyzerTestSchema()
+
+	// function output (101) missing -> a runner will be built -> resources needed
+	require.True(t, materializerNeedsAnalyzerResources(schema, map[int64]struct{}{100: {}}))
+	// function output already present -> no runner -> no resources
+	require.False(t, materializerNeedsAnalyzerResources(schema, map[int64]struct{}{100: {}, 101: {}}))
+	// no functions at all -> no resources (a match field must NOT gate the materializer lease)
+	require.False(t, materializerNeedsAnalyzerResources(&schemapb.CollectionSchema{
+		Fields: []*schemapb.FieldSchema{{FieldID: 100, Name: "text", DataType: schemapb.DataType_VarChar}},
+	}, map[int64]struct{}{100: {}}))
+}
+
+func TestPrepareAnalyzerExtraInfoNoDownload(t *testing.T) {
+	schema := bm25AnalyzerTestSchema()
+
+	// no FileResources on the plan (sync mode) -> "", non-nil noop release, nil cm never touched
+	t.Run("no_resources", func(t *testing.T) {
+		plan := &datapb.CompactionPlan{Schema: schema}
+		extraInfo, release, err := prepareAnalyzerExtraInfo(context.Background(), nil, plan, "", map[int64]struct{}{100: {}})
+		require.NoError(t, err)
+		require.Empty(t, extraInfo)
+		require.NotNil(t, release)
+		release()
+		release() // idempotent, must not panic
+	})
+
+	// resources present but the function output already exists -> lazy-skip, no download
+	t.Run("lazy_skip_when_output_present", func(t *testing.T) {
+		plan := &datapb.CompactionPlan{
+			Schema:        schema,
+			FileResources: []*internalpb.FileResourceInfo{{Id: 7, Name: "dict", Path: "dict.jieba"}},
+		}
+		extraInfo, release, err := prepareAnalyzerExtraInfo(context.Background(), nil, plan, "", map[int64]struct{}{100: {}, 101: {}})
+		require.NoError(t, err)
+		require.Empty(t, extraInfo)
+		require.NotNil(t, release)
+		release()
+	})
 }
 
 func removeFieldBinlogForTest(kvs map[string][]byte, fieldBinlogs map[int64]*datapb.FieldBinlog, fieldID int64) {

@@ -37,8 +37,10 @@ import (
 	"github.com/milvus-io/milvus/internal/storagev2/packed"
 	"github.com/milvus-io/milvus/pkg/v3/objectstorage"
 	"github.com/milvus-io/milvus/pkg/v3/proto/datapb"
+	"github.com/milvus-io/milvus/pkg/v3/proto/internalpb"
 	taskcommon "github.com/milvus-io/milvus/pkg/v3/taskcommon"
 	"github.com/milvus-io/milvus/pkg/v3/util/merr"
+	"github.com/milvus-io/milvus/pkg/v3/util/paramtable"
 )
 
 func TestBumpSchemaVersionCompactionTaskSuite(t *testing.T) {
@@ -198,6 +200,85 @@ func (s *BumpSchemaVersionCompactionTaskSuite) TestBuildCompactionRequest() {
 	s.Equal(int64(10), plan.GetSegmentBinlogs()[0].GetPartitionID())
 	s.Require().NotNil(plan.GetSchema())
 	s.Equal(task.GetTaskProto().GetSchema().GetVersion(), plan.GetSchema().GetVersion())
+}
+
+func (s *BumpSchemaVersionCompactionTaskSuite) addFlushedSegmentForBuild(segmentID int64) {
+	err := s.meta.AddSegment(context.TODO(), &SegmentInfo{
+		SegmentInfo: &datapb.SegmentInfo{
+			ID:            segmentID,
+			CollectionID:  1,
+			PartitionID:   10,
+			InsertChannel: "ch-1",
+			Level:         datapb.SegmentLevel_L1,
+			State:         commonpb.SegmentState_Flushed,
+			NumOfRows:     1000,
+			Binlogs: []*datapb.FieldBinlog{
+				{FieldID: 101, Binlogs: []*datapb.Binlog{{LogID: 1000, EntriesNum: 1000}}},
+			},
+		},
+	})
+	s.NoError(err)
+}
+
+func (s *BumpSchemaVersionCompactionTaskSuite) taskWithFileResourceIds(ids []int64) *bumpSchemaVersionTask {
+	proto := s.generateBasicTask().GetTaskProto()
+	proto.Schema.FileResourceIds = ids
+	return newBumpSchemaVersionTask(proto, s.mockAlloc, s.meta, s.ievm)
+}
+
+// TestBuildCompactionRequest_BumpFileResourcesInRefMode covers the ref-mode FileResources
+// branch of bump BuildCompactionRequest: bump full-rewrite rebuilds the text-match index
+// inline (createTextIndex) and must carry the analyzer resources, mirroring sort/mix. Without
+// them ref mode cannot resolve the referenced analyzer resource and the compaction fails.
+func (s *BumpSchemaVersionCompactionTaskSuite) TestBuildCompactionRequest_BumpFileResourcesInRefMode() {
+	expectedResources := []*internalpb.FileResourceInfo{
+		{Id: 7, Name: "dict", Path: "dict.jieba"},
+	}
+
+	s.Run("ref_mode_carries_resources", func() {
+		pt := paramtable.Get()
+		pt.Save(pt.CommonCfg.DNFileResourceMode.Key, "ref")
+		defer pt.Reset(pt.CommonCfg.DNFileResourceMode.Key)
+
+		s.NoError(s.meta.UpdateFileResources(context.TODO(), expectedResources, 1))
+		s.addFlushedSegmentForBuild(101)
+
+		plan, err := s.taskWithFileResourceIds([]int64{7}).BuildCompactionRequest()
+		s.Require().NoError(err)
+		s.Equal(expectedResources, plan.GetFileResources(),
+			"bump full-rewrite must carry FileResources for inline text-index analyzer resources in ref mode")
+		s.NotEmpty(plan.GetSegmentBinlogs(),
+			"BuildCompactionRequest must run to completion (past the segment loop), not early-return")
+	})
+
+	s.Run("sync_mode_skips_resources", func() {
+		pt := paramtable.Get()
+		pt.Save(pt.CommonCfg.DNFileResourceMode.Key, "sync")
+		defer pt.Reset(pt.CommonCfg.DNFileResourceMode.Key)
+
+		s.addFlushedSegmentForBuild(101)
+
+		plan, err := s.taskWithFileResourceIds([]int64{7}).BuildCompactionRequest()
+		s.Require().NoError(err)
+		s.Empty(plan.GetFileResources(),
+			"sync mode pre-syncs resources, so the plan does not carry them")
+	})
+
+	s.Run("ref_mode_missing_resource_errors", func() {
+		pt := paramtable.Get()
+		pt.Save(pt.CommonCfg.DNFileResourceMode.Key, "ref")
+		defer pt.Reset(pt.CommonCfg.DNFileResourceMode.Key)
+
+		// add the segment so the ONLY failure cause is the missing resource; otherwise a
+		// removed/reordered FileResources block would still fail via SegmentNotFound and this
+		// test would pass spuriously.
+		s.addFlushedSegmentForBuild(101)
+
+		// resource id 7 is never registered in meta -> GetFileResources fails before the segment loop.
+		_, err := s.taskWithFileResourceIds([]int64{7}).BuildCompactionRequest()
+		s.Require().Error(err)
+		s.ErrorContains(err, "get file resources for schema bump compaction failed")
+	})
 }
 
 func (s *BumpSchemaVersionCompactionTaskSuite) TestBuildCompactionRequestCarriesV3ManifestAndPreAllocatedLogs() {

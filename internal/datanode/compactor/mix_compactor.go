@@ -301,7 +301,14 @@ func (t *mixCompactionTask) writeSegment(ctx context.Context,
 	}
 	defer reader.Close()
 
-	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields)
+	analyzerExtraInfo, releaseResources, err := prepareAnalyzerExtraInfo(ctx, t.cm, t.plan, t.compactionParams.StorageConfig.GetRootPath(), existingFields)
+	if err != nil {
+		mlog.Warn(ctx, "compact wrong, failed to prepare analyzer resources", mlog.Err(err))
+		return
+	}
+	defer releaseResources() // deferred before materializer.Close() → LIFO releases resource files last
+
+	materializer, err := NewRecordMaterializer(writerSchema, writerSchema.GetFunctions(), existingFields, analyzerExtraInfo)
 	if err != nil {
 		mlog.Warn(ctx, "compact wrong, failed to init record materializer", mlog.Err(err))
 		return
@@ -491,7 +498,7 @@ func (t *mixCompactionTask) Compact() (*datapb.CompactionPlanResult, error) {
 		mlog.Info(context.TODO(), "compact by merge sort")
 		writerOpts := t.buildWriterOptions(ctx)
 		res, err = mergeSortMultipleSegments(ctxTimeout, t.plan, t.collectionID, t.partitionID, t.maxRows, t.binlogIO,
-			t.plan.GetSegmentBinlogs(), t.tr, t.currentTime, t.plan.GetCollectionTtl(), t.compactionParams,
+			t.cm, t.plan.GetSegmentBinlogs(), t.tr, t.currentTime, t.plan.GetCollectionTtl(), t.compactionParams,
 			writerOpts, t.lobContext, t.sortByFieldIDs)
 		if err != nil {
 			mlog.Warn(context.TODO(), "compact wrong, fail to merge sort segments", mlog.Err(err))

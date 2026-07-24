@@ -57,7 +57,7 @@ type RecordMaterializer struct {
 	schema        *schemapb.CollectionSchema
 }
 
-func NewRecordMaterializer(schema *schemapb.CollectionSchema, functions []*schemapb.FunctionSchema, existingFields map[int64]struct{}) (*RecordMaterializer, error) {
+func NewRecordMaterializer(schema *schemapb.CollectionSchema, functions []*schemapb.FunctionSchema, existingFields map[int64]struct{}, analyzerExtraInfo string) (*RecordMaterializer, error) {
 	materializer := &RecordMaterializer{schema: schema}
 	materializedFields := make(map[int64]struct{})
 	for _, functionSchema := range functions {
@@ -69,7 +69,7 @@ func NewRecordMaterializer(schema *schemapb.CollectionSchema, functions []*schem
 			materializedFields[functionSchema.GetOutputFieldIds()[outputIndex]] = struct{}{}
 		}
 
-		runner, err := function.NewFunctionRunner(schema, functionSchema)
+		runner, err := function.NewFunctionRunner(schema, functionSchema, analyzerExtraInfo)
 		if err != nil {
 			materializer.Close()
 			return nil, err

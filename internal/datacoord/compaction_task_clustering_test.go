@@ -421,12 +421,13 @@ func (s *ClusteringCompactionTaskSuite) TestBuildCompactionRequest_NamespaceFile
 			"clustering plan must carry CurrentScalarIndexVersion for inline text index metadata")
 	})
 
-	s.Run("namespace_disabled_skips_file_resources", func() {
+	s.Run("namespace_disabled_still_carries_file_resources", func() {
+		s.NoError(s.meta.UpdateFileResources(context.TODO(), expectedResources, 1))
 		task := s.newNamespaceClusteringTask(false, []int64{7})
 		plan, err := task.BuildCompactionRequest()
 		s.Require().NoError(err)
-		s.Empty(plan.GetFileResources(),
-			"non-namespace clustering does not build text index inline, so no FileResources are fetched")
+		s.Equal(expectedResources, plan.GetFileResources(),
+			"normal clustering can materialize a BM25/MinHash function output, so it must carry FileResources in ref mode")
 		s.Equal(int32(42), plan.GetCurrentScalarIndexVersion())
 	})
 }

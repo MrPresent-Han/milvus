@@ -33,12 +33,12 @@ type FunctionRunner interface {
 	Close()
 }
 
-func NewFunctionRunner(coll *schemapb.CollectionSchema, schema *schemapb.FunctionSchema) (FunctionRunner, error) {
+func NewFunctionRunner(coll *schemapb.CollectionSchema, schema *schemapb.FunctionSchema, analyzerExtraInfo string) (FunctionRunner, error) {
 	switch schema.GetType() {
 	case schemapb.FunctionType_BM25:
-		return NewBM25FunctionRunner(coll, schema)
+		return NewBM25FunctionRunner(coll, schema, analyzerExtraInfo)
 	case schemapb.FunctionType_MinHash:
-		return NewMinHashFunctionRunner(coll, schema)
+		return NewMinHashFunctionRunner(coll, schema, analyzerExtraInfo)
 	case schemapb.FunctionType_TextEmbedding:
 		return nil, nil
 	default:

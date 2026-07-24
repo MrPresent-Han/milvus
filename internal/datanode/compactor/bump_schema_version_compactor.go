@@ -328,35 +328,35 @@ func (t *bumpSchemaVersionCompactionTask) fullRewriteSegmentID() (int64, error) 
 	return idRange.GetBegin(), nil
 }
 
-func selectFullRewriteRecord(record storage.Record, pkField *schemapb.FieldSchema, entityFilter compaction.EntityFilter, ttlFieldID int64, useTTLField bool, ttlValues []int64) (*recordSelection, []int64, error) {
+func selectFullRewriteRecord(record storage.Record, pkField *schemapb.FieldSchema, entityFilter compaction.EntityFilter, ttlFieldID int64, useTTLField bool) (*recordSelection, error) {
 	pkArray := record.Column(pkField.GetFieldID())
 	var pkAt func(int) any
 	switch pkField.GetDataType() {
 	case schemapb.DataType_Int64:
 		int64Array, ok := pkArray.(*array.Int64)
 		if !ok {
-			return nil, nil, merr.WrapErrServiceInternal("int64 primary key field not found in full schema rewrite record")
+			return nil, merr.WrapErrServiceInternal("int64 primary key field not found in full schema rewrite record")
 		}
 		pkAt = func(i int) any { return int64Array.Value(i) }
 	case schemapb.DataType_VarChar:
 		stringArray, ok := pkArray.(*array.String)
 		if !ok {
-			return nil, nil, merr.WrapErrServiceInternal("varchar primary key field not found in full schema rewrite record")
+			return nil, merr.WrapErrServiceInternal("varchar primary key field not found in full schema rewrite record")
 		}
 		pkAt = func(i int) any { return stringArray.Value(i) }
 	default:
-		return nil, nil, merr.WrapErrServiceInternal("invalid primary key data type for full schema rewrite")
+		return nil, merr.WrapErrServiceInternal("invalid primary key data type for full schema rewrite")
 	}
 
 	timestampArray, ok := record.Column(common.TimeStampField).(*array.Int64)
 	if !ok {
-		return nil, nil, merr.WrapErrServiceInternal("timestamp field not found in full schema rewrite record")
+		return nil, merr.WrapErrServiceInternal("timestamp field not found in full schema rewrite record")
 	}
 	var ttlArray *array.Int64
 	if useTTLField {
 		ttlArray, ok = record.Column(ttlFieldID).(*array.Int64)
 		if !ok {
-			return nil, nil, merr.WrapErrServiceInternal("TTL field not found in full schema rewrite record")
+			return nil, merr.WrapErrServiceInternal("TTL field not found in full schema rewrite record")
 		}
 	}
 
@@ -378,9 +378,6 @@ func selectFullRewriteRecord(record storage.Record, pkField *schemapb.FieldSchem
 			continue
 		}
 
-		if useTTLField && expireTs > 0 {
-			ttlValues = append(ttlValues, expireTs)
-		}
 		if sliceStart == -1 {
 			sliceStart = i
 		}
@@ -390,9 +387,9 @@ func selectFullRewriteRecord(record storage.Record, pkField *schemapb.FieldSchem
 		selection.length += record.Len() - sliceStart
 	}
 	if filteredRows == 0 {
-		return nil, ttlValues, nil
+		return nil, nil
 	}
-	return selection, ttlValues, nil
+	return selection, nil
 }
 
 func (t *bumpSchemaVersionCompactionTask) runSchemaVersionBumpOnly() *datapb.CompactionPlanResult {
@@ -455,7 +452,13 @@ func (t *bumpSchemaVersionCompactionTask) runFullSchemaRewrite(existingFields ma
 	}
 	defer reader.Close()
 
-	materializer, err := NewRecordMaterializer(t.plan.GetSchema(), t.plan.GetSchema().GetFunctions(), existingFields)
+	analyzerExtraInfo, releaseResources, err := prepareAnalyzerExtraInfo(t.ctx, t.chunkManager, t.plan, t.compactionParams.StorageConfig.GetRootPath(), existingFields)
+	if err != nil {
+		return nil, err
+	}
+	defer releaseResources() // deferred before materializer.Close() → LIFO releases resource files last
+
+	materializer, err := NewRecordMaterializer(t.plan.GetSchema(), t.plan.GetSchema().GetFunctions(), existingFields, analyzerExtraInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -518,7 +521,7 @@ func (t *bumpSchemaVersionCompactionTask) runFullSchemaRewrite(existingFields ma
 		preMaterializeFilter := len(delta) > 0 || t.plan.GetCollectionTtl() > 0 || sourceHasTTLField
 		var selection *recordSelection
 		if preMaterializeFilter {
-			selection, _, err = selectFullRewriteRecord(record, pkField, entityFilter, ttlFieldID, sourceHasTTLField, nil)
+			selection, err = selectFullRewriteRecord(record, pkField, entityFilter, ttlFieldID, sourceHasTTLField)
 			if err != nil {
 				record.Release()
 				return nil, err
@@ -628,16 +631,8 @@ func (t *bumpSchemaVersionCompactionTask) runFullSchemaRewrite(existingFields ma
 			return nil, err
 		}
 		if resultSegment.GetManifest() != "" && len(textStatsLogs) > 0 {
-			basePath, _, err := packed.UnmarshalManifestPath(resultSegment.GetManifest())
-			if err != nil {
-				return nil, err
-			}
-			for _, stats := range textStatsLogs {
-				prefix := fmt.Sprintf("%s/_stats/text_index.%d", basePath, stats.GetFieldID())
-				for i, f := range stats.GetFiles() {
-					stats.Files[i] = prefix + "/" + f
-				}
-			}
+			// createTextIndex already returns manifest-absolute Files (BuildStatsFilePaths);
+			// AddStatsToManifest relativizes at commit. Mirrors sort/mix — no extra prefixing.
 			newManifest, err := packed.AddStatsToManifest(resultSegment.GetManifest(), t.compactionParams.StorageConfig, packed.TextIndexStatEntries(textStatsLogs, t.plan.GetCurrentScalarIndexVersion()))
 			if err != nil {
 				return nil, err
@@ -992,6 +987,20 @@ func (t *bumpSchemaVersionCompactionTask) runMissingFunctionMaterialization(ctx 
 	if err != nil {
 		return nil, err
 	}
+	// Close the writer's C handle on any early error before the success-path Close below
+	// (mirrors runFullSchemaRewrite's writerClosed guard) — otherwise a failure between here and
+	// the Close (e.g. prepareAnalyzerExtraInfo download or NewRecordMaterializer analyzer resolution)
+	// leaks the FFIPackedWriter and keeps leaking on retry.
+	writerClosed := false
+	defer func() {
+		if !writerClosed {
+			// partial-path writer.Close() returns a WriterOutput holding C memory that must be
+			// Destroy()'d (see the success path below); discarding it leaks on every retry.
+			if output, _ := writerResult.writer.Close(); output != nil {
+				output.Destroy()
+			}
+		}
+	}()
 
 	log.Info(ctx, "schema bump writer setup",
 		mlog.Int64("effectiveStorageVersion", writerResult.storageVersion),
@@ -1009,7 +1018,13 @@ func (t *bumpSchemaVersionCompactionTask) runMissingFunctionMaterialization(ctx 
 		}
 	}
 	existingFields = partialMaterializerExistingFields(t.plan.GetSchema(), missingFunctions, existingFields)
-	materializer, err := NewRecordMaterializer(t.plan.GetSchema(), missingFunctions, existingFields)
+	analyzerExtraInfo, releaseResources, err := prepareAnalyzerExtraInfo(ctx, t.chunkManager, t.plan, t.compactionParams.StorageConfig.GetRootPath(), existingFields)
+	if err != nil {
+		span.End()
+		return nil, err
+	}
+	defer releaseResources() // deferred before materializer.Close() → LIFO releases resource files last
+	materializer, err := NewRecordMaterializer(t.plan.GetSchema(), missingFunctions, existingFields, analyzerExtraInfo)
 	if err != nil {
 		span.End()
 		return nil, err
@@ -1105,6 +1120,7 @@ func (t *bumpSchemaVersionCompactionTask) runMissingFunctionMaterialization(ctx 
 	if err != nil {
 		return nil, err
 	}
+	writerClosed = true
 	if writerOutput != nil {
 		defer writerOutput.Destroy()
 	}

@@ -92,7 +92,7 @@ func (s *MultiAnalyzerBM25FunctionSuite) SetupSuite() {
 
 func (s *MultiAnalyzerBM25FunctionSuite) TestNewMultiAnalyzerBM25FunctionRunner() {
 	s.Run("normal", func() {
-		runner, err := NewBM25FunctionRunner(s.collection, s.function)
+		runner, err := NewBM25FunctionRunner(s.collection, s.function, "")
 		s.NoError(err)
 		s.NotNil(runner)
 
@@ -102,41 +102,41 @@ func (s *MultiAnalyzerBM25FunctionSuite) TestNewMultiAnalyzerBM25FunctionRunner(
 
 	s.Run("lack dependent field in params", func() {
 		// return error when by_field not in params
-		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"analyzers\": {\"default\": { \"type\": \"standard\"}}}")
+		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"analyzers\": {\"default\": { \"type\": \"standard\"}}}", "")
 		s.Error(err)
 	})
 
 	s.Run("dependent field name not string in params", func() {
 		// return error when by_field not string
-		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "\"by_field\": 1, {\"analyzers\": {\"default\": { \"type\": \"standard\"}}}")
+		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "\"by_field\": 1, {\"analyzers\": {\"default\": { \"type\": \"standard\"}}}", "")
 		s.Error(err)
 	})
 
 	s.Run("dependent field not exist in collection", func() {
-		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"not_exist\", \"analyzers\": {\"default\": { \"type\": \"standard\"}}}")
+		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"not_exist\", \"analyzers\": {\"default\": { \"type\": \"standard\"}}}", "")
 		s.Error(err)
 	})
 
 	s.Run("analyzers not exist in params", func() {
 		// return error when analyzers not in params
-		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"analyzer\"}")
+		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"analyzer\"}", "")
 		s.Error(err)
 	})
 
 	s.Run("analyzers not json object in params", func() {
-		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"analyzer\", \"analyzers\": \"default\"}")
+		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"analyzer\", \"analyzers\": \"default\"}", "")
 		s.Error(err)
 	})
 
 	s.Run("invalid analyzer in analyers", func() {
-		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"analyzer\", \"analyzers\": {\"default\": { \"type\": \"invalid\"}}}")
+		_, err := NewMultiAnalyzerBM25FunctionRunner(s.collection, s.function, s.collection.Fields[0], s.collection.Fields[2], "{\"by_field\": \"analyzer\", \"analyzers\": {\"default\": { \"type\": \"invalid\"}}}", "")
 		s.Error(err)
 	})
 }
 
 func (s *MultiAnalyzerBM25FunctionSuite) TestBatchRun() {
 	s.Run("normal", func() {
-		runner, err := NewBM25FunctionRunner(s.collection, s.function)
+		runner, err := NewBM25FunctionRunner(s.collection, s.function, "")
 		s.NoError(err)
 		s.NotNil(runner)
 
@@ -171,7 +171,7 @@ func (s *MultiAnalyzerBM25FunctionSuite) TestBatchRun() {
 
 func (s *MultiAnalyzerBM25FunctionSuite) TestBatchAnalyze() {
 	s.Run("normal", func() {
-		runner, err := NewBM25FunctionRunner(s.collection, s.function)
+		runner, err := NewBM25FunctionRunner(s.collection, s.function, "")
 		s.NoError(err)
 		s.NotNil(runner)
 

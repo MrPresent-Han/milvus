@@ -109,7 +109,7 @@ func TestRecordMaterializerWrapNoOpWhenAllFieldsExist(t *testing.T) {
 		{FieldID: 100, Name: "text", DataType: schemapb.DataType_VarChar},
 		{FieldID: 101, Name: "score", DataType: schemapb.DataType_Int64},
 	}}
-	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}, 101: {}})
+	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}, 101: {}}, "")
 	require.NoError(t, err)
 	defer materializer.Close()
 
@@ -124,7 +124,7 @@ func TestRecordMaterializerWrapFillsNullableMissingFields(t *testing.T) {
 		{FieldID: 100, Name: "text", DataType: schemapb.DataType_VarChar},
 		{FieldID: 101, Name: "added", DataType: schemapb.DataType_Int64, Nullable: true},
 	}}
-	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}})
+	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}}, "")
 	require.NoError(t, err)
 	defer materializer.Close()
 
@@ -145,7 +145,7 @@ func TestRecordMaterializerWrapFillsNullableMissingTextFieldAsBinary(t *testing.
 		{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64},
 		{FieldID: 101, Name: "added_text", DataType: schemapb.DataType_Text, Nullable: true},
 	}}
-	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}})
+	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}}, "")
 	require.NoError(t, err)
 	defer materializer.Close()
 
@@ -169,7 +169,7 @@ func TestRecordMaterializerWrapWithSelectionMaterializesKeptRowsOnly(t *testing.
 		{FieldID: 100, Name: "text", DataType: schemapb.DataType_VarChar},
 		{FieldID: 101, Name: "added", DataType: schemapb.DataType_Int64, Nullable: true},
 	}}
-	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}})
+	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}}, "")
 	require.NoError(t, err)
 	defer materializer.Close()
 
@@ -218,7 +218,7 @@ func TestRecordMaterializerWrapSkipsMissingSystemFields(t *testing.T) {
 		{FieldID: common.TimeStampField, Name: common.TimeStampFieldName, DataType: schemapb.DataType_Int64},
 		{FieldID: 100, Name: "pk", DataType: schemapb.DataType_Int64},
 	}}
-	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}})
+	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}}, "")
 	require.NoError(t, err)
 	defer materializer.Close()
 
@@ -233,7 +233,7 @@ func TestRecordMaterializerWrapFailsForMissingNonNullableField(t *testing.T) {
 		{FieldID: 100, Name: "text", DataType: schemapb.DataType_VarChar},
 		{FieldID: 101, Name: "required", DataType: schemapb.DataType_Int64},
 	}}
-	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}})
+	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}}, "")
 	require.NoError(t, err)
 	defer materializer.Close()
 
@@ -410,7 +410,7 @@ func TestMaterializedRecordReaderReleasesPreviousRecordOnNextAndClose(t *testing
 		{FieldID: 100, Name: "text", DataType: schemapb.DataType_VarChar},
 		{FieldID: 101, Name: "added", DataType: schemapb.DataType_Int64, Nullable: true},
 	}}
-	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}})
+	materializer, err := NewRecordMaterializer(schema, nil, map[int64]struct{}{100: {}}, "")
 	require.NoError(t, err)
 
 	first := &materializerTestRecord{len: 1}

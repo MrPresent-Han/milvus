@@ -30,6 +30,7 @@ import (
 	"github.com/milvus-io/milvus/internal/datacoord/allocator"
 	"github.com/milvus-io/milvus/internal/datacoord/session"
 	"github.com/milvus-io/milvus/internal/metastore/kv/binlog"
+	"github.com/milvus-io/milvus/internal/util/fileresource"
 	"github.com/milvus-io/milvus/pkg/v3/mlog"
 	"github.com/milvus-io/milvus/pkg/v3/proto/datapb"
 	"github.com/milvus-io/milvus/pkg/v3/taskcommon"
@@ -113,6 +114,21 @@ func (t *bumpSchemaVersionTask) BuildCompactionRequest() (*datapb.CompactionPlan
 		JsonParams:                compactionParams,
 		CurrentScalarIndexVersion: t.ievm.GetCurrentScalarIndexEngineVersion(),
 	}
+
+	// set analyzer resource for text match index if use ref mode.
+	// bump full-rewrite builds text indexes inline (createTextIndex) and needs the analyzer
+	// resources, mirroring sort/mix compaction; without them ref mode cannot resolve the
+	// referenced analyzer resource and the compaction fails.
+	if fileresource.IsRefMode(paramtable.Get().CommonCfg.DNFileResourceMode.GetValue()) &&
+		len(taskProto.GetSchema().GetFileResourceIds()) > 0 {
+		resources, err := t.meta.GetFileResources(context.Background(), taskProto.GetSchema().GetFileResourceIds()...)
+		if err != nil {
+			mlog.Warn(context.TODO(), "get file resources for schema bump compaction failed", mlog.Int64("collectionID", taskProto.GetCollectionID()), mlog.Err(err))
+			return nil, merr.Wrap(err, "get file resources for schema bump compaction failed")
+		}
+		plan.FileResources = resources
+	}
+
 	segments := make([]*SegmentInfo, 0, len(taskProto.GetInputSegments()))
 	for _, segID := range taskProto.GetInputSegments() {
 		segInfo := t.meta.GetHealthySegment(context.TODO(), segID)

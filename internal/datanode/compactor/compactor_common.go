@@ -53,6 +53,48 @@ import (
 
 const compactionBatchSize = 100
 
+// prepareAnalyzerExtraInfo downloads the plan's analyzer FileResources (ref mode) and builds the
+// per-call analyzer extraInfo consumed by function runners / text-index builds. Returns "" + a no-op
+// release when the plan carries no resources (sync mode pre-syncs the global resource map, so there
+// is nothing to download). The returned release is ALWAYS non-nil and idempotent (sync.Once); call it
+// (deferred, before any materializer.Close()) after all runners/index builds that use extraInfo have
+// finished, so the on-disk resource files outlive the tokenizers that reference them.
+// materializerNeedsAnalyzerResources reports whether the RecordMaterializer will build a BM25/MinHash
+// runner — i.e. a function output is missing and must be materialized. That is the ONLY case where the
+// materializer lease's analyzer resources are used. The text-match index (match-enabled fields) does
+// NOT gate this lease: createTextIndex manages its own resource lease, and it also skips when the
+// segment ends up with zero rows — so including match fields here would download resources this
+// materializer never uses and couple the compaction to resource-storage availability for nothing.
+func materializerNeedsAnalyzerResources(schema *schemapb.CollectionSchema, existingFields map[int64]struct{}) bool {
+	return len(missingSchemaFunctions(schema, existingFields)) > 0
+}
+
+func prepareAnalyzerExtraInfo(ctx context.Context, cm storage.ChunkManager, plan *datapb.CompactionPlan, storageRootPath string, existingFields map[int64]struct{}) (string, func(), error) {
+	resources := plan.GetFileResources()
+	// Lazy: skip the lease when there are no resources (sync mode) OR the materializer will build no
+	// runner (no missing function output) — this lease only feeds the materializer; the text-match
+	// index handles its own resources. Otherwise a resource-storage outage could fail a compaction
+	// that never uses the resources.
+	if len(resources) == 0 || !materializerNeedsAnalyzerResources(plan.GetSchema(), existingFields) {
+		return "", func() {}, nil
+	}
+	if err := fileresource.GlobalFileManager.Download(ctx, cm, resources...); err != nil {
+		return "", func() {}, err
+	}
+	var once sync.Once
+	release := func() {
+		once.Do(func() {
+			fileresource.GlobalFileManager.Release(resources...)
+		})
+	}
+	extraInfo, err := analyzer.BuildExtraResourceInfo(storageRootPath, resources)
+	if err != nil {
+		release() // download succeeded but build failed -> release immediately
+		return "", func() {}, err
+	}
+	return extraInfo, release, nil
+}
+
 func createTextIndex(ctx context.Context,
 	cm storage.ChunkManager,
 	plan *datapb.CompactionPlan,
