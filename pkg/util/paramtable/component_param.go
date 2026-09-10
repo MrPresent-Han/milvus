@@ -50,8 +50,9 @@ const (
 	DefaultBM25LoadThreadCoreCoefficient       = 1
 	DefaultThreadPoolMaxThreadsSize            = 16
 
-	DefaultSessionTTL        = 15 // s
-	DefaultSessionRetryTimes = 30
+	DefaultSessionTTL          = 15 // s
+	DefaultSessionRetryTimes   = 30
+	DefaultExprCacheMaxEntries = 1024
 
 	DefaultMaxDegree                = 56
 	DefaultSearchListSize           = 100
@@ -2001,6 +2002,7 @@ type proxyConfig struct {
 	MaxFieldNum                    ParamItem `refreshable:"true"`
 	MaxVectorFieldNum              ParamItem `refreshable:"true"`
 	MaxShardNum                    ParamItem `refreshable:"true"`
+	ExprCacheMaxEntries            ParamItem `refreshable:"true"`
 	MaxDimension                   ParamItem `refreshable:"true"`
 	GinLogging                     ParamItem `refreshable:"false"`
 	GinLogSkipPaths                ParamItem `refreshable:"false"`
@@ -2150,6 +2152,23 @@ func (p *proxyConfig) init(base *BaseTable) {
 		Export:       true,
 	}
 	p.MaxShardNum.Init(base.mgr)
+
+	p.ExprCacheMaxEntries = ParamItem{
+		Key:          "proxy.exprCache.maxEntries",
+		DefaultValue: strconv.Itoa(DefaultExprCacheMaxEntries),
+		Doc: "The maximum number of parsed expression AST entries cached by the proxy. " +
+			"This parameter supports live refresh; reducing it immediately evicts least-recently-used entries. " +
+			"It must be positive, and invalid values fall back to 1024.",
+		Export:       true,
+		PanicIfEmpty: true,
+		Formatter: func(v string) string {
+			if n, err := strconv.Atoi(v); err != nil || n <= 0 {
+				return strconv.Itoa(DefaultExprCacheMaxEntries)
+			}
+			return v
+		},
+	}
+	p.ExprCacheMaxEntries.Init(base.mgr)
 
 	p.MaxDimension = ParamItem{
 		Key:          "proxy.maxDimension",

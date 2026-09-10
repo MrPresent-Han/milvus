@@ -17,6 +17,7 @@
 package paramtable
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +32,25 @@ func shouldPanic(t *testing.T, name string, f func()) {
 	defer func() { recover() }()
 	f()
 	t.Errorf("%s should have panicked", name)
+}
+
+func TestProxyExprCacheConfig(t *testing.T) {
+	base := NewBaseTable(SkipRemote(true))
+	params := proxyConfig{}
+	params.init(base)
+
+	assert.Equal(t, "proxy.exprCache.maxEntries", params.ExprCacheMaxEntries.Key)
+	assert.Equal(t, DefaultExprCacheMaxEntries, params.ExprCacheMaxEntries.GetAsInt())
+	for _, value := range []string{"0", "-1", "invalid"} {
+		base.Save(params.ExprCacheMaxEntries.Key, value)
+		assert.Equal(t, DefaultExprCacheMaxEntries, params.ExprCacheMaxEntries.GetAsInt(), value)
+	}
+	base.Save(params.ExprCacheMaxEntries.Key, "8")
+	assert.Equal(t, 8, params.ExprCacheMaxEntries.GetAsInt())
+
+	field, ok := reflect.TypeOf(proxyConfig{}).FieldByName("ExprCacheMaxEntries")
+	assert.True(t, ok)
+	assert.Equal(t, "true", field.Tag.Get("refreshable"))
 }
 
 func TestComponentParam(t *testing.T) {

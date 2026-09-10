@@ -1,9 +1,11 @@
 package planparserv2
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/antlr4-go/antlr/v4"
@@ -27,12 +29,34 @@ import (
 )
 
 var (
-	exprCache   = expirable.NewLRU[string, any](1024, nil, time.Minute*10)
-	trueLiteral = &ExprWithType{
+	exprCache = expirable.NewLRU[string, any](
+		paramtable.DefaultExprCacheMaxEntries,
+		nil,
+		time.Minute*10,
+	)
+	exprCacheConfigOnce sync.Once
+	exprCacheConfigMu   sync.Mutex
+	trueLiteral         = &ExprWithType{
 		dataType: schemapb.DataType_Bool,
 		expr:     alwaysTrueExpr(),
 	}
 )
+
+func configureExprCache() {
+	exprCacheConfigOnce.Do(func() {
+		config := &paramtable.Get().ProxyCfg.ExprCacheMaxEntries
+		config.RegisterCallback(func(_ context.Context, _, _, _ string) error {
+			exprCacheConfigMu.Lock()
+			defer exprCacheConfigMu.Unlock()
+			exprCache.Resize(config.GetAsInt())
+			return nil
+		})
+
+		exprCacheConfigMu.Lock()
+		defer exprCacheConfigMu.Unlock()
+		exprCache.Resize(config.GetAsInt())
+	})
+}
 
 type ExprParams struct {
 	UseJSONStats bool
@@ -52,6 +76,7 @@ func ParseExprParams(vals map[string]*schemapb.TemplateValue) *ExprParams {
 }
 
 func handleInternal(exprStr string) (ast planparserv2.IExprContext, err error) {
+	configureExprCache()
 	val, ok := exprCache.Get(exprStr)
 	if ok {
 		switch v := val.(type) {
