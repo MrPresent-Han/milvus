@@ -23,6 +23,7 @@ import (
 	gojson "encoding/json"
 	"fmt"
 	"io"
+	"iter"
 	"math"
 	"net/http"
 	"reflect"
@@ -896,6 +897,23 @@ func nullElementIn(value gjson.Result) (int, bool) {
 	return idx, found
 }
 
+// dataRows preserves the single-object input accepted by V1 while iterating
+// arrays without allocating a []gjson.Result for every element.
+func dataRows(result gjson.Result) iter.Seq[gjson.Result] {
+	return func(yield func(gjson.Result) bool) {
+		if result.Type == gjson.Null {
+			return
+		}
+		if !result.IsArray() {
+			yield(result)
+			return
+		}
+		result.ForEach(func(_, row gjson.Result) bool {
+			return yield(row)
+		})
+	}
+}
+
 func checkAndSetData(body []byte, collSchema *schemapb.CollectionSchema, partialUpdate bool, fieldOps ...*schemapb.FieldPartialUpdateOp) ([]map[string]interface{}, map[string][]bool, error) {
 	var reallyDataArray []map[string]interface{}
 	validDataMap := make(map[string][]bool)
@@ -910,10 +928,6 @@ func checkAndSetData(body []byte, collSchema *schemapb.CollectionSchema, partial
 	compatibilityMode := paramtable.Get().HTTPCfg.CompatibilityMode.GetAsBool()
 	nativeJSONResponse := paramtable.Get().HTTPCfg.NativeJSONResponse.GetAsBool()
 	dataResult := gjson.GetBytes(body, HTTPRequestData)
-	dataResultArray := dataResult.Array()
-	if len(dataResultArray) == 0 {
-		return reallyDataArray, validDataMap, merr.ErrMissingRequiredParameters
-	}
 
 	fieldNames := make([]string, 0, len(collSchema.Fields)+len(collSchema.StructArrayFields))
 	for _, field := range collSchema.Fields {
@@ -926,9 +940,11 @@ func checkAndSetData(body []byte, collSchema *schemapb.CollectionSchema, partial
 		fieldNames = append(fieldNames, structField.GetName())
 	}
 
-	for _, data := range dataResultArray {
+	hasData := false
+	for data := range dataRows(dataResult) {
+		hasData = true
 		reallyData := map[string]interface{}{}
-		if data.Type == gjson.JSON {
+		if data.IsObject() {
 			for _, structField := range collSchema.StructArrayFields {
 				rawValue := gjson.Get(data.Raw, structField.GetName())
 				if !rawValue.Exists() {
@@ -1475,6 +1491,9 @@ func checkAndSetData(body []byte, collSchema *schemapb.CollectionSchema, partial
 		} else {
 			return reallyDataArray, validDataMap, merr.WrapErrParameterInvalid(gjson.JSON, data.Type, "NULL:0, FALSE:1, NUMBER:2, STRING:3, TRUE:4, JSON:5")
 		}
+	}
+	if !hasData {
+		return reallyDataArray, validDataMap, merr.ErrMissingRequiredParameters
 	}
 	return reallyDataArray, validDataMap, nil
 }

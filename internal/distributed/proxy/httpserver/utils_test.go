@@ -1087,6 +1087,50 @@ func TestAnyToColumns(t *testing.T) {
 	})
 }
 
+func TestCheckAndSetDataRowTypes(t *testing.T) {
+	schema := &schemapb.CollectionSchema{}
+	for _, test := range []struct {
+		name     string
+		body     string
+		wantRows int
+		wantErr  bool
+	}{
+		{name: "object rows", body: `{"data":[{},{}]}`, wantRows: 2},
+		{name: "singleton object for V1", body: `{"data":{}}`, wantRows: 1},
+		{name: "number row", body: `{"data":[0]}`, wantErr: true},
+		{name: "string row", body: `{"data":["row"]}`, wantErr: true},
+		{name: "null row", body: `{"data":[null]}`, wantErr: true},
+		{name: "nested array row", body: `{"data":[[]]}`, wantErr: true},
+		{name: "mixed rows", body: `{"data":[{},[]]}`, wantErr: true},
+		{name: "empty array", body: `{"data":[]}`, wantErr: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			rows, _, err := checkAndSetData([]byte(test.body), schema, false)
+			if test.wantErr {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Len(t, rows, test.wantRows)
+		})
+	}
+}
+
+func TestCheckAndSetDataRejectsInvalidRowWithoutArrayAllocation(t *testing.T) {
+	body := []byte(`{"data":[0` + strings.Repeat(",0", 100_000) + `]}`)
+	schema := &schemapb.CollectionSchema{}
+	result := testing.Benchmark(func(b *testing.B) {
+		for i := 0; i < b.N; i++ {
+			_, _, err := checkAndSetData(body, schema, false)
+			if err == nil {
+				b.Fatal("expected invalid row to be rejected")
+			}
+		}
+	})
+	require.Less(t, result.AllocedBytesPerOp(), int64(2<<20),
+		"the first invalid row must not allocate a result for the entire data array")
+}
+
 func TestCheckAndSetData(t *testing.T) {
 	t.Run("integer range validation", func(t *testing.T) {
 		tests := []struct {
