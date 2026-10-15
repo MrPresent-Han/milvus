@@ -42,6 +42,7 @@ import (
 	"github.com/milvus-io/milvus/internal/util/function/chain"
 	"github.com/milvus-io/milvus/internal/util/function/chain/types"
 	"github.com/milvus-io/milvus/internal/util/function/highlight"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 	"github.com/milvus-io/milvus/internal/util/segcore"
 	"github.com/milvus-io/milvus/pkg/v3/proto/internalpb"
 	"github.com/milvus-io/milvus/pkg/v3/proto/planpb"
@@ -7674,10 +7675,15 @@ func (s *SearchPipelineSuite) TestAggregateOperatorRun() {
 		},
 	}
 
-	// aggregateOp consumes the single reduced *milvuspb.SearchResults produced
-	// upstream by searchReduceOp.
-	reduced := &milvuspb.SearchResults{Status: merr.Success(), Results: data}
-	outputs, err := op.run(context.Background(), s.span, []*milvuspb.SearchResults{reduced}, []string{"IP"})
+	// aggregateOp consumes selected source rows without materializing fields.
+	selected := &search_agg.ReducedRows{
+		Sources: []*schemapb.SearchResultData{data},
+		Rows: []reduce.RowRef{
+			{ResultIdx: 0, RowIdx: 0}, {ResultIdx: 0, RowIdx: 1}, {ResultIdx: 0, RowIdx: 2},
+		},
+		Topks: []int64{3}, GroupFieldIDs: []int64{101},
+	}
+	outputs, err := op.run(context.Background(), s.span, selected, []string{"IP"})
 	s.NoError(err)
 	s.Len(outputs, 1)
 

@@ -3,6 +3,7 @@ package search_agg
 import (
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
 	"github.com/milvus-io/milvus/internal/agg"
+	"github.com/milvus-io/milvus/internal/util/reduce"
 )
 
 const (
@@ -122,4 +123,15 @@ type HitResult struct {
 	PK     any
 	Score  float32
 	Fields map[int64]any
+}
+
+// ReducedRows is the request-local SearchAggregation handoff. Rows retain
+// selection order while their field values remain in the read-only sources.
+type ReducedRows struct {
+	Sources        []*schemapb.SearchResultData
+	Rows           []reduce.RowRef
+	Topks          []int64
+	GroupFieldIDs  []int64
+	AllSearchCount int64
+	NegateScores   bool
 }
