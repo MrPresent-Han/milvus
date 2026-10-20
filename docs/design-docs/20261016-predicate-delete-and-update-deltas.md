@@ -4,7 +4,7 @@ Date: 2026-10-16
 
 Discussion checkpoint: 2026-10-20
 
-Status: Draft — predicate-delete data flow, progress-bound best-effort statistics, predicate-backlog scheduling, asynchronous recovery direction, and initial constant-assignment update semantics agreed; detailed protocols remain open; not implemented
+Status: Draft — predicate-delete data flow, progress-bound best-effort statistics, predicate-backlog scheduling, asynchronous recovery direction, constant-assignment update semantics, and snapshot-aware base-index/delta query merging agreed; detailed protocols remain open; not implemented
 
 Scope: Joint design for predicate deletes and logical in-place updates through deltas, including segment application, ordering, persistence, load/recovery, compaction, and schema safety. Predicate-delete decisions are more developed; update benefits and detailed mechanisms still require evaluation.
 
@@ -39,7 +39,8 @@ The local pipeline is not a complete replacement for the distributed delete prot
 - **Share contracts, not necessarily representations.** Delete changes row visibility; update changes field values. This agreement does not put field updates into `DeletedRecord`, select an update operator, or require identical delta formats/RPCs.
 - **Separate row selection from column assignment.** One update may select multiple rows through a supported `WHERE` predicate and assign constants to multiple columns through one `SET` patch. Initial scope excludes assignments that read old field values; see Section 10.4.
 - **Preserve field-level patch semantics under concurrency.** Independent patches to different columns retain both changes; assignments to the same row and column resolve in committed logical mutation order. Predicate evaluation and patch application must observe earlier applicable mutations consistently across online execution, load/recovery, and compaction; see Section 10.5.
-- **Evaluate benefits before detailed update design.** Section 10 records opportunities and tradeoffs, not measured improvements or a settled implementation. Exact field/type and predicate support, physical row targeting, index maintenance, concurrency control, and update-delta representation remain open.
+- **Keep versioned field values and correct stale-index results.** Preserve the base scalar index, remove old matches for rows with snapshot-visible updates to the indexed field, and supplement matches evaluated against their latest visible values. Initially, scan the updated-field values without requiring a separate delta index; see Sections 10.6–10.7 and the industry comparison in Section 2.9.
+- **Evaluate benefits before detailed update design.** Section 10 records opportunities and tradeoffs, not measured improvements or a settled implementation. Exact field/type and predicate support, physical row targeting, index-overlay implementation, concurrency control, and update-delta representation remain open.
 
 Sections 4–5 and 9 retain the established predicate-delete directions. Their choices are not automatically extended to updates: for example, a cumulative deleted-row count is not an update-compaction cost model, and the settled delete drain is not yet a complete update/schema protocol.
 
@@ -89,7 +90,7 @@ The existing expression-delete path retrieves matching PKs before applying PK-ba
 
 The mature shared pattern is **evaluate a condition -> identify local rows -> mutate through a storage-owned entry**. An explicit SQL mutation operator is one realization; a segment-local query-delete loop is another.
 
-The delete comparisons below inspect fixed release tags. Section 2.7 separately identifies Kudu's versioned operational documentation and moving-source references. These establish implementation precedent, not comparative performance or proof of Milvus correctness.
+The delete comparisons below inspect fixed release tags. Section 2.7 separately identifies Kudu's versioned operational documentation and moving-source references; Section 2.9 compares production base-plus-change query mechanisms. These establish implementation precedent, not comparative performance or proof of Milvus correctness.
 
 | Reference | Why it is relevant | Main difference from this proposal |
 | --- | --- | --- |
@@ -208,6 +209,25 @@ For v2/v3 equality deletes, Iceberg determines applicable data files using parti
 
 **Adopt:** durable applicability metadata and a distinction between data age and replacement-file creation. **Adapt:** use Milvus VChannel/partition scope, row timestamps, and current storage metadata. **Do not copy:** Iceberg sequence rules, snapshot commit machinery, or equality-delete encoding as a complete arbitrary-predicate/update protocol. This is precedent for the separation, not proof that Milvus can safely retire an L0 file or skip a candidate segment. Section 9.4 records the selected tradeoff.
 
+### 2.9 SQL Server and Oracle: mask stale base rows and supplement visible changes
+
+**Primary precedents for Section 10.7's query-merge direction**, reviewed on 2026-10-20:
+
+| Mature implementation | Documented mechanism | Difference from the Milvus proposal |
+| --- | --- | --- |
+| SQL Server Columnstore | Scans consult a delete bitmap to exclude old rows and include rows from the deltastore. An update to a compressed row marks the old row deleted and inserts the updated row into the deltastore. | Whole-row replacement in a row-oriented deltastore, not a versioned patch to selected fields at the same segment offset; a columnstore scan is not the same access path as a Milvus scalar-index lookup. |
+| Oracle Database In-Memory | A transaction journal records modified row IDs and marks their IMCU versions stale from the modification SCN. Queries needing the newer row obtain it from the buffer cache; columnar data, journal, and buffer cache together provide read consistency. | A dual-format database with its own transaction/SCN machinery, not Milvus segment-local field deltas or its scalar-index execution framework. |
+
+Sources: Microsoft's [SIGMOD 2013 paper, Sections 4 and 4.4](https://www.microsoft.com/en-us/research/wp-content/uploads/2013/06/Apollo3-Sigmod-2013-final.pdf), the [SQL Server Columnstore overview](https://learn.microsoft.com/en-us/sql/relational-databases/indexes/columnstore-indexes-overview?view=sql-server-ver17), and Oracle's [In-Memory Column Store Architecture — Transaction Journal](https://docs.oracle.com/en/database/oracle/oracle-database/26/inmem/in-memory-column-store-architecture.html).
+
+**Adopt:** keep a reusable base representation, suppress stale base results, and include visible changed values in query evaluation.
+
+**Adapt:** mask by field and segment-local row offset at the query snapshot, then evaluate the latest visible field version relative to the pinned base/index generation.
+
+**Do not copy:** SQL Server's whole-row delete-plus-insert or Oracle's buffer-cache/SCN implementation. Neither source establishes the exact per-field MVCC formula or a performance bound for Milvus.
+
+**Evidence boundary:** these are mature precedents for the read-combination principle. Section 10.7 is a Milvus-specific design adaptation, not an existing Milvus feature or an assertion that these products implement its exact scalar-index overlay.
+
 ## 3. Current implementation
 
 ### 3.1 Delete application
@@ -269,7 +289,7 @@ The existing filter bitmap uses **1 = excluded**. The proposed application input
 
 Reuse MVCC primitives, but do not blindly reuse the query node unchanged: current PK-delete application requires `insert_ts < delete_ts`, whereas query visibility may include rows inserted at the query timestamp. The equality boundary must be preserved explicitly.
 
-With update deltas, `predicate(i)` must evaluate the row's field values visible to this delete, not necessarily the immutable base values. Section 6 states this shared invariant; the update-aware access mechanism is not selected yet.
+With update deltas, `predicate(i)` must evaluate the row's field values visible to this delete, not necessarily the immutable base values. Section 6 states this shared invariant; Sections 10.6–10.7 select versioned field values and snapshot-aware base-index/delta merging, while their concrete access interfaces remain open.
 
 ### 4.2 DeleteApplyNode
 
@@ -335,7 +355,7 @@ Expected result: the row survives, with age=20
 
 Applying the predicate against the old base value would silently delete a live row. Replaying all deletes before all updates, or grouping mutations by field without preserving dependencies, is therefore invalid. Loading and compaction must preserve the same semantics even if updates and deletes reside in separate durable files. Their merge/progress protocol remains open.
 
-This also qualifies index-based predicate execution: an index over unmodified base data alone cannot establish the correct match set after visible updates to that field. Scalar-index, raw-column, and cached-expression access must represent the same versioned row view. The existing predicate-load policy still avoids an extra eager-load requirement; update-aware indexes/overlays are additional design work, not already provided by that policy.
+This also qualifies index-based predicate execution: an index over unmodified base data alone cannot establish the correct match set after visible updates to that field. Scalar-index, raw-column, and cached-expression access must represent the same versioned row view. Sections 10.6–10.7 settle the field-version and query-merge direction, not its implementation. The existing predicate-load policy still avoids an extra eager-load requirement; it does not itself provide this update-aware overlay.
 
 The goal is ordered, timestamp-correct mutation application across all three paths. It does not establish client-request idempotency, rollback, or historical field-value retention merely by referring to WAL replay.
 
@@ -395,6 +415,7 @@ Implementation must establish equivalence with the current delete semantics, not
 18. Measure base-load completion, time to serve each consistency level, full catch-up time, and cold-recovery P99 separately under lazy loading, accumulated predicates, and concurrent searches. Verify that blocked Strong/Session/Bounded requests are not silently downgraded and that background work can make progress under load; no upgrade-timeout or availability improvement is assumed.
 19. Verify that each reported deleted count and complete apply watermark describe one coherent segment state. Cover concurrent apply, delayed/out-of-order reports, replicas at different progress, release/reload, and compacted-away sources. Reports must neither double count replicas nor claim coverage of unfinished mutations.
 20. Verify hit-independent scheduling with missing/stale stats and with an exact zero-deleted-row observation plus many outstanding predicates. QN application alone must not clear the durable backlog count; successful data compaction must retire only consumed records after output publication, including zero-match records. Test repeated delivery versus separate committed mutations using the same expression.
+21. Verify Section 10.7's index/delta merge against a versioned full-scan oracle: updates entering and leaving a predicate's match set, repeated updates to one field, snapshots before/between/after updates, patches to unrelated fields, and updates assigning the base value again. Cover empty base-index results, stale min/max pruning, compound predicates, supported NULL semantics, and row deletion. Exercise concurrent publication and base/index replacement so masks, values, and progress cannot describe different generations. Measure updated-row scan cost as delta density and retained-version depth grow; this document does not claim those tests have run.
 
 ## 9. System-level integration checkpoints
 
@@ -603,7 +624,7 @@ Decision status: **access-path policy settled on 2026-10-19; asynchronous recove
 
 **Latency and memory boundary.** Avoiding an additional forced eager-load stage neither disables existing prefetch nor guarantees bounded peak memory: the reused raw-data path may prefetch many chunks. Synchronous predicate application places cold-column reads on base-load latency; asynchronous application moves them to background catch-up and potentially the waiting queries' critical path. Compare expression evaluation plus delete bookkeeping against PK-delta reading, decoding, PK-to-offset lookup, and the same bookkeeping. Index-only execution can avoid predicate-column reads, but no load-time speedup or memory reduction has been measured. Resource budgeting and exact loader/CGo wiring remain implementation work; the access-path policy above is settled.
 
-**Joint-design qualification.** When update deltas are present, an otherwise suitable scalar index must also provide the correct update-visible selection. Section 6 governs ordered delta application and field-value visibility. Reusing the existing expression framework does not, by itself, add update-aware index maintenance or historical field values.
+**Joint-design qualification.** When update deltas are present, an otherwise suitable scalar index must also provide the correct update-visible selection. Section 6 governs ordered delta application and field-value visibility; Sections 10.6–10.7 specify the agreed versioned-value and query-merge direction. Reusing the existing expression framework does not, by itself, implement either capability.
 
 #### 9.3.1 Primary precedent: PostgreSQL hot standby
 
@@ -727,9 +748,9 @@ Extra expression execution during background data compaction is an accepted trad
 
 **Still open:** exact predicate-file encoding and segment metadata layout, batching/rolling and cleanup, retry/restart and partial-publication behavior, ordering/completion frontiers across PK deletes/predicate deletes/updates, coverage of old growing data and replacement outputs, and cost limits. Existing task exclusion and target selection are reuse candidates, not an end-to-end proof. The drop-field drain in Section 9.1.3 still needs its complete durable-prefix guarantee; coarse dispatch does not weaken it.
 
-## 10. Update deltas: benefits to evaluate before detailed design
+## 10. Update deltas: benefits and agreed query semantics
 
-Discussion checkpoint: **2026-10-20**. Logical in-place updates through deltas and joint mutation-order correctness are agreed directions. The benefit analysis below is a set of hypotheses and evaluation questions, not measured results or an approved detailed update design. Prior large-delete tests motivate predicate deletion; they do not establish update-delta performance.
+Discussion checkpoint: **2026-10-20**. Logical in-place updates through deltas, joint mutation-order correctness, versioned field values, and snapshot-aware base-index/delta query merging are agreed directions. The benefit analysis below is a set of hypotheses and evaluation questions, not measured results or an approved detailed update design. Prior large-delete tests motivate predicate deletion; they do not establish update-delta performance.
 
 ### 10.1 Why pursue this alongside predicate deletes?
 
@@ -750,7 +771,7 @@ These are workload-dependent opportunities. **Update delta is not an elimination
 | Area | Shared requirement | Update-specific question still open |
 | --- | --- | --- |
 | WAL and segment routing | Preserve committed order, applicability, and timestamp semantics; use Section 9.4's coarse predicate dispatch | Physical row targeting, changed-field encoding, concurrency checks, and missing-row behavior |
-| Segment application and queries | Apply to the intended row version and expose consistent snapshots | Field-value version state, index/cache maintenance, scalar/vector support |
+| Segment application and queries | Apply to the intended row version and expose consistent snapshots; use Sections 10.6–10.7's versioned-value and scalar query-merge semantics | Physical version storage, overlay/index/cache implementation, scalar/vector support |
 | Durable deltas and load/recovery | Reconstruct the same state without omitted or reordered effects | Delta representation, update/delete merge, replay cost, history retention |
 | Compaction and schema changes | Preserve mutation dependencies through rewriting and field removal | Update consolidation, completion across segment replacement without an ingress lineage table, and extension of the delete drain to updates |
 | Scheduling | Use hints for prioritization, not as mutation truth | Update density/bytes/read amplification cannot be inferred from deleted-row count alone |
@@ -763,7 +784,7 @@ Before selecting a detailed update design, compare it with current partial upser
 
 Measure client latency/throughput and concurrent ANN behavior; Proxy/query/streaming/compaction CPU and memory; retrieval, WAL, network, and object-storage bytes; index work; retained data/delta size; and load/recover latency after updates accumulate. Validate mixed update/predicate-delete correctness before treating any performance result as a benefit. No numerical target, benchmark configuration, or claimed gain is settled here.
 
-The benefit target and initial update workload still require evaluation before choosing update operators, field overlays, index correction, or a durable format. Section 10.4 now explicitly settles the initial logical selection/assignment model; it does not establish an implementation or performance benefit.
+The benefit target and initial update workload still require evaluation before selecting concrete update operators, overlay structures, index-correction implementation, or a durable format. Sections 10.4–10.7 settle the logical selection/assignment, ordering, field-version, and scalar query-merge semantics; they do not establish an implementation or performance benefit.
 
 ### 10.4 Agreed initial update semantics: row selection x constant column patch
 
@@ -804,6 +825,69 @@ Disjoint assignment columns alone do not imply that two arbitrary updates commut
 
 **Industry basis:** adopt the [SQL UPDATE rule that unassigned columns retain their values](https://www.postgresql.org/docs/18/sql-update.html). Adapt it to Milvus's field deltas and per-VChannel committed ordering; do not infer PostgreSQL row locks, isolation levels, or cross-channel statement atomicity. This agreement does not settle the apply/publication mechanism or removal of existing partial-upsert CAS.
 
+### 10.6 Agreed versioned field-delta semantics
+
+Record which field of a segment-local row changed, its assigned value, and the mutation's logical timestamp/version, rather than overwriting the only retained value. This is an execution-state model, not a prescribed WAL or durable-file format; offsets remain local to a pinned segment layout.
+
+```text
+Base: offset=3, pk=2, age=17, gender='female'
+ts=100: age := 23
+ts=110: gender := 'male'
+ts=120: age := 25
+```
+
+| Supported read snapshot T | Visible age | Visible gender |
+| --- | --- | --- |
+| 95 | 17 | female |
+| 105 | 23 | female |
+| 115 | 23 | male |
+| 125 | 25 | male |
+
+For each row and field, resolve the latest applicable version visible at `T`, falling back to the compatible base value when no such update exists. An update to another field does not replace this field's value. The mutation timestamp supplies the visibility/version boundary under Section 6's committed-order contract; it is not a new client idempotency key.
+
+A later delete at `ts=115` evaluating `age < 18` must see `age=23`, not the base value 17 or the future value 25. The same field-resolution semantics must be used by queries and subsequent mutations, and reconstructed by load/recovery and compaction.
+
+`T` denotes a supported execution snapshot, not the `GuaranteeTs` freshness lower bound. Examples assume the necessary base/version history is retained; this agreement does not promise arbitrary historical reads. Version storage, retention/GC, equal-timestamp ordering, and publication remain detailed-design work.
+
+### 10.7 Agreed scalar query merge: base index plus snapshot-visible deltas
+
+**Decision:** reuse the base scalar index without rewriting it for each foreground patch. Correct its query results using the field's visible updates. Section 2.9 provides mature precedents for suppressing stale base results and supplementing changes, with explicit implementation differences.
+
+For a single-field predicate `P(age)`, fix a compatible base/index generation, segment layout, and supported snapshot `T`:
+
+```text
+I    = offsets matching P in the base scalar index
+U(T) = offsets with a visible age update not incorporated into this base/index
+D(T) = offsets in U(T) whose latest visible age value satisfies P
+
+Matches(T) = (I - U(T)) union D(T)
+```
+
+Apply the row's insert/delete visibility rules as well. The equation expresses logical positive-match sets; it does not change the existing executor bitmap polarity. If an index produces only candidates, its required exact recheck still applies.
+
+**Snapshot masking and supplementation rules:**
+
+- Subtract by **row offset for this field**, not by equal values, PK alone, or the delta's own match set. Every offset in `I` whose indexed field has a visible unmerged update is removed before supplementation, including updates whose new values fail the predicate.
+- `U(T)` is snapshot-specific: an update after `T` must not hide the old match. A patch to `gender` alone does not mask the base `age` index entry.
+- Resolve each updated row to **one latest visible value** before evaluating the predicate. Do not union matches from every historical delta version. An assignment that restores the base value still follows the same rule: mask the old entry, then re-add it if the visible value matches.
+- Supplement independently of base-index hits. An empty base result cannot suppress the delta branch, and base-only min/max or other pruning must not discard updated rows that could match.
+- For compound predicates, combine corrected field selections with the proper boolean/NULL semantics, or evaluate against a coherent versioned row view. A stale base result from one operand must not prune candidates needed by another corrected operand.
+
+For the `age` history in Section 10.6, the same offset demonstrates both removal and addition:
+
+| Snapshot and predicate | Base hit at offset 3 | After masking | Delta supplementation | Final hit |
+| --- | --- | --- | --- | --- |
+| `T=95`, `age=17` | Yes | Retained; no visible update | None | Yes |
+| `T=105`, `age=17` | Yes | Removed | 23 does not match | No |
+| `T=105`, `age=23` | No | Empty | Latest visible value 23 matches | Yes |
+| `T=125`, `age=23` | No | Empty | Latest visible value is 25; historical 23 is ignored | No |
+
+**Initial execution direction:** a separate delta index is not required. Scan the updated rows for the referenced field, resolve their latest visible values, and evaluate the predicate; retain base-index access for unaffected rows. This is not a requirement to scan every historical delta record on each query. The version lookup/iteration structure is deferred. As update density or retained history grows, evaluate delta indexing or consolidation; scanning deltas is not assumed to remain cheap indefinitely.
+
+**Coherent publication requirement:** a read must use a mutually consistent base/index generation, updated-offset set, resolved values, and complete apply progress. Otherwise it can observe a new mask without its replacement value, or an advanced progress marker while matches are still stale. Pin the relevant state across evaluation; exact synchronization and publication granularity remain open. Rebase/consolidation may retire overlay entries only when the replacement base/index and retained-reader contract safely cover them.
+
+**Scope and current-code boundary:** this settles scalar-predicate result semantics, not a C++ data structure, delta-index format, vector-index update algorithm, or cache invalidation protocol. The current [UnaryExpr.cpp](../../internal/core/src/exec/expression/UnaryExpr.cpp) routes evaluation through scalar-index/raw-data paths and performs chunk pruning; [Expr.h](../../internal/core/src/exec/expression/Expr.h) manages access-path-dependent prefetch. These are integration points to make update-aware, not evidence that this merge already exists. Projection, raw scans, expression caches, and later mutation predicates must agree with the same field versions; correcting only returned output values cannot prevent missed index matches.
+
 ## 11. Deferred integration and open contracts
 
 This document does not fully specify WAL payloads, deterministic replay, L0 persistence and catch-up during segment load, release/reload behavior, CDC, compaction execution, or replica-wide visibility. Section 9.1.3 settles the drop-field safety requirement, both mandatory drain phases, and the all-VChannel release condition, while preferring unified drainage and reuse of existing checkpoint/L0 progress. Section 9.3 settles target-QN predicate-delta loading's access-path policy and records the asynchronous-recovery direction: separate base load from background apply, with per-request `GuaranteeTs` admission against complete relevant progress. Its PG precedent and applicability limits are explicit; the progress protocol remains open. Section 9.4 settles coarse predicate dispatch and rejects ingress association tables with lineage repair; its durable protocol and cost remain open. These remain required integration work, not benefits already delivered by local bitmap application. Support for accepting general predicate deletes against unloaded data is deferred; this is distinct from allowing already-accepted mutations to progress through L0 and offline compaction after release.
@@ -819,6 +903,6 @@ Before coding the predicate-delete part, finalize:
 - The predicate-delta loader/CGo wiring, replay bookkeeping, failure handling, and resource budgeting; preserve Section 9.3's access-path policy and per-request progress gate. Define the initial readable state, complete apply-progress publication/aggregation, and recovery-mode/readiness controls without silently weakening requested consistency. Delegator L0/streaming catch-up must participate in the completeness proof, but its detailed protocol remains separate work.
 - The durable coarse-dispatch protocol and fanout measurements in Section 9.4; preserve lightweight L0, current-storage-view selection, and release-independent progress without reintroducing a request-time association table or lineage-repair subsystem.
 
-For update deltas, Section 10.4 settles multi-row predicate selection and multi-column constant assignment, while excluding old-value-dependent assignments. Section 10.5 settles the observable results of independent and overlapping patches and their predicate-order dependency. The benefit target, exact supported fields/types/predicates, and UPSERT semantics still require discussion. Detailed physical row targeting, value-version storage, index handling, concurrency enforcement, durable replay, load, and compaction mechanisms remain open. The shared ordering invariant in Section 6 applies to all of them; it is a requirement, not an implemented guarantee.
+For update deltas, Section 10.4 settles multi-row predicate selection and multi-column constant assignment, while excluding old-value-dependent assignments. Section 10.5 settles the observable results of independent and overlapping patches and their predicate-order dependency. Sections 10.6–10.7 settle versioned field values and scalar query merging: mask snapshot-visible updated offsets in the base result, then supplement matches from each row's latest visible field value, initially without requiring a separate delta index. The benefit target, exact supported fields/types/predicates, and UPSERT semantics still require discussion. Detailed physical row targeting, value-version storage/GC, overlay/index/cache implementation, coherent publication, concurrency enforcement, durable replay, load, and compaction mechanisms remain open. The shared ordering invariant in Section 6 applies to all of them; it is a requirement, not an implemented guarantee.
 
-No implementation or performance validation accompanies this draft. This revision consolidates the discussion and expands the document's scope; it does not authorize implementation or mark the update design as settled.
+No implementation or performance validation accompanies this draft. This revision records agreed query semantics and industry applicability boundaries; it does not authorize implementation or mark the complete update design as settled.
