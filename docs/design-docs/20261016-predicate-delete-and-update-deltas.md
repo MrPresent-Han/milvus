@@ -2,11 +2,13 @@
 
 Date: 2026-10-16
 
-Discussion checkpoint: 2026-10-20
+Discussion checkpoint: 2026-10-21
 
-Status: Draft — predicate-delete data flow, progress-bound best-effort statistics, predicate-backlog scheduling, asynchronous recovery direction, constant-assignment update semantics, and snapshot-aware base-index/delta query merging agreed; detailed protocols remain open; not implemented
+Status: Draft — predicate-delete data flow, progress-bound best-effort statistics, predicate-backlog scheduling, asynchronous recovery direction, shared logical mutation-message structure, single-mutation request boundary, TimeTick-preserving buffer/file ordering, VChannel delta-prefix publication and recovery contract, bounded assignment-expression scope, constant-assignment update semantics, and snapshot-aware base-index/delta query merging agreed; detailed implementation protocols remain open; not implemented
 
 Scope: Joint design for predicate deletes and logical in-place updates through deltas, including segment application, ordering, persistence, load/recovery, compaction, and schema safety. Predicate-delete decisions are more developed; update benefits and detailed mechanisms still require evaluation.
+
+**Critical implementation-design item: cross-type delta publication atomicity.** The complete-prefix requirement, independent VChannel-level publication interface, strict contiguous range extension, `RangeApplied`/`RangeMismatch` results, and recovery-first prefix lookup are agreed. Durable metadata layout, atomic commit mechanics, consumer acquisition, and ownership fencing still require detailed design and verification. Treat Sections 9.7.2–9.7.4 as a correctness-critical workstream, not a minor writer extension or an implemented guarantee.
 
 ## 1. Goal and agreed decisions
 
@@ -38,6 +40,13 @@ The local pipeline is not a complete replacement for the distributed delete prot
 - **Co-design the mutation lifecycle.** Online application, load/recovery, and compaction must produce results equivalent to the same VChannel's committed logical mutation order and timestamp visibility. Predicate evaluation must see earlier visible updates; see Section 6.
 - **Share contracts, not necessarily representations.** Delete changes row visibility; update changes field values. This agreement does not put field updates into `DeletedRecord`, select an update operator, or require identical delta formats/RPCs.
 - **Separate row selection from column assignment.** One update may select multiple rows through a supported `WHERE` predicate and assign constants to multiple columns through one `SET` patch. Initial scope excludes assignments that read old field values; see Section 10.4.
+- **Share the logical mutation-message structure.** Predicate delete and update reuse the WAL envelope and common collection/schema identity, partition scope, and typed predicate. Update additionally carries field assignments; neither carries an ingress matched-PK list or segment statistics. These are logical contracts, not finalized protobuf definitions; see Section 9.5.
+- **Keep one logical mutation per request.** SDK, Proxy, and StreamingNode accept one native UPDATE or predicate DELETE per logical request, represented by one message per target VChannel, not a batch of independent mutation statements. One statement may still match many rows and assign multiple columns. User-controlled DML transactions are outside this design; existing internal write transactions remain separate infrastructure; see Section 9.5.2.
+- **Preserve ordered commands through buffering and persistence.** The persistence buffer does not evaluate predicates or collapse intermediate updates. Update and predicate-delete deltas use separate file types, retaining each record's effective mutation TimeTick for ordered merge during load and compaction; see Section 9.7.
+- **Coordinate all delta types at publication.** Reuse PK-delete sync trigger categories, but use a common per-VChannel sync cut across PK deletes, predicate deletes, and updates. Atomically advance `delta_prefix_barrier[v]` only over a complete, durably published prefix; L0 delta compaction must not consume independently visible partial files. Sparse types must also sync through the cut; small-file amplification is an explicit cost; see Sections 9.7.1–9.7.2.
+- **Publish ranges through a dedicated VChannel interface.** Keep the L0 segment storage representation, but introduce a separate `PublishDeltaPrefix` contract rather than broaden the single-segment `SaveBinlogPaths` RPC. New ranges must extend the current prefix without gaps or overlap; already-covered ranges return `RangeApplied` without republishing. SN recovery reads each VChannel's published prefix from MixCoord before resuming materialization. These are agreed contracts, not implemented APIs; see Sections 9.7.3–9.7.4.
+- **Keep assignment capability deliberately small.** Represent an assignment as `field_id + value_expr`, initially admitting only typed literals, including explicit NULL for supported nullable fields. The long-term core adds same-row field references and basic arithmetic; a few deterministic built-ins may be added for demonstrated needs. Full SQL expression parity is not a goal; see Sections 2.10 and 10.8.
+- **Separate assignment evaluation without duplicating a complete execution framework.** Delete and update share the WHERE contract; update alone computes assigned values and applies field patches. Phase-one constants require only filling selected rows, not a general value-expression executor. Reuse suitable type and field-access infrastructure while keeping WHERE and SET capability allowlists independent; see Section 9.6.1.
 - **Preserve field-level patch semantics under concurrency.** Independent patches to different columns retain both changes; assignments to the same row and column resolve in committed logical mutation order. Predicate evaluation and patch application must observe earlier applicable mutations consistently across online execution, load/recovery, and compaction; see Section 10.5.
 - **Keep versioned field values and correct stale-index results.** Preserve the base scalar index, remove old matches for rows with snapshot-visible updates to the indexed field, and supplement matches evaluated against their latest visible values. Initially, scan the updated-field values without requiring a separate delta index; see Sections 10.6–10.7 and the industry comparison in Section 2.9.
 - **Evaluate benefits before detailed update design.** Section 10 records opportunities and tradeoffs, not measured improvements or a settled implementation. Exact field/type and predicate support, physical row targeting, index-overlay implementation, concurrency control, and update-delta representation remain open.
@@ -63,7 +72,7 @@ Proxy: validate supported predicate and scope; no matching-PK/count query
        |     -> local expression evaluation -> ApplyDeletesMap
        |
        `-> persistence consumer / L0 materializer
-             -> durable predicate L0 + metadata
+             -> durable L0 files + complete cross-type prefix publication
              -> lightweight scope-based dispatch using current storage metadata
              -> segment-owned predicate delta files + published metadata
                   |-> DataNode data compaction: evaluate and rewrite
@@ -73,7 +82,7 @@ Proxy: validate supported predicate and scope; no matching-PK/count query
 
 1. **Admission and WAL append.** Proxy validates the typed expression, schema, and operation scope, then submits a supported predicate directly to WAL without retrieving PKs or collecting segment statistics. Unsupported expressions retain the legacy PK path. The initial general-predicate admission prerequisite remains loaded data; this is not a requirement that the collection stay loaded afterward. Commitment and ordering are per relevant VChannel, not a new collection-wide atomicity guarantee.
 2. **Online consumption and application.** The query-side consumer retains predicates in the Delegator's delete buffer for catch-up and forwards applicable records to serving segments in the relevant QueryView, including local Growing data on SN and Sealed data on target QNs. Segment-local execution evaluates the predicate and applies selected offsets. Online forwarding is scoped, not a fanout to unrelated collections or partitions.
-3. **Durable L0 production.** The persistence consumer materializes committed predicate deletes into L0 output and publishes its metadata. This and the online delete buffer are separate responsibilities: the current `deleteBuffer.Put` path must not be described as the owner that flushes L0 files. Extending the existing WAL L0 materializer to predicate records remains implementation work.
+3. **Durable L0 production.** The persistence consumer materializes committed predicate deletes into L0 output. With updates enabled, Section 9.7 requires the dedicated VChannel-level publication of a complete prefix across PK-delete, predicate-delete, and update deltas before L0 compaction may consume that prefix. SN recovery first reads the durable published prefix from MixCoord and does not rematerialize covered ranges. This and the online delete buffer are separate responsibilities: the current `deleteBuffer.Put` path must not be described as the owner that flushes L0 files. Extending the existing WAL L0 materializer and implementing cross-type publication remain implementation work.
 4. **L0-to-segment dispatch.** Predicate L0 dispatch selects candidate Sealed segments by current storage metadata, channel/partition scope, and safe logical data-time bounds. “Candidate” does not mean the expression is known to match. Persist a segment-owned predicate delta file type that can batch multiple records, with discoverable segment metadata; do not create a request-time segment association table or evaluate expressions in L0. Publication must complete before the corresponding L0 input can be retired. This storage operation is not a second online broadcast to all already-loaded segments.
 5. **Scheduling and offline compaction.** MixCoord does not need to know a predicate's match count to schedule work. Accurate applied-delete counts, when available, are progress-bound best-effort hints; outstanding predicate counts provide a hit-independent scheduling signal. DataNode reads durable inputs and evaluates predicates without a loaded-QN dependency. Executing 100 predicates and deleting zero rows is an accepted outcome: incorporating those records into durable output can still remove future replay work.
 6. **Load and recovery.** For either lazy-load setting, separate base loading from ordered predicate application; overlap work where initialized resources permit. Base loading may return without waiting for full predicate catch-up, but it does not make every query immediately serviceable. Each query must satisfy the complete relevant apply-progress gate in Section 9.3. Suitable scalar indexes avoid raw-column reads; otherwise reuse on-demand access without an extra forced eager-load stage.
@@ -90,7 +99,7 @@ The existing expression-delete path retrieves matching PKs before applying PK-ba
 
 The mature shared pattern is **evaluate a condition -> identify local rows -> mutate through a storage-owned entry**. An explicit SQL mutation operator is one realization; a segment-local query-delete loop is another.
 
-The delete comparisons below inspect fixed release tags. Section 2.7 separately identifies Kudu's versioned operational documentation and moving-source references; Section 2.9 compares production base-plus-change query mechanisms. These establish implementation precedent, not comparative performance or proof of Milvus correctness.
+The delete comparisons below inspect fixed release tags. Section 2.7 separately identifies Kudu's versioned operational documentation and moving-source references; Section 2.9 compares production base-plus-change query mechanisms, and Section 2.10 compares assignment interfaces and their capability boundaries. These establish implementation precedent, not comparative performance or proof of Milvus correctness.
 
 | Reference | Why it is relevant | Main difference from this proposal |
 | --- | --- | --- |
@@ -228,6 +237,24 @@ Sources: Microsoft's [SIGMOD 2013 paper, Sections 4 and 4.4](https://www.microso
 
 **Evidence boundary:** these are mature precedents for the read-combination principle. Section 10.7 is a Milvus-specific design adaptation, not an existing Milvus feature or an assertion that these products implement its exact scalar-index overlay.
 
+### 2.10 Assignment expressions: borrow a small typed interface, not full SQL
+
+Primary sources reviewed on **2026-10-21** show different capability boundaries, not an industry requirement to support every SQL expression:
+
+| Reference | Observed contract | Implication for this design |
+| --- | --- | --- |
+| Kudu native write API / `RowOperationsPB` | UPDATE supplies column values, with separate column-presence and NULL bitmaps; this wire format does not carry an arbitrary assignment-expression AST | Delta-based updates do not inherently require a rich expression language. Borrow explicit field patches and the distinction between absent and NULL values, not Kudu's key or transaction semantics |
+| ClickHouse update mutations | Store a selection predicate and a mapping from assigned columns to expressions | Borrow the selection/assignment separation and expression-shaped RHS, not the full function library or its execution engine |
+| PostgreSQL 18 UPDATE | RHS expressions can read old values of the same row; UPDATE also supports subqueries and other-table inputs through FROM | Borrow the row-local assignment model. Do not make cross-table, subquery, or general SQL capability a Milvus feature-completion requirement |
+
+Sources: [Kudu native Update API, 1.18.0](https://kudu.apache.org/releases/1.18.0/apidocs/org/apache/kudu/client/Update.html), [Kudu row-operation encoding](https://github.com/apache/kudu/blob/master/src/kudu/common/row_operations.proto), [ClickHouse mutation parsing, v25.8.1.5101-lts](https://github.com/ClickHouse/ClickHouse/blob/v25.8.1.5101-lts/src/Storages/MutationCommands.cpp), and [PostgreSQL 18 UPDATE](https://www.postgresql.org/docs/18/sql-update.html). The Kudu source link is moving `master`; it describes the native write protocol, not the capabilities of SQL engines layered over Kudu.
+
+**Adopt:** explicit changed-column assignments, typed expression composition, and a clear separation from row selection. **Adapt:** make the admitted expression subset small enough to reproduce consistently during online execution, load/recovery, and Go compaction. **Do not adopt:** full SQL, arbitrary UDFs, or external computation as a requirement for this mutation path.
+
+The selected scope in Section 10.8 is a Milvus product/design choice, not an industry-standard minimum. Reducing full-row replacement and redundant unchanged-vector/index work is the core benefit target; complex assignment expressions are not a prerequisite for that target. No measured Milvus gain follows from these precedents alone.
+
+**Execution-layer precedent: separate operators, shared primitives.** In DuckDB v1.4.0, [PhysicalFilter](https://github.com/duckdb/duckdb/blob/v1.4.0/src/execution/operator/filter/physical_filter.cpp) calls `ExpressionExecutor::SelectExpression` to obtain a row selection, while [PhysicalProjection](https://github.com/duckdb/duckdb/blob/v1.4.0/src/execution/operator/projection/physical_projection.cpp) calls the same executor abstraction's `Execute` method to produce value columns. Adopt the separation between boolean selection and typed value production; adapt it to a small assignment module and Milvus's ordered, versioned row view. Do not infer that Milvus needs two complete execution frameworks, that its current filter executor already implements assignments, or that DuckDB's storage-update behavior must be copied. This is architectural precedent, not evidence of an existing Milvus update evaluator.
+
 ## 3. Current implementation
 
 ### 3.1 Delete application
@@ -353,11 +380,23 @@ Committed delete at ts=110: age < 18, with the earlier update visible
 Expected result: the row survives, with age=20
 ```
 
-Applying the predicate against the old base value would silently delete a live row. Replaying all deletes before all updates, or grouping mutations by field without preserving dependencies, is therefore invalid. Loading and compaction must preserve the same semantics even if updates and deletes reside in separate durable files. Their merge/progress protocol remains open.
+Applying the predicate against the old base value would silently delete a live row. Replaying all deletes before all updates, or grouping mutations by field without preserving dependencies, is therefore invalid. Updates and predicate deletes will reside in separate durable file types; load and compaction merge their records by effective mutation TimeTick, not by file type or creation time. This ordering direction is agreed; the detailed merge/completeness protocol remains open; see Section 9.7.
 
 This also qualifies index-based predicate execution: an index over unmodified base data alone cannot establish the correct match set after visible updates to that field. Scalar-index, raw-column, and cached-expression access must represent the same versioned row view. Sections 10.6–10.7 settle the field-version and query-merge direction, not its implementation. The existing predicate-load policy still avoids an extra eager-load requirement; it does not itself provide this update-aware overlay.
 
 The goal is ordered, timestamp-correct mutation application across all three paths. It does not establish client-request idempotency, rollback, or historical field-value retention merely by referring to WAL replay.
+
+#### Logical TimeTick order versus physical WAL order
+
+The existing WAL allocates a message's TimeTick before its backend append. Concurrent writes can therefore appear physically as `B@101, A@100` even though their logical order is `A@100, B@101`. The consumer reorders them before delivery. In this design, "WAL order" means the relevant VChannel's committed logical mutation order, not physical MessageID order, Proxy arrival order, or file creation order. This does not imply that every insert/delta file is physically unordered.
+
+**A confirmed watermark is a gap-free acknowledged prefix, not the largest timestamp observed.** At the PChannel WAL layer, an earlier allocated append still in flight prevents confirmation from advancing past it. For example, if confirmation has reached 99, completion of `B@101` alone cannot advance it while `A@100` is outstanding. Once A is also acknowledged, the prefix can advance through 101. The consumer uses the confirmation barrier to release buffered records in TimeTick order; transaction assembly additionally withholds uncommitted bodies. Sorting determines order; confirmation establishes that an earlier outstanding write is not missing from the deliverable prefix.
+
+Do not confuse this append-confirmation watermark with QN apply progress, L0 persistence completion, or target-segment delta publication. Those are separate downstream milestones and must independently prove complete coverage. A TimeTick confirmation does not mean every allocated write succeeded, every transaction committed, or every consumer finished applying it.
+
+The effective mutation timestamp is the existing WAL time, not a new clock: an ordinary message uses its TimeTick; an assembled internal transaction uses its commit TimeTick. In the current streaming insert path, each row's timestamp is explicitly set to this effective message TimeTick. Preserve the same meaning through mutation buffering and delta persistence; do not substitute Proxy receive time or flush time.
+
+**Current-code cross-check:** the [TimeTick/transaction guide](../agent_guides/streaming-system/wal/timetick_and_txn.md), [TimeTick allocation](../../internal/streamingnode/server/wal/interceptors/timetick/timetick_interceptor.go), [AckManager prefix advancement](../../internal/streamingnode/server/wal/interceptors/timetick/ack/manager.go), and [scanner reordering/transaction assembly](../../internal/streamingnode/server/wal/adaptor/scanner_adaptor.go) establish these existing boundaries. [Insert message adaptation](../../pkg/streaming/util/message/adaptor/message.go) and [growing insert persistence](../../internal/streamingnode/server/wal/vchannel/segment/pack_writer.go) assign the effective TimeTick to row timestamps. Adopt these Milvus contracts rather than importing physical-log ordering or SQL transaction assumptions from another engine.
 
 ### Stable row identity and timestamp
 
@@ -402,7 +441,7 @@ Implementation must establish equivalence with the current delete semantics, not
 5. Verify historical and latest-snapshot queries before and after application, including interaction with existing PK deletes and loaded deltas.
 6. Inject cancellation, application errors, release/reopen races, and concurrent mutation; verify the explicitly chosen failure and publication contract.
 7. Measure expression, apply, snapshot, and total time separately; capture CPU, memory, allocation, and concurrent-search latency against the legacy path.
-8. For every allowlisted expression/type combination, compare Go compaction selection against Segcore and an independent oracle, including boundary values and NULL behavior where supported. Verify that an unsupported subexpression routes the whole request through the legacy PK path before predicate persistence/application.
+8. For every allowlisted expression/type combination, compare Go compaction selection against Segcore and an independent oracle, including boundary values and NULL behavior where supported. Verify that an unsupported DELETE subexpression routes the whole request through the legacy PK path before predicate persistence/application; an unsupported UPDATE WHERE or SET must instead reject the request before append.
 9. Validate the drop-field drain contract in Section 9.1.3 with delayed Streaming/L0 work, old growing data, unequal per-channel progress, mixed PK/predicate backlog, segment replacement, and restart between the two drain phases or before metadata publication. Cover an empty L0 inventory while deletes remain in Streaming and mismatched checkpoint/L0 observations. Physical column removal must not precede complete durable coverage and predicate evaluation.
 10. For predicate-delta loading, verify index-only, raw-data, and mixed access paths against the same row/timestamp oracle. With suitable exact scalar indexes, check that `c > 18 && a == 18` does not read the corresponding raw columns for predicate evaluation; also cover cold indexes, lazy raw columns, NULL semantics, prefetch, and read/cancellation failures. Measure load/recover latency, storage reads, and peak memory against equivalent PK-delta replay rather than assuming a benefit.
 11. For the joint design, compare online application, reload/recovery, and compaction with an independent ordered-mutation oracle. Cover update-before-predicate-delete, interleaved updates/deletes, historical snapshots, stale base indexes, separate delta files, and segment replacement. Test missing/deleted-row behavior after its API contract is selected; do not silently assume updates resurrect rows.
@@ -416,6 +455,17 @@ Implementation must establish equivalence with the current delete semantics, not
 19. Verify that each reported deleted count and complete apply watermark describe one coherent segment state. Cover concurrent apply, delayed/out-of-order reports, replicas at different progress, release/reload, and compacted-away sources. Reports must neither double count replicas nor claim coverage of unfinished mutations.
 20. Verify hit-independent scheduling with missing/stale stats and with an exact zero-deleted-row observation plus many outstanding predicates. QN application alone must not clear the durable backlog count; successful data compaction must retire only consumed records after output publication, including zero-match records. Test repeated delivery versus separate committed mutations using the same expression.
 21. Verify Section 10.7's index/delta merge against a versioned full-scan oracle: updates entering and leaving a predicate's match set, repeated updates to one field, snapshots before/between/after updates, patches to unrelated fields, and updates assigning the base value again. Cover empty base-index results, stale min/max pruning, compound predicates, supported NULL semantics, and row deletion. Exercise concurrent publication and base/index replacement so masks, values, and progress cannot describe different generations. Measure updated-row scan cost as delta density and retained-version depth grow; this document does not claim those tests have run.
+22. Validate the logical message and assignment boundaries in Sections 9.5 and 10.8: explicit delete/update discrimination, bound field IDs/types, shared scope, absent-versus-NULL patches, and phase-one rejection of non-literal RHS nodes before append. Before widening the allowlist, verify matching results and error behavior across online, load, and compaction evaluators, including earlier field updates and repeated delivery of non-idempotent arithmetic mutations. These are planned checks, not completed verification.
+23. Validate the evaluator separation in Section 9.6.1: DELETE and UPDATE use identical WHERE eligibility and selection semantics, while SET eligibility is checked independently. Cover zero/many selected rows, multiple constant assignments, explicit NULL, unchanged omitted columns, and non-literal phase-one rejection. Future RHS expressions must resolve all inputs against the same pre-mutation row view across online, load, and compaction execution. These are planned checks, not executed tests.
+24. Verify ordering under concurrent append: physically record `B@101` before `A@100`, keep confirmation behind the outstanding A, and confirm logical delivery of A before B. Distinguish append confirmation from QN application and durable L0/segment coverage; preserve the effective row/mutation timestamp, including existing internal transaction commit timestamps.
+25. Persist `UPDATE@100`, `DELETE@110`, and `UPDATE@120` in separate update/predicate-delete files and compare online, reload, and compaction results with the ordered oracle. Vary file creation/flush order, split records across files, delay one input, and fail/retry publication. No intermediate update may be coalesced away, and a later record cannot justify advancing past missing earlier work.
+26. Verify the single-mutation request contract: reject batches of independent native UPDATE/DELETE statements while accepting one predicate that matches many rows and one UPDATE containing several constant assignments. Preserve one native mutation message per target VChannel; do not infer collection-wide atomicity or user-controlled transactions from internal WAL transaction support.
+27. Validate a common sync cut with highly uneven traffic: 100 update records, two PK deletes, and one predicate delete before T must all become durable even if the sparse buffers are below their individual thresholds. Cover a genuinely empty type, arrivals after T, overlapping file time ranges, and each trigger category. Measure small-file count, object requests, metadata growth, and retained-WAL pressure; matching-row counts are not buffer capacity estimates.
+28. Fault-inject cross-type publication at every boundary: one file uploaded while another fails, partial metadata registration, all objects durable before publication, and crash/retry after publication before checkpoint or retained-input release. Run concurrent L0 scheduling and downstream data compaction: neither may treat `DELETE@110` as a complete usable prefix while `UPDATE@100` is unavailable. Verify consistent prefix/discovery observations, confirmed-empty types, failover, and safe cleanup without relying on object-listing order. These are required future tests, not completed verification.
+29. Verify the PK-tombstone logical oracle with `DELETE pk=2@100` and `DELETE pk=2@150` in either materialization order: the final deleted-version set must agree, while retained timestamps preserve supported intermediate-snapshot semantics. Contrast this with a dependent update/predicate-delete sequence. For the proposed barrier, verify monotonic advancement per VChannel, no advancement across a missing type, isolation between VChannels, and no scheduler split that omits an applicable earlier delta despite a published higher cut.
+30. Verify Section 9.7.3's range contract with barrier 100: publish complete `(100,120]`; reject partial overlap `(80,120]` and gap `(110,120]` without changing metadata or the barrier; acknowledge already-covered `(80,100]` without republishing. Cover invalid bounds, lifecycle identity and stale-owner fencing, concurrent publishers, and durable commit failures. A rejection must not silently clip a range or advance by `max()`.
+31. Drop the initial and subsequent publication responses while SN remains running. Retrying the same range must eventually obtain `RangeApplied` once coverage is durable, without duplicate registration, premature input release, or cleanup based on an ambiguous timeout. Distinguish logical coverage from acceptance of arbitrary file paths supplied by a retry.
+32. Crash SN after the file metadata and prefix commit but before ACK or local progress update. Recovery must read the committed per-VChannel prefix first and skip rematerializing that range. Contrast with an uploaded object whose metadata/prefix never committed: that range remains pending. Exercise several VChannels sharing one PChannel, failed prefix reads, MixCoord restart, and owner changes; no PChannel maximum or reset to zero may replace the individual authoritative prefixes. These are required future tests, not completed verification.
 
 ## 9. System-level integration checkpoints
 
@@ -711,7 +761,7 @@ Committed predicate mutation: scope + logical timestamp + predicate [+ constant 
   -> evaluate in online/load execution or background data compaction
 ```
 
-This is a lifecycle model, not a wire format or a claim that one logical mutation occupies one WAL record.
+This is a lifecycle model, not a wire format. Section 9.5.2 separately defines one native mutation message per target VChannel.
 
 - **Before dispatch:** retain the scoped predicate in durable L0, without freezing the request's QueryView segment list.
 - **During dispatch:** select the current candidate segments and publish their predicate deltas under a validated scheduling/publication boundary. Prefer extending existing L0/compaction coordination over repairing stale ingress associations.
@@ -723,6 +773,8 @@ L0 must remain a **lightweight distribution stage**: no expression execution, no
 Release after mutation acceptance must not make L0 wait for reload. Outstanding predicates can remain in segment-owned durable deltas until offline compaction or a later load evaluates them. This does not change the separately retained admission prerequisite for accepting general predicate deletes in Section 1.1.
 
 **Durability is still mandatory.** WAL commitment alone is not completed L0 dispatch. Predicate content and the metadata that makes it discoverable for the current targets must be durably published before dispatch is reported complete or the source is retired. The agreed high-level organization is a new segment-owned predicate delta file type batching multiple records, not a separate metastore association entry for every predicate/segment pair. This does not require exactly one physical file for the segment's entire lifetime; encoding, batching/rolling, and publication/cleanup remain open. The no-side-table decision removes ingress lineage repair, not ordinary segment metadata, completion accounting, or garbage-collection obligations.
+
+**Complete input prefix is mandatory.** L0 delta compaction must acquire all PK-delete, predicate-delete, and update deltas in its selected published interval for the VChannel; it must not independently schedule whatever type's files happen to be visible first. Section 9.7.2 defines the required atomic visibility boundary. L0 remains lightweight dispatch, not expression evaluation. Target-segment publication must also preserve completeness for later load/data compaction; atomic input publication alone does not prove the downstream handoff correct.
 
 #### 9.4.4 Explicit tradeoffs and rejected alternatives
 
@@ -748,9 +800,261 @@ Extra expression execution during background data compaction is an accepted trad
 
 **Still open:** exact predicate-file encoding and segment metadata layout, batching/rolling and cleanup, retry/restart and partial-publication behavior, ordering/completion frontiers across PK deletes/predicate deletes/updates, coverage of old growing data and replacement outputs, and cost limits. Existing task exclusion and target selection are reuse candidates, not an end-to-end proof. The drop-field drain in Section 9.1.3 still needs its complete durable-prefix guarantee; coarse dispatch does not weaken it.
 
-## 10. Update deltas: benefits and agreed query semantics
+### 9.5 Shared logical WAL message and expression representation
 
-Discussion checkpoint: **2026-10-20**. Logical in-place updates through deltas, joint mutation-order correctness, versioned field values, and snapshot-aware base-index/delta query merging are agreed directions. The benefit analysis below is a set of hypotheses and evaluation questions, not measured results or an approved detailed update design. Prior large-delete tests motivate predicate deletion; they do not establish update-delta performance.
+Discussion checkpoint: **2026-10-21**. Share the logical envelope, header identity, and mutation target between predicate delete and update. Update adds assignments. This settles the responsibility split, not message enum values, protobuf field numbers, or a requirement to use one concrete protobuf type.
+
+```text
+Properties — reuse the existing WAL envelope
+  message_type: PREDICATE_DELETE | UPDATE       // conceptual names
+  message_version: ...
+  vchannel: ...
+  timetick: ...                                // WAL-assigned
+  txn_context: ...                             // existing internal envelope only; not a user transaction API
+
+Header — common identity and schema-validation contract
+  collection_id: ...
+  schema_version: ...
+
+Body — common mutation target
+  partition_scope: ALL | PARTITION_IDS(...)
+  predicate: BoundTypedExpr<Boolean>
+
+Body — UPDATE only
+  assignments:
+    - field_id: ...
+      value_expr: BoundTypedExpr<TargetCompatibleType>
+```
+
+- **Reuse infrastructure metadata, not a second clock.** Retain the existing WAL properties rather than duplicating them in the body. Preserve the effective committed mutation timestamp through L0, loading, and compaction, including existing transaction timestamp semantics where applicable. Section 6's committed logical order is authoritative; physical append arrival order is not a replacement for it.
+- **Share scope and selection, distinguish the operation explicitly.** `partition_scope + predicate` is the common logical target. An update is not inferred from the presence of assignments, and an empty assignment list must not mean delete. Schema version binds field interpretation; it is not a substitute for payload/expression semantic compatibility.
+- **Persist a bound, typed logical expression.** Resolve field names to IDs and types and bind literal/template values before persistence. Do not persist only raw expression text or a segment/index-specific physical execution plan. A restricted subset of [plan.proto](../../pkg/proto/plan.proto) is a candidate representation; reusing its nodes does not authorize every expression accepted by the query engine.
+- **Keep business content in the body.** Predicate literals, assignment values, and partition-ID lists belong in the payload, not an unbounded specialized header. Do not carry matched PK lists, segment IDs/offsets, per-segment counts, or a prepared stats table. A PK literal inside a predicate is legitimate input; a query-expanded list of matches is not the proposed payload.
+- **Do not fabricate affected-row counts.** Predicate admission does not know the number of matching rows. The existing PK-delete header's `rows` field must not be populated with an expression count or with zero as if no rows were deleted. Public result/count semantics remain a separate open contract.
+- **Gate capabilities before append.** Typed syntax and protobuf decodability do not prove that all required online/load/compaction consumers implement the same semantics. Unsupported predicate deletes retain the pre-append legacy PK route; an UPDATE with an unsupported WHERE or SET is rejected before append, without an automatic upsert or insert-plus-delete fallback. Section 9.6.2 records the routing boundary. Section 9.5.1 settles the Proxy/StreamingNode responsibility principle; detailed checks and cross-version admission remain open. Committed unknown nodes must not be skipped.
+
+**Current-code cross-check:** the [message model guide](../agent_guides/streaming-system/message/message.md), [properties.go](../../pkg/streaming/util/message/properties.go), and [messages.proto](../../pkg/proto/messages.proto) distinguish shared properties, small infrastructure headers, and business payloads. Existing Insert headers carry schema versions, while the PK Delete header carries collection ID and row count; a common new mutation schema header is proposed, not already implemented. [Transaction assembly](../../pkg/streaming/util/message/builder.go) applies the commit TimeTick to transaction bodies. These are reuse precedents, not evidence of existing predicate-delete/update message support.
+
+#### 9.5.1 Agreed validation responsibility principle
+
+Discussion checkpoint: **2026-10-21**. **Proxy validates that the request is legal under version V; StreamingNode validates that version V remains admissible at the mutation's commit boundary.**
+
+Here, V denotes the relevant schema and expression-capability versions, not a decision to merge them into one version number or introduce a new wire field. Static validation means that its result is stable for the bound request and those fixed versions: syntax, field/type binding, assignment restrictions, and supported-expression eligibility. It does not mean that the live schema or enabled capability set can never change.
+
+Proxy may also precheck mutable conditions to reject early, but such checks cannot replace authoritative write-side admission. For example, a request valid under a schema containing field `c` must not be admitted after the applicable drop-field boundary merely because Proxy checked it earlier. This does not require StreamingNode to reparse or execute the predicate/assignments.
+
+The existing [Insert append handler](../../internal/streamingnode/server/wal/interceptors/shard/shard_interceptor.go) and [schema-version check](../../internal/streamingnode/server/wal/interceptors/shard/shards/shard_manager_collection.go) provide a local precedent for write-side version validation. Their legacy compatibility exceptions are not automatically inherited by the proposed mutation types. This checkpoint settles the responsibility rule only; concrete checks, version negotiation, retry behavior, and synchronization are deliberately deferred.
+
+#### 9.5.2 Agreed request unit and internal-transaction boundary
+
+SDK -> Proxy -> StreamingNode accepts **one logical native UPDATE or predicate DELETE per request**, producing one corresponding message per target VChannel. A batch of independent UPDATE/DELETE statements is not supported. Independent requests may still arrive concurrently; the restriction concerns request composition, not request concurrency. This restriction does not prevent one WHERE from matching many rows or one UPDATE from carrying multiple assignments; those assignments remain in the same mutation payload. Buffering multiple independently committed requests into one persistence file is not a batch mutation API.
+
+Matching millions of rows does not itself enlarge an expression-plus-patch message into millions of row records. Do not introduce transaction splitting based on the number of matched rows, or a transaction-internal operation ordinal for the new single-mutation path. Concrete payload-size limits remain implementation work; this agreement does not promise unbounded expressions or assignment values.
+
+Existing internal transactions serve a different purpose: a single-VChannel insert split into multiple messages can commit as one visible group, and existing upsert combines insert/delete messages through the same infrastructure. Atomic committed visibility does not mean simultaneous physical writes or cross-VChannel atomicity. In particular, the current producer sends transaction bodies concurrently; it is not a user-specified sequence of SQL statements.
+
+**User-controlled DML transactions are a non-goal**, not an assumed future extension of this design. Retain internal transactions needed by existing write correctness without exposing BEGIN/COMMIT or mixed UPDATE/DELETE transaction batches. The references to transaction timestamps elsewhere describe infrastructure compatibility, not an additional public capability.
+
+**Current-code cross-check:** [VChannel grouping](../../internal/distributed/streaming/util.go), [producer autocommit/transaction selection and concurrent body append](../../internal/distributed/streaming/internal/producer/producer_task.go), [insert packing](../../internal/proxy/dml/task_insert_streaming.go), and [upsert append](../../internal/proxy/dml/task_upsert_streaming.go). The new native request restriction is a design decision, not a claim that these message types are already implemented.
+
+### 9.6 Assignment representation and phase-one admission
+
+Use `field_id + value_expr` rather than a constant-only field that must later be replaced. A constant is the simplest expression node; phase one restricts admission, not the long-term shape of the assignment.
+
+```text
+Phase 1: SET age = 23
+  Assignment(field_id=102, value_expr=Literal(Int64(23)))
+
+Later core: SET age = age + 1
+  Assignment(field_id=102,
+             value_expr=Add(Column(field_id=102, type=INT64), Literal(Int64(1))))
+```
+
+The notation is conceptual, not an existing protobuf constructor. `WHERE` must produce a boolean selection, whereas `value_expr` must produce a value compatible with its target field; they may share a typed node vocabulary without sharing the same admitted operator/type set. [plan.proto](../../pkg/proto/plan.proto) already contains `ValueExpr`, `ColumnExpr`, and `BinaryArithExpr`, but neither their presence nor `CallExpr` supplies a ready update evaluator or a durable semantic-version contract. Explicit NULL encoding still needs design; it must not be inferred from an omitted assignment or a protobuf default.
+
+Section 10.8 defines the agreed capability boundary. Binary compatibility, exact type/conversion rules, and cross-version feature admission remain detailed work; the expression-shaped representation does not itself enable phase-two calculations.
+
+#### 9.6.1 Agreed execution split: WHERE selection, assignment values, mutation apply
+
+Discussion checkpoint: **2026-10-21**. Use separate responsibilities and interfaces, not a requirement for two independent general-purpose execution frameworks:
+
+```text
+Shared WHERE evaluator -> selected segment-local offsets
+                           |-> DELETE -> delete application
+                           `-> UPDATE -> assignment values -> field-delta application
+```
+
+- **WHERE evaluation is shared by DELETE and UPDATE.** Use the same supported predicate/type combinations, boolean/NULL semantics, and snapshot-correct row selection. In the Go compaction design, both operations reuse one restricted predicate evaluator rather than maintaining divergent WHERE implementations.
+- **Assignment evaluation belongs only to UPDATE.** For selected rows, produce typed values for explicitly assigned fields. Do not force value production through a boolean-selection interface or put field values into `DeletedRecord`.
+- **Phase one needs only constant filling.** Each selected row receives the same typed literal patch, including explicit NULL where allowed. Computing RHS values does not require reading old values; WHERE evaluation and versioned patch application may still require data/state access. Do not introduce a general assignment executor just to broadcast constants over selected offsets.
+- **Extend with a restricted value evaluator later.** Same-row references and arithmetic can add typed value production, such as `age = age + 1`, without changing the selection/application split. Read all RHS inputs from the applicable pre-mutation row view, including earlier committed updates, not partially applied assignments from the same SET. Section 10.8 remains the capability ceiling, not full SQL.
+- **Reuse infrastructure without merging capability profiles.** Types, literal representation, versioned field access, and suitable expression primitives may be reused. `WHERE_supported_set` and `SET_supported_set` remain independently validated; an operation supported in one context is not automatically supported in the other. Logical semantics must agree across Segcore and Go compaction even where implementation code cannot be shared.
+
+Section 2.10 records the DuckDB Filter/Projection precedent and its limits. Concrete operators, batching, memory ownership, and publication mechanics remain implementation-design work; the names above describe responsibilities, not existing classes.
+
+#### 9.6.2 Pre-append support-routing contract
+
+| Valid request under the existing API/schema rules | Routing decision before append |
+| --- | --- |
+| DELETE WHERE outside the native predicate subset | Use the existing query-PK then PK-delete path, subject to its existing limits |
+| UPDATE WHERE outside the shared predicate subset | Reject; do not silently convert to upsert or insert-plus-delete |
+| UPDATE WHERE supported but SET outside the assignment subset | Reject |
+| All expressions supported for the requested operation | Append the native mutation without querying row data |
+
+Validate the entire bound expression and its compositions, not only its top-level operator. This table concerns unsupported capabilities, not transient append failures or runtime expression errors. Do not apply a supported subset, change routes after partial commitment, or treat an append timeout as proof that no mutation committed. Section 9.5.1 supplies the agreed validation responsibility principle; the detailed check allocation and compatibility protocol remain open.
+
+### 9.7 Agreed persistence-buffer and separate-delta ordering
+
+Discussion checkpoint: **2026-10-21**. This settles responsibilities and record-level ordering, not a concrete buffer class, binary file format, storage path, or manifest protocol. It adapts the existing ordered WAL consumption and persistence ownership; Section 2's base-plus-delta precedents do not supply this Milvus-specific protocol.
+
+- **Buffer commands, not a collapsed final state.** Retain predicate, scope, and effective mutation TimeTick for a predicate delete; retain those plus assignments for an update. Preserve collection/schema/expression interpretation from the admitted message. Do not regenerate timestamps when flushing.
+- **Do not execute in the persistence buffer.** Buffering neither evaluates expressions nor expands matching PKs/offsets. Online forwarding and load/recovery catch-up belong to the query-side consumer/pipeline, separately from persistence buffering and L0 materialization. This does not prohibit the online pipeline from applying updates to serving Growing data.
+- **Keep intermediate mutations.** `UPDATE age=23@100 -> DELETE WHERE age<24@110 -> UPDATE age=25@120` cannot be reduced to the last assignment before evaluating the delete. Physical batching/compression must preserve the ordered commands and timestamp visibility.
+- **Use separate update and predicate-delete file types.** Each type can batch multiple records. These are durable mutation instructions, not an ingress-time segment association table or already-evaluated offset results. After L0 dispatch, the files belong to the candidate target segments under Section 9.4's scope/publication rules.
+- **Keep buffers and files ordered, then merge across types.** The existing WAL consumer supplies reordered committed messages; type-based demultiplexing preserves ordered subsequences, so the new buffers need not independently sort physical WAL arrivals. Write each update/predicate-delete file in effective TimeTick order and retain each record's timestamp. Readers merge applicable records across types into the logical order used online. File creation time, listing order, and file-level min/max timestamps are not substitutes; physical encoding and merge mechanics remain open.
+
+Illustrative file names, not specified storage keys:
+
+```text
+update.delta:           UPDATE@100, UPDATE@120
+predicate_delete.delta: DELETE@110
+
+Application order:     UPDATE@100 -> DELETE@110 -> UPDATE@120
+```
+
+**Existing buffer precedent:** the [insert buffer](../../internal/streamingnode/server/wal/vchannel/segment/insert_buffer.go) appends retained messages supplied by the ordered consumer; it does not independently sort physical WAL records. The [WAL L0 materializer](../../internal/streamingnode/server/wal/vchannel/l0materializer/wal.go) separately owns retained delete inputs until output and registration complete; its [design](design_docs/wal/l0_materializer.md) describes that handoff. Reuse these ownership and timestamp principles; neither component currently implements the proposed native update/predicate buffers or file types.
+
+**Still open:** record encoding, batching/rolling limits, concrete durable publication/discovery, retained-input integration, and recovery/GC mechanics. Sections 9.7.3–9.7.4 settle the publication interface, result semantics, and recovery sequence, not their implementation. A later available delta record is not proof that all earlier mutations are available. This discussion does not turn append-confirmation watermarks into downstream persistence checkpoints.
+
+#### 9.7.1 Shared sync triggers and the common-cut tradeoff
+
+Reuse the existing PK-delete sync trigger categories: buffered-byte capacity, oldest-pending age, explicit Flush/lifecycle boundaries, and recovery/pressure-driven persistence requests. Account for actual predicate/assignment/PK payloads, not unknown matching-row counts. Exact limits and tuning remain open; sharing the policy does not mean all three buffers must independently reach their thresholds.
+
+The agreed direction is a common sync cut T within one VChannel's consumed, complete logical prefix. If the previous published cut is C, include every pending delta in `(C, T]` across **PK deletes, predicate deletes, and updates**. Records after T belong to a later batch. Files may be built and uploaded separately or concurrently; publication must still satisfy Section 9.7.2.
+
+```text
+Pending deltas in (C, T]:
+  update:           100 records -> sync all 100
+  PK delete:          2 records -> sync both, even below the byte threshold
+  predicate delete:   1 record  -> sync it, even below the byte threshold
+```
+
+A type with no records in the interval requires no empty file, but completion must establish that it is empty, not merely not yet flushed. Do not defer a sparse type's earlier records while declaring the common cut complete.
+
+**Cost:** coordinated cuts can produce small files for low-volume types, increasing object requests, metadata, and future file handling. A slow or failing type can also hold back publication and retained-WAL release for the others. The correctness requirement is a complete usable prefix; common-cut sync is the selected direction, not proof that every correct implementation must use identical physical flush schedules. Do not relax prefix completeness to improve file sizes.
+
+#### 9.7.2 Atomic visibility of the cross-type delta prefix
+
+**Agreed invariant:** L0 delta compaction consumes a complete, durably published delta prefix, not a collection of independently visible files. Given previously covered C and a selected published cut T, its input must contain all records of all three types in `(C, T]` for that VChannel. T must come from an authoritative completeness publication, not the largest timestamp found in existing files. Readers must distinguish confirmed absence of a type from unfinished persistence.
+
+**Agreed logical barrier:** `delta_prefix_barrier[v] = T` is a timestamp in the committed mutation TimeTick domain, scoped to one VChannel. It certifies a continuous, complete published delta prefix through T across all three types. "Continuous" means no missing committed delta, not a record at every integer timestamp. It is neither a per-type maximum nor a collection-wide maximum over channels.
+
+Advance this barrier atomically and monotonically from C to T only after every delta in `(C, T]` has durable output and complete discoverable metadata. Consumers must acquire a coherent view of the barrier and its covered inputs; an atomic integer update by itself does not establish that relationship. Partition-scoped dispatch may select applicable records, but type, size, or file-count limits must not cut away an applicable earlier mutation or part of the selected complete interval. The barrier certifies eligibility for L0 dispatch, not completion of dispatch or application on target segments.
+
+Example within one VChannel, initially published through 80:
+
+```text
+@100  UPDATE SET age=23 WHERE pk=2
+@105  PK DELETE pk=9
+@110  PREDICATE DELETE WHERE age<18
+```
+
+| Persistence/publication state | `delta_prefix_barrier[v]` | L0 scheduling of this new interval |
+| --- | --- | --- |
+| PK-delete and predicate-delete files are ready; the update file is not | 80 | Not eligible |
+| All three files and their metadata are durable; publication has not completed | 80 | Not eligible |
+| The complete interval is atomically published | 110 | Eligible as complete applicable input, not an arbitrary subset of its files |
+
+For a pre-existing row with `pk=2, age=17`, the correct ordered result retains the row with age 23. Exposing the predicate delete without the earlier update could instead cause permanent deletion. L0 still only dispatches instructions; the order-dependent evaluation happens later in the consuming execution path.
+
+**Separate publication from recovery progress.** The write-side WAL checkpoint protects recovery/truncation; the delta-prefix barrier constrains the scheduling-side input view. They are different contracts, even if a future implementation can reuse some plumbing. **Holding back the WAL checkpoint alone is insufficient if a consumer can already pick up the partial file set.** Neither that checkpoint nor the largest uploaded file timestamp automatically supplies the proposed scheduling barrier.
+
+This is **logical publication atomicity**, not simultaneous uploads, an S3 multi-object atomic-write requirement, or a new user DML transaction. All covered objects must be durable and their metadata complete before advertising T as consumable. A failed type prevents advancing the common completion boundary; uploaded partial output must not be mistaken for a ready prefix. The rule is per VChannel, not a new cross-channel transaction guarantee.
+
+**Why the PK-only path does not require the same batch-wide publication contract.** A PK delete has an already-fixed target PK and its original delete timestamp; it does not evaluate a predicate against field values produced by earlier mutations. In particular, `DELETE pk=2@100` and `DELETE pk=2@150` have the same final logical deletion result whichever is materialized first, once both are accounted for under the row-version timestamp rules. At a snapshot after both deletes, their deleted-version sets combine by union; the later tombstone covers the earlier one's scope for that same PK. This is not a claim that a later delete replaces pending deletes for other PKs.
+
+Preserve the original timestamps and supported snapshot semantics: a reader between 100 and 150 must not see the future delete, so final-state equivalence is not permission to discard required history. This logical property also does not authorize reordering the online stream or bypassing apply-interface preconditions. Unfinished deletes must remain recoverable, and checkpoint advancement and GC must not lose them. Once updates can change predicate inputs, the analogous operations are no longer generally commutative, so independent file availability is insufficient.
+
+**Current-code cross-check, not a new guarantee.** In the current local PK-only path, a [materialize batch](../../internal/streamingnode/server/wal/vchannel/l0materializer/materializer.go) can split into several L0 groups, each running a separate SyncTask. The pure-delete [writer](../../internal/flushcommon/syncmgr/pack_writer.go) emits one delta file per such task. [SaveBinlogPaths](../../internal/datacoord/services.go) registers each L0 separately and makes it a compaction candidate; the [outer materializer](../../internal/streamingnode/server/wal/vchannel/l0materializer/wal.go) waits for all groups before completing retained inputs. The [compaction filter](../../internal/compaction/entity_filter.go) uses PK identity and effective row timestamp versus delete timestamp, rather than file arrival order. These are reuse boundaries, not evidence that cross-type atomic visibility already exists.
+
+**Industry precedent and limits.** [RocksDB atomic flush](https://github.com/facebook/rocksdb/wiki/Atomic-flush) separates multi-column-family file generation from all-or-nothing MANIFEST publication; its documentation also explains that WAL recovery can preserve consistency without enabling atomic flush. Adopt the distinction between physical I/O and logical publication. Adapt it to Milvus's complete delta-prefix boundary, where file-consuming compaction must not assume that missing inputs will be repaired by replaying the SN WAL. Do not copy RocksDB's MANIFEST implementation or claim its guarantee automatically applies to distributed object storage.
+
+**Priority before implementation: explicitly design and review the atomic publication mechanics.** Sections 9.7.3–9.7.4 settle the external contract and recovery sequence. The following remain unresolved, rather than implicitly satisfied by three writers returning success:
+
+- The durable representation and atomic publication mechanism behind the agreed per-VChannel timestamp barrier, including how it binds the exact durable file/metadata set and confirms empty types.
+- Consistent consumer acquisition of that publication, including concurrent sync, L0 scheduling, and preservation of completeness when publishing target-segment deltas for load/data compaction.
+- The implementation of the agreed crash/retry flow, ownership fencing across failover, integration with retained-WAL release, and safe reclamation of unpublished files without losing committed mutations.
+- Bounds and measurements for small-file amplification, metadata/publication cost, and stalls caused by one slow delta type.
+
+No concrete manifest, ready-marker, catalog transaction, or wire format is selected here. The invariant, common-cut direction, and publication/recovery contracts below are agreed; their implementation remains a **correctness-critical open design**, not an existing guarantee.
+
+#### 9.7.3 Agreed interface: publish a complete VChannel delta range
+
+**Use a new VChannel-level `PublishDeltaPrefix` interface, not an extension of `SaveBinlogPaths`.** The current [request](../../pkg/proto/data_coord.proto) registers file metadata for one `segmentID`; its repeated checkpoint/start-position fields do not make it a multi-segment delta-range publication. Current L0 output is represented by `SegmentInfo` with `Level=L0`, as created by [CreateL0Operator](../../internal/datacoord/meta.go). Keep that storage representation. The new publication unit may encompass several L0 outputs across partitions and delta types without redefining what an L0 segment is.
+
+Responsibilities:
+
+- **SN's VChannel materializer** chooses a consumed, complete cut T, writes every required delta output in `(C,T]`, and submits the complete output metadata, including confirmation of empty types.
+- **MixCoord's DataCoord module** owns and durably persists the authoritative `delta_prefix_barrier[v]` and its committed output associations. It conditionally publishes a new range as one logical state transition.
+- **L0 scheduling** acquires only the committed complete-prefix view. Staged file metadata is not eligible merely because it exists or its timestamps are below an advertised barrier; consumers use the published associations.
+
+**Scope:** WAL is PChannel-level; delta-prefix state is VChannel-level. A PChannel can contain VChannels at different published cuts. Neither publication nor recovery substitutes the maximum cut across them. SN reassignment or restart must not reset a VChannel's logical coverage; publisher ownership and channel lifecycle identity must be checked separately, with detailed fencing mechanics still open.
+
+Conceptual request, not a finalized protobuf:
+
+```text
+PublishDeltaPrefix(
+    vchannel_identity,
+    range_start_exclusive = C,
+    range_end_inclusive = T,
+    complete_delta_outputs,
+    publisher_ownership
+)
+```
+
+The RPC publishes **a range `(C,T]`**, not just an end timestamp or an independently visible file list. Let B be MixCoord's current barrier. For a valid request in the same VChannel lifecycle and from an authorized publisher:
+
+| Range condition | Result and state transition |
+| --- | --- |
+| `C == B` and `T > B`, with all required output durable and complete | Atomically publish the output associations and advance B to T; return `RangeApplied` |
+| `T <= B`, with the requested range entirely inside the established prefix | Return `RangeApplied`; do not register the submitted files again or change the prefix |
+| `C < B < T` | Return `RangeMismatch`: partial overlap; publish nothing |
+| `B < C < T` | Return `RangeMismatch`: gap; publish nothing |
+
+Invalid bounds such as `C >= T`, invalid lifecycle identity, or stale ownership must not be accepted through the already-covered branch. These validations precede the range decision; concrete error codes remain implementation work. A mismatch response should include the current barrier so SN can reconcile instead of blindly retrying an incompatible range.
+
+For example, with existing prefix `[0,100]`, `(100,120]` is the only illustrated new extension; `(80,120]` overlaps and `(110,120]` leaves a gap. Do not silently clip, union, or use `max(B,T)` to accept either. The check against B and publication must form one atomic conditional transition, not an unlocked check followed by a later update. Physical uploads may precede that transition, but partial metadata must remain unschedulable.
+
+**`RangeApplied` acknowledges logical coverage, not a specific attempt's files.** Here “Applied” means the complete range has been durably published; it does not mean QN application, target-segment dispatch, or compaction has finished. Within the established VChannel prefix, `T <= B` proves coverage and lets SN finish this range's persistence responsibility. No historical request-response cache or per-attempt file-identity comparison is required solely to provide that answer. This does not weaken the initial publication's obligation to bind actual durable inputs, nor authorize GC based only on a range response.
+
+**Distinguish a safe state transition from a usable retry result.** Rejecting every repeated request as a mismatch prevents duplicate state changes but leaves SN unable to distinguish completed work from a genuine range conflict. A lost ACK therefore remains an unknown outcome until retry/readback confirms coverage. Retry the same request after transport uncertainty; once covered, return `RangeApplied` even if earlier responses were lost. A genuine `RangeMismatch` requires reconciliation, not an assumption that the earlier attempt succeeded or permission to delete its files.
+
+**Industry precedent and adaptation.** [Iceberg reliability](https://iceberg.apache.org/docs/latest/reliability/) separates immutable file preparation from atomic metadata publication and revalidates assumptions on retry. [AWS's idempotent-API guidance](https://aws.amazon.com/builders-library/making-retries-safe-with-idempotent-APIs/) distinguishes avoiding duplicate effects from giving callers an unambiguous completion result. Adopt those principles; adapt the result to Milvus's durable range coverage. Do not copy Iceberg's snapshot format or require AWS-style historical request-token receipts: this contract acknowledges a complete logical prefix rather than the identity of a resource-creation attempt. The two-result range protocol is this design's choice, not an existing Milvus API or an industry-standard wire contract.
+
+#### 9.7.4 Agreed SN recovery and lost-response flow
+
+**Recovery reads published state before resuming delta materialization.** The current [WAL recovery path](../../internal/streamingnode/server/wal/recovery/recovery_storage_impl.go) already restores persisted component metadata before bounded replay. The following adds a new MixCoord prefix dependency; it is not a claim that the current code already implements it.
+
+1. Establish valid WAL ownership and identify the relevant VChannels. Read each VChannel's durable published prefix and the associated published metadata from MixCoord before scheduling replacement delta output. A failed lookup is not an empty prefix and must not default to zero.
+2. Initialize each delta materializer's covered boundary from that authoritative state. Skip rematerialization/publication of already-covered delta ranges, including a commit whose ACK or local progress update was lost. Ownership changes do not reset the boundary.
+3. Use normal WAL recovery to reconstruct outstanding work beyond that boundary and publish subsequent complete, contiguous ranges. This skip applies only to the covered delta-persistence responsibility: it does not skip WAL replay required by inserts, metadata, online state, or other consumers, and does not replace the PChannel recovery/truncation checkpoint.
+4. During a live SN's publication attempt, a lost response leaves the outcome unknown. Retry the same range and output description until a definitive result or ownership/lifecycle change is observed. `RangeApplied` completes this range's persistence handoff; `RangeMismatch` requires reconciling with authoritative state. Retained-input and global checkpoint updates must still satisfy their other consumers' obligations.
+
+```text
+Publish file metadata A and prefix=100 atomically for (80,100]
+  -> commit succeeds, ACK is lost
+  -> SN crashes
+  -> recovery reads prefix=100 and the committed metadata from MixCoord
+  -> skip materializing/publishing (80,100]; continue beyond 100
+```
+
+Do not use “A was committed, then recovery blindly regenerates B for the same range” as the expected flow; it violates the recovery-first lookup above. If only object A was uploaded and the metadata/prefix commit never completed, MixCoord still reports 80: that range remains pending and must be completed. Conversely, a live SN that only lost the ACK can resend its unchanged request and receive `RangeApplied` without any crash or regenerated file.
+
+File retention and orphan cleanup remain separate detailed-design work. A timeout or range mismatch is not proof that a referenced object is uncommitted garbage. The committed prefix and associations must survive MixCoord restart; SN recovery cannot infer completeness from object-store listing or local memory.
+
+## 10. Update deltas: benefits and agreed semantics
+
+Discussion checkpoint: **2026-10-21**. Logical in-place updates through deltas, joint mutation-order correctness, versioned field values, snapshot-aware base-index/delta query merging, and a bounded long-term assignment scope are agreed directions. The benefit analysis below is a set of hypotheses and evaluation questions, not measured results or an approved detailed update design. Prior large-delete tests motivate predicate deletion; they do not establish update-delta performance.
 
 ### 10.1 Why pursue this alongside predicate deletes?
 
@@ -784,7 +1088,7 @@ Before selecting a detailed update design, compare it with current partial upser
 
 Measure client latency/throughput and concurrent ANN behavior; Proxy/query/streaming/compaction CPU and memory; retrieval, WAL, network, and object-storage bytes; index work; retained data/delta size; and load/recover latency after updates accumulate. Validate mixed update/predicate-delete correctness before treating any performance result as a benefit. No numerical target, benchmark configuration, or claimed gain is settled here.
 
-The benefit target and initial update workload still require evaluation before selecting concrete update operators, overlay structures, index-correction implementation, or a durable format. Sections 10.4–10.7 settle the logical selection/assignment, ordering, field-version, and scalar query-merge semantics; they do not establish an implementation or performance benefit.
+The benefit target and initial update workload still require evaluation before selecting concrete update operators, overlay structures, index-correction implementation, or a durable format. Sections 10.4–10.8 settle the logical selection/assignment, ordering, field-version, scalar query-merge semantics, and bounded assignment scope; they do not establish an implementation or performance benefit.
 
 ### 10.4 Agreed initial update semantics: row selection x constant column patch
 
@@ -802,6 +1106,8 @@ WHERE score < 60;
 The logical request is a predicate (`score < 60`) plus a field patch (`{age: 20, status: "active"}`). It need not be expanded into one client request per row or column. This is a request-semantics decision, not a requirement for one WAL record, an on-disk encoding, or statement-wide atomicity.
 
 **Initial assignment scope is constant values only.** Exclude `score = score + 10`, `a = b`, `version = version + 1`, and other assignments that depend on old field values. This restriction applies to `SET`, not to field access required to evaluate the supported `WHERE` predicate. Exact supported fields, types, and predicate combinations remain to be selected.
+
+The **2026-10-21** scope clarification includes explicit NULL assignment to supported nullable fields. A field absent from the patch remains unchanged; an explicitly assigned NULL clears its value. Section 9.6 records the extensible `value_expr` representation, and Section 10.8 distinguishes the constant-only first phase from the small long-term core.
 
 **Industry basis:** [PostgreSQL UPDATE](https://www.postgresql.org/docs/18/sql-update.html) separates selection of matching rows from assignment to explicitly named columns. Adopt that separation; adapt it to a restricted constant-assignment model. Do not infer PostgreSQL key uniqueness, locking, transaction guarantees, or general expression support for Milvus.
 
@@ -888,12 +1194,37 @@ For the `age` history in Section 10.6, the same offset demonstrates both removal
 
 **Scope and current-code boundary:** this settles scalar-predicate result semantics, not a C++ data structure, delta-index format, vector-index update algorithm, or cache invalidation protocol. The current [UnaryExpr.cpp](../../internal/core/src/exec/expression/UnaryExpr.cpp) routes evaluation through scalar-index/raw-data paths and performs chunk pruning; [Expr.h](../../internal/core/src/exec/expression/Expr.h) manages access-path-dependent prefetch. These are integration points to make update-aware, not evidence that this merge already exists. Projection, raw scans, expression caches, and later mutation predicates must agree with the same field versions; correcting only returned output values cannot prevent missed index matches.
 
+### 10.8 Agreed assignment capability boundary: simple deterministic row-local values
+
+Discussion checkpoint: **2026-10-21**. The long-term target is **simple, deterministic, side-effect-free row-local assignment**, not full SQL or arbitrary user computation. Section 2.10 records the mature precedents and their limits. This is the agreed scope, not a claim that non-constant updates already exist.
+
+| Capability | Example | Scope decision |
+| --- | --- | --- |
+| Constant assignment, including explicit NULL for nullable fields | `status = 'active'`, `tag = NULL` | Phase-one core |
+| Same-row field reference/copy | `backup_score = score` | Long-term core extension; not phase one |
+| Basic numeric arithmetic | `count = count + 1`, `score = score * 0.9` | Long-term core extension; precise operator/type combinations require validation |
+| A few deterministic built-ins | `coalesce(score, 0)`, `lower(name)` | Add individually only for demonstrated needs; examples are not a committed function library |
+
+**Non-goals for feature completion:** CASE and elaborate conditional programs, complex JSON/array transformations, arbitrary UDFs, subqueries, aggregates, joins/cross-table computation, and external/model execution. Preserve room for deliberate future extensions without requiring these capabilities to finish delta-based updates. Do not persist calls whose result depends on random state, the evaluator's current clock, or an external service as replayable assignment expressions. Complex backfill computation can remain outside this evaluator and supply values through a separately defined write workflow.
+
+**Semantic and admission constraints:**
+
+- Read referenced fields from the applicable row state immediately before the mutation in committed logical order, including earlier visible field deltas. Never substitute immutable base values or values from later updates. The same pre-update-row model should govern all RHS expressions within one SET; exact evaluation/publication mechanics remain deferred.
+- Keep field-update eligibility separate from expression expressiveness. Being able to compute a value does not authorize updates to PKs, partition keys, vectors, or every scalar type; the exact supported targets remain to be selected.
+- Require consistent results and failure semantics across online execution, load/recovery, and Go compaction, including NULL, conversions, overflow, and division by zero. Restrict expression size/depth and function cost through explicit limits; numerical limits and error/publication policy are not settled here.
+- Do not widen the allowlist because the wire format can represent a node. Each admitted combination needs a stable, version-compatible meaning and cross-evaluator verification. Replaying `age = age + 1` twice over an already-updated state would change the result: application/progress accounting must prevent that duplicate effect. This is distinct from client retries creating separate committed requests, and no new exactly-once protocol is claimed.
+
+**Rationale:** richer expressions increase the semantic surface that every execution and recovery path must preserve. The primary benefit target remains avoiding full-row reconstruction/reinsertion and redundant work on unchanged vectors and indexes; it does not require a general SQL assignment engine. Phase one remains constant-only even though the message shape can express later extensions.
+
 ## 11. Deferred integration and open contracts
 
 This document does not fully specify WAL payloads, deterministic replay, L0 persistence and catch-up during segment load, release/reload behavior, CDC, compaction execution, or replica-wide visibility. Section 9.1.3 settles the drop-field safety requirement, both mandatory drain phases, and the all-VChannel release condition, while preferring unified drainage and reuse of existing checkpoint/L0 progress. Section 9.3 settles target-QN predicate-delta loading's access-path policy and records the asynchronous-recovery direction: separate base load from background apply, with per-request `GuaranteeTs` admission against complete relevant progress. Its PG precedent and applicability limits are explicit; the progress protocol remains open. Section 9.4 settles coarse predicate dispatch and rejects ingress association tables with lineage repair; its durable protocol and cost remain open. These remain required integration work, not benefits already delivered by local bitmap application. Support for accepting general predicate deletes against unloaded data is deferred; this is distinct from allowing already-accepted mutations to progress through L0 and offline compaction after release.
 
 Before coding the predicate-delete part, finalize:
 
+- **Critical: implement the cross-type atomic publication contract in Sections 9.7.2–9.7.4.** The dedicated VChannel interface, contiguous range rule, coverage-based `RangeApplied`/`RangeMismatch` results, and recovery-first prefix lookup are agreed. Finalize durable metadata/transaction mechanics, owner fencing, coherent consumer discovery, downstream handoff, and safe retention/cleanup. Checkpoint gating without consumer visibility gating is insufficient. This work must not be reduced to adding independent writers or broadening `SaveBinlogPaths`.
+- The concrete message types and protobuf/semantic versioning behind Sections 9.5–9.6's shared logical contract, schema validation, capability admission, CDC handling, and public affected-row-count semantics. Preserve a common scope/predicate contract and expression-shaped assignments without treating the illustrative message names or AST notation as finalized wire definitions.
+- The buffer/file encoding and durable handoff behind Section 9.7: retain ordered mutation commands and original effective TimeTicks in separate update/predicate-delete file types, and establish complete-prefix merge/recovery without introducing user-controlled transaction batches.
 - The delete plan/context and write-capable segment handle, including the CGo boundary.
 - Bitmap ownership, whole-segment versus batch-local input, and the applied-row-count definition.
 - Mutation serialization, snapshot publication granularity, and cancellation/partial-application behavior.
@@ -903,6 +1234,6 @@ Before coding the predicate-delete part, finalize:
 - The predicate-delta loader/CGo wiring, replay bookkeeping, failure handling, and resource budgeting; preserve Section 9.3's access-path policy and per-request progress gate. Define the initial readable state, complete apply-progress publication/aggregation, and recovery-mode/readiness controls without silently weakening requested consistency. Delegator L0/streaming catch-up must participate in the completeness proof, but its detailed protocol remains separate work.
 - The durable coarse-dispatch protocol and fanout measurements in Section 9.4; preserve lightweight L0, current-storage-view selection, and release-independent progress without reintroducing a request-time association table or lineage-repair subsystem.
 
-For update deltas, Section 10.4 settles multi-row predicate selection and multi-column constant assignment, while excluding old-value-dependent assignments. Section 10.5 settles the observable results of independent and overlapping patches and their predicate-order dependency. Sections 10.6–10.7 settle versioned field values and scalar query merging: mask snapshot-visible updated offsets in the base result, then supplement matches from each row's latest visible field value, initially without requiring a separate delta index. The benefit target, exact supported fields/types/predicates, and UPSERT semantics still require discussion. Detailed physical row targeting, value-version storage/GC, overlay/index/cache implementation, coherent publication, concurrency enforcement, durable replay, load, and compaction mechanisms remain open. The shared ordering invariant in Section 6 applies to all of them; it is a requirement, not an implemented guarantee.
+For update deltas, Section 10.4 settles multi-row predicate selection and multi-column constant assignment, while excluding old-value-dependent assignments from phase one. Section 10.5 settles the observable results of independent and overlapping patches and their predicate-order dependency. Sections 10.6–10.7 settle versioned field values and scalar query merging: mask snapshot-visible updated offsets in the base result, then supplement matches from each row's latest visible field value, initially without requiring a separate delta index. Section 10.8 bounds the long-term assignment core to literals, same-row references, and basic arithmetic, with a few deterministic functions only when justified; it does not require full SQL. Sections 9.5–9.6 record shared message responsibilities, the Proxy/StreamingNode validation responsibility principle, single-mutation request scope, extensible typed RHS representation, separate selection/value/application responsibilities, and pre-append support routing, not a completed wire or detailed validation protocol. Section 9.7 settles the buffer responsibility and separate-file ordering direction, not durable format/publication details. The benefit target, exact supported fields/types/predicates, and UPSERT semantics still require discussion. Detailed physical row targeting, value-version storage/GC, overlay/index/cache implementation, coherent publication, concurrency enforcement, durable replay, load, and compaction mechanisms remain open. The shared ordering invariant in Section 6 applies to all of them; it is a requirement, not an implemented guarantee.
 
-No implementation or performance validation accompanies this draft. This revision records agreed query semantics and industry applicability boundaries; it does not authorize implementation or mark the complete update design as settled.
+No implementation or performance validation accompanies this draft. This revision records agreed query semantics, logical message responsibilities, single-mutation request scope, TimeTick-preserving buffer/file ordering, VChannel range-publication and SN recovery contracts, bounded assignment capability, and industry applicability boundaries; it does not authorize implementation or mark the complete update design as settled.
