@@ -4,7 +4,7 @@ Date: 2026-10-16
 
 Discussion checkpoint: 2026-10-23
 
-Status: Draft — predicate-delete data flow, progress-bound best-effort statistics, predicate-backlog signals, asynchronous recovery direction, shared logical mutation-message structure, single-mutation request boundary, TimeTick-preserving buffer/file ordering, VChannel delta-prefix publication and recovery contract, independently batched complete and ordered L0 dispatch, shared ordered batch delta execution with safe temporal bypass, separate L0 dispatch, Delta Consolidation, and full-rewrite maintenance, bounded assignment-expression scope, constant-assignment update semantics, snapshot-aware base-index/delta query merging, and phase-one serial query-time bitmap correction agreed; UpdatesRecord containers remain candidates; detailed implementation protocols remain open; not implemented
+Status: Draft — predicate-delete data flow, progress-bound best-effort statistics, predicate-backlog signals, asynchronous recovery direction, shared logical mutation-message structure, single-mutation request boundary, TimeTick-preserving buffer/file ordering, VChannel delta-prefix publication and recovery contract, independently batched complete and ordered L0 dispatch, shared ordered batch delta execution with safe temporal bypass, separate L0 dispatch, Delta Consolidation, and full-rewrite maintenance, bounded assignment-expression scope, constant-assignment update semantics, snapshot-aware base-index/delta query merging, phase-one serial query-time bitmap correction, versioned NULL/result-validity semantics, phase-one field-level reader/writer locking with complete apply-progress publication, Arrow owning-buffer payload storage, and no fixed historical-read window agreed; UpdatesRecord directory/history containers remain candidates; detailed implementation protocols remain open; not implemented
 
 Scope: Joint design for predicate deletes and logical in-place updates through deltas, including segment application, ordering, persistence, load/recovery, compaction, and schema safety. Predicate-delete decisions are more developed; update benefits and detailed mechanisms still require evaluation.
 
@@ -51,9 +51,13 @@ The local pipeline is not a complete replacement for the distributed delete prot
 - **Separate assignment evaluation without duplicating a complete execution framework.** Delete and update share the WHERE contract; update alone computes assigned values and applies field patches. Phase-one constants require only filling selected rows, not a general value-expression executor. Reuse suitable type and field-access infrastructure while keeping WHERE and SET capability allowlists independent; see Section 9.6.1.
 - **Preserve field-level patch semantics under concurrency.** Independent patches to different columns retain both changes; assignments to the same row and column resolve in committed logical mutation order. Predicate evaluation and patch application must observe earlier applicable mutations consistently across online execution, load/recovery, and compaction; see Section 10.5.
 - **Keep versioned field values and correct base filtering results.** Reuse the base scalar index or raw chunks, remove old matches for rows with snapshot-visible updates to the referenced field, and supplement matches evaluated against their latest visible values. Correct value-dependent evaluation before logical combination or candidate pruning, including the WHERE of subsequent mutations. Initially, scan updated-field values without requiring a separate delta index; see Sections 10.6–10.7 and the industry comparison in Section 2.9.
-- **Design update-version storage around query access.** Locate a field, access updated rows by offset window or discrete selection, and resolve each cell's latest visible version. Do not create entries for unmodified cells. New offsets require arbitrary-position insertion, while each cell's ordered history grows by tail append. A balanced ordered offset tree is the candidate baseline; vector versus segmented history and separate large-value storage remain candidates, not final container choices. Evaluate amortized cost, growth spikes, sparse-cell overhead, and concurrent publication; see Section 10.9. NULL handling remains a separate detailed-design topic.
+- **Design update-version storage around query access.** Locate a field, access updated rows by offset window or discrete selection, and resolve each cell's latest visible version. Do not create entries for unmodified cells. New offsets require arbitrary-position insertion, while each cell's ordered history grows by tail append. A balanced ordered offset tree is the candidate baseline; vector versus segmented history remains open. Use Arrow owning buffers for immutable large payloads rather than a custom block allocator; phase one has no fixed 16 KiB allocation or packing requirement. Evaluate amortized cost, growth spikes, sparse-cell overhead, and concurrent publication; see Section 10.9.
+- **Version NULL explicitly and correct both result and validity.** Each history entry logically carries `(timestamp, is_null, value_or_reference)`. No visible update means use the compatible base; a visible NULL version overrides the base and has no effective payload. Base-index/raw-chunk correction replaces both result and validity at visible updated offsets before logical composition. AND/OR/NOT consume those corrected results using the existing three-valued logic without reading UpdatesRecord themselves; Sections 10.7.3–10.7.4 record the correction and composition rules. Physical flag/payload encoding and the implementation of Section 10.9.6's publication contract remain open.
 - **Keep phase-one query correction serial.** Within the applicable evaluation window, execute `scan_base -> scan_delta -> rectify bitmap` before exposing the result to a parent expression. Retain the no-visible-update fast path. Do not add base/delta parallel tasks, per-node threads, channels, or cross-window pipelines in phase one; reconsider same-window parallelism only after measuring phase-one performance. This decision concerns query-time correction, not background mutation application during recovery; see Section 10.7.2.
+- **Separate memory synchronization from complete read visibility.** Phase one uses field-level reader/writer locks for UpdatesRecord directory/history access. Publish complete segment apply progress only after every target row and field of the mutation is applied, without skipping earlier work. Readers use a fixed timestamp snapshot covered by that progress; they exclude later versions even if already physically present. This avoids holding locks across fields for whole-mutation visibility. Row/cell-level locking is deferred until performance measurements justify it; see Section 10.9.6.
+- **Use delta-first output-field retrieval.** Once result offsets are selected, resolve each output field's latest snapshot-visible updates, including explicit NULL, and read the compatible base only for the remaining offsets. Preserve output ordering and the filter's snapshot. Estimate base-read cost from the remaining offsets' chunk distribution, cache residency, and loaded bytes, not merely row count or update coverage; sparse updates may save no physical IO. See Section 10.10.
 - **Bound version retention by the serving generation.** Preserve the old segment's supported multiversion visibility while it serves queries and remains pinned by readers. A full rewrite establishes a new baseline without retaining the intermediate history it has folded; do not introduce UNDO or long-term time travel. Safe handoff and reclamation remain required; see Section 9.1.5.
+- **Do not promise a fixed historical-read window.** Consolidation may advance the supported snapshot lower bound when a new base is published. Protect already-admitted state users, publish the new base and its compatible UpdatesRecord view/readable boundary together, and explicitly reject newly arriving requests older than that boundary. Complete apply progress cannot reconstruct discarded history. See Section 10.9.7; this is not permission to reorder or discard committed mutations.
 - **Keep compaction execution separate from query-side recovery.** Reuse channel-level exclusion between L0 dispatch and data rewrites. A full rewrite consumes its fixed input deltas into the output base, without carrying those consumed records forward as pending deltas. This does not authorize an update-only Delta Consolidation operation to discard outstanding deletes. QN load/handoff is a separate stage; see Sections 9.1.6–9.1.7.
 - **Evaluate benefits before detailed update design.** Section 10 records opportunities and tradeoffs, not measured improvements or a settled implementation. Exact field/type and predicate support, physical row targeting, index-overlay implementation, concurrency control, and update-delta representation remain open.
 
@@ -221,7 +225,7 @@ These are distinct maintenance tasks, not creation of a new Tablet for each upda
 
 **Do not copy:** Kudu's key uniqueness, tablet replication, REDO/UNDO representation, or compaction protocol. This precedent does not prove lower Milvus latency or solve stale scalar/vector indexes after an update.
 
-Kudu's [major delta compaction, 1.18.1](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/delta_compaction.cc) generates UNDO changes while merging updates into base columns and applies history-GC rules. That historical reconstruction capability is not adopted: Section 9.1.5 limits this design to serving-generation visibility and permits full rewrites to fold history without producing UNDO.
+Kudu's [major delta compaction, 1.18.1](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/delta_compaction.cc) generates UNDO changes while merging updates into base columns and applies history-GC rules. That historical reconstruction capability is not adopted: Section 9.1.5 permits full rewrites to fold history without producing UNDO, and Section 10.9.7 records the Consolidation policy of no fixed historical-read window with explicit rejection below the published readable boundary.
 
 **Batch application and bypass precedent.** Kudu's [DeltaApplier, 1.18.1](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/delta_applier.cc) prepares base/delta batches, maintains row selection, and applies updates during column materialization; when `MayHaveDeltas()` is false, it materializes the base column directly. Adopt the proven-unaffected fast-path principle. Kudu's row-addressed deltas are not deferred Milvus predicates, so its separate delete/update application is not a template for reordering our dependent mutations. Section 9.1.4 defines the Milvus-specific time-eligibility rule.
 
@@ -429,7 +433,7 @@ The effective mutation timestamp is the existing WAL time, not a new clock: an o
 
 An execution framework does not automatically roll back storage mutation. Cancellation or an exception after applying some rows may leave partial effects unless a separate publication/rollback design prevents them.
 
-Before implementation, specify the permitted application unit, error behavior, and completion/visibility boundary. Do not claim statement-wide atomicity, all-or-nothing segment application, or automatic rollback from the presence of a terminal operator alone.
+Section 10.9.6 settles the local read-visibility boundary: an incomplete mutation must not advance the segment's complete apply progress. Detailed error/retry handling and memory-publication mechanics still require implementation design. Do not infer physical rollback, cross-segment statement atomicity, or all-or-nothing distributed application from this visibility gate or the presence of a terminal operator alone.
 
 ## 7. Alternatives and expected effect
 
@@ -467,7 +471,7 @@ Implementation must establish equivalence with the current delete semantics, not
 18. Measure base-load completion, time to serve each consistency level, full catch-up time, and cold-recovery P99 separately under lazy loading, accumulated predicates, and concurrent searches. Verify that blocked Strong/Session/Bounded requests are not silently downgraded and that background work can make progress under load; no upgrade-timeout or availability improvement is assumed.
 19. Verify that each reported deleted count and complete apply watermark describe one coherent segment state. Cover concurrent apply, delayed/out-of-order reports, replicas at different progress, release/reload, and compacted-away sources. Reports must neither double count replicas nor claim coverage of unfinished mutations.
 20. Verify hit-independent scheduling with missing/stale stats and with an exact zero-deleted-row observation plus many outstanding predicates. QN application alone must not clear the durable backlog count; successful data compaction must retire only consumed records after output publication, including zero-match records. Test repeated delivery versus separate committed mutations using the same expression.
-21. Verify Section 10.7's index/delta merge against a versioned full-scan oracle: updates entering and leaving a predicate's match set, repeated updates to one field, snapshots before/between/after updates, patches to unrelated fields, and updates assigning the base value again. Cover empty base-index results, stale min/max pruning, compound predicates, supported NULL semantics, and row deletion. Exercise concurrent publication and base/index replacement so masks, values, and progress cannot describe different generations. Measure updated-row scan cost as delta density and retained-version depth grow; this document does not claim those tests have run.
+21. Verify Section 10.7's index/delta merge against a versioned full-scan oracle: updates entering and leaving a predicate's match set, repeated updates to one field, snapshots before/between/after updates, patches to unrelated fields, and updates assigning the base value again. Cover empty base-index results, stale min/max pruning, compound predicates, and row deletion. For Section 10.7.3, cover no visible update versus visible NULL, non-NULL -> NULL -> non-NULL histories, base NULL becoming a match, NULL -> NULL, and future-only updates. Compare both result and validity for index/raw paths, ordinary comparisons, IS NULL/IS NOT NULL, NOT, AND, and OR; verify NULL payloads are not read and stale base validity is not reapplied after correction. For Section 10.7.4, cover all nine three-valued input combinations for AND/OR and all three NOT inputs, including nested NOT over corrected compound results and window/discrete-offset alignment. Exercise concurrent publication and base/index replacement so masks, values, and progress cannot describe different generations. Measure updated-row scan cost as delta density and retained-version depth grow; this document does not claim those tests have run.
 22. Validate the logical message and assignment boundaries in Sections 9.5 and 10.8: explicit delete/update discrimination, bound field IDs/types, shared scope, absent-versus-NULL patches, and phase-one rejection of non-literal RHS nodes before append. Before widening the allowlist, verify matching results and error behavior across online, load, and compaction evaluators, including earlier field updates and repeated delivery of non-idempotent arithmetic mutations. These are planned checks, not completed verification.
 23. Validate the evaluator separation in Section 9.6.1: DELETE and UPDATE use identical WHERE eligibility and selection semantics, while SET eligibility is checked independently. Cover zero/many selected rows, multiple constant assignments, explicit NULL, unchanged omitted columns, and non-literal phase-one rejection. Future RHS expressions must resolve all inputs against the same pre-mutation row view across online, load, and compaction execution. These are planned checks, not executed tests.
 24. Verify ordering under concurrent append: physically record `B@101` before `A@100`, keep confirmation behind the outstanding A, and confirm logical delivery of A before B. Distinguish append confirmation from QN application and durable L0/segment coverage; preserve the effective row/mutation timestamp, including existing internal transaction commit timestamps.
@@ -488,6 +492,10 @@ Implementation must establish equivalence with the current delete semantics, not
 39. For Delta Consolidation, replace INT64 field `b` from a multi-file `[a,b,c]` group with a new single-column `[b]` group in one new manifest generation. Verify unchanged segment identity, row count/order/offsets, original file references for `a/c`, and unchanged vector data and ANN-index reuse. New-manifest reads must use the new `b`; pinned old-manifest reads must remain coherent, and old `b` bytes in the shared files must not be reported as reclaimed. Maintain the changed column's scalar index consistently. Verify that update-backlog thresholds schedule Delta Consolidation rather than introduce an extra Mix trigger, and that L0 dispatch still only dispatches deltas. Storage metadata tests alone do not validate this end-to-end flow.
 40. Verify Delta Consolidation against an ordered mutation oracle with interleaved updates, PK deletes, and predicate deletes. Do not physically remove rows or lose outstanding delete effects. Include a predicate whose result would change if replayed against the post-consolidation base instead of its original mutation-time values; consuming update history must not corrupt its later replay. The residual-delete protocol must be designed before this test can pass.
 41. Exercise sustained large-value updates with phase-one all-resident delta execution. Measure QN value-version residency and DN per-task delta memory independently of base batch size, check byte-based Delta Consolidation scheduling, and preserve existing memory-protection behavior. Uploading L0 files must not be treated as reclaiming QN versions; no spill-based capacity benefit is assumed. These are required future tests, not completed validation.
+42. Verify Section 10.9.6's field-lock/progress separation by pausing one multi-row, multi-column mutation after only some rows or one field have been written. Old snapshots must exclude every later version; a snapshot requiring the incomplete mutation must wait. Only completion of every target row/field and the earlier applicable mutation prefix may advance progress. Inject failure before publication, concurrent offset-tree insertion/history growth, and payload-reference use after unlocking; check for partial visibility, invalid references, and data races. Include read paths using result/validity correction and field output, plus mixed update/delete application. Measure field-lock wait/hold times and concurrent-search latency before considering row-level locks. These are planned checks, not executed tests.
+43. Verify Section 10.10's delta-first projection against a versioned value oracle for every supported output path, including ProjectNode, Retrieve/Search field filling, and storage take fast paths. Cover output fields absent from WHERE, visible NULL versus no visible update, future-only histories, and preservation of selected-offset order. Compare fully covered, sparsely covered, and uncovered selections. At equal remaining-row count, vary concentration in two versus ten comparable cold chunks, warm-cache hits, and cache eviction; measure actual loaded bytes, requests, version-lookup cost, and latency. Do not equate avoided cell-value reads with avoided chunk IO, or chunk count with object-request count. These are planned checks, not executed tests.
+44. Verify Section 10.9.4's Arrow owning-buffer lifetime across history retirement and all payload consumers: query predicates, predicate-delete WHERE, UPDATE WHERE, and SELECT. Hold a reader reference after removing the last history reference, then release it; check for premature frees, leaks, and non-owning wrapper misuse. Cover NULL without payload allocation, a 1 MiB value without custom 16 KiB blocks, repeated constant assignments sharing one payload, and slices retaining their parent. Measure descriptor versus payload memory separately, including allocator capacity, retained allocations, and allocation failures. These are planned tests, not completed memory-safety or performance validation.
+45. Verify Section 10.9.7's readable-boundary publication during Consolidation: protect admitted old-state users, publish compatible base/index/update view and snapshot lower bound together, and reject newly arriving too-old snapshots instead of returning new-base values or waiting indefinitely. Race admission against publication, preserve later histories and untouched fields, and keep complete mutation apply progress distinct from base incorporation. Cover multi-segment error propagation and pending predicate dependencies without introducing a fixed keep-window or UNDO. These are planned integration tests, not an implemented snapshot-admission protocol.
 
 ## 9. System-level integration checkpoints
 
@@ -1039,7 +1047,7 @@ Later core: SET age = age + 1
              value_expr=Add(Column(field_id=102, type=INT64), Literal(Int64(1))))
 ```
 
-The notation is conceptual, not an existing protobuf constructor. `WHERE` must produce a boolean selection, whereas `value_expr` must produce a value compatible with its target field; they may share a typed node vocabulary without sharing the same admitted operator/type set. [plan.proto](../../pkg/proto/plan.proto) already contains `ValueExpr`, `ColumnExpr`, and `BinaryArithExpr`, but neither their presence nor `CallExpr` supplies a ready update evaluator or a durable semantic-version contract. Explicit NULL encoding still needs design; it must not be inferred from an omitted assignment or a protobuf default.
+The notation is conceptual, not an existing protobuf constructor. `WHERE` must produce a boolean selection, whereas `value_expr` must produce a value compatible with its target field; they may share a typed node vocabulary without sharing the same admitted operator/type set. [plan.proto](../../pkg/proto/plan.proto) already contains `ValueExpr`, `ColumnExpr`, and `BinaryArithExpr`, but neither their presence nor `CallExpr` supplies a ready update evaluator or a durable semantic-version contract. Durable wire encoding of explicit NULL still needs design; it must not be inferred from an omitted assignment or a protobuf default. Section 10.7.3 settles the corresponding version-resolution and query semantics, not this wire format.
 
 Section 10.8 defines the agreed capability boundary. Binary compatibility, exact type/conversion rules, and cross-version feature admission remain detailed work; the expression-shaped representation does not itself enable phase-two calculations.
 
@@ -1345,7 +1353,7 @@ Matches(T) = (I - U(T)) union D(T)
            = (I AND NOT U(T)) OR D(T)   // positive-match bitmap notation
 ```
 
-Apply the row's insert/delete visibility rules as well. The equation expresses logical positive-match sets; it does not change the existing executor bitmap polarity. If an index produces only candidates, its required exact recheck still applies. Preserve expression validity/NULL semantics alongside match bits: an update to or from NULL must replace the old validity state as well, especially before composing NOT or other boolean operators.
+Apply the row's insert/delete visibility rules as well. The equation expresses logical positive-match sets; it does not change the existing executor bitmap polarity. If an index produces only candidates, its required exact recheck still applies. Section 10.7.3 specifies the agreed dual-bitmap extension: an update to or from NULL replaces the old expression result and validity together, especially before composing NOT or other boolean operators.
 
 **QN raw-chunk execution, not the compactor's read/modify/write batch model:** the raw path evaluates the predicate against the segment's base chunks to obtain `I`; the index path obtains `I` through index lookup. Both then mask visible updated offsets and supplement matches from their latest visible values. This does not require copying a whole raw chunk, constructing a fully patched column before filtering, or changing shared base memory. Internal execution batching and lazy access remain implementation details of the existing access paths. Restrict `I`, `U(T)`, and `D(T)` to the same evaluated offset range and translate chunk-local positions to the segment's row offsets consistently. The memory structure must support finding updates in that range without requiring every chunk evaluation to rescan all segment updates.
 
@@ -1388,7 +1396,7 @@ Candidate pruning and short-circuiting must also consume corrected results. A ba
 
 **Industry reference and boundary.** Kudu's [DeltaApplier, release 1.18.1](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/delta_applier.cc) seeks deltas by row ordinal and applies updates by column; when deltas may exist, it disables decoder-level evaluation over uncorrected values. Adopt the prevention of stale-value filtering and the separation of value/version access from expression execution. Adapt this to Milvus's bitmap-correction path; do not copy Kudu's materialize-then-apply execution model or claim that it implements this exact bitmap equation.
 
-**NULL requires a separate deep dive.** The need to distinguish an explicit NULL update from no visible update is established, but validity storage, operator behavior, index/raw parity, and compound three-valued evaluation are not settled by this section. Prior NULL references are correctness requirements, not a completed implementation design.
+**NULL semantic contract:** Section 10.7.3 now settles explicit NULL versions versus absent visible updates, dual-bitmap correction, and three-valued logical composition. Concrete NULL storage/serialization, operator integration, and concurrency mechanics remain implementation-design work; the semantic decision is not an implemented capability.
 
 #### 10.7.2 Agreed phase-one execution: serial scan and bitmap correction
 
@@ -1398,11 +1406,11 @@ Discussion checkpoint: **2026-10-23**. **Settled for phase one:** execute the th
 Fix the evaluation window/selection, snapshot T, and compatible serving generation
   -> scan_base: evaluate the base scalar index or raw chunks -> I
   -> scan_delta: locate updated offsets, resolve visible versions, evaluate -> U(T), D(T)
-  -> rectify bitmap: (I - U(T)) union D(T), with corresponding validity handling
+  -> rectify bitmap: (I - U(T)) union D(T), replacing validity at the same offsets
   -> expose the corrected result to the parent expression
 ```
 
-`scan_base` names an access-path responsibility, not a requirement to scan raw data when an index can answer it. `scan_delta` must consider all applicable updated offsets in the window or a correctly derived input selection, not only offsets matching the old base. Both use the same snapshot, row-offset coordinate system, and compatible base/update state. Do not allow the parent to prune or short-circuit on the uncorrected base result. NULL/validity details remain the separate open topic in Section 10.7.1.
+`scan_base` names an access-path responsibility, not a requirement to scan raw data when an index can answer it. `scan_delta` must consider all applicable updated offsets in the window or a correctly derived input selection, not only offsets matching the old base. Both use the same snapshot, row-offset coordinate system, and compatible base/update state. Do not allow the parent to prune or short-circuit on the uncorrected base result. Apply Section 10.7.3's result/validity correction before exposing the result; its physical representation and integration remain open.
 
 **Fast path:** when there are no visible updates for the referenced field and evaluated rows, retain the base result without correction. An empty offset-directory range can establish this cheaply; entries whose versions are all after `T` also produce an empty visible update set after version resolution. Directory entries alone do not prove that an update is visible, and an empty base match set does not prove that delta evaluation can be skipped. Ordinary insert/delete visibility and validity handling still apply.
 
@@ -1413,6 +1421,129 @@ Fix the evaluation window/selection, snapshot T, and compatible serving generati
 **Deferred optimization, not phase-one work:** if measurements justify it, evaluate same-window fork/join: `scan_base` and `scan_delta` can independently produce their outputs, then `rectify` waits for both. They need not finish simultaneously; the slower branch determines when merging may begin. The prospective policy is no-update bypass, synchronous handling for small delta work, and bounded parallel execution only for sufficiently expensive work with available execution budget. Thresholds and benefit are unvalidated. Do not allocate a thread per expression, communicate per row, or introduce interleaved `W`/`W+1` pipelines as part of this proposal. Serial execution remains the phase-one decision even when delta work is heavy.
 
 **Industry reference and applicability:** ClickHouse's [processor contract](https://github.com/ClickHouse/ClickHouse/blob/master/src/Processors/IProcessor.h) uses data-block ports, readiness/backpressure states, and separately scheduled processor work. Its [concurrency-control discussion](https://clickhouse.com/docs/resources/develop-contribute/introduction/architecture#concurrency-control) explains why concurrent queries must share a bounded CPU budget. Adopt the distinction between data dependencies and resource scheduling; a Milvus base/delta fork/join would be an adaptation, not an existing ClickHouse update-correction implementation. Defer that machinery until the serial baseline provides evidence; parallel execution can reduce single-query latency while increasing scheduling, bandwidth, or CPU contention and harming throughput or tail latency.
+
+#### 10.7.3 Agreed NULL versions and result/validity correction
+
+Discussion checkpoint: **2026-10-23**. **Settled:** NULL is versioned field state, not a missing update; both expression-result and validity bitmaps must reflect the latest visible version. This section covers whole-cell NULL for supported nullable fields. It does not define JSON-path missing/null semantics, nested-element semantics, additional expression support, or a concrete C++/wire layout.
+
+**Industry convention adopted.** Ordinary comparisons (`=`, `!=`/`<>`, `<`, `>`, `<=`, `>=`) with a NULL operand yield UNKNOWN, whether the other operand is a literal or a field; even `NULL = NULL` is UNKNOWN. `IS NULL` and `IS NOT NULL` return definite booleans. WHERE retains only TRUE, so FALSE and UNKNOWN both exclude a row, but they are not interchangeable inside the expression tree: `NOT UNKNOWN` remains UNKNOWN, `FALSE AND UNKNOWN` is FALSE, and `TRUE OR UNKNOWN` is TRUE. See PostgreSQL's [comparison semantics](https://www.postgresql.org/docs/current/functions-comparison.html) and [three-valued logic](https://www.postgresql.org/docs/current/functions-logical.html). Adopt these semantics and reject treating NULL as an ordinary unequal value or prematurely collapsing UNKNOWN into FALSE. This does not expand Milvus's expression allowlist to every PostgreSQL operator.
+
+**Version resolution has three outcomes:**
+
+| Resolution at snapshot T | Effective field state |
+| --- | --- |
+| No applicable visible update, including a history containing only later versions | Use the compatible base value and its NULL state |
+| Latest applicable visible entry has `is_null=true` | Use NULL; never fall back to the base or an earlier non-NULL version |
+| Latest applicable visible entry has `is_null=false` | Use that entry's value, regardless of the base's NULL state |
+
+Each history entry logically carries `(timestamp, is_null, value_or_reference)`. `is_null` belongs to **each version**, not a mutable flag describing only the cell's current state. A single logical bit can express it, but actual packing/alignment remains open. Small values may be inline and large values use Section 10.9.4's selected Arrow owning-buffer policy; thresholds and descriptor layout are not settled. A NULL version has no effective value/payload reference and must not cause payload allocation or dereference merely to represent NULL. It still requires a timestamped entry. Empty strings, zero, and a missing history entry are not encodings of that NULL version.
+
+For example, base `age=23` with history `[(100, NULL), (120, 25)]` resolves to 23 at `T=90`, NULL at `T=110`, and 25 at `T=130`. Field output must preserve this distinction as well as predicate evaluation. The separation of validity from payload follows [Arrow's validity convention](https://arrow.apache.org/docs/format/Columnar.html#validity-bitmaps); its exact buffer layout is not required for UpdatesRecord.
+
+**Expression validity is not always field validity.** Use `R` for the expression's Boolean result bit and `V` for whether that result is known. TRUE is `(1,1)`, FALSE is `(0,1)`, and UNKNOWN is illustrated as `(0,0)`. When `V=0`, a set result bit does not create a fourth truth value; concrete normalization must satisfy the receiving operator's representation contract. For `age = 23`, a NULL age yields UNKNOWN. For `age IS NULL`, the same field state yields TRUE with `V=1`. Do not copy field validity blindly into every operator's output validity.
+
+**Replace the result pair at visible updated offsets.** For the single-field case, fix the same snapshot, compatible base generation, and evaluated offset window or selection:
+
+```text
+U       = offsets with a visible field update not folded into this base
+          (includes explicit NULL versions; not the predicate's match set)
+Rb, Vb  = base index/raw-chunk expression result and validity
+Rd, Vd  = expression result and validity evaluated on latest visible delta values
+          (mapped to the same offset coordinates, meaningful on U)
+
+R = (Rb & ~U) | (Rd & U)
+V = (Vb & ~U) | (Vd & U)
+```
+
+Subscripts `b` and `d` mean base and delta. Outside U, preserve the base pair; inside U, replace it with the delta pair even when the new result is FALSE or UNKNOWN. Neither shared raw data, shared index state, nor their stored validity is modified. Ordinary insert/delete visibility remains separate. For expressions reading multiple fields, use their coherent visible values rather than applying this single-field mask to an unrelated field.
+
+**Worked example:** query `age = 23` at `T=130`, with one independent update at each shown timestamp:
+
+| Offset | Base age | Update | Effective age | Corrected `(R,V)` |
+| --- | --- | --- | --- | --- |
+| 0 | 23 | None | 23 | `(1,1)` |
+| 1 | 23 | `@100 -> 25` | 25 | `(0,1)` |
+| 2 | 17 | `@110 -> 23` | 23 | `(1,1)` |
+| 3 | 23 | `@120 -> NULL` | NULL | `(0,0)` |
+| 4 | NULL | `@125 -> 23` | 23 | `(1,1)` |
+
+```text
+Rb = {0,1,3};  U = {1,2,3,4};  Rd = {2,4}
+R  = ({0,1,3} - U) union {2,4} = {0,2,4}
+
+Vb = {0,1,2,3};  Vd = {1,2,4}
+V  = ({0,1,2,3} - U) union {1,2,4} = {0,1,2,4}
+```
+
+Offset 0 retains its base match; offsets 1 and 3 lose old matches; offsets 2 and 4 gain matches. Offset 1 is definitely FALSE, while offset 3 is UNKNOWN. At the same snapshot, `age IS NULL` matches only offset 3 and has known results for all five rows; `age IS NOT NULL` matches the other four and also has known results throughout. These example timestamps distinguish independent mutations; multiple row versions produced by one mutation may share that mutation's effective timestamp.
+
+**Prevent two asymmetric failures:** non-NULL -> NULL must clear expression validity for an ordinary comparison, not just its old match; otherwise NOT can turn an incorrectly recorded FALSE into a match. NULL -> non-NULL must restore validity as well as evaluate the new value; otherwise the new match remains masked. Never AND the corrected result with the stale base field-validity bitmap afterward. An empty base match set or all-NULL base chunk does not justify skipping delta evaluation.
+
+**Execution responsibility and existing integration points.** Value-dependent nodes, including NULL tests, resolve UpdatesRecord and correct their result/validity pair before parent pruning or short-circuiting. Pure logical nodes do not read field histories or interpret payloads, but must combine corrected pairs using three-valued logic; they are not NULL-oblivious Boolean-only nodes. The existing [ColumnVector](../../internal/core/src/common/Vector.h) carries both bitmaps; [NullExpr::BuildNullResult](../../internal/core/src/exec/expression/NullExpr.cpp) returns known IS NULL/IS NOT NULL results; [ThreeValuedLogicOp](../../internal/core/src/common/ValueOp.h) implements NOT/AND/OR; [FilterBitsNode](../../internal/core/src/exec/operator/FilterBitsNode.cpp) converts the final predicate into a filtered-row bitmap, excluding both FALSE and UNKNOWN. Reuse these semantic responsibilities, not a claim that these paths already incorporate UpdatesRecord. Phase one remains serial: scan base, resolve/evaluate delta, rectify both bitmaps, then expose them to the parent.
+
+**Still open:** flag packing, inline/reference layout, durable NULL encoding, safe publication, and integration with all supported access paths/caches and short-circuit optimizations. The semantic contract is agreed; index/raw parity and end-to-end behavior require the planned verification in Section 8 and are not established by this document.
+
+#### 10.7.4 Reuse logical nodes: combining result and validity bitmaps
+
+Discussion checkpoint: **2026-10-23**. **Settled:** pure logical AND/OR/NOT nodes consume corrected child `(result, validity)` pairs and reuse the existing three-valued logic. They do not access UpdatesRecord, resolve timestamps, inspect payloads, or distinguish a base-derived bit from a delta-derived bit. Value-dependent children own those responsibilities and must finish correction before their results drive parent composition or pruning. This preserves Section 10.7.2's serial phase-one execution.
+
+**Convention and current implementation.** The rules below implement the [SQL three-valued truth tables](https://www.postgresql.org/docs/current/functions-logical.html), not a new update-specific Boolean algebra. The current [ThreeValuedLogicOp](../../internal/core/src/common/ValueOp.h) implements equivalent bitmap formulas; [LogicalUnaryExpr.cpp](../../internal/core/src/exec/expression/LogicalUnaryExpr.cpp) invokes NOT, and [ConjunctExpr.cpp](../../internal/core/src/exec/expression/ConjunctExpr.cpp) invokes AND/OR. Adopt these existing logical semantics; adapt the value-dependent inputs through UpdatesRecord correction. This does not claim that current data access or short-circuit paths are already update-aware.
+
+Let `A=(RA,VA)` and `B=(RB,VB)` be child outputs with the same evaluated row coordinates and snapshot. Here uppercase A/B identify the two children, not base/delta sources. `R` is the Boolean result and `V` means known; examples use TRUE=`(1,1)`, FALSE=`(0,1)`, UNKNOWN=`(0,0)`. The operators below are bitwise over the evaluated window, not scalar loops over field values.
+
+**AND: either definite FALSE is sufficient to make the result known.**
+
+```text
+R = RA & RB
+V = (VA & VB) | (VA & ~RA) | (VB & ~RB)
+```
+
+The three validity terms mean both children are known, A is definitely FALSE, or B is definitely FALSE. For `age > 18 AND status = 'active'`, a row with `age=NULL` and `status='inactive'` produces UNKNOWN AND FALSE = FALSE, or `(0,1)`. The unknown age cannot change the outcome. In contrast, UNKNOWN AND TRUE remains UNKNOWN.
+
+**OR: either definite TRUE is sufficient to make the result known.**
+
+```text
+R = RA | RB
+V = (VA & VB) | (VA & RA) | (VB & RB)
+```
+
+The terms mean both children are known, A is definitely TRUE, or B is definitely TRUE. For `age > 18 OR status = 'active'`, a row with `age=NULL` and `status='active'` produces UNKNOWN OR TRUE = TRUE, or `(1,1)`. In contrast, UNKNOWN OR FALSE remains UNKNOWN. Neither AND nor OR can universally use only `VA & VB` for output validity: one known operand may already determine the result.
+
+**NOT: invert truth while preserving whether it is known.**
+
+```text
+R = ~RA & VA
+V = VA
+```
+
+| Input A | NOT A |
+| --- | --- |
+| TRUE `(1,1)` | FALSE `(0,1)` |
+| FALSE `(0,1)` | TRUE `(1,1)` |
+| UNKNOWN `(0,0)` | UNKNOWN `(0,0)` |
+
+Masking with VA prevents an inverted unknown result bit from being presented as a positive match. NOT does not turn UNKNOWN into a known result.
+
+**Multi-row example:** each row below is one aligned offset in both input pairs.
+
+| Offset | A | B | A AND B | A OR B |
+| --- | --- | --- | --- | --- |
+| 0 | TRUE | TRUE | TRUE `(1,1)` | TRUE `(1,1)` |
+| 1 | FALSE | UNKNOWN | FALSE `(0,1)` | UNKNOWN `(0,0)` |
+| 2 | UNKNOWN | FALSE | FALSE `(0,1)` | UNKNOWN `(0,0)` |
+| 3 | UNKNOWN | TRUE | UNKNOWN `(0,0)` | TRUE `(1,1)` |
+
+Equivalently, listing bits in offset order 0 through 3:
+
+```text
+A:      RA = [1,0,0,0]   VA = [1,1,0,0]
+B:      RB = [1,0,0,1]   VB = [1,0,1,1]
+AND:     R = [1,0,0,0]    V = [1,1,1,0]
+OR:      R = [1,0,0,1]    V = [1,0,0,1]
+NOT A:   R = [0,1,0,0]    V = [1,1,0,0]
+```
+
+**Boundary to preserve:** compose corrected child pairs, then let the final WHERE consumer retain only definite TRUE (`R & V`) and convert to the executor's required bitmap polarity. Do not collapse UNKNOWN into FALSE before a parent that can distinguish them, such as NOT. Existing context-proven null-rejecting optimizations must remain semantically equivalent and consume update-corrected selections. The required change is version-aware input evaluation, not adding UpdatesRecord knowledge to pure logical nodes or replacing their existing three-valued operators.
 
 ### 10.8 Agreed assignment capability boundary: simple deterministic row-local values
 
@@ -1438,7 +1569,7 @@ Discussion checkpoint: **2026-10-21**. The long-term target is **simple, determi
 
 **Rationale:** richer expressions increase the semantic surface that every execution and recovery path must preserve. The primary benefit target remains avoiding full-row reconstruction/reinsertion and redundant work on unchanged vectors and indexes; it does not require a general SQL assignment engine. Phase one remains constant-only even though the message shape can express later extensions.
 
-### 10.9 UpdatesRecord: query-driven structure, growth, and payload candidates
+### 10.9 UpdatesRecord: query-driven structure, history candidates, and owned payloads
 
 Discussion checkpoint: **2026-10-23**. `UpdatesRecord` names proposed segment-local field-version state, not an existing implementation or a requirement to merge it with `DeletedRecord`. Preserve the compatible serving generation, row layout, and complete apply-progress contract from Sections 10.6–10.7. The following status split is deliberate:
 
@@ -1446,11 +1577,17 @@ Discussion checkpoint: **2026-10-23**. `UpdatesRecord` names proposed segment-lo
 | --- | --- | --- |
 | Per-field access; offset-window/discrete lookup; latest visible cell version | Agreed requirement | Query-driven access, not scanning the entire mutation log per expression window |
 | Sparse cells; arbitrary-position insertion of new offsets; ordered history append | Agreed requirement | No history entry for an unmodified cell; time order does not imply offset order |
-| Balanced ordered tree for the offset directory | Candidate baseline | Concrete tree and synchronization are not selected |
+| Balanced ordered tree for the offset directory | Candidate baseline | Concrete tree remains open; field-level synchronization is agreed in Section 10.9.6 |
 | Vector versus random-access segmented history | Candidates | Evaluate short-history overhead, growth spikes, locality, and reader safety |
-| Small version descriptors referencing immutable large-value blocks | Candidate representation | Payload encoding, block allocation, ownership, sharing, and reclamation remain open |
+| Arrow owning buffers for immutable large payloads | Agreed for phase one | Request payload-sized allocations; retain shared ownership; no custom allocator or fixed 16 KiB blocks |
+| Small-value inline layout and history descriptors | Candidate representation | Inline threshold, physical NULL encoding, and exact descriptor layout remain open |
+| Packing unrelated payloads into shared allocation blocks | Deferred optimization | Not required in phase one; slices can retain a whole parent allocation |
 | Serial `scan_base -> scan_delta -> rectify` | Agreed for phase one | Parallelism requires subsequent performance evidence; see Section 10.7.2 |
-| NULL, concurrent publication, and generation reclamation | Open | Container selection does not solve these contracts |
+| Per-entry NULL flag; absent-visible-update distinction; result/validity correction | Agreed semantic contract | Section 10.7.3; no effective payload for a NULL version |
+| Field-level reader/writer locks; complete apply-progress publication | Agreed for phase one | Locks protect structures; timestamp snapshots plus complete progress protect visibility; see Section 10.9.6 |
+| Row/cell-level lock refinement | Deferred | Reconsider only after measuring phase-one contention and query performance |
+| Historical-read retention policy | Agreed | No fixed keep-window or UNDO; protect admitted readers and reject requests below the published readable boundary |
+| Physical NULL encoding, publication primitives, and generation reclamation | Open implementation details | Preserve the agreed visibility contract; container selection alone does not implement it |
 
 #### 10.9.1 Agreed access and ordering requirements
 
@@ -1458,7 +1595,7 @@ Discussion checkpoint: **2026-10-23**. `UpdatesRecord` names proposed segment-lo
 
 1. Locate the referenced field without scanning unrelated fields.
 2. Enumerate updated offsets in an evaluation window, or gather versions for a discrete offset selection, without rescanning all segment updates for every chunk.
-3. For each selected cell, resolve its latest applicable version visible at execution snapshot `T`; if none exists, retain the compatible base value and do not mask its match.
+3. For each selected cell, resolve its latest applicable version visible at execution snapshot `T`; if none exists, retain the compatible base value and do not mask its match. A visible NULL entry is a version, not absence: it overrides the base under Section 10.7.3.
 4. Expose resolved values to expression evaluation or field output. The store is not responsible for interpreting the complete WHERE, and a final result bitmap alone is not enough to resolve changed matches.
 
 Do not create an entry for a cell with no update history. Updating `status` alone does not create an `age` entry for that row. The following is a candidate physical decomposition of the agreed access requirements, **not three mandatory nested hash tables**:
@@ -1508,32 +1645,155 @@ Keep small history handles in the offset directory and place version histories/p
 
 **Selection remains open:** compare contiguous vector, compact short-history representations, and segmented growth using actual per-cell version-depth distributions. Do not give every one-version cell a large block or heavyweight concurrent container. Pointer stability alone is not safe concurrent publication, and phase-one serial query correction does not eliminate concurrency between queries and mutation application.
 
-#### 10.9.4 Large-value payloads: separate storage candidate
+#### 10.9.4 Agreed large-value storage: Arrow owning buffers, not a custom allocator
 
-For large strings and JSON, evaluate a small version descriptor such as `(timestamp, value_ref)` that references immutable payload bytes. Expanding a version vector would then relocate descriptors rather than necessarily copying large value bodies. Small fixed-width values may use a different representation; a universal indirect format is not selected.
+Discussion checkpoint: **2026-10-23**. **Choose Arrow owning buffers for non-NULL large payloads.** Keep version descriptors separate from immutable string/JSON/array bytes so growing or trimming history does not require copying those bytes. Small values may remain inline; the threshold, payload encoding, and exact descriptor layout are not selected. A NULL version has no effective payload reference.
+
+**Mature library capability adopted.** Arrow 17's [memory-management API](https://arrow.apache.org/docs/17.0/cpp/memory.html#buffers) provides `AllocateBuffer(size)` for contiguous storage, shared buffer ownership, and zero-copy `SliceBuffer` views. Milvus already depends on Arrow 17 in [conanfile.py](../../internal/core/conanfile.py); [CopyArrowBuffer](../../internal/core/src/segcore/segment_c.cpp) demonstrates converting an allocated buffer to shared ownership. These are existing primitives, not an existing UpdatesRecord implementation. Folly's [reference-counted IOBuf](https://github.com/facebook/folly/blob/v2026.04.20.00/folly/io/IOBuf.h#L65-L136) was considered, but its chaining capability is not needed for the chosen contiguous-value representation. This selection does not claim a measured performance advantage over Folly.
 
 ```text
-Version descriptor:
-  timestamp
-  value_ref = {block_id, byte_offset, byte_length}
+Large-value version descriptor (conceptual):
+  timestamp, is_null, owning_buffer_reference
 
-Payload block 0: [string A][JSON B][string C]...
-Payload block 1: [JSON D][string E]...
+history entries ----+
+query / mutation ---+--> shared immutable Arrow buffer --> contiguous payload
 ```
 
-**Continuity means within each block, not across all blocks.** Each payload block is a contiguous byte allocation; values can be packed within it. The collection of payload blocks need not occupy a single contiguous region. In this candidate, each value remains contiguous inside one block; an oversized value may use a dedicated allocation rather than span blocks. Append new payloads into available space or allocate another block instead of growing and copying one monolithic byte vector. Block sizes, packing, and oversized-value policy are not settled.
+**Phase-one allocation policy:**
 
-Apache Arrow's [Variable-size Binary View layout](https://arrow.apache.org/docs/format/Columnar.html#variable-size-binary-view-layout) provides a mature precedent for small descriptors referencing potentially multiple data buffers. Adopt the separation of descriptors from immutable large payloads; adapt it to segment-local history ownership. This is not a decision to adopt Arrow arrays, its exact descriptor layout, or a specific JSON encoding/parsed-object representation.
+- Request storage for the payload size from the existing library/allocator. A 1 MiB value uses one contiguous buffer, not a custom chain or a search for 64 adjacent 16 KiB blocks. Requested size and allocator capacity need not be identical because alignment and allocator rounding remain implementation details.
+- **There is no fixed 16 KiB block size, size-class policy, or packing requirement.** The earlier 16 KiB proposal is superseded for phase one, not a configuration knob to implement. Do not build a free-list, cross-block reference format, hole compactor, or custom allocator for this feature.
+- Use one owning buffer per distinct large-payload instance as the simple baseline. Multiple rows receiving the same constant from one mutation can share that immutable buffer; this does not require a global content-deduplication table or one allocation per target row.
+- Fill the payload before publication, then never mutate or resize its shared bytes. Allocate a different payload for a later value. Arrow ownership does not automatically make writes to shared mutable bytes safe.
+- `SliceBuffer` is available when a view of an existing owned buffer is useful; it is not a requirement to pack values together. Packing unrelated values is deferred until measurements justify the added retention/management tradeoff. A live slice can keep its entire parent allocation alive.
 
-**Costs still to design:** allocator overhead and fragmentation, block occupancy, immutable-value sharing, reader ownership, and safe reclamation. A block with even one retained value may stay pinned; compact allocation does not automatically provide fine-grained reclamation. Nor does descriptor indirection bound total historical payload bytes. Phase one remains memory-resident, without assuming spill, premature version retirement, or free large-value scans.
+**Ownership is required, not merely a Buffer-shaped wrapper.** Arrow's [Buffer contract](https://github.com/apache/arrow/blob/apache-arrow-17.0.0/cpp/src/arrow/buffer.h#L37-L109) distinguishes an owned allocation/parent-retaining slice from a non-owning pointer wrapper. `Buffer::Wrap(raw_pointer, size)` inside a `shared_ptr` does not, by itself, keep the external bytes alive. Build payload references from an owning allocation or an explicitly retained owner. Under the field read lock, copy small values or acquire the payload's shared owner before unlocking; every ordinary query, predicate-delete WHERE, UPDATE WHERE, and SELECT consumer must retain that owner for its entire use. Raw pointers are only borrowed accessors while the owner is held.
+
+Removing a retired history entry releases that entry's reference; the allocation can be reclaimed only after the final history/reader reference is gone. This is separate from the history container's own capacity: releasing payloads does not shrink a version vector, and vector-prefix erasure does not imply capacity release. An allocator may retain freed memory internally rather than immediately reduce process RSS. Prefix-retirement cost remains part of the vector/segmented-history comparison.
+
+**Remaining resource work:** measure buffer/control-block overhead, allocator fragmentation, shared-payload accounting, reference traffic, retained bytes, allocation failure handling, and query latency. Choosing Arrow is not a memory bound or an OOM solution. Phase one remains memory-resident and retains the existing memory-protection and Delta Consolidation budgeting requirements; no spill benefit is assumed.
 
 #### 10.9.5 Industry adaptation and remaining decisions
 
 Kudu's [DeltaKey](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/delta_key.h) orders REDO keys by row ID and ascending timestamp; its [DeltaMemStore](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/deltamemstore.h) uses a concurrent B-tree and arena-managed storage, and its [iterator](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/deltamemstore.cc) seeks by row ordinal and processes a bounded row range. Adopt row-oriented ordered access and snapshot-aware versions. The field-first directory and per-cell history proposed here are Milvus-oriented adaptations, not Kudu's exact tree key/value layout or UNDO retention model.
 
-**Not settled:** concrete field/offset containers, short/long-history representation, payload allocation/encoding/sharing, NULL representation, atomic publication, and generation-safe reclamation. Measure directories, handles, allocations, spare capacity, metadata movement, and retained payloads, not just the bytes of `(timestamp,value)`. Preserve the cheap window/discrete lookup and ordered-append requirements while comparing these candidates. There is no validated universal best container in this document.
+**Not settled:** concrete field/offset containers, short/long-history representation, inline threshold and payload encoding, physical NULL flag encoding, resource accounting, the implementation primitives for complete publication, and generation-safe reclamation. Arrow owning buffers and immutable sharing are selected in Section 10.9.4; they are no longer generic library candidates. The logical per-version NULL representation and result/validity semantics are agreed in Section 10.7.3; field-level locking and the complete apply-progress visibility contract are agreed in Section 10.9.6. Measure directories, handles, allocations, spare capacity, metadata movement, and retained payloads, not just the bytes of `(timestamp,value)`. Preserve the cheap window/discrete lookup and ordered-append requirements while comparing history candidates. There is no validated universal best history container in this document.
 
 **Settled independently of that selection:** phase-one query evaluation is serial as specified in Section 10.7.2. Memory-container benchmarking and query-performance measurements must not silently introduce the deferred parallel execution mechanism.
+
+#### 10.9.6 Agreed phase-one field locks and complete apply-progress publication
+
+**Two distinct responsibilities.** Field-level reader/writer locks protect UpdatesRecord's mutable memory structures. Complete segment apply progress, together with timestamp-based version selection, determines which mutations a query may observe. Serial `scan_base -> scan_delta -> rectify` within one query does not serialize queries against background mutation application.
+
+**Industry precedent and adaptation.** Kudu's [DeltaMemStore](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/deltamemstore.cc) manages concurrent delta access and filters iterator results through an MVCC snapshot. Its [MvccManager](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/mvcc.h) separately tracks applying/completed operations and provides `WaitForSnapshotWithAllApplied`. Adopt this separation of container safety from complete snapshot visibility. Adapt it to Milvus's field-first UpdatesRecord, ordered mutation application, and complete apply progress; do not copy Kudu's concrete tree, transaction lifecycle, or in-flight snapshot representation.
+
+**Phase-one lock boundary.** Use a reader/writer lock per field's update state:
+
+- Writers take the exclusive lock when inserting offsets, appending history entries, or changing the corresponding mutable structures, including growth that may invalidate reader references.
+- Readers take the shared lock when traversing an offset window or discrete selection and resolving visible history entries. This protects access while later mutations may be appended.
+- Once history retirement is safe for the published base and its users, check the history, trim its retired prefix, and erase an empty offset entry within the same field write-lock critical section. Same-field append cannot interleave with those actions; do not add an unnecessary lock-free candidate scan/recheck protocol. Retain an offset entry with any remaining versions, even if none is visible to one particular query. Directory removal never renumbers segment row offsets.
+- Keep the critical section scoped to the protected structures, rather than holding it across base/index scans, external IO, or the whole query. Release before downstream evaluation only after obtaining safe value copies or references to immutable payloads with a protected lifetime. A pointer into a reallocatable history vector must not escape protection merely because the pointed-to version is old.
+- A field lock does not automatically protect a shared field directory, cross-field payload allocator, or generation reclamation. Their ownership/synchronization must be safe as well; the concrete lifecycle mechanisms remain implementation work.
+
+**Publish only a complete mutation prefix.** All target rows and fields of a mutation must finish application before complete progress can advance through its timestamp. Earlier applicable mutations, including deletes, must also be complete. Progress is not the maximum timestamp of an individually written cell. Publication must establish memory visibility of the completed state for readers observing the new progress; an atomic counter alone is not a substitute for correct synchronization and lifetime management.
+
+```text
+Complete segment apply progress P = 99
+Mutation @100: SET age = 23, status = 'active' WHERE pk = 2
+
+lock age exclusively
+  append age@100 for every selected target row
+unlock age
+
+lock status exclusively
+  append status@100 for every selected target row
+unlock status
+
+all target rows and fields complete; no earlier applicable mutation missing
+  -> atomically publish complete progress P = 100
+```
+
+The example may be implemented with smaller protected write batches; completing one batch or field must not publish whole-mutation completion. If application fails after writing only `age`, do not advance progress through 100 or admit a read snapshot requiring that mutation. Failure recovery/retry mechanics remain open; this rule does not promise physical rollback.
+
+**Why cross-field lock holding is unnecessary.** A query pins a compatible segment generation and one read snapshot timestamp `Q`, and uses that timestamp for every field's latest-visible-version lookup. The execution gate must establish complete coverage through `Q`, consistently with Section 9.3's request-consistency admission; a request's consistency requirement is not permission to evaluate at an uncovered later snapshot.
+
+- While `P = 99`, a supported snapshot `Q <= 99` excludes all `@100` entries, including those already appended to `age`; it continues to see the old versions of both fields. It may briefly wait for a field lock but need not wait for the entire `@100` mutation.
+- A query requiring snapshot `Q = 100` waits until `P >= 100`. It then sees the completed `@100` state of both fields, not one new field and one old field.
+- Later appends do not change a query's pinned timestamp or allow it to select later versions. Retained histories and compatible base state must remain available for that query.
+
+Therefore, whole-mutation read visibility does not require holding every affected field lock simultaneously: **timestamp selection hides later versions, complete progress excludes unfinished mutations, and field locks make the underlying accesses safe**. This is a segment-local visibility contract, not new cross-VChannel or cross-segment transaction atomicity. It neither replaces the durable delta-prefix publication protocol nor permits out-of-order mutation evaluation.
+
+**Deferred refinement.** Do not introduce row/cell-level locks in phase one. Measure field-lock contention, hold times, history growth, and concurrent-query latency first. Row locks alone would still not protect shared offset-directory insertion/rebalancing or traversal. Concrete lock primitives, safe payload borrowing, wake-up/publication mechanics, and generation-safe reclamation remain implementation details to validate, not completed capabilities.
+
+#### 10.9.7 Agreed snapshot boundary: no fixed historical-read window
+
+**Policy decision:** do not promise a fixed duration for historical snapshot reads, and do not introduce UNDO or long-term time travel. Continue to support the snapshots representable by the published base and retained histories. Protect already-admitted users of a compatible state, but do not promise to accept arbitrarily late requests for that state's old timestamps. This extends Section 9.1.5's full-rewrite boundary to the agreed Consolidation publication direction.
+
+**Mature precedent and deliberate difference.** Kudu uses an [ancient history mark](https://kudu.apache.org/docs/background_tasks.html#_tablet_history_gc_and_the_ancient_history_mark) to bound readable history and [rejects newly requested snapshots before it](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tserver/tablet_service.cc#L2536-L2555). Its [Major Delta Compaction writes necessary UNDO deltas](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/delta_compaction.cc#L182-L234), allowing a new base to coexist with retained historical states. CockroachDB likewise combines a GC boundary with rejection of older reads and [protected timestamps for selected historical work](https://www.cockroachlabs.com/blog/protected-timestamps-for-less-garbage/). Adopt the explicit readable boundary and rejection principle. Do not copy their retained-history/UNDO mechanisms or claim their configurable historical-window guarantees for Milvus.
+
+**Publication contract:** publish the replacement base, compatible index resources, UpdatesRecord query view, and supported snapshot lower bound as one coherent state through the Reopen publication direction. A request must validate its chosen snapshot against the state it actually pins; checking an old boundary and then using a new base is unsafe. The current [read gate](../../internal/core/src/segcore/SegmentReadLease.h) drains admitted read leases before [PublishState](../../internal/core/src/segcore/ChunkedSegmentSealedImpl.cpp) atomically replaces the published state. Reuse that direction; extending it to mutations must cover the entire predicate evaluation and application, not just a WHERE leaf. UpdatesRecord integration and readable-boundary publication remain unimplemented and are not established by selecting Arrow buffers.
+
+```text
+Old base: age = 17
+History: @100 -> 23, @120 -> 25
+Consolidation incorporates updates through 100 into the new base:
+  new base: age = 23
+  remaining history: @120 -> 25
+
+New query Q=95: reject if this state no longer supports that snapshot
+New query Q=110: use age=23, subject to complete apply coverage
+New query Q=125: use age=25, subject to complete apply coverage
+```
+
+The readable lower bound and complete apply progress solve different problems. Waiting can address an incomplete mutation prefix, but cannot restore discarded history. Do not silently replace a requested old snapshot with a newer one, weaken its consistency, or return new-base values as historical results. Error representation and any caller-visible retry policy remain implementation work.
+
+For a consolidated field, its incorporated-update boundary means all applicable updates through that boundary are represented in the base, not that old intermediate snapshots remain recoverable. Retire only history covered by that base after old users and mutation dependencies are safe; preserve every later version and untouched fields. This rule does not make `base incorporation` equal to `complete mutation apply progress`, nor resolve the outstanding persisted-predicate dependency in Section 9.1.7. The absence of a fixed user keep-window does not permit losing or reordering a committed mutation. The exact lower-bound representation and multi-segment admission/error propagation remain detailed integration work.
+
+### 10.10 Agreed SELECT path: delta-first values and physical base-read cost
+
+**Selection and projection are separate responsibilities.** Section 10.7 corrects WHERE results. Once applicable predicate composition and row-visibility filtering have established selected offsets, projection must obtain each output field's values at the same query snapshot and compatible serving generation. This is not a requirement for a new global barrier across all segments or for every output path to use one physical operator.
+
+An output field must be version-aware even when it did not appear in WHERE. For `SELECT description FROM t WHERE age = 23`, correcting the `age` bitmap does not resolve `description` versions. Conceptually, the shared retrieval contract is `ReadValues(field, selected_offsets, query_ts) -> values + column NULL validity`; this names a responsibility, not a finalized API. Preserve selected-offset order when gathering and combining results.
+
+**Agreed access order: delta first, base only for unresolved positions.** For each requested output field:
+
+1. Resolve the latest visible update for each selected offset under the pinned query timestamp.
+2. Fill positions with visible updates directly from their values or explicit NULL. A visible NULL is resolved and must not fall back to base; future-only history is not a visible update.
+3. Collect the remaining offsets that have no visible update and retrieve their compatible base values through the existing suitable raw-data or index-value lookup path.
+4. Merge those base values into the corresponding output positions, preserving value/null alignment and the input offset order.
+
+```text
+Query snapshot T = 120; output field = description
+
+offset 3: visible update = "new" -> return "new" from UpdatesRecord
+offset 8: visible update = NULL  -> return NULL from UpdatesRecord
+offset 9: no visible update     -> retrieve the base value
+
+remaining offsets for base retrieval = {9}
+```
+
+Unlike WHERE's independent base/delta evaluation followed by bitmap correction, SELECT uses delta lookup to determine which base values are still needed. Phase-one WHERE remains serial as agreed in Section 10.7.2; theoretical branch independence does not enable deferred parallel execution. Reading base first and overriding it could produce correct SELECT values, but may unnecessarily fetch cold data. Delta-first is the selected avoidance strategy, not a claim that all queries perform less IO.
+
+**Lazy loading is a base-fallback cost, not a new update requirement.** If all selected offsets for a field have visible updates, projection can bypass that field's base-value retrieval. Otherwise, remaining offsets may require cold data. WHERE completion does not guarantee those values are resident:
+
+- WHERE and output may reference different fields.
+- WHERE may use only a scalar index without loading raw data; index-backed output is possible only when the index supports value retrieval.
+- Raw chunks just accessed by WHERE can be reused while resident, but may be evicted after their pins are released. Do not assume a query stage implicitly pins every later stage's required data.
+
+This is distinct from recovery-time predicate application, which may read cold fields to establish mutation matches. SELECT's offsets are already selected. Follow Section 10.9.6's safe borrowing rules and avoid holding UpdatesRecord field locks across cold base IO.
+
+**Measure the physical coverage of remaining offsets.** Let `S` be the selected positions for one output field and `U(T)` those with a visible update. Base retrieval receives the remaining positions `S - U(T)`, but actual loading occurs at the storage/cache unit's granularity, not one cell value at a time.
+
+- With 1,000 selected offsets and only ten visible updates, the other 990 offsets still need base values. If they span every originally required chunk, the number of loaded chunks may be unchanged.
+- At equal remaining-offset count, concentration in two chunks versus dispersion over ten comparable cold chunks normally changes loading work. Account for chunk sizes and residency rather than treating the counts as a fixed multiplier.
+- A covered value may still reside in a chunk fetched for a different unresolved offset or another output field. Skipping its logical lookup does not guarantee that its old physical bytes are never read.
+- Chunk count is not object-request count: lower layers may merge reads, prefetch, or serve cached data. Measure actual bytes and requests instead of deriving them solely from offset count.
+
+Therefore, evaluate per-output-field visible-update coverage, the remaining offsets' spatial distribution, cache hits/misses, loaded bytes, version-lookup overhead, and SELECT latency. No significant IO reduction is promised for sparse updates.
+
+**Evidence and integration boundary.** Current [ProjectNode](../../internal/core/src/exec/operator/ProjectNode.cpp) selects offsets from its input bitmap and retrieves projected fields. [SegmentInterface](../../internal/core/src/segcore/SegmentInterface.cpp) and [ChunkedSegmentSealedImpl](../../internal/core/src/segcore/ChunkedSegmentSealedImpl.cpp) also fill Retrieve/Search output through bulk-subscript and take paths. All relevant paths must honor the same version-aware retrieval contract; changing ProjectNode alone is insufficient. The current [column-group reader](../../internal/core/src/mmap/ChunkedColumnGroup.h) obtains group chunks via `PinCells`, illustrating why logical offset filtering and physical loading granularity differ. These paths do not already implement UpdatesRecord integration.
+
+**Industry adaptation.** Kudu's [DeltaApplier::MaterializeColumn](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/delta_applier.cc#L121) materializes base columns and applies snapshot-relevant updates. Adopt the requirement that projected values reflect deltas, not its concrete base-first order. Milvus's agreed delta-first selection aims to avoid unnecessary base reads; exact shared-accessor placement, output buffering, and performance remain implementation work.
 
 ## 11. Deferred integration and open contracts
 
@@ -1546,12 +1806,13 @@ Before coding the predicate-delete part, finalize:
 - The buffer/file encoding and durable handoff behind Section 9.7: retain ordered mutation commands and original effective TimeTicks in separate update/predicate-delete file types, and establish complete-prefix merge/recovery without introducing user-controlled transaction batches.
 - The delete plan/context and write-capable segment handle, including the CGo boundary.
 - Bitmap ownership, whole-segment versus batch-local input, and the applied-row-count definition.
-- Mutation serialization, snapshot publication granularity, and cancellation/partial-application behavior.
-- The QN integration and memory layout behind Sections 10.7.1–10.7.2 and 10.9: version-aware mutation WHERE, correction before logical pruning, window/discrete-offset access, predecessor lookup, and low-cost ordered append. Keep the balanced offset tree, vector/segmented history, and descriptor/payload-block layouts explicitly provisional until sparse-cell overhead, growth spikes, memory retention, and concurrent publication are evaluated. Implement and measure the agreed serial scan/correction baseline before considering same-window parallelism; no channels, per-expression threads, or cross-window pipeline are phase-one requirements. Deep-dive explicit NULL, validity handling, and compound-expression semantics separately; do not treat the agreed bitmap equation as a complete NULL design.
+- Implement Section 10.9.6's field-lock and complete-progress contract: serialize dependent mutations, publish only after all target rows/fields complete, and define cancellation/retry behavior for partial physical application without exposing it. This is not a cross-segment transaction or automatic rollback protocol.
+- Implement Section 10.10's delta-first value retrieval consistently across projection and Retrieve/Search output, including fast paths. Preserve one query snapshot and compatible base generation, explicit NULL overrides, and offset/value alignment. Measure remaining-offset chunk coverage and cache behavior rather than promising IO savings from sparse update coverage alone.
+- The QN integration and memory layout behind Sections 10.7.1–10.7.4 and 10.9: version-aware mutation WHERE, dual result/validity correction before logical pruning, window/discrete-offset access, predecessor lookup, and low-cost ordered append. Keep the concrete balanced offset tree, vector/segmented history, and descriptor layout provisional until sparse-cell overhead, growth spikes, memory retention, and concurrent publication are evaluated. Use the selected Arrow owning-buffer payload policy; do not reopen library choice implicitly or introduce a custom 16 KiB allocator. Implement and measure the agreed serial scan/correction and field-level reader/writer-lock baselines before considering same-window parallelism or row-level locks; no channels, per-expression threads, or cross-window pipeline are phase-one requirements. Preserve the agreed per-version NULL contract and reuse existing three-valued logical operators without UpdatesRecord access in pure logical nodes; physical NULL encoding, accounting, complete-progress publication, cache integration, and cross-path parity remain to implement and verify.
 - The restricted Go compaction evaluator's exact supported expression/type set, parity tests, and schema/version contract; preserve the agreed legacy fallback for expressions outside that set.
 - The shared batch executor behind Section 9.1.4: concrete integration across all four rewrites, Arrow ownership and batch working buffers, reusable ordered-program iteration, memory limits, and durable completion bookkeeping. Phase one loads the complete applicable delta program in memory independently of base-batch size, without disk cache or spill. Preserve safe time-eligibility bypass and existing TTL policy; the agreed execution model does not establish these implementation details or their performance.
 - Section 9.1.7's Delta Consolidation implementation: replace selected column data and affected scalar indexes while retaining segment identity/layout and unchanged ANN indexes; define coherent publication, remaining-delta ownership, old-reader protection, and exclusion with L0 dispatch/full rewrites. Resolve interleaved-delete semantics before consuming update history. Do not claim physical delete reclamation or full cross-type completion merely because the selected update columns were folded. Update-backlog timing thresholds, CG-fragmentation-driven rewrite/regrouping heuristics, and safe all-resident capacity remain open; updates must not trigger or accelerate Mix, even though normally scheduled Mix consumes all applicable deltas.
-- Serving-generation pinning, handoff, and safe reclamation under Section 9.1.5's settled retention boundary. Do not turn this implementation work into an UNDO or post-rewrite time-travel requirement; protect admitted readers and mutations not incorporated by the rewrite.
+- Serving-generation pinning, handoff, and safe reclamation under Sections 9.1.5 and 10.9.7. Publish the readable snapshot lower bound with the corresponding state, protect admitted users, and define consistent rejection/error propagation for newly arriving too-old snapshots. Do not turn this implementation work into an UNDO or fixed keep-window requirement; committed mutations and their historical-value dependencies must still be preserved.
 - The per-VChannel completion proof for both Streaming -> L0 and L0 -> target segment delta-log publication, including coherent checkpoint/L0 observations, old growing data, replacement segments, retry/restart, and gating every rewrite that can remove the field; preserve the two-phase requirement and unified-drain preference in Section 9.1.3.
 - The dedicated stats RPC's detailed contract, coherent count/apply-progress sampling, source/freshness validation, and cache invalidation for Section 9.2's best-effort cumulative observations; define predicate-backlog accounting and policy use without requiring stats availability, introducing a durable stats cache, or overriding Section 9.1.7's normal-Mix scheduling boundary.
 - The predicate-delta loader/CGo wiring, replay bookkeeping, failure handling, and resource budgeting; preserve Section 9.3's access-path policy and per-request progress gate. Define the initial readable state, complete apply-progress publication/aggregation, and recovery-mode/readiness controls without silently weakening requested consistency. Delegator L0/streaming catch-up must participate in the completeness proof, but its detailed protocol remains separate work.
@@ -1560,7 +1821,7 @@ Before coding the predicate-delete part, finalize:
 
 For update deltas, Section 10.4 settles multi-row predicate selection and multi-column constant assignment, while excluding old-value-dependent assignments from phase one. Section 10.5 settles the observable results of independent and overlapping patches and their predicate-order dependency. Sections 10.6–10.7 settle versioned field values and scalar query merging: mask snapshot-visible updated offsets in the base result, then supplement matches from each row's latest visible field value, initially without requiring a separate delta index. Section 10.8 bounds the long-term assignment core to literals, same-row references, and basic arithmetic, with a few deterministic functions only when justified; it does not require full SQL. Sections 9.5–9.6 record shared message responsibilities, the Proxy/StreamingNode validation responsibility principle, single-mutation request scope, extensible typed RHS representation, separate selection/value/application responsibilities, and pre-append support routing, not a completed wire or detailed validation protocol. Section 9.7 settles the buffer responsibility and separate-file ordering direction, not durable format/publication details. The benefit target, exact supported fields/types/predicates, and UPSERT semantics still require discussion. Detailed physical row targeting, value-version storage/GC, overlay/index/cache implementation, coherent publication, concurrency enforcement, durable replay, load, and compaction mechanisms remain open. The shared ordering invariant in Section 6 applies to all of them; it is a requirement, not an implemented guarantee.
 
-No implementation or performance validation accompanies this draft. This revision records agreed query semantics, phase-one serial query correction with measurement-gated parallelism, provisional UpdatesRecord directory/history/payload representations, logical message responsibilities, single-mutation request scope, TimeTick-preserving buffer/file ordering, VChannel range-publication and SN recovery contracts, shared ordered batch delta execution and safe bypass, all-resident phase-one delta execution, separate L0 dispatch, Delta Consolidation, and full-rewrite responsibilities, bounded assignment capability, and industry applicability boundaries; it does not authorize implementation or mark the complete update design as settled.
+No implementation or performance validation accompanies this draft. This revision records agreed query semantics, explicit per-version NULL versus absent visible updates, dual result/validity correction and three-valued logical composition, phase-one serial query correction with measurement-gated parallelism, field-level reader/writer locks separated from complete apply-progress visibility publication, selected Arrow owning-buffer payload storage without fixed 16 KiB blocks, provisional UpdatesRecord directory/history containers, no fixed historical-read window with an explicit readable boundary, logical message responsibilities, single-mutation request scope, TimeTick-preserving buffer/file ordering, VChannel range-publication and SN recovery contracts, shared ordered batch delta execution and safe bypass, all-resident phase-one delta execution, separate L0 dispatch, Delta Consolidation, and full-rewrite responsibilities, bounded assignment capability, and industry applicability boundaries; it does not authorize implementation or mark the complete update design as settled.
 
 ## 12. Tracked legacy implementation risks
 
