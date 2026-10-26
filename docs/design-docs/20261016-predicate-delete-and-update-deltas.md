@@ -46,7 +46,7 @@ The local pipeline is not a complete replacement for the distributed delete prot
 - **Preserve ordered commands through buffering and persistence.** The persistence buffer does not evaluate predicates or collapse intermediate updates. Update and predicate-delete deltas use separate file types, retaining each record's effective mutation TimeTick for ordered merge during load and compaction; see Section 9.7.
 - **Share ordered batch delta execution across data rewrites.** Sort, Mix, full-rewrite bump-schema-version, and clustering compaction use one logical `DeltaExecutor` to apply a TimeTick-ordered sequence of PK deletes, predicate deletes, and updates to each applicable batch. Skip delta execution only when the batch cannot be affected, not merely because row-write and delta-time intervals do not overlap; see Section 9.1.4.
 - **Separate dispatch, Delta Consolidation, and full rewrite.** L0 dispatch distributes deltas without expression evaluation; Delta Consolidation is a distinct background column-maintenance process, not segment-merging compaction. It logically materializes a complete ordered prefix of PK deletes, predicate deletes, and updates, publishing replacement columns together with durable deleted offsets and the consumed-prefix boundary. It preserves segment identity, physical row count/order/offsets, and unchanged columns and indexes; it never physically removes rows. A column can be split out of a shared group without rewriting the group's other columns; its old bytes become logically hidden in the new manifest, not physically reclaimed. Normal Mix/full-rewrite scheduling remains separate, with no extra trigger solely from delta accumulation. Phase one excludes vector updates, preserving unchanged vector data and ANN indexes; physical removal of deleted rows remains a full-rewrite responsibility. See Section 9.1.7.
-- **Use a cumulative deletion baseline after Consolidation.** Materialized deletes through `T` form one segment-level accumulated bitmap without per-row timestamps; deletes after `T` retain timestamps for snapshot visibility. Each consolidation round reads the old bitset and writes a new complete immutable bitset, even if unchanged, publishing it with all effectively updated columns and the complete boundary. Do not introduce an incremental-bitmap chain, a no-change file-reuse optimization, or partially folded update columns. See Section 9.1.7.
+- **Use a cumulative deletion baseline after Consolidation.** `base@T` and `delete@T` are the field-value state and cumulative deletion state after complete, ordered execution of all applicable deltas through `T`, including updates, PK deletes, and predicate deletes. `delete@T` is one segment-level accumulated bitmap without per-row timestamps; deletes after `T` retain timestamps for snapshot visibility. Each consolidation round reads the old bitset and writes a new complete immutable bitset, even if unchanged, publishing it with all effectively updated columns and the shared complete boundary. Do not introduce an incremental-bitmap chain, a no-change file-reuse optimization, or partially folded update columns. See Section 9.1.7.
 - **Coordinate all delta types at publication.** Reuse PK-delete sync trigger categories, but use a common per-VChannel sync cut across PK deletes, predicate deletes, and updates. Atomically advance `delta_prefix_barrier[v]` only over a complete, durably published prefix; L0 delta compaction must not consume independently visible partial files. Sparse types must also sync through the cut; small-file amplification is an explicit cost; see Sections 9.7.1–9.7.2.
 - **Publish ranges through a dedicated VChannel interface.** Keep the L0 segment storage representation, but introduce a separate `PublishDeltaPrefix` contract rather than broaden the single-segment `SaveBinlogPaths` RPC. New ranges must extend the current prefix without gaps or overlap; already-covered ranges return `RangeApplied` without republishing. SN recovery reads each VChannel's published prefix from MixCoord before resuming materialization. These are agreed contracts, not implemented APIs; see Sections 9.7.3–9.7.4.
 - **Keep assignment capability deliberately small.** Represent an assignment as `field_id + value_expr`, initially admitting only typed literals, including explicit NULL for supported nullable fields. The long-term core adds same-row field references and basic arithmetic; a few deterministic built-ins may be added for demonstrated needs. Full SQL expression parity is not a goal; see Sections 2.10 and 10.8.
@@ -503,6 +503,9 @@ Implementation must establish equivalence with the current delete semantics, not
 48. Verify Section 10.9.9's logical cutoff independently of physical GC. With `T=100` and a retained history `[@80:20, @100:23, @120:25]`, snapshots `Q=110` and `Q=130` must resolve 23 and 25 before, during, and after prefix reclamation. The update mask must exclude offsets without a version in `(T,Q]`, even while old entries remain. Preserve a materialized deletion baseline when the timestamped suffix becomes empty; audit deletion caches, duplicate suppression, and counts against the same view.
 49. Race GC with successful, cancelled, and failed Reopen attempts. Starting from published `T=100` and candidate `T=150`, allow reclamation through 100 during Prepare but never through 150 until successful publication and old-user drain. Capture an older published cutoff while another publication succeeds: reduced reclamation is safe. Cover concurrent append/query, deque prefix erasure, empty B-tree entry removal, payload references outliving history entries, and rejection of QN apply progress as a GC cutoff. These are planned checks, not completed verification.
 50. Verify Section 10.9.10's two-phase `ignoreNonPk` protection. Pause between WHERE/offset retrieval and output-field fetch, attempt Consolidation publication, and require the original segment lease to protect both stages without reacquisition. Cover Arrow and proto field-fetch paths, gate-busy cleanup/retry, cancellation, errors, and segments with no selected output rows. Contrast a later timestamped DELETE/UPDATE, which must not change the fixed query snapshot, with a representation switch that would remove its history. No snapshot may silently advance to make a retry succeed.
+51. Verify retained DeletedRecord state independently of Consolidation GC. With deletes `(90,8)` and `(120,9)`, publish `base@100 + delete@100={8}` after complete, ordered materialization of all applicable delta types through 100, while retaining both timestamped records and the accumulated in-memory mask `{8,9}`. Queries at 110 and 130 must exclude `{8}` and `{8,9}`, respectively, before and after eligible prefix GC. Do not require mask rollback or blanket cache invalidation on same-layout publication. A fresh load must restore `delete@100` and replay only the applicable suffix; it must not treat the live mask containing the future delete as the persisted baseline through 100. These are planned checks, not completed tests.
+52. Verify Section 9.3.4's fresh-load baseline and complete suffix replay. Restore `base@100 + delete@100={8}` without synthesizing pre-100 SkipList entries; a query must still exclude offset 8 when the timestamped list is empty. Replay an UPDATE at 110, a predicate DELETE dependent on that updated value at 120, and a PK DELETE at 130 from interleaved segment-owned/L0/catch-up inputs. Verify query snapshots between mutations, unchanged `delete@100`, cumulative `deleted_mask_`, timestamped deletion suffix, and UpdatesRecord contents. Duplicate delivery must not re-execute a consumed mutation; missing input, an unfinished mutation, or an unconfirmed interval must prevent progress from passing it. A completed zero-hit mutation must not stall progress. These are planned checks, not completed tests.
+53. Verify Section 9.3.5's handoff partition: the baseline covers `<=T`, history owns `(T,H]`, and streaming owns `>H`. Exercise mutations exactly at both boundaries, an empty historical interval, parallel acquisition with a slow historical reader, and a streaming predicate that depends on an earlier historical UPDATE. The streaming command may be buffered but must not execute ahead of the required history. Physical copies in persisted files and retained buffers must not become duplicate logical execution. Receiving a newer record must not advance query-visible execution progress. These are planned checks, not completed tests.
 
 ## 9. System-level integration checkpoints
 
@@ -690,7 +693,18 @@ Under the agreed UPDATE semantics, updates change cell values without changing t
 
 Small updates can accumulate until consolidation is worthwhile; large-value backlog can justify earlier consolidation. Exact thresholds, memory budgets, and grouping heuristics remain open. A normally triggered Mix consumes updates because they are part of its input state, **not because they triggered or accelerated that task**. Do not use high update-maintenance cost as an alternative automatic Mix trigger. This also preserves the earlier decision not to turn predicate-record backlog alone into an unconditional Mix trigger; its remaining policy use is open.
 
-**Complete logical prefix, layout-preserving physical output — agreed 2026-10-26.** Consolidation must process applicable PK deletes, predicate deletes, and updates together in effective TimeTick order, without an apply hole. Start from the compatible base and existing deletion state; predicates see preceding updates, and later updates cannot resurrect deleted rows. Fold updates into replacement columns and persist deletion effects as segment-local deleted offsets. Neither PK nor predicate deletes physically remove rows in this tier. Preserving physical row count, order, and offsets is a hard boundary that controls rewrite scope and permits unchanged vector/index reuse; physical row reclamation remains a full-rewrite responsibility. Online deletes still take effect through their existing serving path rather than waiting for consolidation.
+**Complete logical prefix, layout-preserving physical output — agreed 2026-10-26.** Consolidation must process applicable PK deletes, predicate deletes, and updates together in effective TimeTick order, without an apply hole. Start from the compatible base and existing deletion state; predicates see preceding updates, and later updates cannot resurrect deleted rows. The cumulative deletion bitmap is produced during this same ordered execution, not by a separate pass over the final updated base. Do not first fold all updates and then evaluate all predicates. For example, `UPDATE age=23@90 -> DELETE WHERE age=23@95 -> UPDATE age=25@100` leaves a matched row logically deleted; the last update cannot revive it.
+
+**One logical result, two physical representations.** Fold effective updates into replacement column data, and persist delete effects as a cumulative segment-local deleted-offset bitmap. This split follows from the layout-preservation requirement: applying a DELETE here means marking the row logically deleted, not removing its physical slot. Neither PK nor predicate deletes physically remove rows in this tier. Preserving physical row count, order, and offsets is a hard boundary that controls rewrite scope and permits unchanged vector/index reuse; physical row reclamation remains a full-rewrite responsibility. Reading the new columns without their associated deletion state is not reading the complete materialized result. Online deletes still take effect through their serving path rather than waiting for consolidation.
+
+**Shared boundary and notation: `base@T` and `delete@T`.** Use these two names consistently for the components of the same materialized segment state:
+
+| Name | Meaning |
+| --- | --- |
+| `base@T` | The materialized field-value state at `T`, interpreted together with `delete@T` |
+| `delete@T` | The cumulative deleted-offset bitmap obtained after complete, ordered execution of **all applicable deltas with effective timestamps `ts <= T`**, including UPDATE, PK DELETE, and predicate DELETE |
+
+The boundary `T` certifies the complete mutation prefix, not an independently completed delete-only prefix. Updates can change later predicates' results, so deletion state cannot be derived by considering only delete records. `delete@T` names a state, not a single DELETE command or a bitmap containing only deletes occurring exactly at `T`. Likewise, `base@T` does not assign `T` to every row/cell timestamp or require rewriting unchanged columns. The two components share their materialization boundary, segment/layout identity, and coherent publication; recovery restores them together before applying `ts > T`.
 
 **Why the persisted deletion result is necessary.** This is not a normally late `DELETE@95` arriving after a complete prefix through `100`; completeness would already exclude that omission. The hazard is re-evaluating an already-known historical predicate against values changed by consolidation:
 
@@ -702,8 +716,8 @@ Initial segment S: offset 3 / pk=3 / age=17
 @100 UPDATE SET age=23 WHERE pk=3    -> offset 3 becomes 23
 
 Published consolidation result through T=100:
-  replacement age column: offset 3=23, offset 8=23
-  materialized deleted offsets for S's unchanged layout: {8}
+  base@100: replacement age column, offset 3=23, offset 8=23
+  delete@100: materialized deleted offsets for S's unchanged layout, {8}
   complete consumed mutation prefix: through 100
 
 Load/recover:
@@ -714,6 +728,8 @@ Load/recover:
 
 Offset 8 remains physically present but logically invisible. Re-evaluating `age=23` against the new column would also delete offset 3: fatal silent data loss, not an acceptable weakening of historical-read guarantees. A fully evaluated zero-hit predicate is consumed too; its completion is covered by the prefix boundary even though it adds no deleted offset.
 
+**Mandatory durable state, not a QN cache.** The cumulative deletion bitmap must be persisted for crash recovery and release/reload, where no serving QN DeletedRecord can be assumed to survive. Restoring only the updated columns would lose the logical deletion state, and retaining original predicate files would not make it safe to re-evaluate consumed predicates against those columns. DataNode must derive and persist this bitmap from the ordered durable inputs; it must not depend on exporting a loaded QN's in-memory deletion cache. A live QN's ability to reuse its existing DeletedRecord is an optimization for that QN, not permission to omit this durable output. Both replacement data and deletion state must be durable before their coherent result and boundary are published.
+
 **Coherent output and recovery boundary.** Publish replacement columns, compatible indexes, the cumulative deleted-offset bitmap, and the complete consumed-prefix boundary as one logical result. The bitmap preserves prior deletions as well as those materialized in this round. Recovery restores this compatible state before applying the remaining ordered suffix. For `T=100`, the suffix is strictly `ts > 100`, not `ts >= 100`. This boundary represents complete materialization for this segment, not the maximum timestamp of an individually folded UPDATE, a new value for every row's insert timestamp, or the VChannel publication/dispatch progress in Sections 9.7 and 9.4.5. Detailed load scheduling still follows the asynchronous recovery and read-admission contract; this does not require all base data to be eagerly loaded.
 
 **All effective update columns, not a partially applied prefix.** Every effective UPDATE in the claimed prefix must be materialized into its corresponding column data. If `UPDATE@90` changes `status` and `UPDATE@100` changes `age`, a result through `T=100` must include both effects; it cannot rewrite only `age` and skip the status update on recovery. Retaining its original WHERE for later evaluation against the new base is also unsafe. Phase one does not introduce an alternative representation that folds some columns into base while retaining other already-evaluated updates as offset-addressed residual deltas. "Rewrite only the target columns" means all columns effectively updated by the complete consumed prefix, not an arbitrary subset. Unmodified columns and indexes remain reusable; regrouping may additionally rewrite unchanged columns under the existing layout-preserving policy.
@@ -722,20 +738,26 @@ Offset 8 remains physically present but logically invisible. Re-evaluating `age=
 
 | State | Representation | Read semantics |
 | --- | --- | --- |
-| Applicable deletes fully materialized through `T` | One segment-level cumulative deleted-offset bitmap; no per-row `delete_ts` | Unconditionally exclude these offsets for snapshots supported by this state, whose lower bound is at least `T` |
+| Deletion state after complete, ordered materialization of all applicable delta types through `T` | `delete@T`: one segment-level cumulative deleted-offset bitmap; no per-row `delete_ts` | Unconditionally exclude these offsets for snapshots supported by this state, whose lower bound is at least `T` |
 | Deletes after `T` | Timestamped delete state, retaining `offset + delete_ts` when applied | Exclude only when the delete is visible at the query snapshot |
 
-The sealed segment does not reuse a deleted row's offset, and later updates cannot resurrect it. Together with the snapshot lower bound, this makes individual pre-`T` delete timestamps unnecessary. Removing per-row timestamps does not remove the shared boundary `T`, segment/layout identity, or publication-generation association. The bitmap describes persisted materialization through `T`, not the QN's potentially later online apply progress. For example, with bitmap `{8}` through `100` and a later delete of offset `9` at `120`, a query at `110` excludes only `8`, while a query at `125` excludes both. Do not collapse the timestamped suffix into the baseline bitmap prematurely. Older admitted users remain protected by the existing state-publication/drain contract; newly arriving snapshots below the new state's supported boundary are rejected.
+The sealed segment does not reuse a deleted row's offset, and later updates cannot resurrect it. Together with the snapshot lower bound, this makes individual pre-`T` delete timestamps unnecessary. Removing per-row timestamps does not remove the shared boundary `T`, segment/layout identity, or publication-generation association. `delete@T` describes the deletion component of the complete persisted mutation prefix through `T`, not the QN's potentially later online apply progress. For example, with `delete@100={8}` and a later delete of offset `9` at `120`, a query at `110` excludes only `8`, while a query at `125` excludes both. Do not collapse the timestamped suffix into the baseline bitmap prematurely. Older admitted users remain protected by the existing state-publication/drain contract; newly arriving snapshots below the new state's supported boundary are rejected.
+
+**Persisted baseline versus live memory.** `delete@100={8}` constrains the deletion baseline published with `base@100`; it does not require an already-serving DeletedRecord to discard later known deletes or physically shrink its accumulated mask to `{8}`. It may retain `{8,9}` together with the original timestamped records and compatible query caches. Reads must still select deletes by their snapshot, so offset 9 remains visible at `Q=110` and is deleted at `Q=130`. Section 10.9.9 distinguishes this safe retention from incorrectly using a future-inclusive mask as an unconditional baseline.
+
+**Fresh-load baseline and suffix.** Loading `delete@100` restores the persisted bitmap and its associated boundary/layout metadata, not a list of pre-100 `(offset, delete_ts)` entries. Initialize the existing `deleted_mask_` from that baseline without synthesizing SkipList entries. The initially empty timestamped list and UpdatesRecord are only the initialization state, not the completed load result: all applicable UPDATE, PK DELETE, and predicate DELETE records after 100 must subsequently be merged and replayed in logical TimeTick order. Later deletes extend `deleted_mask_` and timestamped history, not the read-only `delete@100`. Section 9.3.4 specifies this agreed fresh-load contract. Retaining an existing serving DeletedRecord during Reopen remains a different, already-settled flow. Concrete cache/count initialization, bitmap ownership wiring, and whether the file header repeats the boundary remain implementation details.
 
 **Phase-one bitmap persistence: read old, write new.** Each executed Consolidation round reads the preceding cumulative bitset (or starts with an empty bitset if none exists), evaluates the complete next mutation prefix, and writes a new immutable cumulative bitset file. Its logical content is `D_new = D_old UNION deleted_offsets_in_this_round`. Publish the new file reference together with the corresponding base/index state and boundary. Use this same read/merge/write flow even when the deletion set is unchanged; phase one deliberately does not add a no-change file-reuse optimization or a multi-round incremental-bitmap chain.
 
 ```text
-Manifest M:   base@100 + bitmap_file_A {3, 8}       + T=100
+Manifest M:   base@100 + delete@100={3, 8}       (bitmap_file_A) + T=100
 New deletes in (100, 150]: {12}
-Manifest M+1: base@150 + bitmap_file_B {3, 8, 12}   + T=150
+Manifest M+1: base@150 + delete@150={3, 8, 12}   (bitmap_file_B) + T=150
 ```
 
 File B is a complete accumulated state, not a delta relative to A. Never overwrite A in place: an older manifest may still reference it. Retire old files only under the applicable publication, retained-state, and GC protection; writing B does not itself authorize deleting A. This intentionally trades repeated cumulative-bitmap IO for a simple, self-contained deletion baseline without a historical bitmap chain. The logical bitmap and timestamp policy are settled; concrete encoding/compression and resource costs still require implementation and validation.
+
+**Design versus current implementation.** The persisted bitmap above is a proposed Delta Consolidation output, not an existing PK deltalog format or a snapshot-cache dump. Current [L0 compaction](../../internal/datanode/compactor/l0_compactor.go) writes PK/timestamp delete records; [Mix compaction](../../internal/datanode/compactor/mix_compactor.go) filters rows while rewriting data. The new bitmap writer, durable metadata association, and QN load/Reopen integration are not implemented by those paths. A future loader can read the materialized deleted-offset bitmap rather than re-evaluate historical predicates; its concrete DeletedRecord initialization and cache integration remain to be designed.
 
 **Offset lifetime and historical reads.** Deleted offsets belong to a specific segment and its stable row layout, not a global PK or a new segment's coordinates. A later full rewrite uses this deletion state to omit deleted rows and consumes the old-layout offsets; it must not copy them unchanged into replacement segments whose offsets differ. The new state need not reconstruct snapshots before its supported lower bound, consistent with Section 10.9.7. The cumulative bitmap's boundary and the timestamped suffix must agree with the published state and supported snapshots, not silently reinterpret older queries.
 
@@ -861,7 +883,7 @@ This checkpoint settles the **statistics source, progress-bound observation mode
 
 ### 9.3 Target-QN load phase: access paths and progress-gated asynchronous recovery
 
-Decision status: **access-path policy settled on 2026-10-19; asynchronous recovery and per-request visibility direction recorded on 2026-10-20; not implemented**.
+Decision status: **access-path policy settled on 2026-10-19; asynchronous recovery and per-request visibility direction recorded on 2026-10-20; fresh-load baseline and complete ordered suffix semantics settled on 2026-10-26; not implemented**.
 
 **Scope.** This section covers the target QN loading segment data/index resources and applying the segment's own delta logs. The asynchronous extension also states the read-admission contract that this progress must support. Delegator L0 forwarding, streaming-tail catch-up, and publication coordination remain required integration boundaries; their detailed protocols are not redesigned here.
 
@@ -925,7 +947,81 @@ The proposed mode separates base-load completion, request-specific read readines
 - Async execution does not remove cold I/O, CPU, memory pressure, or query interference. Backlog progress and failure must be observable; calling the stale period "brief" requires measured catch-up capacity.
 - This read-side progress is not a storage durability checkpoint and cannot substitute for the Streaming/L0-to-target drain required before physical field removal.
 
-**Still open:** configuration/defaults and rollout, establishment of the initial readable state, progress publication during partial application, binding progress to the correct segment/view generation, crash/retry behavior, routing and timeout policy, and upgrade/readiness integration. Shorter base-load latency alone does not establish shorter strong-read recovery, absence of rolling-upgrade timeouts, or 99.99% service availability.
+**Still open:** configuration/defaults and rollout, implementation of the initial readable state and complete-prefix gate, progress publication during partial application, binding progress to the correct segment/view generation, crash/retry behavior, routing and timeout policy, and upgrade/readiness integration. Section 9.3.4 settles baseline restoration and ordered suffix semantics, not these mechanics. Shorter base-load latency alone does not establish shorter strong-read recovery, absence of rolling-upgrade timeouts, or 99.99% service availability.
+
+#### 9.3.4 Agreed fresh load: restore the baseline, replay the complete ordered suffix
+
+**Scope.** Fresh load means constructing segment memory without a surviving serving Record state, including crash recovery and release/reload. It is not Consolidation Reopen. Sections 10.9.8–10.9.9 already settle live Reopen: retain the shared Record backing and applied suffix, coherently publish replacement base/baseline/read boundary, and reclaim eligible history asynchronously. Do not reset a live `deleted_mask_` to an earlier persisted baseline.
+
+**Restore the complete materialized state.** Restore compatible `base@T` and `delete@T`, their shared complete-prefix boundary, and segment/layout identity. Initialize the existing mutable `DeletedRecord::deleted_mask_` with the baseline's deleted offsets. The timestamped deletion list initially contains no pre-`T` entries, and UpdatesRecord initially contains no already-materialized versions. Do not fabricate `(delete_ts=T, offset)` records or reinsert each baseline bit into the SkipList. Retain `delete@T` as a read-only baseline in the coherently published read view; subsequent mutations must not change its contents.
+
+**Replay all delta types together.** Segment-owned deltas, applicable L0 deltas, and streaming catch-up collectively supply the remaining mutations. Establish complete applicable coverage, reconcile duplicate delivery, and execute the suffix in committed logical TimeTick order across UPDATE, PK DELETE, and predicate DELETE. Physical file or source order is not execution order. Do not execute all deletes before updates, or independently finish each file type. Mutations with `ts <= T` are already represented by the materialized state and must not be evaluated again against the replacement base.
+
+- UPDATE evaluates WHERE against the preceding visible field/deletion state, then appends the selected rows' field versions to UpdatesRecord.
+- PK DELETE resolves eligible PKs to offsets; predicate DELETE evaluates WHERE against the preceding state, including earlier replayed updates. Newly deleted offsets extend the existing `deleted_mask_` and timestamped deletion history using the mutation's original effective timestamp.
+- A baseline-deleted or previously deleted row must not be resurrected by later UPDATE. Preserve existing offset-level duplicate suppression while integrating the ordered mutation executor; it does not substitute for deduplicating command delivery.
+- `delete@T` stays unchanged throughout suffix replay. A later Consolidation creates a new baseline, rather than online replay modifying this persisted-prefix view.
+
+For example, assume offset 3 has PK 3 and age 17, offset 9 has PK 9 and age 30, and offset 8 is already deleted in the baseline:
+
+```text
+Restore base@100 + delete@100={8}:
+  deleted_mask_    = {8}
+  timestamped list = []
+  UpdatesRecord   = empty
+
+Replay in logical TimeTick order:
+  @110 UPDATE age=23 WHERE pk=3
+       -> UpdatesRecord: age[offset3] has @110 -> 23
+  @120 DELETE WHERE age=23
+       -> sees @110's update; newly deletes offset3
+       -> add 3 to deleted_mask_; append (120,3)
+  @130 PK DELETE pk=9
+       -> add 9 to deleted_mask_; append (130,9)
+
+After the complete suffix through 130 is applied:
+  delete@100       = {8}                 // unchanged, read-only
+  deleted_mask_    = {8,3,9}             // existing cumulative dedup mask
+  timestamped list = [(120,3),(130,9)]
+  UpdatesRecord   = age[offset3]: @110 -> 23
+```
+
+The query deletion set is `delete@T UNION visible_timestamped_deletes_in_(T,Q]` for a supported snapshot `Q`. In the example, `Q=115` excludes only offset 8, `Q=125` excludes offsets 8 and 3, and `Q=130` also excludes offset 9. The old update version remains a version record until eligible reclamation; applying the delete does not overwrite it or redefine its timestamp.
+
+**Publish complete progress, not a maximum observed timestamp.** Once the baseline is valid, publishing QN apply progress `A > T` requires all applicable mutations in `(T,A]` to have completed without a coverage hole. Every target row/field must finish; a zero-hit mutation also counts as completed work. Receipt of a later record, one completed delta type, or an empty observed buffer does not by itself prove complete coverage. The initial readable-state and per-request freshness/MVCC checks still apply. Base loading may return before the remaining suffix finishes; this contract preserves asynchronous recovery rather than requiring full catch-up before every load returns.
+
+**Current-code integration boundary.** The existing [DeletedRecord](../../internal/core/src/segcore/DeletedRecord.h) already owns `deleted_mask_`, the timestamped SkipList, and deletion snapshot caches. Reuse and extend those responsibilities; do not introduce a second cumulative dedup mask. Its current `Query()` returns when the list is empty, so merely initializing the mutable mask is insufficient: the baseline must participate in query deletion filtering even with no timestamped suffix. Concrete cache/count adaptation, cross-source discovery/deduplication, and the handoff to continuous streaming remain implementation/design work, not capabilities already supplied by current PK delete loading.
+
+#### 9.3.5 Agreed handoff ranges: parallel loading, ordered application
+
+For one segment-load attempt, establish a handoff boundary `H >= T` alongside the materialized baseline boundary `T`:
+
+```text
+Materialized base@T + delete@T:  ts <= T
+Historical delta responsibility: (T,H]
+Streaming delta responsibility:  (H,+infinity)
+```
+
+These are contiguous, disjoint logical responsibilities, not permission to execute overlapping prefixes. The historical side must cover every applicable mutation through `H`, including all three delta types. The streaming side must reliably retain and deliver every applicable mutation after `H`. A record exactly at `T` belongs to the materialized baseline; a record exactly at `H` belongs to history. If `H=T`, the historical interval is empty. Selecting `H`, obtaining a coherent historical inventory, and protecting the streaming tail before it can be missed or reclaimed remain detailed protocol work. A mutable current checkpoint is not automatically the fixed handoff boundary for an in-flight load.
+
+**Industry principle.** PostgreSQL's [exported logical-decoding snapshot](https://www.postgresql.org/docs/18/logicaldecoding-explanation.html#LOGICALDECODING-EXPORTED-SNAPSHOTS) defines a snapshot after which the associated stream includes subsequent changes. Adopt the explicit snapshot/stream coverage boundary; adapt it to Milvus's materialized baseline, historical delta suffix, and streaming handoff. Do not copy PG's replication-slot or transaction protocol, or infer that merely observing a persisted L0 file establishes the required boundary.
+
+**Parallel acquisition, not independent execution.** Historical and streaming sources may read, decode, and buffer concurrently. Historical loading need not stop streaming reception. Application must nevertheless follow one complete logical TimeTick sequence: a later streaming WHERE can depend on an earlier historical UPDATE. Buffer later commands until their required preceding prefix has been executed; do not let the two sources independently mutate UpdatesRecord/DeletedRecord. This does not introduce phase-one parallel expression evaluation or require a particular queue/container implementation.
+
+For example, with `T=100`, `H=150`, and QN execution progress `A=120`, an arriving streaming mutation at 160 may be received while history is still being applied. It cannot execute before the remaining applicable history through 150 and any preceding streaming mutations. Reception through a boundary and completed execution through that boundary are different facts. Preserve Section 9.3's coherent read admission and progress-gated asynchronous recovery; do not wait for an ever-growing streaming tail to become empty before every load can return.
+
+**Physical retention is not logical overlap.** Range selection must make the applied historical and streaming inputs disjoint even if a raw record remains available in more than one physical source. Such retention does not mean that a newly started WAL consumer must re-deliver a record before its chosen logical start. In particular, loading a segment on a new QN does not necessarily restart an already-running Delegator's WAL consumer or clear its cached mutations. The range protocol should exclude the wrong side's copies before execution; duplicate-retry handling remains a separate obligation.
+
+**Current-code evidence, not a new checkpoint design.** L0 sync does participate in checkpoint advancement; it is not a checkpoint-free write. Distinguish these publication steps:
+
+1. The [sync metadata writer](../../internal/flushcommon/syncmgr/meta_writer.go) sends the L0 files and a segment-specific `CheckPoints` entry in `SaveBinlogPaths`. DataCoord's [UpdateCheckPointOperator](../../internal/datacoord/meta.go) records that position as the segment's `DmlPosition`; this is not the channel recovery checkpoint.
+2. After output/registration succeeds, the [WAL L0 materializer](../../internal/streamingnode/server/wal/vchannel/l0materializer/wal.go) installs dirty materialization metadata and releases retained handles. The [recovery publisher](../../internal/streamingnode/server/wal/recovery/recovery_background_task.go) can then persist the corresponding complete recovery prefix, subject to other outstanding work and Summary coverage. The [checkpoint updater](../../internal/streamingnode/server/wal/vchannel/checkpoint_updater.go) separately reports the published recovery checkpoint to DataCoord through `UpdateChannelCheckpoint`.
+
+These steps are ordered, not one atomic file-and-channel-checkpoint publication. An L0 containing a record at 110 can therefore already be registered while the published recovery checkpoint, or its DataCoord report, is still at 100. A consumer starting at that older position can encounter the record again. This is a possible publication/replay interval, not a claim that sync never advances checkpoints or that a correctly established `(T,H]` / `(H,+infinity)` split should overlap.
+
+**New L0 persistence does not directly clean the serving delete buffer.** [ProcessDeleteBatches](../../internal/querynodev2/delegator/delegator_data.go) retains streaming records in the channel-level Delegator buffer and forwards deletes to serving segments. Successful L0 sync does not by itself reload those deletes into an already-serving sealed segment, register the new L0 in its live Delegator, or clear that buffer. The current `LoadL0` call chain loads the L0 inventory during [channel startup](../../internal/querynodev2/services.go); `RegisterL0` itself only registers those loaded resources. Separately, `SyncTargetVersion`, after the distribution becomes serviceable, invokes `UnRegister(DeleteCP)` (falling back to the action checkpoint). The active [list delete buffer](../../internal/querynodev2/delegator/deletebuffer/list_delete_buffer.go) then applies its pinning and block-retention rules. This is target-driven channel-buffer retirement, not a callback from each L0 sync and not removal of the serving segment's applied DeletedRecord state.
+
+Channel startup begins streaming from the supplied seek position after loading its L0 inventory. The current [stream adaptor](../../internal/distributed/streaming/msgstream_adaptor.go) uses an inclusive TimeTick filter, so the new exclusive `>H` contract also requires explicit endpoint handling. Durable progress, consumer start, and retained query-side memory are distinct facts; these observations do not settle which existing checkpoint should supply `H`.
 
 ### 9.4 Predicate L0 dispatch: coarse scope without ingress segment associations
 
@@ -1842,11 +1938,11 @@ After catch-up, reuse the existing Reopen publication gate: stop admitting new o
 
 ```text
 PublishedSegmentState (conceptual)
-  compatible base / indexes
+  base@T / compatible indexes
   materialized_prefix = T
-  cumulative_deleted_bitmap through T
+  delete@T -> cumulative deleted-offset bitmap after the same complete prefix
   updates_view -> shared update history backing; consider only ts > T
-  deletes_view -> shared timestamped delete backing; consider only ts > T
+  deletes_view -> shared DeletedRecord backing; yield baseline + visible suffix
 ```
 
 The materialized boundary belongs to the coherent published state. Do not independently swap a cutoff inside UpdatesRecord, another inside DeletedRecord, and the base pointer. A view can be a lightweight combination of references and boundary information; it does not require a new general-purpose container. Ordinary mutations append to protected backing stores and publish complete apply progress; they do not cause a new SegmentState publication for every mutation.
@@ -1854,11 +1950,11 @@ The materialized boundary belongs to the coherent published state. Do not indepe
 **Read-start boundary, not a raw container cursor.** For a supported query snapshot `Q >= T`, subject to complete execution coverage through `Q`:
 
 - Resolve a cell's latest version with `T < ts <= Q`; otherwise its value comes from the compatible base. An explicit NULL version remains a value override.
-- Construct deletion visibility as `cumulative_deleted_bitmap@T` union the offsets deleted in `(T,Q]`.
+- Construct deletion visibility as `delete@T` union the offsets deleted in `(T,Q]`.
 - Only offsets with an applicable version in `(T,Q]` enter the query's update mask. An entry retained solely because physical GC has not run is not a visible update.
 - Preserve phase-one WHERE order `scan_base -> scan_delta -> rectify` and SELECT's delta-first access policy. These are lookup semantics, not a change to execution order.
 
-Calling `T` the read-start cursor is a logical timestamp boundary. It is not a deque/B-tree iterator retained across append, erase, or unlock. Records with `ts <= T` become logically outside the new view immediately, even while their bytes remain. No per-entry invalidation pass is required for that logical exclusion, and consumed predicate commands must not be re-executed against the new base.
+Calling `T` the read-start cursor is a logical timestamp boundary. It is not a deque/B-tree iterator retained across append, erase, or unlock. Update versions with `ts <= T` immediately cease to override the replacement base, even while their bytes remain. Their exclusion needs no per-entry invalidation pass. For deletion state, the baseline already carries pre-`T` effects; retaining those facts in an accumulated mask or a compatible snapshot is harmless because bitmap union is idempotent. The `(T,Q]` suffix describes the required additional effects, not a mandatory physical filter or cache rewrite. Consumed predicate commands must not be re-executed against the new base.
 
 ```text
 Shared age history at offset 3: [@80:20, @100:23, @120:25]
@@ -1867,6 +1963,23 @@ Publish new base age=23 and materialized_prefix=100; history is unchanged.
   Q=130 -> use @120:25
 Later GC removes @80 and @100; both query results remain unchanged.
 ```
+
+**Reuse DeletedRecord; do not equate publication with deletion-cache invalidation — agreed 2026-10-26.** The current [DeletedRecord](../../internal/core/src/segcore/DeletedRecord.h) already owns timestamped `deleted_lists_`, an accumulated `deleted_mask_` used for duplicate suppression, and the timestamp-bounded `snapshots_` / `latest_snapshot_` query accelerators. Extend these responsibilities rather than introduce a separate, duplicate deletion-cache subsystem. Same-layout Consolidation does not invalidate established deleted offsets: it neither reuses offsets nor resurrects rows. A cache may remain usable when its timestamp applicability and coverage are still valid; publication alone does not require clearing all caches or rebuilding every deletion record.
+
+```text
+Serving DeletedRecord before and after a compatible Reopen:
+  timestamped entries: [(90,8), (120,9)]
+  accumulated known-deletion mask: {8,9}
+Consolidation output: base@100 + persisted baseline delete@100={8}
+  Q=110 -> exclude {8}
+  Q=130 -> exclude {8,9}
+```
+
+Keeping the original timestamped records and compatible caches without immediately running GC is correct; it retains reclaimable history memory rather than changing query results. The live accumulated mask need not be rolled back to `{8}`. However, that mask cannot be used unconditionally at `Q=110` or published as `delete@100`: the delete at 120 is not part of the prefix through 100. The current `Query()` similarly restricts the latest-snapshot fast path by `query_timestamp >= snapshot.max_ts` and otherwise uses timestamp-aware history. A snapshot that lacks a later delete is not a false deletion fact; it needs sufficient suffix coverage before answering a later query.
+
+The persisted bitmap and the live accumulated mask serve different coverage contracts even if their physical representation can be reused. This does not mandate an extra duplicate bitmap allocation for every serving state; exact ownership remains implementation work. The adopted MVCC principle is snapshot-relative visibility, not a promise of fixed historical retention; see [PostgreSQL MVCC](https://www.postgresql.org/docs/current/mvcc-intro.html). Adapt it to the published Milvus base boundary and existing deletion structures, not PostgreSQL's transaction implementation.
+
+**GC integration, not semantic expiration.** If timestamped prefix records are eventually reclaimed, preserve the baseline independently of whether any timestamped suffix remains. The current `Query()` returns immediately when its timestamped list is empty; adding baseline-only states requires adapting that path. This is a new integration obligation, not evidence that existing caches become wrong on Consolidation or that current code already supports prefix GC. Cache cursors/counts and duplicate suppression must remain consistent with any actual reclamation; reclamation is not a prerequisite for publishing the replacement base.
 
 **Publication lifecycle:**
 
@@ -1969,7 +2082,7 @@ Before coding the predicate-delete part, finalize:
 - Serving-generation pinning, handoff, and safe reclamation under Sections 9.1.5 and 10.9.7. Publish the readable snapshot lower bound with the corresponding state, protect admitted users, and define consistent rejection/error propagation for newly arriving too-old snapshots. Do not turn this implementation work into an UNDO or fixed keep-window requirement; committed mutations and their historical-value dependencies must still be preserved.
 - The per-VChannel completion proof for both Streaming -> L0 and L0 -> target segment delta-log publication, including coherent checkpoint/L0 observations, old growing data, replacement segments, retry/restart, and gating every rewrite that can remove the field; preserve the two-phase requirement and unified-drain preference in Section 9.1.3.
 - The dedicated stats RPC's detailed contract, coherent count/apply-progress sampling, source/freshness validation, and cache invalidation for Section 9.2's best-effort cumulative observations; define predicate-backlog accounting and policy use without requiring stats availability, introducing a durable stats cache, or overriding Section 9.1.7's normal-Mix scheduling boundary.
-- The predicate-delta loader/CGo wiring, replay bookkeeping, failure handling, and resource budgeting; preserve Section 9.3's access-path policy and per-request progress gate. Define the initial readable state, complete apply-progress publication/aggregation, and recovery-mode/readiness controls without silently weakening requested consistency. Delegator L0/streaming catch-up must participate in the completeness proof, but its detailed protocol remains separate work.
+- The predicate-delta loader/CGo wiring, replay bookkeeping, failure handling, and resource budgeting; preserve Section 9.3's access-path policy and per-request progress gate. Section 9.3.4 settles fresh-load restoration of `base@T + delete@T`, existing-mask initialization without synthetic SkipList entries, and complete ordered replay of all three delta types after `T`. Section 9.3.5 partitions historical and streaming responsibility at `H`, permits parallel acquisition, and requires ordered application. Implement readable-state establishment, baseline-aware deletion queries, complete apply-progress publication/aggregation, and recovery-mode/readiness controls without silently weakening requested consistency. Delegator L0/streaming catch-up must participate in the completeness proof; coherent inventory/`H` selection, endpoint filtering, retention, duplicate retries, and atomic reception handoff remain separate detailed design work.
 - The durable coarse-dispatch protocol and fanout measurements in Section 9.4. Section 9.4.5 settles independent publication/dispatch batching and complete-input, ordered-visibility, and target-coverage requirements, not their implementation. Define completion-state persistence, task decomposition, publication/recovery, and safe target changes while preserving lightweight L0 and release-independent progress, without reintroducing a request-time association table or lineage-repair subsystem.
 - The separately tracked legacy L0 catalog-publication risk in Section 12.1: establish the required downstream visibility and recovery guarantees when one task updates more metadata KVs than a single batch can commit. A single task result or manifest-backed storage is not proof of cross-batch atomicity.
 
