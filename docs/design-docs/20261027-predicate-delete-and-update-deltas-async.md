@@ -2,7 +2,9 @@
 
 Date: 2026-10-27
 
-Status: Architecture draft, narrowed on 2026-10-27. Phase one selects real-time PK point UPDATE, asynchronous predicate DELETE without cross-segment atomic visibility, and typed-predicate WAL messages with PK-equality-only UPDATE admission. Row insertion timestamps remain unchanged; updates carry independent mutation timestamps. Follow existing Milvus semantics rather than add historical-query support across Consolidation/full rewrite; protect in-flight readers without retaining folded history indefinitely. Query-side versioned update support is required. Row-version edge cases, exact API contracts, distributed publication, and implementation remain incomplete. No implementation or performance validation accompanies this document.
+Last updated: 2026-10-28
+
+Status: Architecture draft. Phase one selects real-time PK point UPDATE with update-all-matches semantics, asynchronous predicate DELETE without cross-segment atomic visibility, and typed-predicate WAL messages with PK-equality-only UPDATE admission. Return success after successful WAL append, not query completion. Native async predicate DELETE supports unloaded collections; reuse existing seal policies and trigger background processing by age/count/bytes. Row insertion timestamps remain unchanged; updates carry independent mutation timestamps. Follow existing Milvus semantics rather than add historical-query support across Consolidation/full rewrite; protect in-flight readers without retaining folded history indefinitely. Query-side versioned update support is required. Resource limits, compatible index publication, load/Reopen integration, durable publication, and implementation remain incomplete. No implementation or performance validation accompanies this document.
 
 Source: [Frozen real-time design](20261016-predicate-delete-and-update-deltas.md), revision `94530c48ce3502b8fc212720630522766ee4913e`, plus the subsequent async and point-update discussions. This is the active follow-up document; its original `-async.md` filename is retained for link continuity. The initial all-async UPDATE proposal is superseded here, not in the frozen baseline. Section 12 identifies which earlier decisions are reused, adapted, or excluded.
 
@@ -24,29 +26,32 @@ These are design targets, not measured gains. Restricting UPDATE to PK equality 
 
 | Operation | Phase-one target | Serving path |
 | --- | --- | --- |
-| UPDATE | One PK equality and supported constant assignments | Stream to QN; resolve applicable offsets and append field versions; recover unapplied point-update history |
+| UPDATE | One PK equality; apply supported constant assignments to all eligible, still-live matching rows | Stream to QN; resolve applicable offsets and append field versions; recover unapplied point-update history |
 | Existing PK DELETE | Explicit PKs under the existing contract | Retain the existing online path and timestamp semantics |
 | Predicate DELETE | Supported typed Boolean predicate | Execute on the data side; QN receives materialized deletion results, not pending predicates |
 
 | Status | Meaning in this document |
 | --- | --- |
-| Agreed phase-one scope | Real-time PK point updates; asynchronous predicate deletes; no mutation-wide atomic visibility for predicate deletes; ordinary PK deletes retain their existing path |
+| Agreed phase-one scope | Real-time update-all-matches for one supplied PK; asynchronous predicate deletes, including unloaded collections; no mutation-wide atomic visibility for predicate deletes; ordinary PK deletes retain their existing path |
 | Retained design contract | WAL ordering, complete cross-type persistence/distribution, restricted expressions, complete-prefix execution, and layout-preserving Consolidation are extracted from the frozen design; they are not claims of implemented support |
 | Reused query-side decisions | UpdatesRecord, snapshot-aware index/raw correction and projection, field locks, coherent Reopen, and published-boundary GC; not a new QN UPDATE-WHERE evaluator |
 | Required integration | PK-targeted apply/recovery, update-aware read admission, baseline-aware deletion loading, and compatible index/state publication |
-| Open decision | Mixed-operation semantics, exact completion/API and replica adoption, PK row-version targeting, Growing coverage, and resource/liveness limits |
+| Open core design | Compatible scalar-index publication, load/Reopen synchronization, crash-safe metadata transitions, resource limits, and schema/upgrade integration |
+| Deferred enhancement | Mutation status/wait APIs and public definitions of background completion across replicas; not phase-one design prerequisites |
 
 **Agreed: one predicate DELETE does not require atomic query visibility across all affected segments.** Completed segment states may become visible while other segments still expose older predicate-delete results. This does not relax atomic commit of an individual Consolidation/compaction task's complete result, coherent local QN state publication, or data-side ordered mutation execution. It is not permission to expose a half-applied point update. Section 3.3 separates these boundaries.
 
 ### 1.1 Industry basis and applicability
 
-Primary sources checked on 2026-10-27:
+Primary sources checked on 2026-10-27; non-unique-key UPDATE comparisons checked on 2026-10-28:
 
 | Precedent | Adopt | Adapt or do not copy |
 | --- | --- | --- |
 | [ClickHouse classic ALTER mutations](https://clickhouse.com/docs/reference/statements/alter#mutations) replace each completed part independently, so a query can see modified and unmodified parts together; each part still applies mutations in creation order | Adopt progressive, non-atomic visibility across segments while retaining ordered execution within each segment; separate durable acceptance from visibility | Adapt to Milvus WAL/L0, task-atomic result commit, and QN Reopen. Do not copy the whole-part rewrite strategy or infer that task-local partial results are safe. This comparison is not to query-time patch application |
-| [Kudu native row updates](https://kudu.apache.org/releases/1.18.1/docs/schema_design.html#primary-key-design) require the full primary key | Restrict the phase-one write target to a supplied PK, not an arbitrary data predicate | Do not import Kudu's uniqueness, row-existence, tablet, or acknowledgement semantics; Milvus physical row versions still require a targeting contract |
+| [PostgreSQL UPDATE](https://www.postgresql.org/docs/current/sql-update.html) and [MongoDB updateMany](https://www.mongodb.com/docs/manual/reference/method/db.collection.updatemany/) modify all rows/documents matching a condition | Adopt update-all-matches for a supplied non-unique PK value | Add Milvus time, scope, and live-row eligibility. This is not a promise of SQL transaction isolation or permission to update already-invisible MVCC versions |
+| [Kudu native row updates](https://kudu.apache.org/releases/1.18.1/docs/schema_design.html#primary-key-design) require the full primary key | Restrict the phase-one write target to a supplied PK, not an arbitrary data predicate | Do not import Kudu's uniqueness, row-existence, tablet, or acknowledgement semantics; Milvus selects all eligible matching rows instead |
 | [Kudu non-unique keys](https://kudu.apache.org/releases/1.18.1/docs/schema_design.html#non-unique-primary-key-index) add an auto-incrementing component; update/delete require the full effective key, obtained by a scan if necessary | Adopt the distinction between a repeated user key and an exact row identity | Do not assume PK-only local lookup identifies the latest Milvus row across segments, or silently add a scan/identity parameter to the agreed API |
+| [MongoDB updateOne](https://www.mongodb.com/docs/manual/reference/method/db.collection.updateone/) selects one match and can use an explicit sort order | Recognize single-row selection as a distinct API contract | Do not select first/latest implicitly or let each segment choose a local winner; phase one updates all eligible matches |
 | [Elasticsearch delete-by-query](https://www.elastic.co/docs/api/doc/elasticsearch/operation/operation-delete-by-query) selects from an initial snapshot and checks document versions | Comparison considered during the conflict discussion, not the selected same-row execution policy | Do not copy its scan/version-conflict skipping. The selected ordered executor deletes an earlier matched row and does not let a later point UPDATE revive it; a later upsert insertion is a different row incarnation |
 | [MongoDB update commands](https://www.mongodb.com/docs/manual/reference/command/update/) separate a target selector `q` from modifications `u` | Keep target expression and assignments distinct in the logical interface | Adapt this separation to a bound typed WAL predicate; do not claim MongoDB persists our command format or copies our replay protocol |
 | [Kudu background maintenance](https://kudu.apache.org/docs/background_tasks.html) distinguishes delta-store maintenance from merging RowSets | Separate delta maintenance from segment merging | Use Milvus's selected Delta Consolidation and versioned-read boundaries, not Kudu's UNDO/history-retention or tablet implementation |
@@ -95,11 +100,13 @@ No predicate-delete evaluator is moved into Delegator as a workaround. UpdatesRe
 
 ### 3.1 Durable acceptance is not query completion
 
-A successful native WAL append means durable acceptance. For predicate DELETE, evaluation and visibility await background processing. For point UPDATE, visibility follows the real-time consumer and query-admission contract, not a Consolidation round. Neither acknowledgement alone proves completed QN apply, known affected-row counts, or adoption on every replica. No cross-channel transaction guarantee is added.
+**Agreed: return success after all required WAL appends succeed, without waiting for QN apply, Consolidation, or replica adoption.** This follows the current delete write-acknowledgement boundary. Existing complex delete first queries matching PKs and waits for the resulting delete tasks to append; the new native path removes that foreground query, not the append-success requirement. A validation or append error is not success.
+
+For predicate DELETE, evaluation and visibility await background processing. For point UPDATE, visibility follows the real-time consumer and query-admission contract, not a Consolidation round. Neither acknowledgement alone proves completed QN apply, known affected-row counts, or adoption on every replica. No cross-channel transaction guarantee is added. Mutation status/wait APIs and a public data-side-versus-replica completion definition are deferred enhancements, not phase-one design prerequisites.
 
 Queries combine a coherent materialized representation with visible real-time point updates and PK deletes, while predicate deletes may remain pending. Predicate-delete eventual visibility still requires a live scheduling/retry policy; no bounded latency is promised. A query is not thereby promised a complete global WAL-prefix snapshot including pending predicate deletions.
 
-TSafe, distribution, and snapshot checks remain. **TSafe is not proof of asynchronous predicate-delete completion.** For real-time point updates, the selected live path must await actual apply before certifying the relevant serving prefix; recovering targets additionally need historical readiness. Exact acknowledgement, Strong/Session/explicit-MVCC behavior, and replica completion remain open. Section 9 distinguishes reused query mechanisms from hybrid-specific integration work.
+TSafe, distribution, and snapshot checks remain. **TSafe is not proof of asynchronous predicate-delete completion.** For real-time point updates, the selected live path must await actual apply before certifying the relevant serving prefix; recovering targets additionally need historical readiness. Integrating point updates into existing Strong/Session/internal-MVCC read admission remains required verification, not a reason to add an apply wait to the write response. Section 9 distinguishes reused query mechanisms from hybrid-specific integration work.
 
 ### 3.2 Background execution preserves logical history
 
@@ -148,7 +155,7 @@ After 1 hour: completed tasks adopted by QN have removed 100 matching rows.
 After 2 hours: more completed tasks have been adopted; 5,000 rows removed in total.
 ```
 
-These are illustrative observations, not latency or throughput promises. Each observed segment state is complete; the example does not permit a task to publish only its new columns while omitting its deletion result. Task-atomic metadata commit also does not imply simultaneous adoption by every QN. Replica routing/completion semantics remain to be specified, and existing safe segment-replacement/handoff requirements are not weakened.
+These are illustrative observations, not latency or throughput promises. Each observed segment state is complete; the example does not permit a task to publish only its new columns while omitting its deletion result. Task-atomic metadata commit also does not imply simultaneous adoption by every QN. A new public replica-completion contract is outside phase one; existing safe routing, segment-replacement, and handoff requirements are not weakened.
 
 ### 3.4 Trigger-time targets and later writes
 
@@ -169,23 +176,31 @@ R1 surviving does not prove that deletion of R0 failed.
 
 Current upsert packs insert and delete messages; partial upsert also retrieves/merges existing values. It is not the proposed field-delta point UPDATE. If the operation at 110 is instead a point UPDATE of R0, the row retains insert_ts=80. QN may temporarily show the updated value while DELETE@100 is pending, but ordered data-side execution deletes R0 first and the UPDATE has no effect on that deleted row.
 
-This remains true for `predicate DELETE -> point UPDATE -> predicate DELETE`: a row deleted by the first predicate remains deleted. A client re-delete is a new operation, not a prerequisite for eventually applying the first accepted deletion. Point-update acknowledgement and affected-row reporting during this temporary online state remain open API questions.
+This remains true for `predicate DELETE -> point UPDATE -> predicate DELETE`: a row deleted by the first predicate remains deleted. A client re-delete is a new operation, not a prerequisite for eventually applying the first accepted deletion. Point-update acknowledgement follows Section 3.1 even during this temporary online state; it does not certify an affected-row count or that the row will survive earlier pending deletions. Response-field/count representation remains an API integration detail, not an alternative write-completion contract.
 
 Per-segment execution follows TimeTick order. The data-side executor considers all three delta types; QN orders its delivered point-update/PK-delete subset and does not execute pending predicate deletes. Progressive query visibility does not reorder the authoritative program or permit an effective deletion to be undone by UPDATE.
 
-### 3.5 Repeated PKs and the current point-targeting direction
+### 3.5 Agreed: update-all-matches for one PK value
 
-The earlier latest-only proposal would require cross-segment information: a segment's local latest row is not necessarily the global latest row for that PK. The subsequent discussion instead proposes applying the constant assignments to every eligible, still-live row with the supplied PK and `insert_ts < update_ts` in the operation's scope. This avoids selecting a global winner before applying the mutation; exact scope, ties, missing/deleted targets, result deduplication, and response semantics still require validation.
+**Phase one updates every eligible, still-live row matching the supplied PK, across all applicable segments.** "Point" means one PK value, not exactly one physical row. For UPDATE at U, apply the supported assignments to each row in the operation's collection/partition scope with the same PK and `insert_ts < U`, provided the row is still live in the ordered mutation state. A missing target creates no row, and UPDATE cannot revive a deleted row.
+
+There is no global-latest resolver, first-match selection, local-latest selection, or new row-identity parameter. Multiple matching rows remain separate physical rows. Equal insertion timestamps between matching rows do not require choosing a winner; each otherwise eligible row is updated. Rows inserted at or after U are excluded.
 
 ```text
-Segment S1: pk=100, row insert_ts=80
-Segment S2: pk=100, row insert_ts=95
+Segment S1: pk=100, insert_ts=80, age=17, city="Shanghai"
+Segment S2: pk=100, insert_ts=95, age=20, city="Beijing"
 UPDATE@110: SET age=23 WHERE pk=100
+
+Result:
+  S1: insert_ts=80, age=23, city="Shanghai"
+  S2: insert_ts=95, age=23, city="Beijing"
 ```
 
-Under this direction, both eligible rows receive age@110=23 while retaining their original insertion timestamps, 80 and 95. An UPDATE creates field versions, not replacement rows. It does not reset row-version ordering to 110, insert a missing row, or revive a deleted row.
+Both rows receive age@110=23 while retaining their original insertion timestamps, 80 and 95. UPDATE creates field versions, not replacement rows; unchanged columns and vectors retain each row's own values. It neither retimestamps rows nor merges them into one logical entity.
 
-Do not add a global PK/version resolver merely to implement the superseded latest-only proposal. Equally, do not infer that all query/search paths select the latest whole row: unchanged columns and vectors can differ across repeated-PK rows, and their existing result-selection behavior needs path-specific validation. The timestamp model below does not change that behavior by rewriting row timestamps.
+The data-side executor applies this rule against the complete ordered delta prefix. QN applies it against its delivered point-update/PK-delete state and installed deletion baseline; an earlier pending predicate deletion can therefore still produce the accepted temporary visibility window in Section 3.4. This does not permit data-side resurrection or omission of that earlier deletion.
+
+Query/Search result selection and deduplication remain separate existing read-path behavior to audit, not the justification for update-all-matches correctness. Do not promise that every read path returns the globally latest whole row or impose that behavior as a prerequisite for this mutation. The adopted industry principle is updating all eligible matches; the Milvus-specific adaptation is row-time/scope/live-state eligibility (Section 1.1).
 
 ### 3.6 Agreed time model: row birth is not field modification time
 
@@ -263,13 +278,13 @@ Retain the rule: **Proxy validates that the request is legal under version V; SN
 
 DELETE and UPDATE retain a shared typed expression vocabulary, but **not an identical phase-one admission set**: predicate DELETE accepts its supported subset; UPDATE accepts only canonical `PK = typed literal`. Reject non-PK conditions, PK ranges, PK-IN lists, and additional filters such as `pk=100 AND status='active'` for UPDATE. Do not solve arbitrary predicates and expand them into point updates in Proxy. SET has its own allowlist: typed constants, including explicit NULL for nullable fields; omitted fields are unchanged. QN still needs snapshot-aware value/validity correction for user queries over updated fields.
 
-Retain unsupported DELETE -> legacy query-PK/delete, unsupported UPDATE target or SET -> reject before append, supported native mutation -> append without a foreground data query. Making point updates real-time removes the specific pending-async-update mis-selection problem only when that legacy query's chosen snapshot and readiness actually cover prior point updates. PK targeting or WAL acknowledgement alone does not prove this. Section 3.4 distinguishes later insertions from updates of an earlier matched row; exact legacy-path behavior still needs validation (Section 13.2). Never change routes after partial acceptance or approximate unsupported persisted nodes.
+Retain unsupported DELETE -> legacy query-PK/delete, unsupported UPDATE target or SET -> reject before append, supported native mutation -> append without a foreground data query. Making point updates real-time removes the specific pending-async-update mis-selection problem only when that legacy query's chosen snapshot and readiness actually cover prior point updates. PK targeting or WAL acknowledgement alone does not prove this. Section 3.4 distinguishes later insertions from updates of an earlier matched row; exact legacy-path behavior still needs validation (Section 13.3). Never change routes after partial acceptance or approximate unsupported persisted nodes.
 
 Carry forward the discussed field scope: ordinary eligible scalar fields, including indexed scalars, strings, JSON, and scalar arrays, use whole-cell replacement. Phase one excludes PK/partition/clustering-key changes, vector updates, function input/output updates, JSON-path or array-element patches, and append operations. Do not change data distribution through this feature. Exact supported types, sizes, and expression combinations still require validation.
 
 The long-term assignment ceiling remains simple deterministic row-local values: same-row copies and basic arithmetic, with a few built-ins only for demonstrated needs. Full SQL, subqueries, joins, arbitrary UDFs, random/time-dependent computation, and external inference are not targets. These extensions are not phase-one support.
 
-No new unloaded-collection admission capability is silently granted by moving execution to DataNode. Already-accepted work must progress independently of collection loading; whether acceptance itself drops the existing loaded-data prerequisite is an open product decision.
+**Agreed: native asynchronous predicate DELETE supports collections that are not loaded on the query side.** Validate schema, capability, scope, and authorization without requiring QN row access; persist, distribute, execute, and publish the result entirely on the data side. A later QN load consumes the resulting materialized state. This does not extend the same admission capability to real-time point UPDATE or to unsupported DELETE expressions that still require the legacy query-PK fallback; those paths retain their applicable existing prerequisites.
 
 ## 5. Buffering and atomic VChannel publication
 
@@ -323,6 +338,8 @@ Retain all three guarantees:
 3. **Complete target coverage:** finish all required durable target associations before declaring that interval dispatched or retiring its source.
 
 Asynchronous query visibility does not make partial data-side prefixes safe. Missing an earlier UPDATE can cause a later predicate to permanently delete the wrong row. Execution exclusion with rewrites, target changes, recovery, and prefix ownership still need verification.
+
+**Growing progress reuses existing seal policies, not a new predicate-specific sealing mechanism.** Existing lifetime/idle and other seal policies drive segments toward sealed processing. Keep applicable L0 coverage and ownership intact until all required target coverage is durably established; a growing target is not a reason to drop its pending deltas. The correctness obligation is to preserve those associations through seal/flush/sort/replacement and recovery. This reuse decision is settled; implementation still must verify coverage and must not assume that every tiny segment satisfies the idle policy's minimum-size condition. The lifetime policy supplies a separate time-based trigger.
 
 ## 7. Data-side ordered DeltaExecutor
 
@@ -449,7 +466,7 @@ PK equality removes generic WHERE evaluation from mutation target selection, not
 - SELECT resolves visible updates first, including NULL, and reads base only for unresolved offsets. Actual IO savings depend on their physical chunk distribution and cache state.
 - Use the same query snapshot and compatible state across filtering, projection, sorting/grouping/aggregation, and other supported field readers; audit all access paths, not only final output.
 
-Use PK lookup and row/time eligibility to locate point-update targets; do not issue a query RPC or reconstruct unchanged columns. A PK does not necessarily identify one physical offset. Missing-PK outcomes, repeated PK versions, and interactions with upsert or pending predicate deletion remain explicit open contracts.
+Use PK lookup and row/time eligibility to locate every matching point-update target under Section 3.5; do not issue a query RPC, choose a local latest offset, or reconstruct unchanged columns. Preserve the settled upsert/pending-predicate distinctions in Section 3.4. Missing or deleted targets produce no new row; write success remains append acknowledgement, not proof of a match. Exact response fields/counts need API integration without inventing a known match count at append.
 
 Field-level reader/writer locks protect Record memory structures. Complete apply/readiness publication, together with timestamp visibility, prevents queries from observing partial multi-field writes; locks need not be held across every field for the entire operation. Allocation failure must not certify success or let dependent operations overtake incomplete work. Exact retry/rollback/quarantine behavior remains implementation work.
 
@@ -505,9 +522,9 @@ The history policy is settled in Section 8.5: no extra historical-query support 
 | Update-delta backlog | Determine Delta Consolidation timing; no extra Mix trigger solely from updates |
 | Scalar column-group fragmentation / obsolete column bytes | Determine Consolidation rewrite/regrouping scope while retaining layout |
 | Deletes and existing segment-organization conditions | Drive normal Mix/full-rewrite scheduling; execution consumes all applicable deltas |
-| Pending predicates with zero or unknown hits | Still require eventual evaluation; exact async scheduling policy is open |
+| Pending predicates with zero or unknown hits | Trigger background evaluation by age/count/bytes even with no UPDATE and no QN hit statistics |
 
-**Predicate-only liveness needs an explicit policy.** A workload with only predicate deletes cannot wait indefinitely for an UPDATE to trigger Consolidation or for QN to report their hits: QN will not execute them. The discussed trigger direction is oldest-pending age OR command count OR pending bytes. The user's 72-hour example is a possible trigger deadline, not a selected default or a proven query-visible SLA. Thresholds, scheduling priority, and completion budgets remain open. These signals are not deleted-row estimates or automatic new Mix triggers.
+**Agreed trigger policy: oldest-pending age OR command count OR pending bytes.** Reaching the time threshold triggers background delta processing; it does not mean all results must already be query-visible at that instant. The user's 72-hour example is illustrative, not a selected default. Predicate-only workloads use this policy without waiting for an UPDATE or for QN hit statistics. This is delta-processing scheduling, not a new update-driven Mix trigger or a deleted-row estimate. Concrete thresholds, concurrency, and resource budgets remain implementation/performance work; task status/wait APIs and a query-visible completion SLA are outside phase one.
 
 ### 10.2 Statistics change with execution placement
 
@@ -566,6 +583,9 @@ The earlier all-async exclusions of UpdatesRecord, update recovery, bitmap recti
 | Area | Selected contract | Not implied |
 | --- | --- | --- |
 | Product scope | Real-time single-PK UPDATE; asynchronous predicate DELETE with progressive cross-segment visibility | General UPDATE predicates, batch transactions, or a universal current-WAL snapshot |
+| Point targeting | Update all eligible, still-live rows with the supplied PK and insert_ts < update_ts; preserve each row's timestamp and unchanged values | Exactly one physical row, global/local latest selection, a new identity parameter, or merging repeated-PK rows |
+| Write acknowledgement | Return success after all required WAL appends succeed | Waiting for QN apply, background materialization, known affected-row counts, or replica adoption |
+| Async admission/liveness | Native predicate DELETE accepts unloaded collections; reuse seal policies and preserve L0 target coverage; age/count/bytes trigger background processing | Query-free legacy fallback, new sealing policy, a visibility deadline, or phase-one status/wait APIs |
 | Deletion guarantee | Trigger-time row scope; earlier matching predicate deletion wins for the original row; QN may temporarily show a later point update before deletion publication | Deletion of later upsert insertions, conflict skipping, resurrection, or arbitrary lost deletes |
 | Time model | Preserve row insertion time; UPDATE carries independent mutation time; Q resolves retained versions; T certifies materialization | Retimestamping rows/unchanged columns at UPDATE or rewrite time; T is a new clock or a mandatory read-rejection threshold |
 | Frontend and WAL | No foreground data query for native operations; typed predicate retained; UPDATE admits only PK equality and constant SET | A finalized protobuf, arbitrary-expression capability, or known affected-row counts at append |
@@ -580,23 +600,27 @@ The earlier all-async exclusions of UpdatesRecord, update recovery, bitmap recti
 
 "Settled" means selected semantics or a reuse direction, not completed implementation or proven performance.
 
-### 13.2 Product and correctness questions needing the next deep dives
+### 13.2 Remaining core design deep dives
 
-1. **Exact point-update target and result behavior.** Validate the current apply-to-all-eligible-PK-rows direction rather than require a global latest-row resolver (Section 3.5). Preserve update-only intent; define scope, ties, missing/deleted targets, responses/counts, result deduplication on each read path, and consistent QN/DataNode targeting. Row birth and update timestamps remain distinct regardless of the outcome.
-2. **Point-update responses during pending predicate deletion.** The ordered final outcome and temporary QN visibility window are clarified in Section 3.4. Define what acknowledgement, affected-row counts, and status mean when QN temporarily applies an update to an original row that DataNode will delete. Do not reopen this as an assumed conflict-skip mechanism or confuse a later upsert insertion with resurrection.
-3. **Mixed visibility and completion APIs.** Clarify WAL acknowledgement versus real-time update readiness, asynchronous-delete accepted/completed states, wait/status/cancellation behavior, replica adoption, and Strong/Session/internal-MVCC integration. Cross-segment progressive predicate visibility and the no-added-cross-rewrite-history boundary (Section 8.5) are settled; an exact point-update consistency contract is not.
-4. **Legacy query-PK delete interoperability.** Ensure its actual query snapshot/readiness includes required earlier point updates; then the stale-async-update selection failure is removed. Still verify interactions with pending predicate deletes, later writes, and existing replacement-row upsert. Do not promise a globally ordered conditional mutation from this existing query-then-delete path without proof.
-5. **Admission and liveness.** Decide unloaded-collection acceptance, idle Growing progress, predicate-only trigger thresholds, and whether any age target is a scheduling deadline or a visibility guarantee. Already-accepted work must remain recoverable and eventually processable independently of collection loading.
+The 2026-10-28 decisions close update targeting, append-based acknowledgement, unloaded native predicate-delete admission, seal-policy reuse, and trigger-versus-visibility semantics. Do not re-list those decisions as open. Status/wait APIs and public replica-completion definitions are deferred enhancements.
+
+1. **Changed scalar-index publication.** Decide the concrete transition between rewritten columns and their indexes: wait for a rebuilt compatible index, or publish a correct raw-data path while rebuilding. After folding/GC, the old scalar index must not remain usable without a valid correction mechanism. Reuse of unchanged vector data/ANN indexes is already settled.
+2. **Load/live handoff and Consolidation Reopen.** Close the exact historical/live readiness proof, target registration, duplicate-safe replay, suffix preservation, and gate/lease ordering. Preserve the accepted asynchronous-history/synchronous-live split and shared Record backing; do not revert to a blanket A>=T requirement or QN predicate replay.
+3. **Crash-safe authoritative publication.** Specify conditional VChannel range publication and complete maintenance-task commit/recovery, including owner fencing, uncertain outcomes, file ownership, and the multi-batch catalog risk. The required atomicity is settled; its durable protocol is not.
+4. **Resource safety and execution budgets.** Bound QN update-history residency and DataNode's all-resident delta program/payload footprint; define concurrency and oversized-work handling. Age/count/bytes trigger categories are settled, but thresholds alone do not prove memory safety.
+5. **Schema, evaluator, and version compatibility.** Finalize supported typed predicates/values, schema-barrier and drop-field handling, and rolling-version admission. Specify or explicitly gate CDC support; accepted mutations must retain the data/schema needed for deterministic replay.
 
 ### 13.3 Implementation planning and validation still required
 
 - **Load/live handoff and Reopen:** exact H ownership, duplicate-safe point-update/PK-delete replay, historical versus synchronous-live readiness, explicit-MVCC gates, and the two-part catch-up proof before publishing T. Do not reintroduce pending predicate execution on QN or a channel-wide minimum-A aggregation as an implicit fix.
 - **Durable atomic publication:** concrete message/file/bitmap encodings, VChannel identity/fencing, range retries, target ownership, task commit/recovery, and resolution of the multi-batch catalog risk. Distinguish required atomicity from current implementation evidence.
-- **Query integration:** integrate update views and DeletedRecord baseline/caches/counts with PublishedSegmentState; audit every field reader, scalar-index replacement, NULL path, multi-stage lease, failure cleanup, and GC lifetime.
+- **Query integration:** integrate update views and DeletedRecord baseline/caches/counts with PublishedSegmentState; audit every field reader, scalar-index replacement, NULL path, multi-stage lease, failure cleanup, and GC lifetime. Validate Query/Search/filter/reduce behavior for repeated-PK rows with different unchanged fields/vectors without assuming global-latest selection. Verify that legacy query-PK DELETE actually observes required earlier point updates under its chosen snapshot/readiness; neither audit reopens update-all-matches or append-based acknowledgement.
 - **Resources and scheduling:** data-side all-resident program limits and concurrency; QN history growth/write protection; command age/count/bytes accounting; regrouping scope, fairness, and oversized values. Measure short histories, contention, query latency, index reuse, and backlog clearance; no numbers are settled.
-- **Lifecycle coverage:** reuse existing safe L0/growing time boundaries and maintenance exclusion where applicable, then prove no lost targets across flush, sort, rewrite/replacement, and recovery. Retention safety alone does not promise timely async visibility.
+- **Lifecycle coverage:** verify existing seal-policy reuse, safe L0/growing coverage and maintenance exclusion, then prove no lost targets across flush, sort, rewrite/replacement, and recovery. Test native predicate DELETE while unloaded and keep legacy query-PK prerequisites separate. No new visibility SLA is implied.
 - **Schema, evaluator, CDC, and upgrade:** exact supported predicates/types and error behavior, drop-field drainage, commit-time capability guards, deterministic replay, cross-cluster logical mutation replication, and rolling-version admission. Replicated deployment must reject the feature until support is validated, not silently omit mutations.
 - **Observability:** point-update memory and async-delete burden/completion metrics, materialized deletion counts, generation/freshness binding, and replica deduplication. QN cannot count matches of predicates it never executes.
+
+Exact response-field/affected-row-count representation remains API plumbing: successful append cannot manufacture an evaluated match count. Public mutation status/wait features and replica-completion reporting are not prerequisites for phase one.
 
 The original real-time design remains frozen. This active hybrid reduces target-selection and predicate-delete serving work, but deliberately retains real-time field-version reads. It is not a finished implementation plan.
 
@@ -607,6 +631,7 @@ These are required future checks, not completed tests or measured benefits:
 | Scenario | Required evidence |
 | --- | --- |
 | Native predicate deletion or 1,000 supplied point updates | No foreground matching-PK query, whole-row retrieval, or request-time segment stats; UPDATE messages retain typed PK equality and independent logical operations |
+| Successful append while QN apply or background execution is delayed | Native write returns on successful required WAL appends; no wait for apply/materialization/replica adoption; read-admission checks still protect point-update visibility |
 | Unsupported UPDATE predicate | Reject non-PK/range/IN/additional-filter input before WAL append; do not expand it via query or enable it merely because the schema can encode it |
 | One predicate DELETE spanning independently completed tasks/segments | Permit coherent segment states with different predicate completion progress; no mutation-wide visibility barrier; DataNode still executes in order |
 | Failure during one Consolidation/full-rewrite task's result commit | Never expose a partial authoritative task result or advance consumed-prefix/input-retirement metadata without its complete outputs; validate recovery as well as the live path |
@@ -615,7 +640,7 @@ These are required future checks, not completed tests or measured benefits:
 | Real-time UPDATE followed by legacy query-PK DELETE | The selection query reads the required updated values under its actual snapshot/admission contract; WAL acknowledgement alone is not accepted as evidence |
 | Earlier predicate DELETE followed by replacement-row upsert | Delete the eligible old row when matched; do not retroactively delete the later insertion merely because it has the same PK |
 | Earlier pending predicate DELETE followed by point UPDATE and another predicate DELETE | QN may temporarily show the update; DataNode executes in order, preserves the first matching deletion, and never revives the row; validate response semantics separately |
-| Repeated PK in S1 at 80 and S2 at 95, followed by UPDATE at 110 | Validate the eligible-row targeting direction and read-path deduplication without changing row timestamps to 110; include a DataNode task that reads only one segment, recovery, ties, and replacement-segment races |
+| Repeated PK in S1 at 80 and S2 at 95, followed by UPDATE at 110 | Update both eligible live rows, preserve row timestamps and each row's unchanged fields/vectors; exclude rows inserted at/after 110 and rows already deleted in the ordered state; no first/latest winner; include recovery, equal insertion timestamps, and replacement-segment races |
 | Interleaved updates and both delete types | Independent ordered-row oracle agrees with DataNode output, including NULL, zero hits, later inserts, and no resurrection |
 | Sparse cross-type sync and out-of-order uploads | No partial range becomes schedulable; strict range extension, retries, MixCoord restart, and ownership fencing preserve coverage |
 | L0 fanout/rewrite races | No missing targets, duplicates with repeated logical effects, or prefix holes; test more metadata KVs than one catalog batch can hold |
@@ -629,12 +654,14 @@ These are required future checks, not completed tests or measured benefits:
 | INSERT@80 followed by UPDATE@200 before folding | Preserve insert_ts=80; when read readiness permits, Q=150 resolves the old field value and Q=210 resolves the update; unchanged columns are not retimestamped |
 | Consolidation or full rewrite folds UPDATE@200 | Preserve row insertion meaning and latest materialized values; retire folded versions only after safe publication; retain all required suffix history; do not require old-value reconstruction or add a Q<T rejection gate solely for this feature |
 | Old query still using the pre-fold representation | Protect its base/history through dependent read stages; retirement waits for the relevant users, without promising that a later new old-timestamp request can reuse the retired state |
-| Predicate-only, unloaded, or idle-Growing workload | Selected future liveness/coverage policy eventually produces the required durable result without QN predicate execution |
+| Native predicate DELETE on an unloaded collection | Admit without QN data access; persist and materialize entirely on the data side; later load restores base/delete state; unsupported query-PK fallback does not silently inherit unloaded support |
+| Predicate-only backlog reaching age/count/bytes thresholds | Trigger background processing without UPDATE or known hit counts; do not interpret trigger time as a query-visible completion deadline |
+| Small idle Growing target | Existing seal policies eventually trigger sealed processing in a healthy system; retain complete applicable L0 ownership/coverage through seal, flush, replacement, and recovery |
 | Full rewrite after Consolidation | Consume old-layout bitmap and pending ordered deltas; write correct survivors without carrying obsolete offsets |
 | Compatibility, DDL, and CDC | Unknown instructions are not silently ignored; old input columns remain available until safe; replicated use is rejected until supported or validated end to end |
 | Resource/benefit comparison | Measure foreground bytes/latency, DataNode peak memory and IO, index rebuild work, QN load/query latency, and accepted-to-visible delay separately |
 
-Cross-segment predicate-delete visibility tests exercise the selected progressive contract. Task-result, point-update completion, and local-state atomicity remain mandatory. Mixed-operation and replica-completion tests depend on the remaining contracts in Section 13.
+Cross-segment predicate-delete visibility tests exercise the selected progressive contract. Task-result, point-update completion, and local-state atomicity remain mandatory. Validate the settled mixed-operation semantics and safe per-replica adoption; a new public replica-completion API is not part of this test contract.
 
 ## 15. Existing implementation anchors
 
@@ -642,6 +669,8 @@ The following source paths distinguish reuse from new work. They do not implemen
 
 - [WAL message model](../agent_guides/streaming-system/message/message.md), [TimeTick/transaction guide](../agent_guides/streaming-system/wal/timetick_and_txn.md), and [WAL recovery](../agent_guides/streaming-system/wal/recovery-storage.md): infrastructure ordering, payload ownership, and persistence responsibilities.
 - [Current partial-upsert retrieval](../../internal/proxy/dml/task_upsert.go) and [streaming append](../../internal/proxy/dml/task_upsert_streaming.go): partial upsert requests all fields, merges values, and packs insert plus delete; this is not the proposed point-update delta path.
+- [Delete runner](../../internal/proxy/dml/task_delete.go) and [delete WAL append](../../internal/proxy/dml/task_delete_streaming.go): existing complex delete waits for PK-query/production and append tasks, not QN application; native mutations reuse the append-success acknowledgement boundary.
+- [Seal policy selection](../../internal/streamingnode/server/wal/interceptors/shard/stats/stats_manager.go) and [seal worker](../../internal/streamingnode/server/wal/interceptors/shard/stats/stats_seal_worker.go): periodic lifetime/idle policy evaluation drives sealing; idle has a minimum-size condition, while lifetime is a separate trigger. New mutation support must preserve L0 target coverage through this lifecycle.
 - [InsertRecord PK lookup](../../internal/core/src/segcore/InsertRecord.h): `search_pk` returns local offsets meeting timestamp eligibility, not a cross-segment latest-row winner. This lookup is useful infrastructure, not a complete point-update targeting contract.
 - [Delegator forwarding](../../internal/querynodev2/delegator/delta_forward.go), [delete pipeline](../../internal/querynodev2/pipeline/delete_node.go), and [Delegator](../../internal/querynodev2/delegator/delegator.go): existing synchronous delete completion/TSafe and catch-up are reuse points, not proof of point-update integration.
 - [Current L0 materializer](../../internal/streamingnode/server/wal/vchannel/l0materializer/materializer.go): PK-delete output groups run per-group sync; this is not cross-type atomic range publication.
