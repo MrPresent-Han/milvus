@@ -1,5 +1,9 @@
 # Predicate Deletes and Delta-Based Updates
 
+> **Frozen real-time design baseline — 2026-10-27.** The design body below is preserved from revision `94530c48ce3502b8fc212720630522766ee4913e`; freezing does not resolve its open questions or mark it implemented. Here, "real-time" includes its asynchronous historical replay plus synchronous live-apply design, not synchronous execution before WAL acknowledgement.
+>
+> Continue in the [active follow-up design](20261027-predicate-delete-and-update-deltas-async.md), initially all-async and now narrowed to real-time PK updates plus asynchronous predicate deletes. Do not fold the follow-up's changed semantics back into this baseline. Revisions to this frozen design require an explicit decision to reopen it.
+
 Date: 2026-10-16
 
 Discussion checkpoint: 2026-10-27
