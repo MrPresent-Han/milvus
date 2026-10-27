@@ -30,7 +30,7 @@ The agreed direction is:
 - For a supported predicate, append the mutation without a matching-PK query, a count pre-query, or ingress segment-related statistics. Select the path by expression support, not estimated match count.
 - Before physical field removal, require complete durable coverage of pre-barrier predicate deletes in the affected segments' delta logs or rewritten data. Prefer checkpoint-style drainage of both PK and predicate deletes rather than separate type-specific drain progress; see Section 9.1.3.
 - During target-QN segment loading, apply predicate deltas through the existing Segcore expression execution paths: use suitable scalar indexes without reading the corresponding raw columns, otherwise read required data on demand. Do not introduce an additional forced eager-load step; see Section 9.3.
-- Separate base load completion from background mutation application for both `lazy-load=false` and `lazy-load=true` in the proposed recovery architecture. Gate each query by its required `GuaranteeTs` and the relevant complete apply progress, rather than waiting for the entire backlog before admitting any query. This does not waive the request's consistency requirement; see Sections 9.3.1–9.3.3.
+- Separate base load completion from background mutation application for both `lazy-load=false` and `lazy-load=true` in the proposed recovery architecture. Phase one checks and waits at each participating segment until its complete apply progress `A` covers the query's resolved execution MVCC timestamp `Q`. Preserve existing `GuaranteeTs`/TSafe and distribution checks; do not substitute the freshness lower bound for `Q` or wait for the entire backlog to empty. See Sections 9.3.1–9.3.3.
 
 The local pipeline is not a complete replacement for the distributed delete protocol. Durable ordering, replay, compaction, and release/reload behavior must be designed before production integration. The current direction retains the existing loaded-data prerequisite for general predicate deletes; extending them to unloaded data is not an initial requirement.
 
@@ -469,7 +469,7 @@ Implementation must establish equivalence with the current delete semantics, not
 14. Validate coarse L0 dispatch while the collection is released: candidates come from current storage metadata, not loaded QNs; published segment deltas remain discoverable by offline compaction and later load. Inject failures between object writes, metadata publication, and L0 retirement.
 15. Cover both L0-before-Mix and Mix-before-L0, queued L0 work, Streaming mutations arriving during compaction, multiple replacement generations, and QueryViews still serving retired storage segments. Verify complete mutation coverage without an ingress association table or descendant lookup.
 16. Verify pruning against an ordered-mutation oracle, including absent statistics, stale base-column bounds after updates, and replacement segments containing old rows. Compare coarse fanout with the PK path at equal logical work; measure zero-match evaluation, metadata growth, load/recover latency, and online/background resource interference.
-17. Validate asynchronous recovery's per-request gate: with complete relevant apply progress at 100, requests requiring 95 or 100 may proceed, while a request requiring 105 must wait until coverage reaches 105, even if later backlog remains. A completed record at 110 must not hide an unfinished mutation at 99. Cover multiple segments/VChannels, replacement/reload, apply failure, and mixed update/delete ordering.
+17. Validate asynchronous recovery's per-segment gate: with complete local apply progress at 100, supported query MVCC snapshots `Q=95` or `Q=100` may proceed, while `Q=105` must wait until coverage reaches 105, even if later backlog remains. A completed record at 110 must not hide an unfinished mutation at 99. Cover multiple segments/VChannels, replacement/reload, apply failure, and mixed update/delete ordering; retain existing TSafe/distribution admission.
 18. Measure base-load completion, time to serve each consistency level, full catch-up time, and cold-recovery P99 separately under lazy loading, accumulated predicates, and concurrent searches. Verify that blocked Strong/Session/Bounded requests are not silently downgraded and that background work can make progress under load; no upgrade-timeout or availability improvement is assumed.
 19. Verify that each reported deleted count and complete apply watermark describe one coherent segment state. Cover concurrent apply, delayed/out-of-order reports, replicas at different progress, release/reload, and compacted-away sources. Reports must neither double count replicas nor claim coverage of unfinished mutations.
 20. Verify hit-independent scheduling with missing/stale stats and with an exact zero-deleted-row observation plus many outstanding predicates. QN application alone must not clear the durable backlog count; successful data compaction must retire only consumed records after output publication, including zero-match records. Test repeated delivery versus separate committed mutations using the same expression.
@@ -505,7 +505,8 @@ Implementation must establish equivalence with the current delete semantics, not
 50. Verify Section 10.9.10's two-phase `ignoreNonPk` protection. Pause between WHERE/offset retrieval and output-field fetch, attempt Consolidation publication, and require the original segment lease to protect both stages without reacquisition. Cover Arrow and proto field-fetch paths, gate-busy cleanup/retry, cancellation, errors, and segments with no selected output rows. Contrast a later timestamped DELETE/UPDATE, which must not change the fixed query snapshot, with a representation switch that would remove its history. No snapshot may silently advance to make a retry succeed.
 51. Verify retained DeletedRecord state independently of Consolidation GC. With deletes `(90,8)` and `(120,9)`, publish `base@100 + delete@100={8}` after complete, ordered materialization of all applicable delta types through 100, while retaining both timestamped records and the accumulated in-memory mask `{8,9}`. Queries at 110 and 130 must exclude `{8}` and `{8,9}`, respectively, before and after eligible prefix GC. Do not require mask rollback or blanket cache invalidation on same-layout publication. A fresh load must restore `delete@100` and replay only the applicable suffix; it must not treat the live mask containing the future delete as the persisted baseline through 100. These are planned checks, not completed tests.
 52. Verify Section 9.3.4's fresh-load baseline and complete suffix replay. Restore `base@100 + delete@100={8}` without synthesizing pre-100 SkipList entries; a query must still exclude offset 8 when the timestamped list is empty. Replay an UPDATE at 110, a predicate DELETE dependent on that updated value at 120, and a PK DELETE at 130 from interleaved segment-owned/L0/catch-up inputs. Verify query snapshots between mutations, unchanged `delete@100`, cumulative `deleted_mask_`, timestamped deletion suffix, and UpdatesRecord contents. Duplicate delivery must not re-execute a consumed mutation; missing input, an unfinished mutation, or an unconfirmed interval must prevent progress from passing it. A completed zero-hit mutation must not stall progress. These are planned checks, not completed tests.
-53. Verify Section 9.3.5's handoff partition: the baseline covers `<=T`, history owns `(T,H]`, and streaming owns `>H`. Exercise mutations exactly at both boundaries, an empty historical interval, parallel acquisition with a slow historical reader, and a streaming predicate that depends on an earlier historical UPDATE. The streaming command may be buffered but must not execute ahead of the required history. Physical copies in persisted files and retained buffers must not become duplicate logical execution. Receiving a newer record must not advance query-visible execution progress. These are planned checks, not completed tests.
+53. Verify Section 9.3.5's handoff partition: the baseline covers `<=T`, load/catch-up owns `(T,H]`, and streaming owns `>H`. Exercise mutations exactly at both boundaries, an empty historical interval, parallel acquisition with a slow historical reader, and a streaming predicate that depends on an earlier historical UPDATE. The streaming command may be buffered but must not execute ahead of the required history. Physical copies in persisted files and retained buffers must not become duplicate logical execution. Pause apply at `A=120` after complete input through `H=150` is queued: distribution registration must not wait for `A>=H`, a new mutation at 160 must join the same ordered queue, and a query requiring progress 150 must still wait. Race final enqueue with live forwarding to verify gap-free handoff; incomplete or failed input handoff must not register the segment. Receiving a newer record must not advance query-visible execution progress. These are planned checks, not completed tests.
+54. Verify Section 9.3.2's phase-one segment-local MVCC gate. With `S1.A=200`, `S2.A=120`, and query snapshot `Q=150`, only S2's mutation gate waits; a complete query requiring both segments must await both results. A query whose valid target set excludes S2 must not wait on S2 through this new gate. With `GuaranteeTs=150`, resolved `Q=200`, and `A=170`, passing the freshness check must not bypass the wait for 200. Preserve existing TSafe/distribution checks, fixed-snapshot reads, timeout/cancellation, and unsupported-old-snapshot rejection. Neither handoff coverage `H` nor another segment's progress may substitute for local `A`. These are planned checks, not completed tests.
 
 ## 9. System-level integration checkpoints
 
@@ -883,7 +884,7 @@ This checkpoint settles the **statistics source, progress-bound observation mode
 
 ### 9.3 Target-QN load phase: access paths and progress-gated asynchronous recovery
 
-Decision status: **access-path policy settled on 2026-10-19; asynchronous recovery and per-request visibility direction recorded on 2026-10-20; fresh-load baseline and complete ordered suffix semantics settled on 2026-10-26; not implemented**.
+Decision status: **access-path policy settled on 2026-10-19; asynchronous recovery direction recorded on 2026-10-20; fresh-load baseline and complete ordered suffix semantics settled on 2026-10-26; phase-one segment-local MVCC checking and waiting settled on 2026-10-27; not implemented**.
 
 **Scope.** This section covers the target QN loading segment data/index resources and applying the segment's own delta logs. The asynchronous extension also states the read-admission contract that this progress must support. Delegator L0 forwarding, streaming-tail catch-up, and publication coordination remain required integration boundaries; their detailed protocols are not redesigned here.
 
@@ -914,29 +915,33 @@ Sources: [Hot Standby — User's Overview](https://www.postgresql.org/docs/18/ho
 
 **Adopt:** distinguish a consistent readable state from being fully caught up; allow recovery and reads to coexist.
 
-**Adapt:** Milvus queries carry freshness requirements through `GuaranteeTs`; the proposed gate checks relevant apply coverage against each request.
+**Adapt:** retain Milvus's existing freshness checks through `GuaranteeTs`/TSafe, and additionally check each participating segment's complete apply coverage against the request's resolved MVCC timestamp, as specified in Section 9.3.2.
 
-**Do not copy or misattribute:** PG's physical recovery, transaction snapshots, or readiness conditions are not Milvus's segment-loading protocol. A per-query `GuaranteeTs` wait is our adaptation, not PG's ordinary hot-standby behavior. This precedent does not justify exposing an arbitrary partially reconstructed segment.
+**Do not copy or misattribute:** PG's physical recovery, transaction snapshots, or readiness conditions are not Milvus's segment-loading protocol. The proposed per-query mutation-progress wait is our adaptation, not PG's ordinary hot-standby behavior. This precedent does not justify exposing an arbitrary partially reconstructed segment.
 
-#### 9.3.2 Agreed direction: per-request apply-progress visibility
+#### 9.3.2 Phase-one decision: segment-local checking and waiting at the query MVCC timestamp
 
-Maintain complete apply progress, and evaluate admission against each query's minimum visibility requirement. Conceptually:
+**Check and wait at segment level.** For each participating segment `s`, let `A_s` be its complete mutation-application prefix and `Q` the query's resolved execution MVCC timestamp. `Q` is the timestamp actually used to evaluate visibility, whether supplied in the request or resolved by the existing admission path. It is not merely `GuaranteeTs`. Conceptually:
 
 ```text
-valid readable state exists
-AND complete relevant apply progress >= query.GuaranteeTs
-    -> the freshness gate is satisfied
-otherwise
-    -> wait for the required progress, or use the defined routing/error policy
+Preserve existing TSafe/freshness and distribution checks; resolve Q.
+For each participating segment s:
+  require a valid readable state supporting snapshot Q
+  wait until A_s >= Q, subject to request cancellation/deadline
+  execute against the pinned compatible state at Q
 ```
 
-With relevant progress at 100, requests requiring 95 or 100 satisfy this gate; a request requiring 105 waits until progress reaches 105. It does not need to wait for work after 105 or for the backlog to become empty. This rule applies to every request, not only the first query after recovery.
+When `A_s > Q`, the query still reads at `Q` and excludes later versions. Do not silently lower or advance its snapshot to avoid waiting. A snapshot older than the state's supported lower bound must be rejected under Section 10.9.7, not waited for indefinitely. The loader must establish a valid readable state; a progress number alone cannot manufacture one.
 
-The progress value is a **complete applicable prefix**, not the maximum timestamp of a processed predicate. It must cover all relevant mutations and dependencies, including PK deletes and updates when present. A query spanning multiple segments/VChannels cannot use only the fastest participant's progress. Exact progress ownership, aggregation, and integration with the existing serviceable-time machinery remain open.
+**Keep freshness and mutation readiness distinct.** `GuaranteeTs` is a minimum freshness requirement. Current [Delegator search/query admission](../../internal/querynodev2/delegator/delegator.go) waits for TSafe and, for normal requests without an explicit MVCC timestamp, uses the returned serviceable timestamp as the execution snapshot. That timestamp can exceed the guarantee. For example, with `GuaranteeTs=150`, resolved `Q=200`, and `A_s=170`, the segment still waits for application through 200; checking only `A_s >= GuaranteeTs` would admit an incompletely applied snapshot.
 
-`GuaranteeTs` is a minimum visibility requirement, not an exact historical snapshot timestamp. Satisfying this gate does not promise arbitrary time travel or remove other schema, MVCC, and resource-readiness checks. The loader must establish a valid readable state; assigning a low progress value alone cannot manufacture one.
+**No new channel-wide minimum-apply gate in phase one.** Keep the existing TSafe and [distribution/target completeness checks](../../internal/querynodev2/delegator/distribution.go); segment-local application readiness does not replace either. Do not require a new `min(A_s)` across the channel or lower its TSafe merely because a newly loaded segment's asynchronous apply is behind. Conversely, passing the existing checks does not prove that this segment's deferred mutations have been applied.
 
-Current [search admission and `waitTSafe`](../../internal/querynodev2/delegator/delegator.go) already compare serviceable progress with request guarantees, and [Proxy search preparation](../../internal/proxy/dql/task_search.go) derives those guarantees from consistency settings. These are integration precedents, not proof that the current timestamp accounts for deferred predicate application; it must not advance past incomplete required work in the new mode.
+For example, with `S1.A=200`, `S2.A=120`, and `Q=150`, S1 satisfies its local gate while S2 waits until 150. A complete query requiring both segments must await both results, rather than omit S2 because it is lagging. A query whose valid target set excludes S2 does not wait on S2 through this new mutation gate; existing TSafe and distribution constraints still apply. The local gate need not wait for work after `Q` or for the backlog to empty.
+
+`A_s` is a **complete applicable prefix**, not the maximum timestamp of a processed mutation. It covers ordered UPDATE, PK DELETE, and predicate DELETE dependencies, including completion of every target row/field and confirmed intervals with no applicable work. Handoff boundary `H` proves complete input receipt, not execution, and cannot substitute for `A_s`. This rule applies to every query, not only the first query after recovery.
+
+**Industry principle and adaptation.** Kudu's [MVCC snapshot wait](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/mvcc.h) waits for in-flight operations needed by a requested snapshot, separately from safe-time establishment. Adopt the complete-applied-snapshot principle; adapt it to Milvus's segment-local inclusive prefix `A_s >= Q` and existing channel/distribution admission. Do not copy Kudu's transaction machinery or claim it uses this exact Milvus gate. This decision settles gate scope and comparison semantics, not the concrete wait primitive, wake-up plumbing, or retry integration.
 
 #### 9.3.3 Consistency and recovery boundaries
 
@@ -947,7 +952,7 @@ The proposed mode separates base-load completion, request-specific read readines
 - Async execution does not remove cold I/O, CPU, memory pressure, or query interference. Backlog progress and failure must be observable; calling the stale period "brief" requires measured catch-up capacity.
 - This read-side progress is not a storage durability checkpoint and cannot substitute for the Streaming/L0-to-target drain required before physical field removal.
 
-**Still open:** configuration/defaults and rollout, implementation of the initial readable state and complete-prefix gate, progress publication during partial application, binding progress to the correct segment/view generation, crash/retry behavior, routing and timeout policy, and upgrade/readiness integration. Section 9.3.4 settles baseline restoration and ordered suffix semantics, not these mechanics. Shorter base-load latency alone does not establish shorter strong-read recovery, absence of rolling-upgrade timeouts, or 99.99% service availability.
+**Still open:** configuration/defaults and rollout, implementation of the initial readable state and the segment-local gate selected in Section 9.3.2, progress publication during partial application, binding progress to the correct segment/view generation, crash/retry behavior, routing and timeout policy, and upgrade/readiness integration. Section 9.3.4 settles baseline restoration and ordered suffix semantics, not these mechanics. Shorter base-load latency alone does not establish shorter strong-read recovery, absence of rolling-upgrade timeouts, or 99.99% service availability.
 
 #### 9.3.4 Agreed fresh load: restore the baseline, replay the complete ordered suffix
 
@@ -997,14 +1002,39 @@ The query deletion set is `delete@T UNION visible_timestamped_deletes_in_(T,Q]` 
 For one segment-load attempt, establish a handoff boundary `H >= T` alongside the materialized baseline boundary `T`:
 
 ```text
-Materialized base@T + delete@T:  ts <= T
-Historical delta responsibility: (T,H]
-Streaming delta responsibility:  (H,+infinity)
+Materialized base@T + delete@T:    ts <= T
+Load/catch-up delta responsibility: (T,H]
+Live streaming responsibility:     (H,+infinity)
 ```
 
-These are contiguous, disjoint logical responsibilities, not permission to execute overlapping prefixes. The historical side must cover every applicable mutation through `H`, including all three delta types. The streaming side must reliably retain and deliver every applicable mutation after `H`. A record exactly at `T` belongs to the materialized baseline; a record exactly at `H` belongs to history. If `H=T`, the historical interval is empty. Selecting `H`, obtaining a coherent historical inventory, and protecting the streaming tail before it can be missed or reclaimed remain detailed protocol work. A mutable current checkpoint is not automatically the fixed handoff boundary for an in-flight load.
+These are contiguous, disjoint logical responsibilities, not permission to execute overlapping prefixes. The load/catch-up side must cover every applicable mutation through `H`, including all three delta types. The streaming side must reliably retain and deliver every applicable mutation after `H`. A record exactly at `T` belongs to the materialized baseline; a record exactly at `H` belongs to load/catch-up. If `H=T`, the historical interval is empty. Selecting `H`, obtaining a coherent historical inventory, and protecting the streaming tail before it can be missed or reclaimed remain detailed protocol work. A mutable current checkpoint is not automatically the fixed handoff boundary for an in-flight load.
 
 **Industry principle.** PostgreSQL's [exported logical-decoding snapshot](https://www.postgresql.org/docs/18/logicaldecoding-explanation.html#LOGICALDECODING-EXPORTED-SNAPSHOTS) defines a snapshot after which the associated stream includes subsequent changes. Adopt the explicit snapshot/stream coverage boundary; adapt it to Milvus's materialized baseline, historical delta suffix, and streaming handoff. Do not copy PG's replication-slot or transaction protocol, or infer that merely observing a persisted L0 file establishes the required boundary.
+
+**Existing sealed-segment PK-delete load flow.** The [segment loader](../../internal/querynodev2/segments/segment_loader.go) and Delegator's [loadStreamDelete](../../internal/querynodev2/delegator/delegator_data.go) provide an existing catch-up/forwarding handoff to reuse:
+
+```text
+Load the segment's own deltalogs
+    -> forward applicable L0 deletes registered with the Delegator
+    -> replay streaming deletes already cached in Delegator.deleteBuffer
+    -> catch up deletes arriving during the load
+    -> finish catch-up and add the segment to distribution under the same lock
+    -> subsequent streaming deletes reach the segment through normal forwarding
+```
+
+Loading pins protect required buffer/L0 resources from target-driven cleanup. Most buffer replay occurs outside `deleteMut`; the final protected handoff excludes `ProcessDeleteBatches`, so no delete can fall between completion of catch-up and registration for live forwarding. Registering an L0 does not itself apply it to a loading segment: the explicit forwarding step does. This diagram describes the current PK-delete execution order, not the order in which the proposed update-aware executor may apply its different input sources.
+
+**Meaning of H across these sources.** Segment-owned deltas, applicable registered L0 deltas, and Delegator buffer catch-up jointly supply the load-side suffix `(T,H]`; continuous streaming supplies `>H`. Buffered records originated in the stream but belong to the load/catch-up responsibility when their timestamps are at or below the chosen handoff boundary. Thus the split is between responsibilities, not simply between files and WAL-originated records. `H` denotes a confirmed complete coverage boundary, not `max(timestamp)` across the three sources, and is not assumed to be an existing persisted field in the PK-delete implementation.
+
+For example, with `T=100` and complete load/catch-up coverage through `H=150`, mutations in `(100,150]` may come from segment deltas, L0, or already-consumed streaming records retained in the Delegator. A mutation at 150 belongs to catch-up; one at 160 belongs to continuous streaming. The existing Delegator may continue consuming throughout the load: this handoff does not require restarting its WAL consumer at `H`.
+
+**Reuse the handoff, strengthen execution.** Reuse source protection, catch-up, and atomic registration for live forwarding. Updates and predicate deletes must nevertheless enter one deduplicated, complete TimeTick-ordered sequence rather than executing each source to completion in the diagram's order.
+
+**Agreed correctness boundary: H proves complete input handoff; A proves complete state application. Cutover does not require `A >= H`.** All applicable PK DELETE, predicate DELETE, and UPDATE commands in `(T,H]` must have entered the segment's ordered execution queue before registration for live forwarding. This is confirmed input ownership, not merely sending a request, observing a maximum timestamp, or completing expression evaluation.
+
+The final handoff serializes confirmation of that queued prefix and addition to distribution against live forwarding. After the handoff, mutations with `ts > H` enter the same ordered execution path; they cannot bypass the queued prefix and modify Records directly. Reuse the existing handoff gate for this input/registration transition, but do not wait under it for the executor to finish predicate evaluation or update application. An incomplete or failed input handoff must not publish distribution registration.
+
+**Distribution membership is not unconditional query readiness.** It enables the live-forwarding path to find the segment, while the executor independently advances `A` only after complete ordered mutations finish. Queries still require a valid base/read state, a supported MVCC snapshot `Q`, and the segment-local `A >= Q` check/wait in Section 9.3.2, alongside existing TSafe/distribution checks. Neither distribution registration nor receipt through `H` may set query-visible progress to `H`. This explicitly replaces the current synchronous PK-delete requirement to finish applying the catch-up tail before registration; the queue, gate integration, and progress plumbing remain implementation work, not existing capabilities of `loadStreamDelete`.
 
 **Parallel acquisition, not independent execution.** Historical and streaming sources may read, decode, and buffer concurrently. Historical loading need not stop streaming reception. Application must nevertheless follow one complete logical TimeTick sequence: a later streaming WHERE can depend on an earlier historical UPDATE. Buffer later commands until their required preceding prefix has been executed; do not let the two sources independently mutate UpdatesRecord/DeletedRecord. This does not introduce phase-one parallel expression evaluation or require a particular queue/container implementation.
 
