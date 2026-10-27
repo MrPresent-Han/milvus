@@ -2,7 +2,7 @@
 
 Date: 2026-10-16
 
-Discussion checkpoint: 2026-10-26
+Discussion checkpoint: 2026-10-27
 
 Status: Draft — predicate-delete data flow, progress-bound best-effort statistics, predicate-backlog signals, asynchronous recovery direction, shared logical mutation-message structure, single-mutation request boundary, TimeTick-preserving buffer/file ordering, VChannel delta-prefix publication and recovery contract, independently batched complete and ordered L0 dispatch, shared ordered batch delta execution with safe temporal bypass, separate L0 dispatch, Delta Consolidation, and full-rewrite maintenance, bounded assignment-expression scope, constant-assignment update semantics, snapshot-aware base-index/delta query merging, phase-one serial query-time bitmap correction, versioned NULL/result-validity semantics, phase-one field-level reader/writer locking with complete apply-progress publication, Abseil B-tree offset directories, Boost.Container deque histories, Arrow owning-buffer payload storage, and no fixed historical-read window agreed; field lookup and exact HistoryHandle representation remain open; offset-directory performance/memory costs, history block size, and short-history overhead require performance validation; detailed implementation protocols remain open; not implemented
 
@@ -1022,6 +1022,82 @@ These steps are ordered, not one atomic file-and-channel-checkpoint publication.
 **New L0 persistence does not directly clean the serving delete buffer.** [ProcessDeleteBatches](../../internal/querynodev2/delegator/delegator_data.go) retains streaming records in the channel-level Delegator buffer and forwards deletes to serving segments. Successful L0 sync does not by itself reload those deletes into an already-serving sealed segment, register the new L0 in its live Delegator, or clear that buffer. The current `LoadL0` call chain loads the L0 inventory during [channel startup](../../internal/querynodev2/services.go); `RegisterL0` itself only registers those loaded resources. Separately, `SyncTargetVersion`, after the distribution becomes serviceable, invokes `UnRegister(DeleteCP)` (falling back to the action checkpoint). The active [list delete buffer](../../internal/querynodev2/delegator/deletebuffer/list_delete_buffer.go) then applies its pinning and block-retention rules. This is target-driven channel-buffer retirement, not a callback from each L0 sync and not removal of the serving segment's applied DeletedRecord state.
 
 Channel startup begins streaming from the supplied seek position after loading its L0 inventory. The current [stream adaptor](../../internal/distributed/streaming/msgstream_adaptor.go) uses an inclusive TimeTick filter, so the new exclusive `>H` contract also requires explicit endpoint handling. Durable progress, consumer start, and retained query-side memory are distinct facts; these observations do not settle which existing checkpoint should supply `H`.
+
+#### 9.3.6 Checkpoint, L0 materialization, and WALSummary responsibilities
+
+Discussion checkpoint: **2026-10-27**. These clarifications describe the implementation inspected at `30643b4ed6`, not a claim about every released Milvus version or an implementation of this proposal's cross-type delta protocol. The current runtime uses the WAL-backed L0 materializer; the Summary-reader materializer remains a future QueryView integration, as documented in [WAL L0 Materializer](design_docs/wal/l0_materializer.md).
+
+**Separate the progress domains.**
+
+| State | Scope | Meaning and owner |
+|---|---|---|
+| RecoveryCP | PChannel | SN RecoveryStorage's durably published, complete recoverable WAL prefix. Required persistence work and Summary confirmation must permit advancement. |
+| DataCoord VChannelCP | VChannel | A reported seek checkpoint. The current SN updater reports the published PChannel RecoveryCP under each active VChannel; DataCoord's stored report can lag. |
+| L0 `DmlPosition` | One L0 segment | The segment checkpoint registered with its files through `SaveBinlogPaths`; not proof that every message in the channel prefix is recoverable. |
+| `transform_materialized_time_tick` (`M`) | VChannel | The L0 materializer's completed boundary, persisted in VChannel metadata for replay suppression. It describes L0 output/registration, not L0-to-sealed-segment dispatch. |
+| DeleteCP | VChannel, with the requested partition scope | A query-recovery retention boundary derived from the applicable L0 inventory and seek position. It protects deletion sources needed for segment-load catch-up. |
+
+The current [checkpoint updater](../../internal/streamingnode/server/wal/vchannel/checkpoint_updater.go) does **not** compute RecoveryCP as `min(DataCoord VChannelCPs)`. RecoveryStorage tracks PChannel message completion directly, then the updater periodically reports that published position. Thus `RecoveryCP=200` and a still-stored `VChannelCP=180` can describe the same PChannel at different reporting stages. Flushing one VChannel or registering one L0 is insufficient to advance the complete PChannel prefix. Conversely, an L0 materialization boundary need not advance across a period with no relevant work merely to equal RecoveryCP.
+
+**DeleteCP protects retained query-side data, not WAL durability.** [GetQueryVChanPositions](../../internal/datacoord/handler.go) computes it as follows:
+
+```text
+Applicable valid L0 segments exist:
+    DeleteCP = minimum StartPosition of those L0 segments
+No applicable valid L0 segments:
+    DeleteCP = VChannel seekPosition
+```
+
+The seek position normally comes from DataCoord's VChannel checkpoint; when absent, the implementation falls back to segment positions or the collection start. Therefore "no active L0" usually makes DeleteCP equal VChannelCP, but "no recent deletes" does not: an older outstanding L0 still holds the retention boundary back.
+
+For example, an L0 spanning `[100,130]` contains a PK delete at 115 and is already durable, but its deletion has not yet been distributed into sealed segment S's persisted deltas. Loading S can still require that L0 or the corresponding retained stream records. `DeleteCP=100` protects this source; advancing the cleanup boundary to 130 just because the L0 was written could retire it before S has another durable representation. A channel may seek streaming at 130 after loading the L0 inventory: **DeleteCP=100 does not itself request WAL replay from 100.** Also, this one L0's endpoint does not establish durability of every channel message through 130.
+
+DeleteCP conservatively follows outstanding L0 distribution needs; it is not the proposed continuous dispatch cursor `C`, since current PK-delete L0 scheduling does not establish that ordered-prefix contract. Actual cleanup is target-driven: after the target becomes serviceable, `SyncTargetVersion` passes DeleteCP to the Delegator buffer's [UnRegister](../../internal/querynodev2/delegator/deletebuffer/list_delete_buffer.go), subject to pins and block-retention rules. This retires eligible buffered records/L0 references, not the serving segment's applied DeletedRecord. A newly synced L0 alone neither clears this buffer nor reloads deletes into already-serving segments.
+
+**Tracker completion and Summary confirmation jointly bound RecoveryCP.** The [message Ack design](design_docs/wal/message_ack.md) tracks retained handles for required persistence consumers; broadcast messages also require the consuming-side Coordinator acknowledgement. This is not a wait for QN expression application. Later work may complete before earlier work, but completion cannot cross a hole. Illustratively:
+
+```text
+Published RecoveryCP: 50
+Work covering (50,100]:   unfinished
+Work covering (100,110]:  complete
+Work covering (110,150]:  complete
+=> The complete recovery prefix cannot advance past the unfinished work.
+```
+
+These intervals illustrate message dependencies, not a requirement that actual SyncTasks partition time into adjacent ranges. Summary independently copies and persists the compact records it needs; it does not keep the same consumer handles alive. [RecoveryStorage](../../internal/streamingnode/server/wal/recovery/recovery_storage_impl.go) selects `Tracker.CheckpointThrough(WALSummary.LastAcked())`: even if Tracker has completed through 150, Summary confirmation through 120 caps the candidate at a completed WAL point no later than 120. The point's MessageID and TimeTick remain a pair. Required component snapshots and checkpoint metadata must then be successfully persisted before that candidate becomes the published RecoveryCP. One successful SyncTask is only one prerequisite.
+
+**L0 recovery distinguishes registered files from persisted materialization progress.** The current ordering is:
+
+```text
+Write and register all output groups for the captured L0 batch
+  -> install dirty VChannelMeta.transform_materialized_time_tick
+  -> release the batch's retained WAL handles
+  -> persist component snapshots before publishing an eligible RecoveryCP
+```
+
+The [WAL materializer](../../internal/streamingnode/server/wal/vchannel/l0materializer/wal.go) initializes its replay filter from persisted `M`. The [recovery publisher](../../internal/streamingnode/server/wal/recovery/recovery_background_task.go) persists component state before exposing checkpoint advancement. Two different crash cases explain why an older RecoveryCP does not always cause duplicate L0 output:
+
+| State observed after recovery | Result for replayed deletes at 110 and 120 |
+|---|---|
+| RecoveryCP=100; persisted `M=130` | WAL replay may encounter them, but the L0 materializer skips already-covered work before buffering; it does not resync them. Other dependencies or Summary may have held the global prefix back. |
+| RecoveryCP=100; files through 130 were registered, but persisted `M` is still 100 | The recovered materializer lacks the completion proof and can buffer/materialize those deletes again, producing repeated physical output. |
+
+The second case is an acknowledged crash/partial-failure window, not a physical exactly-once guarantee. Mere reporting lag during uninterrupted execution does not itself rerun the work. DeleteCP cannot substitute for `M` to suppress write-side replay. Likewise, legacy PK-delete deduplication in query-side DeletedRecord is not a general license to execute a predicate/update twice: this proposal must enforce its range and duplicate-handling contract before ordered expression execution.
+
+**WALSummary has its own PChannel-scoped chunks and manifest.** It is a compact recovery store, not another copy of every full insert payload. Current sections retain insert facts such as positions, TimeTicks and returned IDs, idempotency information, and actual Delete transform records. The [Summary design](design_docs/wal/summary.md) and [Summary protobuf definitions](../../pkg/proto/streaming.proto) distinguish:
+
+```text
+One PChannel's Summary manager
+  -> many immutable chunk objects over time
+       -> per-VChannel sections inside each chunk
+  -> a PChannel Summary manifest indexing the retained chunks and coverage
+```
+
+A chunk batches Summary records into an object in S3/MinIO; it is neither one permanent object per PChannel nor a segment raw-data chunk or L0 delta file. Chunks can upload independently, but confirmation requires recoverable continuous coverage. The manifest records chunk identities, sizes, time ranges, per-VChannel section locations, and complete coverage, including covered messages with no stored Summary payload. `LastAcked` describes this recoverable coverage, not L0 dispatch or QN apply progress.
+
+"Manifest" is not restricted to segment metadata. Summary uses one complete PChannel manifest per writer term, updated within that term; a new term can reference inherited immutable chunks without copying them. This is a different format and lifecycle from the segment manifest that describes column groups/data files. Do not infer that they share publication or GC protocols merely because both are called manifests.
+
+**Design implication.** Retain the disjoint responsibilities `<=T`, `(T,H]`, and `>H` from Section 9.3.5. None of DeleteCP, a single L0 checkpoint, or an observed file alone proves the complete historical inventory needed to establish `H`. These existing mechanisms also do not replace the proposed VChannel complete-delta-prefix publication contract in Section 9.7.
 
 ### 9.4 Predicate L0 dispatch: coarse scope without ingress segment associations
 
