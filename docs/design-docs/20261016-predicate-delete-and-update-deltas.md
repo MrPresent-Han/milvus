@@ -1,12 +1,12 @@
 # Predicate Deletes and Delta-Based Updates
 
-> **Frozen real-time design baseline — 2026-10-27.** The design body below is preserved from revision `94530c48ce3502b8fc212720630522766ee4913e`; freezing does not resolve its open questions or mark it implemented. Here, "real-time" includes its asynchronous historical replay plus synchronous live-apply design, not synchronous execution before WAL acknowledgement.
+> **Real-time design baseline — frozen 2026-10-27, scoped amendments 2026-10-29.** The original design body is preserved from revision `94530c48ce3502b8fc212720630522766ee4913e`, except for the explicitly reopened scheduling clarification in Section 9.2.8 and SET-only scope/Proxy-sugar clarification in Section 10.8.1, with corresponding scope references updated. Other open questions remain unresolved; this is not an implemented feature. Here, "real-time" includes its asynchronous historical replay plus synchronous live-apply design, not synchronous execution before WAL acknowledgement.
 >
-> Continue in the [active follow-up design](20261027-predicate-delete-and-update-deltas-async.md), initially all-async and now narrowed to real-time PK updates plus asynchronous predicate deletes. Do not fold the follow-up's changed semantics back into this baseline. Revisions to this frozen design require an explicit decision to reopen it.
+> The [separate follow-up design](20261027-predicate-delete-and-update-deltas-async.md) records real-time PK updates plus asynchronous predicate deletes. Its changed semantics are not adopted here. The 2026-10-29 amendments return to the synchronous-live predicate-delete path to settle best-effort compaction statistics and fallback, and narrow native UPDATE to INT/ARRAY constant replacement with explicitly non-atomic Proxy sugar; other baseline sections remain frozen unless explicitly reopened.
 
 Date: 2026-10-16
 
-Discussion checkpoint: 2026-10-27
+Discussion checkpoint: 2026-10-27; scoped scheduling and SET-only/Proxy-sugar clarifications: 2026-10-29
 
 ## Core system benefits
 
@@ -65,7 +65,7 @@ The local pipeline is not a complete replacement for the distributed delete prot
 - **Use a cumulative deletion baseline after Consolidation.** `base@T` and `delete@T` are the field-value state and cumulative deletion state after complete, ordered execution of all applicable deltas through `T`, including updates, PK deletes, and predicate deletes. `delete@T` is one segment-level accumulated bitmap without per-row timestamps; deletes after `T` retain timestamps for snapshot visibility. Each consolidation round reads the old bitset and writes a new complete immutable bitset, even if unchanged, publishing it with all effectively updated columns and the shared complete boundary. Do not introduce an incremental-bitmap chain, a no-change file-reuse optimization, or partially folded update columns. See Section 9.1.7.
 - **Coordinate all delta types at publication.** Reuse PK-delete sync trigger categories, but use a common per-VChannel sync cut across PK deletes, predicate deletes, and updates. Atomically advance `delta_prefix_barrier[v]` only over a complete, durably published prefix; L0 delta compaction must not consume independently visible partial files. Sparse types must also sync through the cut; small-file amplification is an explicit cost; see Sections 9.7.1–9.7.2.
 - **Publish ranges through a dedicated VChannel interface.** Keep the L0 segment storage representation, but introduce a separate `PublishDeltaPrefix` contract rather than broaden the single-segment `SaveBinlogPaths` RPC. New ranges must extend the current prefix without gaps or overlap; already-covered ranges return `RangeApplied` without republishing. SN recovery reads each VChannel's published prefix from MixCoord before resuming materialization. These are agreed contracts, not implemented APIs; see Sections 9.7.3–9.7.4.
-- **Keep assignment capability deliberately small.** Represent an assignment as `field_id + value_expr`, initially admitting only typed literals, including explicit NULL for supported nullable fields. The long-term core adds same-row field references and basic arithmetic; a few deterministic built-ins may be added for demonstrated needs. Full SQL expression parity is not a goal; see Sections 2.10 and 10.8.
+- **Keep assignment capability deliberately small.** Represent an assignment as `field_id + value_expr`, initially admitting only final INT/ARRAY values, including explicit NULL for supported nullable fields. Proxy-side read/compute/SET sugar does not add native increment or append semantics and does not guarantee lossless concurrent accumulation. The long-term core adds same-row field references and basic arithmetic; a few deterministic built-ins may be added for demonstrated needs. Full SQL expression parity is not a goal; see Sections 2.10 and 10.8–10.8.1.
 - **Separate assignment evaluation without duplicating a complete execution framework.** Delete and update share the WHERE contract; update alone computes assigned values and applies field patches. Phase-one constants require only filling selected rows, not a general value-expression executor. Reuse suitable type and field-access infrastructure while keeping WHERE and SET capability allowlists independent; see Section 9.6.1.
 - **Preserve field-level patch semantics under concurrency.** Independent patches to different columns retain both changes; assignments to the same row and column resolve in committed logical mutation order. Predicate evaluation and patch application must observe earlier applicable mutations consistently across online execution, load/recovery, and compaction; see Section 10.5.
 - **Keep versioned field values and correct base filtering results.** Reuse the base scalar index or raw chunks, remove old matches for rows with snapshot-visible updates to the referenced field, and supplement matches evaluated against their latest visible values. Correct value-dependent evaluation before logical combination or candidate pruning, including the WHERE of subsequent mutations. Initially, scan updated-field values without requiring a separate delta index; see Sections 10.6–10.7 and the industry comparison in Section 2.9.
@@ -898,6 +898,23 @@ Remaining work is to define the RPC name and request/response fields, coherent c
 
 This checkpoint settles the **statistics source, progress-bound observation model, collection-interface boundary, and hit-independent burden signal**, not the final scheduling policy, compaction-side expression evaluator in Section 9.1, or durable expression replay. No code implementation is authorized or implied by settling this part of the design.
 
+#### 9.2.8 Agreed sync-path policy: best-effort deleted-count collection and fallback
+
+Discussion checkpoint: **2026-10-29**. Retain QN deleted-count observations for the synchronous-live predicate-delete design. Unlike the separate async proposal, this path executes predicates on QN and can observe their applied deletion effects.
+
+For an otherwise eligible, non-dropped Flushed compaction candidate, MixCoord should use a valid cumulative deleted-count observation from a loaded QN copy when available. A loaded collection provides an opportunity to collect it, not a guarantee that every candidate is resident: partition scope, loading, handoff, or node movement can leave a candidate without an available observation. Flushed and loaded are different states.
+
+| Observation availability | Scheduling behavior |
+| --- | --- |
+| Valid observation for the candidate's segment incarnation and apply progress | Use the cumulative deleted-row count and matching physical-row denominator as a reclamation-ratio hint, alongside existing scheduling conditions |
+| Collection/target not loaded, report unavailable, or observation no longer usable | Fall back to existing applicable scheduling conditions; do not wait for QN statistics or load the segment solely to obtain them |
+
+Keep the dedicated independent polling and bounded in-memory cache from Section 9.2.5. Best effort does not require a synchronous RPC for each scheduling decision. Do not sum replica reports or add overlapping cumulative observations to legacy delete counts.
+
+**Unknown is not zero.** Fallback retains existing applicable conditions, such as small-segment merging and supported file-count/size triggers; it must not interpret predicate-record `EntriesNum` as deleted rows. One predicate can match zero rows or most of a segment. This decision does not add a new predicate-count-only Mix trigger, change UPDATE's separate Consolidation policy, or settle the remaining predicate-backlog policy in Section 9.2.6.
+
+Missing statistics may delay ratio-driven space reclamation, but must not block otherwise eligible compaction or affect delete correctness. Every scheduled rewrite still consumes all applicable durable deltas independently of whether statistics were available. RPC details, freshness rules, polling parameters, and thresholds remain implementation work; no collection-admission change is made by this amendment.
+
 ### 9.3 Target-QN load phase: asynchronous history, synchronous live apply, and read admission
 
 Decision status: **access-path policy settled on 2026-10-19; asynchronous recovery direction recorded on 2026-10-20; fresh-load baseline and complete ordered suffix semantics settled on 2026-10-26; hybrid asynchronous historical replay, synchronous live application, and two-part query admission settled on 2026-10-27, superseding the unconditional segment-local `A >= Q` rule; not implemented**.
@@ -1568,7 +1585,7 @@ WHERE score < 60;
 
 The logical request is a predicate (`score < 60`) plus a field patch (`{age: 20, status: "active"}`). It need not be expanded into one client request per row or column. This is a request-semantics decision, not a requirement for one WAL record, an on-disk encoding, or statement-wide atomicity.
 
-**Initial assignment scope is constant values only.** Exclude `score = score + 10`, `a = b`, `version = version + 1`, and other assignments that depend on old field values. This restriction applies to `SET`, not to field access required to evaluate the supported `WHERE` predicate. Exact supported fields, types, and predicate combinations remain to be selected.
+**Initial assignment scope is constant values only.** Exclude `score = score + 10`, `a = b`, `version = version + 1`, and other assignments that depend on old field values. This restriction applies to `SET`, not to field access required to evaluate the supported `WHERE` predicate. The 2026-10-29 amendment in Section 10.8.1 narrows UPDATE target types to INT/ARRAY; older examples using other types illustrate the general patch semantics, not additional phase-one admission. Detailed field eligibility, ARRAY element-type support, and predicate combinations remain separate admission decisions.
 
 The **2026-10-21** scope clarification includes explicit NULL assignment to supported nullable fields. A field absent from the patch remains unchanged; an explicitly assigned NULL clears its value. Section 9.6 records the extensible `value_expr` representation, and Section 10.8 distinguishes the constant-only first phase from the small long-term core.
 
@@ -1835,14 +1852,14 @@ Discussion checkpoint: **2026-10-21**. The long-term target is **simple, determi
 
 | Capability | Example | Scope decision |
 | --- | --- | --- |
-| Constant assignment, including explicit NULL for nullable fields | `status = 'active'`, `tag = NULL` | Phase-one core |
+| Constant assignment to INT/ARRAY, including explicit NULL for supported nullable fields | `count = 18`, `items = [1,2,3]`, `count = NULL` | Phase-one core; narrowed on 2026-10-29 |
 | Same-row field reference/copy | `backup_score = score` | Long-term core extension; not phase one |
 | Basic numeric arithmetic | `count = count + 1`, `score = score * 0.9` | Long-term core extension; precise operator/type combinations require validation |
 | A few deterministic built-ins | `coalesce(score, 0)`, `lower(name)` | Add individually only for demonstrated needs; examples are not a committed function library |
 
 **Non-goals for feature completion:** CASE and elaborate conditional programs, complex JSON/array transformations, arbitrary UDFs, subqueries, aggregates, joins/cross-table computation, and external/model execution. Preserve room for deliberate future extensions without requiring these capabilities to finish delta-based updates. Do not persist calls whose result depends on random state, the evaluator's current clock, or an external service as replayable assignment expressions. Complex backfill computation can remain outside this evaluator and supply values through a separately defined write workflow.
 
-**Phase-one cell granularity (2026-10-22):** support whole-cell constant replacement for eligible scalar fields, including JSON, strings, and scalar arrays; exclude JSON-path updates, array-element updates, and append operations. Storage-specific partial-cell optimizations, such as [MySQL's conditional binary-JSON partial updates](https://dev.mysql.com/doc/refman/8.4/en/json.html#json-partial-updates), are deliberately deferred and are not assumed benefits of this delta design.
+**Phase-one cell granularity (2026-10-29 amendment):** support whole-cell constant replacement for eligible INT/ARRAY fields. This supersedes the 2026-10-22 inclusion of JSON and string target fields. Exclude native increment, append, array-element updates, JSON-path updates, and other old-value-dependent assignments. Section 10.8.1 separates optional Proxy sugar from these native capabilities. Storage-specific partial-cell optimizations, such as [MySQL's conditional binary-JSON partial updates](https://dev.mysql.com/doc/refman/8.4/en/json.html#json-partial-updates), remain deferred and are not assumed benefits of this delta design.
 
 **Semantic and admission constraints:**
 
@@ -1852,6 +1869,32 @@ Discussion checkpoint: **2026-10-21**. The long-term target is **simple, determi
 - Do not widen the allowlist because the wire format can represent a node. Each admitted combination needs a stable, version-compatible meaning and cross-evaluator verification. Replaying `age = age + 1` twice over an already-updated state would change the result: application/progress accounting must prevent that duplicate effect. This is distinct from client retries creating separate committed requests, and no new exactly-once protocol is claimed.
 
 **Rationale:** richer expressions increase the semantic surface that every execution and recovery path must preserve. The primary benefit target remains avoiding full-row reconstruction/reinsertion and redundant work on unchanged vectors and indexes; it does not require a general SQL assignment engine. Phase one remains constant-only even though the message shape can express later extensions.
+
+#### 10.8.1 Agreed phase-one SET-only core and non-atomic Proxy sugar
+
+Discussion checkpoint: **2026-10-29**. Two boundaries are settled:
+
+1. **Native UPDATE accepts final values, not transformations.** Phase one admits whole-cell SET for eligible INT/ARRAY fields, subject to existing identity/key restrictions and the versioned NULL contract. It does not evaluate increment, append, or general RHS expressions against an old cell. An extensible message representation does not widen this allowlist. This target-type decision is independent of the predicate's field/type allowlist.
+2. **Proxy sugar is read-modify-write, not an atomic increment/append primitive.** Proxy may retrieve only the target column's value, compute the replacement locally, and submit that final value through SET. It need not retrieve unchanged columns or reconstruct the whole row. WAL and downstream application/replay carry the computed SET value, not an instruction to recompute append/increment. Such sugar requires queryable, loaded target data; direct SET adds no old-value retrieval step. This distinction does not change other native admission prerequisites.
+
+**Concurrent requests can lose an intended increment or append:**
+
+```text
+Counter initially 10:
+  A reads 10 and computes 11; B also reads 10 and computes 11.
+  Apply A: SET 11; apply B: SET 11.
+  Final value: 11, not the 12 expected from two atomic increments.
+
+Array initially [1,2]:
+  A reads [1,2] and computes [1,2,3].
+  B reads [1,2] and computes [1,2,4].
+  Apply A's SET, then B's SET.
+  Final value: [1,2,4]; A's intended append is overwritten.
+```
+
+Both outcomes obey the native SET ordering contract. Strong reads do not protect the gap between reading and writing; ordered WAL/application cannot recover an operation that Proxy has already reduced to a stale replacement value. Do not advertise this wrapper as an atomic counter, atomic append, or lossless concurrent accumulation. The lack of an atomic read-modify-write guarantee does not weaken complete publication of each individual SET mutation.
+
+**Industry basis:** [MongoDB's atomicity documentation](https://www.mongodb.com/docs/manual/core/write-operations-atomicity/) distinguishes overwriting SETs from conditional updates and atomic increments. Adopt that semantic distinction; adapt the optional wrapper to target-column retrieval plus constant SET. Do not add CAS, transactions, or native arithmetic as an implicit phase-one requirement. This proposal does not redefine or remove existing partial-upsert CAS behavior. Concrete wrapper API/admission details and ARRAY element-type support remain implementation/design follow-ups; this is not a claim of implemented support.
 
 ### 10.9 UpdatesRecord: B-tree offset directories, deque histories, and owned payloads
 
