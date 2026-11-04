@@ -1,5 +1,7 @@
 # 异步 Predicate Delete 与实时 PK 点更新：正确性与逻辑设计
 
+> 历史方案。当前设计见 [Predicate delete 与 PK inplace-update：Phase 1 中文设计](20261030-sync-predicate-delete-and-point-update-design-zh.md)：两类操作均实时同步 apply，不做 Consolidation。以下正文保留此前异步方案及讨论。
+
 日期：2026-10-28
 
 状态：设计整理稿。本文区分已确定的设计选择、仍待讨论的逻辑问题，以及已定方向下尚需完成的实现对接；不表示功能已经实现或通过验证。
@@ -26,6 +28,8 @@
 3. **降低局部更新的后台维护成本。** Delta Consolidation 保持行布局，重写受影响的列，复用未修改的数据与索引，避免仅因 scalar 更新而重建向量数据及 ANN index。
 
 前两项针对前台，第三项针对后台。这些是设计目标，不是已测得的性能结论。
+
+[Benefit example: updating one integer field for 10 of 1,000,000 rows avoids partial-upsert-induced raw-vector cache population.](20261027-predicate-delete-and-update-deltas-async.md#example-sparse-scalar-updates-avoid-raw-vector-cache-population)
 
 ### 1.2 行业依据与采用边界
 

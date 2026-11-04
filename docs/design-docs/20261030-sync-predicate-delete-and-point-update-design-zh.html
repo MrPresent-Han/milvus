@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="description" content="Milvus predicate delete 与 PK inplace-update：功能、收益、数据流、模块契约，以及当前实现和必要改造。"><title>Predicate delete 与 PK inplace-update · Phase 1 设计</title><style>
+:root{color-scheme:light;--ink:#1e303a;--muted:#5d707b;--accent:#087476;--line:#dce4e8;--sidebar:252px;--header:56px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+*{box-sizing:border-box}html{scroll-padding-top:0}body{margin:0;background:#fff;color:var(--ink);font-size:16px;line-height:1.9}a{color:#086f7d;text-underline-offset:3px;text-decoration-thickness:1px}a:hover{color:#004a55}button{font:inherit;cursor:pointer}a:focus-visible,button:focus-visible,[tabindex="0"]:focus-visible{outline:3px solid #328da6;outline-offset:3px}h1,h2,h3,h4{line-height:1.5;letter-spacing:-.015em;scroll-margin-top:82px}h1{font-size:34px;font-weight:700;margin:4px 0 9px}h2{font-size:26px;margin:64px 0 24px;padding-top:26px;border-top:1px solid #cbdadd}h3{font-size:21px;margin:36px 0 18px}h4{font-size:17px;margin:31px 0 12px;color:#315667}h1:focus,h2:focus,h3:focus,h4:focus{outline:none}p{margin:16px 0}strong{font-weight:650}ul,ol{padding-left:25px}li{margin:8px 0}code,pre{font-family:"SFMono-Regular",Consolas,"Liberation Mono","PingFang SC",monospace}code{font-size:.88em;padding:2px 4px;border-radius:3px;background:#eff3f5;overflow-wrap:anywhere}pre{padding:18px 20px;border-radius:5px;background:#f1f5f7;line-height:1.75;font-size:13px;overflow-x:auto;margin:22px 0}pre code{font-size:inherit;padding:0;background:none;overflow-wrap:normal;color:#254453}hr{border:0;border-top:1px solid var(--line);margin:42px 0 20px}
+.topbar{height:var(--header);position:fixed;inset:0 0 auto;background:#fff;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 25px;gap:18px;z-index:30}.brand{font-size:13px;font-weight:750;letter-spacing:2px;text-decoration:none;color:#244353}.top-label{font-size:12px;color:var(--muted)}.tools{margin-left:auto;display:flex;gap:8px}.button{padding:5px 12px;border:1px solid #d4dfe3;border-radius:4px;background:white;font-size:12px;line-height:1.6;color:#48616d}.button:hover{background:#edf6f5}.menu{display:none}.sidebar{position:fixed;left:0;top:var(--header);bottom:0;width:var(--sidebar);overflow-y:auto;padding:31px 19px 35px;background:#f7f9fa;border-right:1px solid var(--line);z-index:25}.toc-label{font-size:11px;letter-spacing:1px;color:#70818b;margin:0 10px 18px}.toc,.module-nav{list-style:none;padding:0;margin:0}.toc>li{margin:7px 0}.chapter-nav{display:flex;gap:11px;text-decoration:none;font-size:13px;line-height:1.7;padding:10px;border-radius:4px;color:#39535f}.chapter-nav>span{font-size:11px;color:#80929b;padding-top:2px;flex-shrink:0}.chapter-nav.active{color:#006c70;background:#e6f2f1;font-weight:650}.module-nav{margin:4px 0 0 25px}.module-nav li{margin:0}.module-nav a{display:block;font-size:12px;color:#647984;line-height:1.7;text-decoration:none;padding:8px 10px;border-left:1px solid #d5e1e5}.module-nav a.active{color:#006d72;border-left-color:#258f92;background:#edf5f5}.nav-footer{margin:28px 10px 0;padding-top:18px;border-top:1px solid var(--line);font-size:11px;color:#7a8c96}.veil{display:none}.skip{position:fixed;top:-100px;left:15px;z-index:80;background:white;padding:8px 12px}.skip:focus{top:8px}
+.main{margin-left:var(--sidebar);padding:calc(var(--header) + 44px) 54px 50px}.document{max-width:980px;margin:0 auto}.document-meta{font-size:12px;color:#7a8b94;margin:0 0 36px}.document>h2:first-of-type{margin-top:0;border-top:0;padding-top:0}.contract{border-left:3px solid #3b9293;background:#f0f7f7;padding:12px 17px;line-height:1.85}.table-wrap{max-width:100%;overflow-x:auto;border:1px solid var(--line);border-radius:4px;margin:22px 0}table{border-collapse:collapse;width:100%;text-align:left;font-size:14px;line-height:1.85}th{background:#edf3f5;font-weight:650;color:#294a59;padding:12px 15px;border-bottom:1px solid #d3e0e6;vertical-align:top}td{padding:12px 15px;border-bottom:1px solid #e4ebee;vertical-align:top;min-width:130px;overflow-wrap:anywhere}tr:last-child td{border-bottom:0}tbody tr:nth-child(even) td{background:#fafcfc}td:first-child{min-width:150px}th:first-child{width:23%}td code{font-size:12px}.footer{max-width:980px;margin:30px auto 0;font-size:12px;color:#758994}.footer a{overflow-wrap:anywhere}
+.architecture{margin:25px 0 30px;overflow-x:auto;border:1px solid #d6e2e7;border-radius:5px;padding:22px;background:#fbfdfd}.flow-start{display:grid;grid-template-columns:1fr 26px 1fr 26px 1fr;align-items:center;gap:8px;min-width:660px;max-width:720px;margin:0 auto 25px}.flow-box{padding:12px 10px;background:#fff;border:1px solid #cddfe5;border-radius:4px;font-size:13px;font-weight:650;text-align:center;line-height:1.55}.flow-box span{display:block;font-size:11px;font-weight:400;color:#687f8a;margin-top:5px}.wal{border-color:#8ab4b5;background:#edf7f6}.arrow{text-align:center;color:#7c9aa7;font-size:19px}.flow-lanes{display:grid;gap:18px;min-width:660px;border-top:1px solid #e3ebee;padding-top:20px}.flow-lane{display:grid;grid-template-columns:74px 1fr 22px 1fr 22px 1fr;gap:6px;align-items:center}.lane-label{font-size:12px;color:#42747f;line-height:1.7}.flow-return{min-width:660px;text-align:center;font-size:12px;color:#497483;padding:18px 0 2px}.architecture figcaption{font-size:11px;color:#7b8f98;padding-top:13px;min-width:660px}
+@media(min-width:1550px){.main{padding-left:80px;padding-right:80px}.document{max-width:1000px}}
+@media(max-width:1100px){:root{--sidebar:226px}.main{padding-left:32px;padding-right:32px}.sidebar{padding-left:12px;padding-right:12px}h1{font-size:30px}}
+@media(max-width:800px){:root{--header:52px}.topbar{padding:0 16px;gap:12px}.top-label{font-size:11px}.menu{display:block}.sidebar{width:280px;transform:translateX(-100%);transition:transform .12s ease}.nav-open .sidebar{transform:translateX(0)}.nav-open .veil{display:block;position:fixed;inset:var(--header) 0 0;background:#20384455;z-index:20}.main{margin-left:0;padding:calc(var(--header) + 28px) 23px 35px}h1{font-size:29px}h2{font-size:24px;margin-top:46px;padding-top:22px}h3{font-size:20px;margin-top:30px}.document-meta{margin-bottom:28px}.architecture{padding:16px}pre{font-size:12px;padding:16px}.contract{padding:11px 14px}}
+@media(max-width:440px){body{font-size:15px}.top-label{display:none}.main{padding-left:18px;padding-right:18px}h1{font-size:27px}h2{font-size:22px}h3{font-size:19px}h4{font-size:16px}.table-wrap table{min-width:510px}td,th{padding:10px 12px}.button{padding:5px 10px}.architecture{margin-left:0;margin-right:0}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important}}
+@page{size:A4;margin:17mm 16mm}
+@media print{body{font-size:10pt;line-height:1.75;color:#182e39;background:white;print-color-adjust:exact;-webkit-print-color-adjust:exact}.topbar,.sidebar,.veil,.skip,.footer{display:none!important}.main{margin:0;padding:0}.document{max-width:none}h1{font-size:25pt}h2{font-size:17pt;margin-top:28pt;padding-top:17pt}h3{font-size:13pt;margin-top:22pt}h4{font-size:11pt}h1,h2,h3,h4{break-after:avoid}p{orphans:3;widows:3}.document-meta{font-size:8pt;margin-bottom:22pt}.table-wrap{overflow:visible;border-radius:0}table{font-size:8.5pt;min-width:0!important}td,th{padding:7pt;min-width:0!important}tr{break-inside:avoid}thead{display:table-header-group}pre{font-size:8pt;white-space:pre-wrap;overflow:visible;overflow-wrap:anywhere;padding:10pt 12pt}pre code{white-space:pre-wrap;overflow-wrap:anywhere}.architecture{break-inside:avoid;overflow:visible;padding:10pt}.flow-start,.flow-lanes,.flow-return,.architecture figcaption{min-width:0}.flow-start{gap:4pt;grid-template-columns:1fr 16pt 1fr 16pt 1fr}.flow-lane{grid-template-columns:46pt 1fr 12pt 1fr 12pt 1fr;gap:3pt}.flow-box{font-size:8pt;padding:8pt 4pt}.flow-box span{font-size:7pt}.lane-label,.flow-return{font-size:7.5pt}.arrow{font-size:12pt}.architecture figcaption{font-size:7pt}.contract{padding:8pt 11pt}a{color:#1e5966;text-decoration:none}}
+
+.design-choice{border-left:4px solid #b68149;background:#fff5e9;padding:14px 18px;margin:22px 0;color:#674627;line-height:1.85}
+.problem-figure{margin:24px 0 22px;break-inside:avoid}.problem-figure a{display:block}.problem-figure img{display:block;width:100%;height:auto;border-radius:7px}.problem-figure figcaption{color:#6c7e89;font-size:12px;line-height:1.8;margin-top:8px}.problem-figure a:focus-visible{border-radius:7px}
+.flow-start,.flow-lanes,.flow-return,.architecture figcaption{min-width:0}
+.flow-box{overflow-wrap:anywhere}
+.flow-branch{font-size:11px;color:#627d88;text-align:center;margin:0 0 15px}
+@media(max-width:600px){.flow-lane{grid-template-columns:1fr;gap:6px}.lane-label{padding-top:8px;font-weight:650}.flow-lane>.arrow{transform:rotate(90deg);height:23px;line-height:23px}.flow-box{padding:10px}.flow-start{grid-template-columns:1fr 18px 1fr 18px 1fr;gap:3px}.flow-start .flow-box{font-size:12px;padding:10px 5px}.flow-start .flow-box span{font-size:10px}.flow-return{font-size:11px;text-align:left;padding-top:15px}.flow-branch{text-align:left}.architecture figcaption{line-height:1.7}}
+@media print{.flow-lane{grid-template-columns:46pt 1fr 12pt 1fr 12pt 1fr}.flow-lane>.arrow{transform:none;height:auto}.flow-start{grid-template-columns:1fr 16pt 1fr 16pt 1fr}.flow-branch{font-size:7pt}}
+</style></head>
+<body><a class="skip" href="#document">跳至正文</a><header class="topbar"><a href="#top" class="brand">MILVUS</a><span class="top-label">Predicate delete 与 PK inplace-update</span><div class="tools"><button class="button menu" id="menu" type="button" aria-expanded="false" aria-controls="sidebar">目录</button><button class="button" id="print" type="button">打印 / PDF</button></div></header><nav class="sidebar" id="sidebar" aria-label="文档目录"><p class="toc-label">设计文档</p><ol class="toc"><li><a class="chapter-nav" href="#section-1"><span>1</span>功能定义</a></li><li><a class="chapter-nav" href="#section-2"><span>2</span>解决的问题与收益</a></li><li><a class="chapter-nav" href="#section-3"><span>3</span>顶层设计：一条逻辑时间线，两条消费路径</a></li><li><a class="chapter-nav" href="#section-4"><span>4</span>功能约束与模块职责</a></li><li><a class="chapter-nav" href="#section-5"><span>5</span>模块详细设计与实现改造</a><ul class="module-nav"><li><a href="#section-5-1">5.1 Proxy / WAL</a></li><li><a href="#section-5-2">5.2 L0 delta</a></li><li><a href="#section-5-3">5.3 DN full rewrite</a></li><li><a href="#section-5-4">5.4 Delegator</a></li><li><a href="#section-5-5">5.5 Segment</a></li></ul></li></ol><p class="nav-footer">Phase 1 · 中文<br>2026-11-04</p></nav><div id="veil" class="veil" aria-hidden="true"></div><main class="main"><article class="document" id="document"><h1 id="top" tabindex="-1">Predicate delete 与 PK inplace-update</h1>
+<p class="document-meta">Phase 1 设计 · 2026-11-04 · 设计稿，尚未实现</p>
+<h2 id="section-1" tabindex="-1">1. 功能定义</h2>
+<p>本设计为 Milvus 引入 predicate delete 和 PK inplace-update。以下用 SQL 示意：</p>
+<pre><code class="language-sql">-- Predicate delete
+DELETE FROM t WHERE age == 18 AND checked == false;
+
+-- PK inplace-update
+UPDATE t SET checked = true, name = &#39;reviewed&#39; WHERE pk == 100;
+
+-- Batch PK inplace-update
+UPDATE t SET checked = true, name = &#39;reviewed&#39; WHERE pk IN [100, 200, 300];
+</code></pre>
+<h2 id="section-2" tabindex="-1">2. 解决的问题与收益</h2>
+<h3 id="section-2-1" tabindex="-1">2.1 Predicate delete：省去前置 Query 与大批量 PK 搬运</h3>
+<p>当前非 PK delete-by-expr 先 Query 出命中 PK，再将 PK 列表写入 WAL。一条很短的表达式，可能展开成数千万个 PK，在查询侧、Proxy 和 StreamingNode 之间传输、缓冲。</p>
+<figure class="problem-figure"><a href="assets/predicate-delete-and-point-update/delete-pk-expansion.svg" target="_blank" rel="noopener" aria-label="查看大图：现有 delete-by-expr 将一条表达式展开成大量 PK，再传输和缓冲这些 PK。"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5NjAiIGhlaWdodD0iNDE4IiB2aWV3Qm94PSIwIDAgOTYwIDQxOCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgogIDx0aXRsZSBpZD0idGl0bGUiPueOsOaciSBkZWxldGUtYnktZXhwciDnmoQgUEsg5bGV5byA5oiQ5pysPC90aXRsZT4KICA8ZGVzYyBpZD0iZGVzYyI+5LiA5p2h5Yig6Zmk6KGo6L6+5byP5YWI6YCa6L+HIFF1ZXJ5IOWPmOaIkOWkp+mHj+WRveS4rSBQS++8jOWGjee7jyBQcm94eSDlhpnlhaUgV0FM77yM5bm26L+b5YWlIFN0cmVhbWluZ05vZGUg55qEIGRlbGV0ZUJ1ZmZlcuOAguS8oOi+k+WSjOe8k+WGsumHj+maj+WRveS4reihjOaVsOWinumVv+OAgjwvZGVzYz4KICA8ZGVmcz48bWFya2VyIGlkPSJhcnJvdyIgbWFya2VyV2lkdGg9IjEwIiBtYXJrZXJIZWlnaHQ9IjEwIiByZWZYPSI4IiByZWZZPSI1IiBvcmllbnQ9ImF1dG8iPjxwYXRoIGQ9Ik0wIDBMOSA1TDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIxLjYiLz48L21hcmtlcj48L2RlZnM+CiAgPHJlY3Qgd2lkdGg9Ijk2MCIgaGVpZ2h0PSI0MTgiIHJ4PSIxMiIgZmlsbD0iI2Y3ZmFmYiIvPgogIDxnIGZvbnQtZmFtaWx5PSJQaW5nRmFuZyBTQyxNaWNyb3NvZnQgWWFIZWksc2Fucy1zZXJpZiIgZmlsbD0iIzI0M2U0YSI+CiAgICA8dGV4dCB4PSIzMiIgeT0iNDQiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI2MDAiPuS4gOS4quWIoOmZpOadoeS7tu+8jOS4uuS7gOS5iOS8muS6p+eUn+Wkp+mHj+aVsOaNruaQrOi/kO+8nzwvdGV4dD4KICAgIDxyZWN0IHg9IjMyIiB5PSI3OCIgd2lkdGg9IjIzNiIgaGVpZ2h0PSIxMTIiIHJ4PSI4IiBmaWxsPSIjZTdmM2YxIiBzdHJva2U9IiM4OGI3YjQiLz4KICAgIDx0ZXh0IHg9IjUyIiB5PSIxMTIiIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI2MDAiPuS4gOadoSBleHByPC90ZXh0PgogICAgPHRleHQgeD0iNTIiIHk9IjE1MCIgZm9udC1zaXplPSIyMSIgZm9udC1mYW1pbHk9IlNGTW9uby1SZWd1bGFyLENvbnNvbGFzLG1vbm9zcGFjZSI+YWdlID09IDE4PC90ZXh0PgogICAgPHBhdGggZD0iTTI4MCAxMzRIMzI1IiBzdHJva2U9IiM3MTg3OTUiIHN0cm9rZS13aWR0aD0iMi41IiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93KSIvPgogICAgPHJlY3QgeD0iMzQyIiB5PSI3OCIgd2lkdGg9IjIwMiIgaGVpZ2h0PSIxMTIiIHJ4PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjYzRkNGRjIi8+CiAgICA8dGV4dCB4PSI0NDMiIHk9IjEyMCIgZm9udC1zaXplPSIyNCIgZm9udC13ZWlnaHQ9IjYwMCIgdGV4dC1hbmNob3I9Im1pZGRsZSI+UXVlcnk8L3RleHQ+CiAgICA8dGV4dCB4PSI0NDMiIHk9IjE1NyIgZm9udC1zaXplPSIyMSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+5p+l6K+i5ZG95LitIFBLPC90ZXh0PgogICAgPHBhdGggZD0iTTU1OCAxMzRINjA0IiBzdHJva2U9IiM3MTg3OTUiIHN0cm9rZS13aWR0aD0iMi41IiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93KSIvPgogICAgPHJlY3QgeD0iNjI0IiB5PSI3OCIgd2lkdGg9IjMwNCIgaGVpZ2h0PSIxMTIiIHJ4PSI4IiBmaWxsPSIjZmZmMGU3IiBzdHJva2U9IiNkNmEwN2YiLz4KICAgIDx0ZXh0IHg9IjY0NCIgeT0iMTEyIiBmb250LXNpemU9IjIyIiBmb250LXdlaWdodD0iNjAwIj5OIOS4qiBQSzwvdGV4dD4KICAgIDx0ZXh0IHg9IjY0NCIgeT0iMTQ5IiBmb250LXNpemU9IjIxIiBmb250LWZhbWlseT0iU0ZNb25vLVJlZ3VsYXIsQ29uc29sYXMsbW9ub3NwYWNlIj5bNywgMTksIDQyLCDigKZdPC90ZXh0PgogICAgPHBhdGggZD0iTTc3NiAyMDBWMjMxSDQ0NFYyNTkiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIyLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3cpIi8+CiAgICA8dGV4dCB4PSIzMiIgeT0iMjM1IiBmb250LXNpemU9IjIxIiBmaWxsPSIjOTA2MDQ2Ij7nu5Pmnpzpmo/lkb3kuK3ooYzmlbDlop7plb88L3RleHQ+CiAgICA8cmVjdCB4PSIzMiIgeT0iMjc3IiB3aWR0aD0iODk2IiBoZWlnaHQ9Ijc0IiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2Q2YTA3ZiIvPgogICAgPHRleHQgeD0iNDgwIiB5PSIzMjMiIGZvbnQtc2l6ZT0iMjMiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlByb3h5IOaOpeaUtiBQSyDihpIgV0FMIOS8oOi+kyDihpIgU3RyZWFtaW5nTm9kZSBkZWxldGVCdWZmZXI8L3RleHQ+CiAgICA8dGV4dCB4PSIzMiIgeT0iMzkxIiBmb250LXNpemU9IjIxIiBmaWxsPSIjNjE3OTg0Ij7npLrmhI/vvJrlvojnn63nmoTliKDpmaTmhI/lm77vvIzlj5jmiJDpnIDopoHkvKDovpPlkoznvJPlhrLnmoTlpKfmibnph48gUEvjgII8L3RleHQ+CiAgPC9nPgo8L3N2Zz4K" alt="现有 delete-by-expr 将一条表达式展开成大量 PK，再传输和缓冲这些 PK。" decoding="async"></a><figcaption>一条删除意图，被展开成随命中行数增长的 PK 列表。</figcaption></figure>
+<p>既有压测中，1 亿行、12 CU、并发 Search／Insert 下，删除 2,000 万行耗时 <strong>129.6 秒</strong>；Proxy memory working set 从 <strong>0.53 GiB</strong> 升至 <strong>1.41 GiB</strong>，StreamingNode 从 <strong>4.70 GiB</strong> 升至 <strong>9.51 GiB</strong>。<a href="experiments/20261016-bulk-delete/report.md">实验报告</a></p>
+<p>predicate delete 的预期收益是：<strong>省去前置 Query 和大批量 PK 传输，降低前台查询、网络与缓冲成本。</strong></p>
+<h3 id="section-2-2" tabindex="-1">2.2 PK inplace-update：避免未修改 raw data 的额外 cache 驻留</h3>
+<p>当前 partial-upsert 为补齐完整新行，需要 Query 旧行。即使只修改 <code>checked</code>，也可能读取未修改的 vector、VARCHAR；随机 PK 分散在不同 CacheCells 中，又会将这些行所在的整块 raw data 载入 cache。<strong>代价不止发生在请求执行期间：请求结束后，这些未修改数据仍可能占用内存。</strong></p>
+<figure class="problem-figure"><a href="assets/predicate-delete-and-point-update/upsert-cache-residency.svg" target="_blank" rel="noopener" aria-label="查看大图：随机更新少量行的小字段，旧行 Query 却会加载这些行所在的整块 raw-vector CacheCells。"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5NjAiIGhlaWdodD0iNDY2IiB2aWV3Qm94PSIwIDAgOTYwIDQ2NiIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgogIDx0aXRsZSBpZD0idGl0bGUiPuWwj+Wtl+auteabtOaWsOW8lei1t+acquS/ruaUuSByYXcgZGF0YSDnmoQgY2FjaGUg6am755WZPC90aXRsZT4KICA8ZGVzYyBpZD0iZGVzYyI+5Li65LqG5L+u5pS5IGNoZWNrZWTvvIxwYXJ0aWFsLXVwc2VydCDpnIDopoHor7vlj5blrozmlbTml6fooYzjgILpmo/mnLogUEsg5YiG5pWj5ZG95Lit5aSa5Z2XIENhY2hlQ2VsbHPvvIzmr4/lnZfkuK3nmoTmnKrkv67mlLkgcmF3IHZlY3RvciDkuZ/ooqvliqDovb3jgILor7fmsYLnu5PmnZ/lkI7ov5nkupvmlbDmja7ku43lj6/og73nlZnlnKggY2FjaGUg5Lit44CCPC9kZXNjPgogIDxkZWZzPjxtYXJrZXIgaWQ9ImFycm93IiBtYXJrZXJXaWR0aD0iMTAiIG1hcmtlckhlaWdodD0iMTAiIHJlZlg9IjgiIHJlZlk9IjUiIG9yaWVudD0iYXV0byI+PHBhdGggZD0iTTAgMEw5IDVMMCAxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzE4Nzk1IiBzdHJva2Utd2lkdGg9IjEuNiIvPjwvbWFya2VyPjwvZGVmcz4KICA8cmVjdCB3aWR0aD0iOTYwIiBoZWlnaHQ9IjQ2NiIgcng9IjEyIiBmaWxsPSIjZjdmYWZiIi8+CiAgPGcgZm9udC1mYW1pbHk9IlBpbmdGYW5nIFNDLE1pY3Jvc29mdCBZYUhlaSxzYW5zLXNlcmlmIiBmaWxsPSIjMjQzZTRhIj4KICAgIDx0ZXh0IHg9IjMyIiB5PSI0NCIgZm9udC1zaXplPSIyNSIgZm9udC13ZWlnaHQ9IjYwMCI+5Y+q5oOz5pS5IGNoZWNrZWTvvIzljbTor7vlhaXkuobmnKrkv67mlLnnmoTlrr3liJc8L3RleHQ+CiAgICA8cmVjdCB4PSIzMiIgeT0iNzciIHdpZHRoPSIyOTUiIGhlaWdodD0iNzgiIHJ4PSI4IiBmaWxsPSIjZTdmM2YxIiBzdHJva2U9IiM4OGI3YjQiLz4KICAgIDx0ZXh0IHg9IjE4MCIgeT0iMTI0IiBmb250LXNpemU9IjIzIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5TRVQgY2hlY2tlZCA9IHRydWU8L3RleHQ+CiAgICA8cGF0aCBkPSJNMzQxIDExNkgzODkiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIyLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3cpIi8+CiAgICA8cmVjdCB4PSI0MTAiIHk9Ijc3IiB3aWR0aD0iNTE4IiBoZWlnaHQ9Ijc4IiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2M0ZDRkYyIvPgogICAgPHRleHQgeD0iNjY5IiB5PSIxMDkiIGZvbnQtc2l6ZT0iMjMiIGZvbnQtd2VpZ2h0PSI2MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlF1ZXJ5IOWujOaVtOaXp+ihjDwvdGV4dD4KICAgIDx0ZXh0IHg9IjY2OSIgeT0iMTQwIiBmb250LXNpemU9IjIxIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5jaGVja2VkIO+8iyB2ZWN0b3Ig77yLIFZBUkNIQVIg77yLIOKApjwvdGV4dD4KICAgIDxwYXRoIGQ9Ik02NjkgMTY0VjE5NCIgc3Ryb2tlPSIjNzE4Nzk1IiBzdHJva2Utd2lkdGg9IjIuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdykiLz4KICAgIDx0ZXh0IHg9IjMyIiB5PSIyMTciIGZvbnQtc2l6ZT0iMjIiPumaj+acuiBQSyDliIbmlaPlkb3kuK3lpJrkuKogcmF3LXZlY3RvciBDYWNoZUNlbGxzPC90ZXh0PgogICAgPGcgZmlsbD0iI2U3ZWVmNSIgc3Ryb2tlPSIjYjBjM2QyIiBzdHJva2Utd2lkdGg9IjEuNSI+CiAgICAgIDxyZWN0IHg9IjMyIiB5PSIyNDIiIHdpZHRoPSIxNjQiIGhlaWdodD0iMTEwIiByeD0iNiIvPjxyZWN0IHg9IjIxNSIgeT0iMjQyIiB3aWR0aD0iMTY0IiBoZWlnaHQ9IjExMCIgcng9IjYiLz48cmVjdCB4PSIzOTgiIHk9IjI0MiIgd2lkdGg9IjE2NCIgaGVpZ2h0PSIxMTAiIHJ4PSI2Ii8+PHJlY3QgeD0iNTgxIiB5PSIyNDIiIHdpZHRoPSIxNjQiIGhlaWdodD0iMTEwIiByeD0iNiIvPjxyZWN0IHg9Ijc2NCIgeT0iMjQyIiB3aWR0aD0iMTY0IiBoZWlnaHQ9IjExMCIgcng9IjYiLz4KICAgIDwvZz4KICAgIDxnIHN0cm9rZT0iI2MzZDFkZCIgc3Ryb2tlLXdpZHRoPSIxIj48cGF0aCBkPSJNNDQgMjY0SDE4NE00NCAyODZIMTg0TTQ0IDMwOEgxODRNNDQgMzMwSDE4NE0yMjcgMjY0SDM2N00yMjcgMjg2SDM2N00yMjcgMzA4SDM2N00yMjcgMzMwSDM2N000MTAgMjY0SDU1ME00MTAgMjg2SDU1ME00MTAgMzA4SDU1ME00MTAgMzMwSDU1ME01OTMgMjY0SDczM001OTMgMjg2SDczM001OTMgMzA4SDczM001OTMgMzMwSDczM003NzYgMjY0SDkxNk03NzYgMjg2SDkxNk03NzYgMzA4SDkxNk03NzYgMzMwSDkxNiIvPjwvZz4KICAgIDxnIGZpbGw9IiNiYjY3M2QiPjxjaXJjbGUgY3g9IjY4IiBjeT0iMjc1IiByPSI3Ii8+PGNpcmNsZSBjeD0iMjc3IiBjeT0iMzIwIiByPSI3Ii8+PGNpcmNsZSBjeD0iNDY0IiBjeT0iMjUzIiByPSI3Ii8+PGNpcmNsZSBjeD0iNjg4IiBjeT0iMjk5IiByPSI3Ii8+PGNpcmNsZSBjeD0iODEzIiBjeT0iMjc1IiByPSI3Ii8+PC9nPgogICAgPGNpcmNsZSBjeD0iNDIiIGN5PSIzODEiIHI9IjciIGZpbGw9IiNiYjY3M2QiLz48dGV4dCB4PSI2MiIgeT0iMzg5IiBmb250LXNpemU9IjIwIj7or7fmsYLpgInkuK3nmoTooYw8L3RleHQ+CiAgICA8cmVjdCB4PSIyNTAiIHk9IjM3MSIgd2lkdGg9IjE4IiBoZWlnaHQ9IjE4IiByeD0iMiIgZmlsbD0iI2U3ZWVmNSIgc3Ryb2tlPSIjYjBjM2QyIi8+PHRleHQgeD0iMjgwIiB5PSIzODkiIGZvbnQtc2l6ZT0iMjAiPuS4gOW5tui9veWFpeeahOacquS/ruaUuSByYXcgZGF0YTwvdGV4dD4KICAgIDx0ZXh0IHg9IjMyIiB5PSI0MzciIGZvbnQtc2l6ZT0iMjIiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiM5MDYwNDYiPuivt+axgue7k+adnyDiiaAgY2FjaGUg56uL5Y2z5riF56m677yb6aKd5aSW5bel5L2c6ZuG5LuN5Y+v6IO96am755WZ44CCPC90ZXh0PgogIDwvZz4KPC9zdmc+Cg==" alt="随机更新少量行的小字段，旧行 Query 却会加载这些行所在的整块 raw-vector CacheCells。" decoding="async"></a><figcaption>读取目标行不等于只加载目标行；随机访问可能触及大量 CacheCells。</figcaption></figure>
+<p><a href="20261030-partial-upsert-query-memory-experiment-zh.md">旧行 Query／partial-upsert 实验</a>使用 100 万行、768 维 vector、1 KiB VARCHAR、raw local format。随机读取 <strong>1% 的行</strong>，触及全部 <strong>971 个 raw-vector CacheCells</strong>；Query-only 冷读停止 <strong>120 秒后</strong>，对照调整后的 RSS 仍增加 <strong>2.894–2.904 GiB</strong>。真实 partial-upsert 首次增加 <strong>3.027 GiB</strong>。</p>
+<p>PK inplace-update 的预期收益是：<strong>不再为修改小字段读取完整旧行，避免由此拉入未修改宽列的额外工作集。</strong></p>
+<h3 id="section-2-3" tabindex="-1">2.3 PK inplace-update：减少整行重写及额外 vector 维护</h3>
+<p>当前 partial-upsert 还会将补齐后的完整行作为新版本 Insert，并 Delete 旧版本。只改一个 scalar 字段，也会重复写入未修改的 vector 和宽列，并增加后续 compaction、index build 的处理量。</p>
+<figure class="problem-figure"><a href="assets/predicate-delete-and-point-update/upsert-write-maintenance.svg" target="_blank" rel="noopener" aria-label="查看大图：旧行和新行只有 checked 不同，但完整 vector 和宽列也随新行再次写入，增加后续 compaction 与 index build 的工作量。"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5NjAiIGhlaWdodD0iNDUwIiB2aWV3Qm94PSIwIDAgOTYwIDQ1MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgogIDx0aXRsZSBpZD0idGl0bGUiPuWwj+Wtl+auteabtOaWsOeUn+aIkOWujOaVtOaWsOihjOeahOWGmeWFpeS4jue7tOaKpOaIkOacrDwvdGl0bGU+CiAgPGRlc2MgaWQ9ImRlc2MiPnBhcnRpYWwtdXBzZXJ0IOS7heS/ruaUuSBjaGVja2Vk77yM5L2G5paw55qE5a6M5pW06KGM6L+Y5YyF5ZCr5pyq5L+u5pS555qEIHZlY3RvciDlkowgVkFSQ0hBUuOAguWujOaVtOihjCBJbnNlcnQg5ZKM5pen6KGMIERlbGV0ZSDkuYvlkI7vvIzmlrDlop7mlbDmja7ov5jopoHlj4LkuI7lkI7lj7AgY29tcGFjdGlvbiDkuI4gaW5kZXggYnVpbGTjgILov5nkuI7or7vlj5bml6fooYzlvJXotbfnmoQgY2FjaGUg6am755WZ5piv5LiN5ZCM55qE5oiQ5pys44CCPC9kZXNjPgogIDxkZWZzPjxtYXJrZXIgaWQ9ImFycm93IiBtYXJrZXJXaWR0aD0iMTAiIG1hcmtlckhlaWdodD0iMTAiIHJlZlg9IjgiIHJlZlk9IjUiIG9yaWVudD0iYXV0byI+PHBhdGggZD0iTTAgMEw5IDVMMCAxMCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzE4Nzk1IiBzdHJva2Utd2lkdGg9IjEuNiIvPjwvbWFya2VyPjwvZGVmcz4KICA8cmVjdCB3aWR0aD0iOTYwIiBoZWlnaHQ9IjQ1MCIgcng9IjEyIiBmaWxsPSIjZjdmYWZiIi8+CiAgPGcgZm9udC1mYW1pbHk9IlBpbmdGYW5nIFNDLE1pY3Jvc29mdCBZYUhlaSxzYW5zLXNlcmlmIiBmaWxsPSIjMjQzZTRhIj4KICAgIDx0ZXh0IHg9IjMyIiB5PSI0NCIgZm9udC1zaXplPSIyNSIgZm9udC13ZWlnaHQ9IjYwMCI+5Y+q5pS55LiA5Liq5a2X5q6177yM5Lmf5Lya55Sf5oiQ5a6M5pW055qE5paw6KGMPC90ZXh0PgogICAgPHRleHQgeD0iMzIiIHk9IjEwNyIgZm9udC1zaXplPSIyMiI+5pen6KGMPC90ZXh0PgogICAgPHJlY3QgeD0iMTEyIiB5PSI3NiIgd2lkdGg9IjIzOCIgaGVpZ2h0PSI1MyIgcng9IjUiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNjNGQ0ZGMiLz48dGV4dCB4PSIyMzEiIHk9IjExMCIgZm9udC1zaXplPSIyMSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+Y2hlY2tlZCA9IGZhbHNlPC90ZXh0PgogICAgPHJlY3QgeD0iMzYyIiB5PSI3NiIgd2lkdGg9IjI2NCIgaGVpZ2h0PSI1MyIgcng9IjUiIGZpbGw9IiNlN2VlZjUiIHN0cm9rZT0iI2IwYzNkMiIvPjx0ZXh0IHg9IjQ5NCIgeT0iMTEwIiBmb250LXNpemU9IjIxIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj52ZWN0b3LvvIjmnKrkv67mlLnvvIk8L3RleHQ+CiAgICA8cmVjdCB4PSI2MzgiIHk9Ijc2IiB3aWR0aD0iMjkwIiBoZWlnaHQ9IjUzIiByeD0iNSIgZmlsbD0iI2U3ZWVmNSIgc3Ryb2tlPSIjYjBjM2QyIi8+PHRleHQgeD0iNzgzIiB5PSIxMTAiIGZvbnQtc2l6ZT0iMjEiIHRleHQtYW5jaG9yPSJtaWRkbGUiPlZBUkNIQVLvvIjmnKrkv67mlLnvvIk8L3RleHQ+CiAgICA8cGF0aCBkPSJNNDk0IDE0MlYxNzciIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIyIiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93KSIvPgogICAgPHBhdGggZD0iTTc4MyAxNDJWMTc3IiBzdHJva2U9IiM3MTg3OTUiIHN0cm9rZS13aWR0aD0iMiIgbWFya2VyLWVuZD0idXJsKCNhcnJvdykiLz4KICAgIDx0ZXh0IHg9IjMyIiB5PSIyMjAiIGZvbnQtc2l6ZT0iMjIiPuaWsOihjDwvdGV4dD4KICAgIDxyZWN0IHg9IjExMiIgeT0iMTg5IiB3aWR0aD0iMjM4IiBoZWlnaHQ9IjUzIiByeD0iNSIgZmlsbD0iI2U3ZjNmMSIgc3Ryb2tlPSIjODhiN2I0Ii8+PHRleHQgeD0iMjMxIiB5PSIyMjMiIGZvbnQtc2l6ZT0iMjEiIGZvbnQtd2VpZ2h0PSI2MDAiIHRleHQtYW5jaG9yPSJtaWRkbGUiPmNoZWNrZWQgPSB0cnVlPC90ZXh0PgogICAgPHJlY3QgeD0iMzYyIiB5PSIxODkiIHdpZHRoPSIyNjQiIGhlaWdodD0iNTMiIHJ4PSI1IiBmaWxsPSIjZmZmMGU3IiBzdHJva2U9IiNkNmEwN2YiLz48dGV4dCB4PSI0OTQiIHk9IjIyMyIgZm9udC1zaXplPSIyMSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+5ZCM5LiA5Lu9IHZlY3RvcjwvdGV4dD4KICAgIDxyZWN0IHg9IjYzOCIgeT0iMTg5IiB3aWR0aD0iMjkwIiBoZWlnaHQ9IjUzIiByeD0iNSIgZmlsbD0iI2ZmZjBlNyIgc3Ryb2tlPSIjZDZhMDdmIi8+PHRleHQgeD0iNzgzIiB5PSIyMjMiIGZvbnQtc2l6ZT0iMjEiIHRleHQtYW5jaG9yPSJtaWRkbGUiPuWQjOS4gOS7vSBWQVJDSEFSPC90ZXh0PgogICAgPHRleHQgeD0iMzYyIiB5PSIyNzkiIGZvbnQtc2l6ZT0iMjEiIGZpbGw9IiM5MDYwNDYiPuacquS/ruaUueWtl+aute+8jOS5n+maj+WujOaVtOaWsOihjOWGjeasoeWGmeWFpTwvdGV4dD4KICAgIDxyZWN0IHg9IjMyIiB5PSIzMTAiIHdpZHRoPSIzMTQiIGhlaWdodD0iNzAiIHJ4PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjYzRkNGRjIi8+PHRleHQgeD0iMTg5IiB5PSIzNTMiIGZvbnQtc2l6ZT0iMjIiIHRleHQtYW5jaG9yPSJtaWRkbGUiPkluc2VydCDmlrDooYwg77yLIERlbGV0ZSDml6fooYw8L3RleHQ+CiAgICA8cGF0aCBkPSJNMzU5IDM0NUgzOTkiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIyLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3cpIi8+CiAgICA8cmVjdCB4PSI0MTkiIHk9IjMxMCIgd2lkdGg9IjIyNCIgaGVpZ2h0PSI3MCIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNjNGQ0ZGMiLz48dGV4dCB4PSI1MzEiIHk9IjM1MyIgZm9udC1zaXplPSIyMiIgdGV4dC1hbmNob3I9Im1pZGRsZSI+Q29tcGFjdGlvbjwvdGV4dD4KICAgIDxwYXRoIGQ9Ik02NTYgMzQ1SDY5NyIgc3Ryb2tlPSIjNzE4Nzk1IiBzdHJva2Utd2lkdGg9IjIuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdykiLz4KICAgIDxyZWN0IHg9IjcxNyIgeT0iMzEwIiB3aWR0aD0iMjExIiBoZWlnaHQ9IjcwIiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2M0ZDRkYyIvPjx0ZXh0IHg9IjgyMiIgeT0iMzUzIiBmb250LXNpemU9IjIyIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5JbmRleCBidWlsZDwvdGV4dD4KICAgIDx0ZXh0IHg9IjMyIiB5PSI0MjIiIGZvbnQtc2l6ZT0iMjEiIGZpbGw9IiM2MTc5ODQiPumHjeWkjeWGmeWFpeacquS/ruaUueeahOaVsOaNru+8jOS5n+W4puadpemineWklueahOWQjuWPsOe7tOaKpOW3peS9nOOAgjwvdGV4dD4KICA8L2c+Cjwvc3ZnPgo=" alt="旧行和新行只有 checked 不同，但完整 vector 和宽列也随新行再次写入，增加后续 compaction 与 index build 的工作量。" decoding="async"></a><figcaption>读入 cache 的成本之外，还有生成完整新行及其后台维护的成本。</figcaption></figure>
+<p>PK inplace-update 的预期收益是：<strong>避免 scalar 变更生成完整新行，减少未修改字段的重复写入，以及由此额外引入的 compaction 和 vector indexing 工作。</strong></p>
+<h2 id="section-3" tabindex="-1">3. 顶层设计：一条逻辑时间线，两条消费路径</h2>
+<p>客户端的 predicate delete 和 PK inplace-update 经 Proxy 写入 WAL。同一份操作随后进入两条链路：持久化链路保存变更并在后台形成新 segment，在线链路更新正在服务的数据。</p>
+<figure class="architecture" aria-labelledby="flow-caption">
+  <div class="flow-start"><div class="flow-box">Client<span>predicate delete / PK inplace-update</span></div><span class="arrow" aria-hidden="true">→</span><div class="flow-box">Proxy<span>校验与编译 typed mutation</span></div><span class="arrow" aria-hidden="true">→</span><div class="flow-box wal">WAL<span>持久化 · 逻辑排序</span></div></div>
+  <p class="flow-branch">WAL 的同一组有序指令，进入下面两条消费路径</p>
+  <div class="flow-lanes">
+    <div class="flow-lane"><div class="lane-label">持久化消费</div><div class="flow-box">L0 delta 模块<span>SN 生产 · MixCoord / DN 分发</span></div><span class="arrow" aria-hidden="true">→</span><div class="flow-box">Segment deltalogs<span>目标 segment 的适用变更</span></div><span class="arrow" aria-hidden="true">→</span><div class="flow-box">DN full rewrite<span>执行 delta · 写出新 segment</span></div></div>
+    <div class="flow-lane"><div class="lane-label">在线消费</div><div class="flow-box">Delegator<span>按序分发 · 加载补齐</span></div><span class="arrow" aria-hidden="true">→</span><div class="flow-box">Growing / Sealed<span>同步 apply 到 Records</span></div><span class="arrow" aria-hidden="true">→</span><div class="flow-box">查询<span>base/index ＋ delta</span></div></div>
+  </div>
+  <div class="flow-return">新 segment → 加载 base 与未物化后缀 → 接入在线路径</div>
+  <figcaption id="flow-caption">图 1　同一组逻辑指令分别用于实时查询和持久化重放。</figcaption>
+</figure><h3 id="section-3-1" tabindex="-1">3.1 持久化链路：从操作到新 segment</h3>
+<p>L0 delta 模块中，SN Materializer 将 WAL 中的操作保存为 L0 delta files，MixCoord 接收输出并调度 DN，将变更分发到相关 segments。随后 DN 在 full rewrite compaction 中将变更写入新 segment。</p>
+<h3 id="section-3-2" tabindex="-1">3.2 在线链路：从操作到查询结果</h3>
+<p>Delegator 从 WAL 接收操作，分别交给 StreamingNode 本地的 Growing segments 和 QN worker 上的 Sealed segments。两者将更新或删除应用到所持有的数据，使后续查询看到字段变化和删除结果。</p>
+<p>查询侧加载新 segment 后，接入在线链路并继续接收后续操作。两条链路由此衔接：同一份操作既影响当前查询，也进入后续加载使用的数据。</p>
+<h2 id="section-4" tabindex="-1">4. 功能约束与模块职责</h2>
+<h3 id="section-4-1" tabindex="-1">4.1 功能约束</h3>
+<p>predicate delete 与 PK inplace-update 均允许对 unloaded collection 提交。loaded 时，在线消费者同步 apply 到适用 segments；unloaded 时，后续由 persistence、compaction 和 load replay 执行。API 在 WAL append 成功后返回；需要看到该操作的查询，必须等到相关 apply 完成，不要求返回时所有 replicas 已完成。</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="设计表格，可横向滚动"><table>
+<thead>
+<tr>
+<th>能力</th>
+<th>Phase 1 语义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Predicate delete</td>
+<td>支持 <code>AND / OR / NOT / &gt; / &lt; / &gt;= / &lt;= / != / == / IN</code> 的受限 typed expression；整棵表达式、字段类型、常量和 NULL 语义均须通过校验</td>
+</tr>
+<tr>
+<td>PK inplace-update</td>
+<td>选行支持 <code>pk == constant</code> 和 <code>pk IN [constants...]</code>；所有目标 PK 应用同一组 assignments，可同时修改多个字段；对每个 PK 更新全部满足 scope、时间和存活条件的物理行，即 update-all-matches</td>
+</tr>
+<tr>
+<td>可更新字段</td>
+<td>INT8／16／32／64、BOOL、TIMESTAMPTZ、VARCHAR、普通标量 ARRAY；支持 nullable 字段的显式 SET NULL</td>
+</tr>
+<tr>
+<td>赋值方式</td>
+<td>整 cell 常量 SET；ARRAY 也是提交整个新数组。不同字段的赋值互不覆盖</td>
+</tr>
+<tr>
+<td>不支持</td>
+<td>通用 UPDATE WHERE、算术赋值、读取旧值的 RHS、ARRAY append/remove 或元素 patch；JSON、VECTOR、TEXT、独立 FLOAT／DOUBLE 字段更新及嵌套／VECTOR／STRUCT 数组</td>
+</tr>
+<tr>
+<td>特殊字段</td>
+<td>不更新 PK、分区键、聚簇键、函数依赖／生成字段及 TTL 时间字段</td>
+</tr>
+<tr>
+<td>无匹配行</td>
+<td>不插入、不复活，操作对该 segment 无效果</td>
+</tr>
+<tr>
+<td>请求边界</td>
+<td>一次请求提交一个 UPDATE 或 DELETE，可包含多个 PK；不新增用户可组合事务，内部沿用现有 VChannel transaction 机制。既有 Upsert 内部事务保持原语义</td>
+</tr>
+<tr>
+<td>物化方式</td>
+<td>普通 full rewrite compaction；Phase 1 不做数据侧或 QN-local Consolidation</td>
+</tr>
+</tbody></table>
+</div>
+<p>例如 <code>SET values=[1,2,3,4]</code> 表达完整的新数组，而不是“在旧数组上追加 4”。<code>SET count=100</code> 受支持，<code>count=count+1</code> 不受支持。Proxy 可以保留直接化为 literal SET 的语法便利，但不能隐含查询旧值或新增 read-modify-write 语义。</p>
+<p>复用现有 Delete API，合法表达式按以下路径分流：</p>
+<figure class="problem-figure"><a href="assets/predicate-delete-and-point-update/delete-api-routing.svg" target="_blank" rel="noopener" aria-label="查看大图：Delete API 的路径选择"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI4MjAiIGhlaWdodD0iNzkwIiB2aWV3Qm94PSIwIDAgODIwIDc5MCIgcm9sZT0iaW1nIiBhcmlhLWxhYmVsbGVkYnk9InRpdGxlIGRlc2MiPgogIDx0aXRsZSBpZD0idGl0bGUiPkRlbGV0ZSBBUEkg55qE6Lev5b6E6YCJ5oupPC90aXRsZT4KICA8ZGVzYyBpZD0iZGVzYyI+5ZCI5rOV6KGo6L6+5byP5YWI5Yik5pat6IO95ZCm55u05o6l5o+Q5Y+WIFBL77ya5Y+v5Lul5YiZ6LWwIFBLLWRlbGV0Ze+8jOWQpuWImeWIpOaWreWujOaVtOihqOi+vuW8j+aYr+WQpuWxnuS6jiBuYXRpdmUg5pSv5oyB6ZuG77yM5pSv5oyB5YiZ55u05o6l5o+Q5LqkIG5hdGl2ZSBwcmVkaWNhdGXjgILlkIjms5XkvYbkuI3mlK/mjIHnmoTooajovr7lvI/otbDml6cgcXVlcnktUEsg6Lev5b6E77yM5Y+q5pyJ6L+Z5LiA6Lev5b6E5qOA5p+lIGNvbGxlY3Rpb24g5piv5ZCm5bey5Yqg6L2977yb5pyq5Yqg6L295YiZ5ouS57ud77yM5bey5Yqg6L295YiZ5p+l6K+iIFBLIOWQjuaPkOS6pCBQSy1kZWxldGXjgILot6/lvoTlnKggV0FMIGFwcGVuZCDliY3pgInlrprjgII8L2Rlc2M+CiAgPGRlZnM+CiAgICA8bWFya2VyIGlkPSJhcnJvdyIgbWFya2VyV2lkdGg9IjEwIiBtYXJrZXJIZWlnaHQ9IjEwIiByZWZYPSI4IiByZWZZPSI1IiBvcmllbnQ9ImF1dG8iPjxwYXRoIGQ9Ik0wIDBMOSA1TDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIxLjYiLz48L21hcmtlcj4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9IjgyMCIgaGVpZ2h0PSI3OTAiIHJ4PSIxMiIgZmlsbD0iI2Y3ZmFmYiIvPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIyLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3cpIj4KICAgIDxwYXRoIGQ9Ik0yMjAgODhWMTIyIi8+CiAgICA8cGF0aCBkPSJNMzkwIDE4MEg0OTIiLz4KICAgIDxwYXRoIGQ9Ik0yMjAgMjM1VjI5NyIvPgogICAgPHBhdGggZD0iTTQwNSAzNTVINDkyIi8+CiAgICA8cGF0aCBkPSJNMjIwIDQxMFY0NzIiLz4KICAgIDxwYXRoIGQ9Ik00MDUgNTMwSDQ5MiIvPgogICAgPHBhdGggZD0iTTIyMCA1ODVWNjQyIi8+CiAgICA8cGF0aCBkPSJNNDAwIDY4OEg0OTIiLz4KICA8L2c+CiAgPGcgZm9udC1mYW1pbHk9IlBpbmdGYW5nIFNDLE1pY3Jvc29mdCBZYUhlaSxzYW5zLXNlcmlmIiBmaWxsPSIjMjQzZTRhIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj4KICAgIDxyZWN0IHg9IjQwIiB5PSIyMiIgd2lkdGg9IjM2MCIgaGVpZ2h0PSI2NiIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNjNGQ0ZGMiLz4KICAgIDx0ZXh0IHg9IjIyMCIgeT0iNjMiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtd2VpZ2h0PSI2MDAiPkRlbGV0ZSBBUEnvvJrlkIjms5Xooajovr7lvI88L3RleHQ+CgogICAgPHBhdGggZD0iTTIyMCAxMjVMMzkwIDE4MEwyMjAgMjM1TDUwIDE4MFoiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNhOWJlYzkiLz4KICAgIDx0ZXh0IHg9IjIyMCIgeT0iMTg5IiBmb250LXNpemU9IjI0Ij7lj6/nm7TmjqXmj5Dlj5YgUEvvvJ88L3RleHQ+CiAgICA8dGV4dCB4PSI0NDUiIHk9IjE2NiIgZm9udC1zaXplPSIyMyI+5pivPC90ZXh0PgogICAgPHRleHQgeD0iMjQ2IiB5PSIyNzYiIGZvbnQtc2l6ZT0iMjMiPuWQpjwvdGV4dD4KICAgIDxyZWN0IHg9IjUwMCIgeT0iMTM3IiB3aWR0aD0iMjgwIiBoZWlnaHQ9Ijg2IiByeD0iOCIgZmlsbD0iI2U3ZjNmMSIgc3Ryb2tlPSIjODhiN2I0Ii8+CiAgICA8dGV4dCB4PSI2NDAiIHk9IjE3MyIgZm9udC1zaXplPSIyNSIgZm9udC13ZWlnaHQ9IjYwMCI+UEstZGVsZXRlPC90ZXh0PgogICAgPHRleHQgeD0iNjQwIiB5PSIyMDYiIGZvbnQtc2l6ZT0iMjMiPldBTCBhcHBlbmQ8L3RleHQ+CgogICAgPHBhdGggZD0iTTIyMCAzMDBMNDA1IDM1NUwyMjAgNDEwTDM1IDM1NVoiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNhOWJlYzkiLz4KICAgIDx0ZXh0IHg9IjIyMCIgeT0iMzQ3IiBmb250LXNpemU9IjIzIj7lrozmlbTooajovr7lvI/lsZ7kuo48L3RleHQ+CiAgICA8dGV4dCB4PSIyMjAiIHk9IjM3NyIgZm9udC1zaXplPSIyMyI+bmF0aXZlIOaUr+aMgembhu+8nzwvdGV4dD4KICAgIDx0ZXh0IHg9IjQ1MCIgeT0iMzQxIiBmb250LXNpemU9IjIzIj7mmK88L3RleHQ+CiAgICA8dGV4dCB4PSIyNDYiIHk9IjQ1MSIgZm9udC1zaXplPSIyMyI+5ZCmPC90ZXh0PgogICAgPHJlY3QgeD0iNTAwIiB5PSIzMTIiIHdpZHRoPSIyODAiIGhlaWdodD0iODYiIHJ4PSI4IiBmaWxsPSIjZTdmM2YxIiBzdHJva2U9IiM4OGI3YjQiLz4KICAgIDx0ZXh0IHg9IjY0MCIgeT0iMzQ4IiBmb250LXNpemU9IjI1IiBmb250LXdlaWdodD0iNjAwIj5uYXRpdmUgcHJlZGljYXRlPC90ZXh0PgogICAgPHRleHQgeD0iNjQwIiB5PSIzODEiIGZvbnQtc2l6ZT0iMjMiPldBTCBhcHBlbmQ8L3RleHQ+CgogICAgPHBhdGggZD0iTTIyMCA0NzVMNDA1IDUzMEwyMjAgNTg1TDM1IDUzMFoiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNhOWJlYzkiLz4KICAgIDx0ZXh0IHg9IjIyMCIgeT0iNTM4IiBmb250LXNpemU9IjIzIj5jb2xsZWN0aW9uIOW3siBsb2FkZWTvvJ88L3RleHQ+CiAgICA8dGV4dCB4PSI0NTAiIHk9IjUxNiIgZm9udC1zaXplPSIyMyI+5ZCmPC90ZXh0PgogICAgPHRleHQgeD0iMjQ2IiB5PSI2MjYiIGZvbnQtc2l6ZT0iMjMiPuaYrzwvdGV4dD4KICAgIDxyZWN0IHg9IjUwMCIgeT0iNDg3IiB3aWR0aD0iMjgwIiBoZWlnaHQ9Ijg2IiByeD0iOCIgZmlsbD0iI2ZmZjBlNyIgc3Ryb2tlPSIjZDZhMDdmIi8+CiAgICA8dGV4dCB4PSI2NDAiIHk9IjUyMyIgZm9udC1zaXplPSIyNSIgZm9udC13ZWlnaHQ9IjYwMCI+5ouS57ud6K+35rGCPC90ZXh0PgogICAgPHRleHQgeD0iNjQwIiB5PSI1NTYiIGZvbnQtc2l6ZT0iMjMiPmNvbGxlY3Rpb24g5pyq5Yqg6L29PC90ZXh0PgoKICAgIDxyZWN0IHg9IjQwIiB5PSI2NTAiIHdpZHRoPSIzNjAiIGhlaWdodD0iNzYiIHJ4PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjYzRkNGRjIi8+CiAgICA8dGV4dCB4PSIyMjAiIHk9IjY4MiIgZm9udC1zaXplPSIyNSIgZm9udC13ZWlnaHQ9IjYwMCI+5penIHF1ZXJ5LVBLIOi3r+W+hDwvdGV4dD4KICAgIDx0ZXh0IHg9IjIyMCIgeT0iNzEyIiBmb250LXNpemU9IjIzIj7mn6Xor6Llkb3kuK0gUEs8L3RleHQ+CiAgICA8cmVjdCB4PSI1MDAiIHk9IjY1MCIgd2lkdGg9IjI4MCIgaGVpZ2h0PSI3NiIgcng9IjgiIGZpbGw9IiNlN2YzZjEiIHN0cm9rZT0iIzg4YjdiNCIvPgogICAgPHRleHQgeD0iNjQwIiB5PSI2ODIiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI2MDAiPlBLLWRlbGV0ZTwvdGV4dD4KICAgIDx0ZXh0IHg9IjY0MCIgeT0iNzEyIiBmb250LXNpemU9IjIzIj5XQUwgYXBwZW5kPC90ZXh0PgogICAgPHRleHQgeD0iNDEwIiB5PSI3NjciIGZvbnQtc2l6ZT0iMjMiIGZpbGw9IiM2MTc5ODQiPuWPquacieaXpyBxdWVyeS1QSyDot6/lvoTkvp3otZYgY29sbGVjdGlvbiDlt7IgbG9hZGVk44CCPC90ZXh0PgogIDwvZz4KPC9zdmc+Cg==" alt="Delete API 的路径选择" decoding="async"></a></figure>
+<p>路径在写入前选定，native append 开始后不因超时或 apply 失败回退到 query-PK。</p>
+<p>native predicate 在 WAL ACK 时不知道实际命中数。<code>delete_count</code> 的 unknown 返回表达是尚需处理的接口兼容项；不为恢复计数增加前台查询，也不能将默认 0 宣称为实际删除数。</p>
+<h3 id="section-4-2" tabindex="-1">4.2 模块职责与协作</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="设计表格，可横向滚动"><table>
+<thead>
+<tr>
+<th>模块</th>
+<th>输入与输出</th>
+<th>模块职责</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Proxy / WAL</td>
+<td>API 请求 → WAL 消息</td>
+<td>校验请求，提交逻辑 mutation</td>
+</tr>
+<tr>
+<td>L0 delta（SN／MixCoord）</td>
+<td>WAL 消息 → 目标 segment deltalogs</td>
+<td>生产 L0，提交 batch，调度 DN 分发到目标 segments</td>
+</tr>
+<tr>
+<td>DN full rewrite</td>
+<td>base＋deltalogs → 新 segment</td>
+<td>合并 base 与 deltas，写出替代 segment</td>
+</tr>
+<tr>
+<td>Delegator</td>
+<td>WAL／L0／buffer → segment</td>
+<td>在线 mutation 分发与 segment load 补齐</td>
+</tr>
+<tr>
+<td>Segment</td>
+<td>base/index＋mutations → 查询结果</td>
+<td>执行更新与删除，提供 overlay 读取</td>
+</tr>
+</tbody></table>
+</div>
+<p>下图展示一个 delta 从 Proxy 进入后，如何经各模块分别作用于在线查询和 compaction 输出。</p>
+<figure class="problem-figure"><a href="assets/predicate-delete-and-point-update/delta-module-flow.svg" target="_blank" rel="noopener" aria-label="查看大图：Delta 在 query side 与 compaction side 的模块协作数据流"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI5NjAiIGhlaWdodD0iMTE4MCIgdmlld0JveD0iMCAwIDk2MCAxMTgwIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUgZGVzYyI+CiAgPHRpdGxlIGlkPSJ0aXRsZSI+RGVsdGEg5ZyoIHF1ZXJ5IHNpZGUg5LiOIGNvbXBhY3Rpb24gc2lkZSDnmoTmqKHlnZfljY/kvZzmlbDmja7mtYE8L3RpdGxlPgogIDxkZXNjIGlkPSJkZXNjIj5Qcm94eSDmj5DkuqTpgLvovpEgZGVsdGEg5YiwIFdBTOOAguWQjOS4gCBkZWx0YSDov5vlhaXkuKTmnaHpk77ot6/jgIJDb21wYWN0aW9uIHNpZGUg55qEIEwwIGRlbHRhIOaooeWdl+WMheWQqyBTTiDnlJ/kuqflkowgTWl4Q29vcmQg5o+Q5Lqk44CB6LCD5bqm5YiG5Y+R77yaU04gTWF0ZXJpYWxpemVyIOWGmSBMMCBmaWxlc++8jE1peENvb3JkIOS4reeahCBEYXRhQ29vcmQg5Y6f5a2Q5o+Q5LqkIGJhdGNoIOS4jiBN77yM5YaN6LCD5bqmIEROIOWwhumAu+i+keaMh+S7pOWIhuWPkeWIsOebruaghyBzZWdtZW50IGRlbHRhbG9nc+OAgkROIGZ1bGwgcmV3cml0ZSDni6znq4vor7vlj5YgYmFzZSDlkowgZGVsdGFsb2dz77yM5omn6KGM5pu05paw5LiO5Yig6Zmk77yM5YaZ5Ye65pawIHNlZ21lbnTjgIJRdWVyeSBzaWRlIOe7jyBEZWxlZ2F0b3Ig5YiG5Y+R57uZIFN0cmVhbWluZ05vZGUg55qEIEdyb3dpbmcg5ZKMIFF1ZXJ5Tm9kZSB3b3JrZXIg55qEIFNlYWxlZCBzZWdtZW50c++8jOaJp+ihjOWQjuWGmeWFpSBVcGRhdGVzUmVjb3JkIOaIliBEZWxldGVkUmVjb3Jk77yM5p+l6K+i6K+75Y+WIGJhc2UvaW5kZXgg5YqgIGRlbHRh77yM55yL5Yiw5pu05paw5YC85bm25bGP6JS95Yig6Zmk6KGM44CC5pawIHNlZ21lbnQg5Yqg6L29IGJhc2Ug5ZKM5pyq54mp5YyW5ZCO57yA5ZCO77yM5pu/5o2i5p+l6K+i5L6nIHNlZ21lbnTvvIznu6fnu63lnKjnur/mtojotLnjgII8L2Rlc2M+CiAgPGRlZnM+CiAgICA8bWFya2VyIGlkPSJhcnJvdyIgbWFya2VyV2lkdGg9IjEwIiBtYXJrZXJIZWlnaHQ9IjEwIiByZWZYPSI4IiByZWZZPSI1IiBvcmllbnQ9ImF1dG8iPjxwYXRoIGQ9Ik0wIDBMOSA1TDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIxLjYiLz48L21hcmtlcj4KICAgIDxtYXJrZXIgaWQ9InJldHVybi1hcnJvdyIgbWFya2VyV2lkdGg9IjEwIiBtYXJrZXJIZWlnaHQ9IjEwIiByZWZYPSI4IiByZWZZPSI1IiBvcmllbnQ9ImF1dG8iPjxwYXRoIGQ9Ik0wIDBMOSA1TDAgMTAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzA4NzQ3NiIgc3Ryb2tlLXdpZHRoPSIxLjYiLz48L21hcmtlcj4KICA8L2RlZnM+CiAgPHJlY3Qgd2lkdGg9Ijk2MCIgaGVpZ2h0PSIxMTgwIiByeD0iMTIiIGZpbGw9IiNmN2ZhZmIiLz4KICA8cmVjdCB4PSI1MTAiIHk9IjIyNSIgd2lkdGg9IjQyMCIgaGVpZ2h0PSI5MDAiIHJ4PSIxMCIgZmlsbD0iI2VlZjdmNiIgc3Ryb2tlPSIjZDRlN2U0Ii8+CiAgPHJlY3QgeD0iMzAiIHk9IjIyNSIgd2lkdGg9IjQyMCIgaGVpZ2h0PSI5MDAiIHJ4PSIxMCIgZmlsbD0iI2ZiZjNlZCIgc3Ryb2tlPSIjZWFkOGNiIi8+CiAgPHJlY3QgeD0iNTAiIHk9IjMwMCIgd2lkdGg9IjM4MCIgaGVpZ2h0PSI1MTAiIHJ4PSI5IiBmaWxsPSIjZmZmYWY2IiBzdHJva2U9IiNjOTljN2MiIHN0cm9rZS13aWR0aD0iMiIvPgogIDxnIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIyLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3cpIj4KICAgIDxwYXRoIGQ9Ik00MjAgODBINTMyIi8+CiAgICA8cGF0aCBkPSJNNjgwIDEyOFYxOTRIMzBWMzk1SDU3Ii8+CiAgICA8cGF0aCBkPSJNNjgwIDE5NEg5MzBWMzUwSDkwMyIvPgogICAgPHBhdGggZD0iTTcyNy41IDQwMFY0NzciLz4KICAgIDxwYXRoIGQ9Ik03MjcuNSA2MTVWNjYyIi8+CiAgICA8cGF0aCBkPSJNNzI3LjUgNzcwVjg0MiIvPgogICAgPHBhdGggZD0iTTI0MCA0MzVWNDY3Ii8+CiAgICA8cGF0aCBkPSJNMjQwIDU0MFY1NzIiLz4KICAgIDxwYXRoIGQ9Ik0yNDAgNjc1VjcxMiIvPgogICAgPHBhdGggZD0iTTI0MCA3ODVWODQyIi8+CiAgICA8cGF0aCBkPSJNMjQwIDk2MFY5OTciLz4KICA8L2c+CiAgPGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDg3NDc2IiBzdHJva2Utd2lkdGg9IjIuNSIgc3Ryb2tlLWRhc2hhcnJheT0iNyA1IiBtYXJrZXItZW5kPSJ1cmwoI3JldHVybi1hcnJvdykiPgogICAgPHBhdGggZD0iTTQxNSAxMDU1SDU1MiIvPgogICAgPHBhdGggZD0iTTg5NSAxMDU1SDkyMFY1NTBIOTAzIi8+CiAgPC9nPgogIDxnIGZvbnQtZmFtaWx5PSJQaW5nRmFuZyBTQyxNaWNyb3NvZnQgWWFIZWksc2Fucy1zZXJpZiIgZmlsbD0iIzI0M2U0YSIgdGV4dC1hbmNob3I9Im1pZGRsZSI+CiAgICA8cmVjdCB4PSIxNDAiIHk9IjMyIiB3aWR0aD0iMjgwIiBoZWlnaHQ9Ijk2IiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2I3Y2RkNiIvPgogICAgPHRleHQgeD0iMjgwIiB5PSI3MyIgZm9udC1zaXplPSIyOCIgZm9udC13ZWlnaHQ9IjYwMCI+UHJveHk8L3RleHQ+CiAgICA8dGV4dCB4PSIyODAiIHk9IjEwOCIgZm9udC1zaXplPSIyNCI+5o+Q5Lqk6YC76L6RIG11dGF0aW9uPC90ZXh0PgogICAgPHRleHQgeD0iNDc4IiB5PSI2NSIgZm9udC1zaXplPSIyMyIgZmlsbD0iIzYxNzk4NCI+ZGVsdGE8L3RleHQ+CiAgICA8cmVjdCB4PSI1NDAiIHk9IjMyIiB3aWR0aD0iMjgwIiBoZWlnaHQ9Ijk2IiByeD0iOCIgZmlsbD0iI2U3ZjNmMSIgc3Ryb2tlPSIjODhiN2I0Ii8+CiAgICA8dGV4dCB4PSI2ODAiIHk9IjczIiBmb250LXNpemU9IjI4IiBmb250LXdlaWdodD0iNjAwIj5XQUw8L3RleHQ+CiAgICA8dGV4dCB4PSI2ODAiIHk9IjEwOCIgZm9udC1zaXplPSIyNCI+5L+d5a2Y6YC76L6R5pON5L2cPC90ZXh0PgogICAgPHRleHQgeD0iNDgwIiB5PSIxNzciIGZvbnQtc2l6ZT0iMjMiIGZpbGw9IiM2MTc5ODQiPuWQjOS4gOe7hOmAu+i+kSBkZWx0Ye+8jOi/m+WFpeS4pOadoea2iOi0uemTvui3rzwvdGV4dD4KCiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iMjcwIiBmb250LXNpemU9IjI4IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjMDg3NDc2Ij5RdWVyeSBzaWRlPC90ZXh0PgogICAgPHRleHQgeD0iMjQwIiB5PSIyNzAiIGZvbnQtc2l6ZT0iMjgiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiM5ODYxM2QiPkNvbXBhY3Rpb24gc2lkZTwvdGV4dD4KCiAgICA8cmVjdCB4PSI1NjAiIHk9IjMwMCIgd2lkdGg9IjMzNSIgaGVpZ2h0PSIxMDAiIHJ4PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjYTljOWM1Ii8+CiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iMzQyIiBmb250LXNpemU9IjI3IiBmb250LXdlaWdodD0iNjAwIj5EZWxlZ2F0b3I8L3RleHQ+CiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iMzc4IiBmb250LXNpemU9IjI0Ij7liIblj5EgZGVsdGHvvI9sb2FkIOihpem9kDwvdGV4dD4KCiAgICA8cmVjdCB4PSI1NjAiIHk9IjQ4NSIgd2lkdGg9IjMzNSIgaGVpZ2h0PSIxMzAiIHJ4PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjYTljOWM1Ii8+CiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iNTI0IiBmb250LXNpemU9IjI3IiBmb250LXdlaWdodD0iNjAwIj5TZWdtZW50PC90ZXh0PgogICAgPHRleHQgeD0iNzI3LjUiIHk9IjU1OSIgZm9udC1zaXplPSIyMSI+R3Jvd2luZ++8iFNO77yJ77yPU2VhbGVk77yIUU7vvIk8L3RleHQ+CiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iNTk0IiBmb250LXNpemU9IjI0Ij7miafooYwgVVBEQVRFIC8gREVMRVRFPC90ZXh0PgoKICAgIDxyZWN0IHg9IjU2MCIgeT0iNjcwIiB3aWR0aD0iMzM1IiBoZWlnaHQ9IjEwMCIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNhOWM5YzUiLz4KICAgIDx0ZXh0IHg9IjcyNy41IiB5PSI3MTEiIGZvbnQtc2l6ZT0iMjYiPlVwZGF0ZXNSZWNvcmQ8L3RleHQ+CiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iNzQ4IiBmb250LXNpemU9IjI2Ij5EZWxldGVkUmVjb3JkPC90ZXh0PgoKICAgIDxyZWN0IHg9IjU2MCIgeT0iODUwIiB3aWR0aD0iMzM1IiBoZWlnaHQ9IjExNSIgcng9IjgiIGZpbGw9IiNkY2VmZWIiIHN0cm9rZT0iIzg4YjdiNCIvPgogICAgPHRleHQgeD0iNzI3LjUiIHk9Ijg4NCIgZm9udC1zaXplPSIyNyIgZm9udC13ZWlnaHQ9IjYwMCI+5p+l6K+i6K+75Y+WPC90ZXh0PgogICAgPHRleHQgeD0iNzI3LjUiIHk9IjkxOSIgZm9udC1zaXplPSIyNSI+YmFzZS9pbmRleO+8i2RlbHRhPC90ZXh0PgogICAgPHRleHQgeD0iNzI3LjUiIHk9Ijk0OCIgZm9udC1zaXplPSIyMyI+5pu05paw5YC85Y+v6K+777yM5Yig6Zmk6KGM5LiN5Y+v6KeBPC90ZXh0PgoKICAgIDx0ZXh0IHg9IjI0MCIgeT0iMzMzIiBmb250LXNpemU9IjI1IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjOTg2MTNkIj5MMCBkZWx0YSDmqKHlnZc8L3RleHQ+CiAgICA8cmVjdCB4PSI2NSIgeT0iMzU1IiB3aWR0aD0iMzUwIiBoZWlnaHQ9IjgwIiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2Q3YmNhOSIvPgogICAgPHRleHQgeD0iMjQwIiB5PSIzODgiIGZvbnQtc2l6ZT0iMjYiIGZvbnQtd2VpZ2h0PSI2MDAiPlNOIE1hdGVyaWFsaXplcjwvdGV4dD4KICAgIDx0ZXh0IHg9IjI0MCIgeT0iNDIwIiBmb250LXNpemU9IjIyIj7nlJ/kuqfvvJrov57nu60gV0FMIOKGkiBMMCBmaWxlczwvdGV4dD4KCiAgICA8cmVjdCB4PSI2NSIgeT0iNDc1IiB3aWR0aD0iMzUwIiBoZWlnaHQ9IjY1IiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2Q3YmNhOSIvPgogICAgPHRleHQgeD0iMjQwIiB5PSI1MTYiIGZvbnQtc2l6ZT0iMjUiPkwwIGZpbGVz77yLYmF0Y2g8L3RleHQ+CgogICAgPHJlY3QgeD0iNjUiIHk9IjU4MCIgd2lkdGg9IjM1MCIgaGVpZ2h0PSI5NSIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNkN2JjYTkiLz4KICAgIDx0ZXh0IHg9IjI0MCIgeT0iNjE1IiBmb250LXNpemU9IjI1IiBmb250LXdlaWdodD0iNjAwIj5NaXhDb29yZCAvIERhdGFDb29yZDwvdGV4dD4KICAgIDx0ZXh0IHg9IjI0MCIgeT0iNjQ4IiBmb250LXNpemU9IjIyIj7mj5DkuqQgYmF0Y2ggwrcg6LCD5bqmIEROIOWIhuWPkTwvdGV4dD4KCiAgICA8cmVjdCB4PSI2NSIgeT0iNzIwIiB3aWR0aD0iMzUwIiBoZWlnaHQ9IjY1IiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2Q3YmNhOSIvPgogICAgPHRleHQgeD0iMjQwIiB5PSI3NjIiIGZvbnQtc2l6ZT0iMjUiPuebruaghyBzZWdtZW50IGRlbHRhbG9nczwvdGV4dD4KCiAgICA8cmVjdCB4PSI2NSIgeT0iODUwIiB3aWR0aD0iMzUwIiBoZWlnaHQ9IjExMCIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNkN2JjYTkiLz4KICAgIDx0ZXh0IHg9IjI0MCIgeT0iODg0IiBmb250LXNpemU9IjI3IiBmb250LXdlaWdodD0iNjAwIj5ETiBmdWxsIHJld3JpdGU8L3RleHQ+CiAgICA8dGV4dCB4PSIyNDAiIHk9IjkxNyIgZm9udC1zaXplPSIyNCI+6K+75Y+WIGJhc2XvvItkZWx0YWxvZ3M8L3RleHQ+CiAgICA8dGV4dCB4PSIyNDAiIHk9Ijk0NiIgZm9udC1zaXplPSIyNCI+5omn6KGM5pu05paw5LiO5Yig6ZmkPC90ZXh0PgoKICAgIDxyZWN0IHg9IjY1IiB5PSIxMDA1IiB3aWR0aD0iMzUwIiBoZWlnaHQ9IjEwMCIgcng9IjgiIGZpbGw9IiNmNmU1ZDgiIHN0cm9rZT0iI2M5OWM3YyIvPgogICAgPHRleHQgeD0iMjQwIiB5PSIxMDQ3IiBmb250LXNpemU9IjI3IiBmb250LXdlaWdodD0iNjAwIj7mlrAgc2VnbWVudDwvdGV4dD4KICAgIDx0ZXh0IHg9IjI0MCIgeT0iMTA4MyIgZm9udC1zaXplPSIyMyI+5pu05paw5YC85YaZ5YWl77yP5Yig6Zmk6KGM5LiN5YaZ5Ye6PC90ZXh0PgoKICAgIDxyZWN0IHg9IjU2MCIgeT0iMTAwNSIgd2lkdGg9IjMzNSIgaGVpZ2h0PSIxMDAiIHJ4PSI4IiBmaWxsPSJ3aGl0ZSIgc3Ryb2tlPSIjODhiN2I0Ii8+CiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iMTA0NyIgZm9udC1zaXplPSIyNyIgZm9udC13ZWlnaHQ9IjYwMCI+5Yqg6L295pawIHNlZ21lbnQ8L3RleHQ+CiAgICA8dGV4dCB4PSI3MjcuNSIgeT0iMTA4MyIgZm9udC1zaXplPSIyNCI+YmFzZe+8i+acqueJqeWMluWQjue8gDwvdGV4dD4KICAgIDx0ZXh0IHg9IjQ4MCIgeT0iMTAzNyIgZm9udC1zaXplPSIyMiIgZmlsbD0iIzA4NzQ3NiI+bG9hZDwvdGV4dD4KICAgIDx0ZXh0IHg9IjQ4MCIgeT0iMTE1OCIgZm9udC1zaXplPSIyNCIgZmlsbD0iIzYxNzk4NCI+5pawIHNlZ21lbnQg5Yqg6L295ZCO77yM5pu/5o2i5p+l6K+i5L6nIHNlZ21lbnQg5bm25o6l57ut5Zyo57q/6ZO+6LevPC90ZXh0PgogIDwvZz4KPC9zdmc+Cg==" alt="Delta 在 query side 与 compaction side 的模块协作数据流" decoding="async"></a><figcaption>左侧通过 full rewrite 写入新 segment，再经 load 接入右侧查询链路；右侧通过 Records 影响当前查询。</figcaption></figure>
+<h3 id="section-4-3" tabindex="-1">4.3 时间与进度的含义</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="设计表格，可横向滚动"><table>
+<thead>
+<tr>
+<th>记号</th>
+<th>含义</th>
+<th>维护位置</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>row_ts</code></td>
+<td>物理行的有效诞生时间，UPDATE 不改变它</td>
+<td>行数据；导入沿用现有 commit-time 处理</td>
+</tr>
+<tr>
+<td><code>mutation_ts</code></td>
+<td>mutation 的有效 WAL TimeTick；transaction 内取 CommitTxn TimeTick</td>
+<td>WAL 和 delta record</td>
+</tr>
+<tr>
+<td><code>M</code></td>
+<td>VChannel 级 delta 持久化发布水位，即三类 delta 已完整持久化并提交的连续前缀的结束时间戳</td>
+<td>持久化到 etcd，由 MixCoord 在 batch 提交事务中推进</td>
+</tr>
+<tr>
+<td><code>C</code></td>
+<td>VChannel 级 delta 分发完成水位，即已完整分发至全部适用目标且分发结果已持久化的连续前缀的结束时间戳，<code>C≤M</code></td>
+<td>持久化到 etcd，由 compaction 完成侧推进</td>
+</tr>
+<tr>
+<td><code>H</code></td>
+<td>Query side 本次 load 的历史异步回放范围终点，即输入交接结束时间戳；所需历史 deltas 已完整入队，交接后固定</td>
+<td>Delegator／segment 加载期内存状态，不持久化</td>
+</tr>
+<tr>
+<td><code>A</code></td>
+<td>Query side 历史异步 apply 的完成水位；<code>ts≤A</code> 的本次所需历史 deltas 均已执行完成</td>
+<td>segment 加载期内存状态，不持久化</td>
+</tr>
+<tr>
+<td><code>TSafe / Q_TS</code></td>
+<td>TSafe 证明 channel 的实时可读进度；Q_TS 是查询实际使用的 MVCC timestamp</td>
+<td>查询准入与执行</td>
+</tr>
+</tbody></table>
+</div>
+<p>DeleteCP 指定 deleteBuffer 可安全回收的删除前缀边界。对当前 VChannel 加载范围内的有效 L0 集合，<a href="../../internal/datacoord/handler.go">计算</a>如下：</p>
+<pre><code class="language-text">DeleteCP = L0 非空 ? min(L0.StartPosition) : VChannel.seekPosition
+</code></pre>
+<p>DeleteCP 不是 M、C 或 apply 进度。Recovery CP 管理 WAL 恢复，不能替代上述契约。任一 record 的最大 timestamp 都不能单独证明前缀完整。</p>
+<h2 id="section-5" tabindex="-1">5. 模块详细设计与实现改造</h2>
+<h3 id="section-5-1" tabindex="-1">5.1 Proxy / WAL：提交可重放的逻辑操作</h3>
+<p>Proxy 将用户请求转换为逻辑 mutation；WAL 保存操作并确定消费者使用的逻辑时间。</p>
+<h4 id="section-5-1-1" tabindex="-1">5.1.1 请求到 WAL 消息</h4>
+<ol>
+<li><strong>校验与分流。</strong> 在 WAL append 之前完成 Delete API 分流；point UPDATE 使用独立入口。对最终完整表达式做支持集判断，权限、schema 和 scope 校验均保留。</li>
+<li><strong>提取与规范化。</strong> UPDATE 接受 PK 等值或 PK IN 常量列表，以及 literal assignments。直接提取 PK 数组，复用 PK-delete 的 VChannel 路由和批量打包方式，无需前置 Query。写入前检查窄整数越界、VARCHAR <code>max_length</code>、ARRAY <code>element_type / max_capacity</code> 及元素有效性；TIMESTAMPTZ 沿用 UTC Unix microseconds 归一化。</li>
+<li><strong>构造消息。</strong> predicate delete 将字段名绑定为 field ID 和类型，构造 typed predicate；point UPDATE 直接携带 PK 数组和 typed assignments，不将 PK 等值／IN 条件编码为 expression AST，结构见 §5.1.2。PK、predicate 和赋值内容均放在 body，不因 Delegator 需要 BF 就搬到明文 header。</li>
+<li><strong>打包与提交。</strong> 按 VChannel 打包并 append WAL。非 transaction 消息以自身 WAL TimeTick 作为 mutation_ts；VChannel transaction 内的全部 mutations 统一以 CommitTxn.TimeTick() 作为 mutation_ts。点更新与删除不组成新的混合事务，同 ts 的多 PK records 必须完整保留。</li>
+</ol>
+<h4 id="section-5-1-2" tabindex="-1">5.1.2 输出与契约</h4>
+<p>输出是包含操作范围和目标的 WAL 消息：predicate delete 携带 typed predicate，point UPDATE 携带 PK 数组与 assignments。每次提交必须明确 collection、VChannel、partition scope、schema 身份、目标字段和 typed 值。消息由消费者独立解释，不依赖 Proxy 已查出的 offsets 或主集群特有的 segment 布局。</p>
+<p><strong>消息结构。</strong> 沿用现有 WAL envelope：通用属性在 Properties，collection／schema 身份在 Header，业务内容在 Body。Header 编码在 <code>_h</code> property；Body 以 Protobuf bytes 保存为 payload，启用 cipher 时加密 payload。以下为拟新增消息的解码后逻辑结构，省略通用 version 字段；消息枚举和 Protobuf 字段号在实现时确定。</p>
+<p>Predicate delete：<code>DELETE FROM t WHERE age == 18</code>，其中 age 的 field ID 为 102。</p>
+<pre><code class="language-text">Properties {
+  message_type: PREDICATE_DELETE,
+  vchannel: &quot;v1&quot;, timetick: 100, txn_context: null
+}
+Header { collection_id: 10, schema_version: 7 }
+Body {
+  partition_scope: ALL_PARTITIONS
+  predicate {
+    unary_range_expr {
+      column_info { field_id: 102, data_type: Int64 }
+      op: Equal
+      value { int64_val: 18 }
+    }
+  }
+}
+</code></pre>
+<p>Point update：<code>UPDATE t SET checked = true, name = &#39;reviewed&#39; WHERE pk IN [100, 200]</code>。primary_keys 直接使用现有 <code>schemapb.IDs</code> 表达 PK 数组，与 PK-delete 保持相同的字段组织；checked、name 的 field ID 分别为 103、104。</p>
+<pre><code class="language-text">Properties {
+  message_type: UPDATE,
+  vchannel: &quot;v1&quot;, timetick: 110, txn_context: null
+}
+Header { collection_id: 10, schema_version: 7 }
+Body {
+  partition_scope: ALL_PARTITIONS
+  primary_keys {
+    int_id { data: [100, 200] }
+  }
+  assignments: [
+    { field_id: 103, literal: { data_type: Bool, bool_value: true } },
+    { field_id: 104, literal: { data_type: VarChar, string_value: &quot;reviewed&quot; } }
+  ]
+}
+</code></pre>
+<p>predicate delete 复用 <a href="../../pkg/proto/plan.proto">planpb.Expr</a> 的受限节点。<code>UpdateBody</code> 内直接声明 <code>oneof target { primary_keys, predicate }</code>：primary_keys 使用 <code>schemapb.IDs</code>，predicate 使用 <code>planpb.Expr</code>。两者均为 Body 的直接字段，oneof 只约束互斥选择，不增加 <code>target {}</code> 消息包装。Phase 1 只接受 primary_keys，predicate 仅预留格式空间，不实现通用 UPDATE WHERE。</p>
+<p>Delegator 直接解码 PK 数组做 BF，不需要理解 expression AST；assignments 保持可转发的 serialized bytes，由执行端解析。单 PK 等值请求同样使用长度为 1 的 PK 数组。<code>literal</code> 使用 §5.2.4 的 TypedValue；nullable 字段的 SET NULL 用显式 <code>null_value</code>，不以缺失 assignment 表达。</p>
+<p>SET NULL：假设 name（field ID=104）是 nullable VARCHAR，<code>UPDATE t SET name = NULL WHERE pk == 100</code> 对应：</p>
+<pre><code class="language-text">Properties {
+  message_type: UPDATE,
+  vchannel: &quot;v1&quot;, timetick: 120, txn_context: null
+}
+Header { collection_id: 10, schema_version: 7 }
+Body {
+  partition_scope: ALL_PARTITIONS
+  primary_keys { int_id { data: [100] } }
+  assignments: [
+    {
+      field_id: 104
+      literal { data_type: VarChar, null_value: NULL_VALUE }
+    }
+  ]
+}
+</code></pre>
+<p><code>null_value</code> 复用 Protobuf 官方 Well-Known enum <a href="https://protobuf.dev/reference/protobuf/google.protobuf/"><code>google.protobuf.NullValue</code></a>，其枚举值为 <code>NULL_VALUE = 0</code>。TypedValue 的 <code>oneof value</code> 显式记录选中的分支；即使 null_value 的值为 0，显式设置后也与“未设置任何 value 分支”不同。参见 <a href="https://protobuf.dev/programming-guides/field_presence/">oneof presence 规则</a>。</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="设计表格，可横向滚动"><table>
+<thead>
+<tr>
+<th>消息内容</th>
+<th>oneof value 状态</th>
+<th>UPDATE 语义</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>literal { data_type: VarChar, null_value: NULL_VALUE }</code></td>
+<td>选中 null_value</td>
+<td>SET NULL</td>
+</tr>
+<tr>
+<td><code>literal { data_type: VarChar, string_value: &quot;&quot; }</code></td>
+<td>选中 string_value</td>
+<td>设置为空字符串</td>
+</tr>
+<tr>
+<td><code>literal { data_type: VarChar }</code></td>
+<td>未选中任何 value 分支</td>
+<td>缺少赋值，reject</td>
+</tr>
+<tr>
+<td>没有该字段的 assignment</td>
+<td>不涉及该字段</td>
+<td>不修改</td>
+</tr>
+</tbody></table>
+</div>
+<p>校验与执行必须检查 <strong>oneof case</strong>，不能只判断 <code>GetNullValue() == 0</code>：未设置 null_value 时，getter 也可能返回默认值 0。assignment 存在但 value 未设置时，必须在 WAL append 前 reject，不能当作 SET NULL；消费端也不得将未设置的 value 默认为 NULL 或静默忽略。Protobuf 负责保留分支 presence，缺值拒绝由业务校验实现。</p>
+<p><strong>有效 TimeTick。</strong> 在线 apply、L0 delta records 和 compaction 使用同一个 mutation_ts：</p>
+<pre><code class="language-text">mutation_ts = 非 transaction ? message.TimeTick() : CommitTxn.TimeTick()
+delta.ts    = mutation_ts
+</code></pre>
+<p>例如同一次 UPDATE 请求在 v1 内被切成两条消息：</p>
+<pre><code class="language-text">物理 WAL：BeginTxn@90 → UPDATE@91 → UPDATE@92 → CommitTxn@100
+消费与 L0：两条 UPDATE 的全部 delta records 均使用 mutation_ts=100
+</code></pre>
+<p>现有 <a href="../../pkg/streaming/util/message/builder.go">transaction assembly</a> 在消费时将 transaction 及其 body messages 的 TimeTick 统一设为 CommitTxn.TimeTick()。这是 WAL 逻辑时间，不是客户端提交时间或 append 完成的 wall-clock 时间；Body 不再保存另一套 mutation 时钟。</p>
+<p><strong>CDC。</strong> Predicate delete 与 PK inplace-update 的逻辑变更完整由 WAL message 表达。Proxy 不查询命中行或 offsets，也不感知目标 segment ID、物理文件；不通过 WAL 之外的额外业务 RPC 指示 SN、DN 或 MixCoord 修改数据或 metadata。主备分别消费逻辑 WAL，独立完成行定位、执行和物化，不依赖主集群额外执行的动作。WAL append 本身可经 RPC 到达 SN，但不构成 WAL 之外的写入路径。依据：<a href="../agent_guides/streaming-system/replication/replicate.md">Milvus CDC 契约</a>。</p>
+<p>若备集群 SN 不认识新增 MessageType，其 <a href="../../internal/streamingnode/server/service/handler/producer/produce_server.go">RPC append 入口</a>会在调用 <code>wal.AppendAsync()</code> 前返回 <code>unsupported message type</code>。该消息不写入备集群 WAL，CDC 返回复制失败，复制 checkpoint 不越过该消息。</p>
+<h4 id="section-5-1-3" tabindex="-1">5.1.3 当前实现与改造</h4>
+<p><strong>可复用。</strong> 现有 <a href="../../internal/proxy/dml/task_delete_streaming.go">PK-delete 写入链路</a>已支持 PK 数组路由与打包、WAL 消息封装；<a href="../../internal/distributed/streaming/internal/producer/producer_task.go">WAL 提交机制</a>已有 VChannel 内部 transaction 和 append 成功返回语义，无需重建。</p>
+<p><strong>需增强。</strong> 新增 predicate-delete／point UPDATE 消息及 typed 赋值、显式 NULL 校验，使两类操作无需前置 Query 即可进入 WAL。接通新消息的 CDC 复制与消费；CDC 部署的主备及执行节点均须支持新消息后才能启用。</p>
+<h3 id="section-5-2" tabindex="-1">5.2 L0 delta：生产、原子发布与分发</h3>
+<p>本模块将连续 WAL 中的 mutations 持久化为 L0 delta files，原子发布为可调度的 batch，再分发到目标 segment。SN 负责区间切分与文件准备；MixCoord 中的 DataCoord 负责 batch／进度 metadata 提交、L0 compaction 调度及分发期间的 target 隔离，DN 执行分发。</p>
+<figure class="problem-figure"><a href="assets/predicate-delete-and-point-update/sn-delta-sync-ranges.svg" target="_blank" rel="noopener" aria-label="查看大图：SN 将连续 WAL 切为 sync ranges 并生成 batches"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTAwIiBoZWlnaHQ9Ijg3MCIgdmlld0JveD0iMCAwIDExMDAgODcwIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUgZGVzYyI+CiAgPHRpdGxlIGlkPSJ0aXRsZSI+U04g5bCG6L+e57utIFdBTCDmtojmga/mtYHliIfkuLogcmFuZ2Vz77yM55Sf5oiQIGJhdGNoZXMg5bm25oyJ5bqP5o6o6L+bIE08L3RpdGxlPgogIDxkZXNjIGlkPSJkZXNjIj7kuIrmlrkgV0FMIOi+k+WHuuaYr+S4gOadoei/nue7reOAgeaMieW6j+S4lOW3suWujOaVtOa2iOi0ueiHsyAyNDAg55qE5raI5oGv5rWB77yM5YyF5ZCrIFBLIERFTEVURUA5MOOAgVVQREFURUAxMTDjgIFJbnNlcnTjgIFUaW1lVGljayDlkowgcHJlZGljYXRlIERFTEVURUAyMjDjgIFzY2hlbWEtY2hhbmdlQDI0MO+8m1dBTCDkuI3mj5DkvpvpooTlhYjliIflpb3nmoQgc3luYyBiYXRjaGVz44CCU04gTWF0ZXJpYWxpemVyIOaMiSBzeW5jIOetlueVpemAieaLqSAxMjDjgIEyMDDjgIEyNDAg5L2c5Li6IGN1dCBwb2ludHPvvIzlsIbovpPlhaXliIfkuLrnm7jmjqXnmoQgKDgwLDEyMF3jgIEoMTIwLDIwMF3jgIEoMjAwLDI0MF3vvIzliIbliKvnlJ/miJAgQjHjgIFCMuOAgUIz44CCQjIg5rKh5pyJIGRlbHRh77yM5LiN5YaZ56m65paH5Lu277ybc2NoZW1hLWNoYW5nZSDlj6rlvLrliLbmnKzmrKEgY3V044CCTWl4Q29vcmQg5Lit55qEIERhdGFDb29yZCDmjInljLrpl7Tpobrluo/ljp/lrZDmj5DkuqQgYmF0Y2ggQ09NTUlUVEVEIOeKtuaAgeS4jiBN77yM5L6d5qyh5bCGIE0g5LuOIDgwIOaOqOi/m+iHsyAxMjDjgIEyMDDjgIEyNDDvvIzkuI3og73otorov4fmnKrmj5DkuqTljLrpl7TjgII8L2Rlc2M+CiAgPGRlZnM+CiAgICA8bWFya2VyIGlkPSJmbG93LWFycm93IiBtYXJrZXJXaWR0aD0iOSIgbWFya2VySGVpZ2h0PSI5IiByZWZYPSI3IiByZWZZPSI0LjUiIG9yaWVudD0iYXV0byI+PHBhdGggZD0iTTAgMEw4IDQuNUwwIDkiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIxLjYiLz48L21hcmtlcj4KICAgIDxtYXJrZXIgaWQ9ImNvbW1pdC1hcnJvdyIgbWFya2VyV2lkdGg9IjkiIG1hcmtlckhlaWdodD0iOSIgcmVmWD0iNyIgcmVmWT0iNC41IiBvcmllbnQ9ImF1dG8iPjxwYXRoIGQ9Ik0wIDBMOCA0LjVMMCA5IiBmaWxsPSJub25lIiBzdHJva2U9IiMwODc0NzYiIHN0cm9rZS13aWR0aD0iMS42Ii8+PC9tYXJrZXI+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxMTAwIiBoZWlnaHQ9Ijg3MCIgcng9IjEyIiBmaWxsPSIjZjdmYWZiIi8+CiAgPGcgZm9udC1mYW1pbHk9IlBpbmdGYW5nIFNDLE1pY3Jvc29mdCBZYUhlaSxzYW5zLXNlcmlmIiBmaWxsPSIjMjQzZTRhIj4KICAgIDx0ZXh0IHg9IjMyIiB5PSI0NCIgZm9udC1zaXplPSIyOCIgZm9udC13ZWlnaHQ9IjYwMCI+U04gc3luY++8mui/nue7rSBXQUwg4oaSIFNOIHNwbGl0IOKGkiBiYXRjaGVzIOKGkiBNPC90ZXh0PgogICAgPHRleHQgeD0iMzIiIHk9IjgxIiBmb250LXNpemU9IjIxIiBmaWxsPSIjNjE3OTg0Ij7lkIzkuIAgVkNoYW5uZWwgwrcg5Yid5aeLIE09ODAgwrcg5bey56Gu6K6k55qE5a6M5pW0IFdBTCDovpPlhaXoh7MgMjQwPC90ZXh0PgoKICAgIDx0ZXh0IHg9IjMyIiB5PSIxNjgiIGZvbnQtc2l6ZT0iMjMiIGZvbnQtd2VpZ2h0PSI2MDAiPldBTCDovpPlh7o8L3RleHQ+CiAgICA8dGV4dCB4PSIzMiIgeT0iMjAxIiBmb250LXNpemU9IjIwIiBmaWxsPSIjNjE3OTg0Ij7ov57nu63mtojmga/mtYE8L3RleHQ+CiAgICA8cGF0aCBpZD0id2FsLXN0cmVhbSIgZD0iTTE5MCAxNzZIMTA3NSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzE4Nzk1IiBzdHJva2Utd2lkdGg9IjMiIG1hcmtlci1lbmQ9InVybCgjZmxvdy1hcnJvdykiLz4KICAgIDxnIGZpbGw9IiM3MTg3OTUiPgogICAgICA8Y2lyY2xlIGN4PSIxOTAiIGN5PSIxNzYiIHI9IjUiLz4KICAgICAgPGNpcmNsZSBjeD0iMjgwIiBjeT0iMTc2IiByPSI1Ii8+CiAgICAgIDxjaXJjbGUgY3g9IjQxMCIgY3k9IjE3NiIgcj0iNSIvPgogICAgICA8Y2lyY2xlIGN4PSI1MDAiIGN5PSIxNzYiIHI9IjUiLz4KICAgICAgPGNpcmNsZSBjeD0iNjIwIiBjeT0iMTc2IiByPSI1Ii8+CiAgICAgIDxjaXJjbGUgY3g9Ijc1MCIgY3k9IjE3NiIgcj0iNSIvPgogICAgICA8Y2lyY2xlIGN4PSI4NjUiIGN5PSIxNzYiIHI9IjUiLz4KICAgICAgPGNpcmNsZSBjeD0iMTAyMCIgY3k9IjE3NiIgcj0iNSIvPgogICAgPC9nPgogICAgPGcgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIxOSI+CiAgICAgIDx0ZXh0IHg9IjE5MCIgeT0iMjExIj44MDwvdGV4dD4KICAgICAgPHRleHQgeD0iMjgwIiB5PSIxMjYiPlBLIERFTEVURTwvdGV4dD4KICAgICAgPHRleHQgeD0iMjgwIiB5PSIxNTIiPkA5MDwvdGV4dD4KICAgICAgPHRleHQgeD0iNDEwIiB5PSIxMjYiPlVQREFURTwvdGV4dD4KICAgICAgPHRleHQgeD0iNDEwIiB5PSIxNTIiPkAxMTA8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjUwMCIgeT0iMjExIiBmaWxsPSIjNjE3OTg0Ij5UaW1lVGlja0AxMjA8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjYyMCIgeT0iMTI2Ij5JbnNlcnQ8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjYyMCIgeT0iMTUyIj5AMTYwPC90ZXh0PgogICAgICA8dGV4dCB4PSI3NTAiIHk9IjIxMSIgZmlsbD0iIzYxNzk4NCI+VGltZVRpY2tAMjAwPC90ZXh0PgogICAgICA8dGV4dCB4PSI4NjUiIHk9IjEyNiI+cHJlZGljYXRlIERFTEVURTwvdGV4dD4KICAgICAgPHRleHQgeD0iODY1IiB5PSIxNTIiPkAyMjA8L3RleHQ+CiAgICAgIDx0ZXh0IHg9Ijk3MyIgeT0iMjQ0IiBmaWxsPSIjOTg2MTNkIj5zY2hlbWEtY2hhbmdlQDI0MDwvdGV4dD4KICAgIDwvZz4KICAgIDxwYXRoIGQ9Ik0xMDIwIDE4M1YyMjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzk4NjEzZCIgc3Ryb2tlLXdpZHRoPSIxLjUiLz4KICAgIDxwYXRoIGQ9Ik02MjUgMjQ2VjI4OSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzE4Nzk1IiBzdHJva2Utd2lkdGg9IjIuNSIgbWFya2VyLWVuZD0idXJsKCNmbG93LWFycm93KSIvPgoKICAgIDxyZWN0IHg9IjE4MCIgeT0iMzAyIiB3aWR0aD0iODkwIiBoZWlnaHQ9IjMwMCIgcng9IjEwIiBmaWxsPSIjZWVmNGY1IiBzdHJva2U9IiNjNWQ3ZGYiLz4KICAgIDx0ZXh0IHg9IjIwMCIgeT0iMzM3IiBmb250LXNpemU9IjIzIiBmb250LXdlaWdodD0iNjAwIj5TTiBzcGxpdO+8muaMiSBzeW5jIOetlueVpemAieaLqSBjdXQgcG9pbnRzPC90ZXh0PgogICAgPHRleHQgeD0iMzIiIHk9IjQ0MiIgZm9udC1zaXplPSIyMyIgZm9udC13ZWlnaHQ9IjYwMCI+U048L3RleHQ+CiAgICA8dGV4dCB4PSIzMiIgeT0iNDc0IiBmb250LXNpemU9IjIyIiBmb250LXdlaWdodD0iNjAwIj5NYXRlcmlhbGl6ZXI8L3RleHQ+CiAgICA8ZyBpZD0ic24tY3V0LXBvaW50cyIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDg3NDc2IiBzdHJva2Utd2lkdGg9IjIiPgogICAgICA8cGF0aCBkPSJNMjAwIDM4NUgxMDUwIi8+CiAgICAgIDxwYXRoIGQ9Ik0yMDAgMzc2VjM5NU00ODAgMzc2VjM5NU03NzAgMzc2VjM5NU0xMDUwIDM3NlYzOTUiLz4KICAgIDwvZz4KICAgIDxnIGZvbnQtc2l6ZT0iMTkiIGZpbGw9IiMwODc0NzYiPgogICAgICA8dGV4dCB4PSIyMDAiIHk9IjM2OSI+UD04MDwvdGV4dD4KICAgICAgPHRleHQgeD0iNDgwIiB5PSIzNjkiIHRleHQtYW5jaG9yPSJtaWRkbGUiPmN1dEAxMjA8L3RleHQ+CiAgICAgIDx0ZXh0IHg9Ijc3MCIgeT0iMzY5IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIj5jdXRAMjAwPC90ZXh0PgogICAgICA8dGV4dCB4PSIxMDUwIiB5PSIzNjkiIHRleHQtYW5jaG9yPSJlbmQiPmN1dEAyNDA8L3RleHQ+CiAgICA8L2c+CiAgICA8ZyBmaWxsPSJub25lIiBzdHJva2U9IiM3MTg3OTUiIHN0cm9rZS13aWR0aD0iMiIgbWFya2VyLWVuZD0idXJsKCNmbG93LWFycm93KSI+CiAgICAgIDxwYXRoIGQ9Ik0zMzUgMzg4VjQyMCIvPgogICAgICA8cGF0aCBkPSJNNjI1IDM4OFY0MjAiLz4KICAgICAgPHBhdGggZD0iTTkxNSAzODhWNDIwIi8+CiAgICA8L2c+CiAgICA8ZyB0ZXh0LWFuY2hvcj0ibWlkZGxlIj4KICAgICAgPHJlY3QgeD0iMjAwIiB5PSI0MjgiIHdpZHRoPSIyNzAiIGhlaWdodD0iMTQ5IiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2I3Y2RkNiIvPgogICAgICA8dGV4dCB4PSIzMzUiIHk9IjQ2NSIgZm9udC1zaXplPSIyNCIgZm9udC13ZWlnaHQ9IjYwMCI+QjHvvJogKDgwLDEyMF08L3RleHQ+CiAgICAgIDxwYXRoIGQ9Ik0yMTcgNDgxSDQ1MyIgc3Ryb2tlPSIjZGNlNGU4Ii8+CiAgICAgIDx0ZXh0IHg9IjMzNSIgeT0iNTE2IiBmb250LXNpemU9IjIyIj5MMCBmaWxlc++8mkYx44CBRjI8L3RleHQ+CiAgICAgIDx0ZXh0IHg9IjMzNSIgeT0iNTUwIiBmb250LXNpemU9IjIwIiBmaWxsPSIjNjE3OTg0Ij7mlofku7blj4rmiJDlkZggbWV0YWRhdGE8L3RleHQ+CgogICAgICA8cmVjdCB4PSI0OTAiIHk9IjQyOCIgd2lkdGg9IjI3MCIgaGVpZ2h0PSIxNDkiIHJ4PSI4IiBmaWxsPSIjZTdmM2YxIiBzdHJva2U9IiM4OGI3YjQiLz4KICAgICAgPHRleHQgeD0iNjI1IiB5PSI0NjUiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtd2VpZ2h0PSI2MDAiPkIy77yaICgxMjAsMjAwXTwvdGV4dD4KICAgICAgPHBhdGggZD0iTTUwNyA0ODFINzQzIiBzdHJva2U9IiNjN2RmZGMiLz4KICAgICAgPHRleHQgeD0iNjI1IiB5PSI1MTYiIGZvbnQtc2l6ZT0iMjMiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMwODc0NzYiPuayoeaciSBkZWx0YTwvdGV4dD4KICAgICAgPHRleHQgeD0iNjI1IiB5PSI1NTAiIGZvbnQtc2l6ZT0iMjAiPuaIkOWRmOS4uuepuu+8jOS4jeWGmeaWh+S7tjwvdGV4dD4KCiAgICAgIDxyZWN0IHg9Ijc4MCIgeT0iNDI4IiB3aWR0aD0iMjcwIiBoZWlnaHQ9IjE0OSIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNiN2NkZDYiLz4KICAgICAgPHRleHQgeD0iOTE1IiB5PSI0NjUiIGZvbnQtc2l6ZT0iMjQiIGZvbnQtd2VpZ2h0PSI2MDAiPkIz77yaICgyMDAsMjQwXTwvdGV4dD4KICAgICAgPHBhdGggZD0iTTc5NyA0ODFIMTAzMyIgc3Ryb2tlPSIjZGNlNGU4Ii8+CiAgICAgIDx0ZXh0IHg9IjkxNSIgeT0iNTE2IiBmb250LXNpemU9IjIyIj7ml6cgc2NoZW1hIOeahCBMMCBmaWxlczwvdGV4dD4KICAgICAgPHRleHQgeD0iOTE1IiB5PSI1NTAiIGZvbnQtc2l6ZT0iMjAiIGZpbGw9IiM5ODYxM2QiPnNjaGVtYS1jaGFuZ2Ug6Kem5Y+RIGN1dDwvdGV4dD4KICAgIDwvZz4KCiAgICA8ZyBmaWxsPSJub25lIiBzdHJva2U9IiM3MTg3OTUiIHN0cm9rZS13aWR0aD0iMi41IiBtYXJrZXItZW5kPSJ1cmwoI2Zsb3ctYXJyb3cpIj4KICAgICAgPHBhdGggZD0iTTMzNSA1NzlWNjYzIi8+CiAgICAgIDxwYXRoIGQ9Ik02MjUgNTc5VjY2MyIvPgogICAgICA8cGF0aCBkPSJNOTE1IDU3OVY2NjMiLz4KICAgIDwvZz4KICAgIDxyZWN0IHg9IjE4MCIgeT0iNjEzIiB3aWR0aD0iODkwIiBoZWlnaHQ9IjM2IiByeD0iNSIgZmlsbD0iI2Y3ZmFmYiIvPgogICAgPHRleHQgeD0iNjI1IiB5PSI2MzgiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMTkiIGZpbGw9IiM2MTc5ODQiPuavj+asoeaPkOS6pOWQjOaXtuaMgeS5heWMliBiYXRjaC5zdGF0ZT1DT01NSVRURUQg5LiOIE09YmF0Y2guZW5kPC90ZXh0PgogICAgPHRleHQgeD0iMzIiIHk9IjcwOCIgZm9udC1zaXplPSIyMyIgZm9udC13ZWlnaHQ9IjYwMCI+TWl4Q29vcmQ8L3RleHQ+CiAgICA8dGV4dCB4PSIzMiIgeT0iNzQxIiBmb250LXNpemU9IjIwIiBmaWxsPSIjNjE3OTg0Ij7mjInluo/ljp/lrZDmj5DkuqQ8L3RleHQ+CiAgICA8ZyB0ZXh0LWFuY2hvcj0ibWlkZGxlIj4KICAgICAgPHJlY3QgeD0iMjAwIiB5PSI2NzEiIHdpZHRoPSIyNzAiIGhlaWdodD0iOTQiIHJ4PSI4IiBmaWxsPSIjZTdmM2YxIiBzdHJva2U9IiM4OGI3YjQiLz4KICAgICAgPHRleHQgeD0iMzM1IiB5PSI3MDkiIGZvbnQtc2l6ZT0iMjEiPkNvbW1pdCBCMTwvdGV4dD4KICAgICAgPHRleHQgeD0iMzM1IiB5PSI3NDUiIGZvbnQtc2l6ZT0iMjYiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMwODc0NzYiPk3vvJo4MCDihpIgMTIwPC90ZXh0PgogICAgICA8cmVjdCB4PSI0OTAiIHk9IjY3MSIgd2lkdGg9IjI3MCIgaGVpZ2h0PSI5NCIgcng9IjgiIGZpbGw9IiNlN2YzZjEiIHN0cm9rZT0iIzg4YjdiNCIvPgogICAgICA8dGV4dCB4PSI2MjUiIHk9IjcwOSIgZm9udC1zaXplPSIyMSI+Q29tbWl0IEIyPC90ZXh0PgogICAgICA8dGV4dCB4PSI2MjUiIHk9Ijc0NSIgZm9udC1zaXplPSIyNiIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iIzA4NzQ3NiI+Te+8mjEyMCDihpIgMjAwPC90ZXh0PgogICAgICA8cmVjdCB4PSI3ODAiIHk9IjY3MSIgd2lkdGg9IjI3MCIgaGVpZ2h0PSI5NCIgcng9IjgiIGZpbGw9IiNlN2YzZjEiIHN0cm9rZT0iIzg4YjdiNCIvPgogICAgICA8dGV4dCB4PSI5MTUiIHk9IjcwOSIgZm9udC1zaXplPSIyMSI+Q29tbWl0IEIzPC90ZXh0PgogICAgICA8dGV4dCB4PSI5MTUiIHk9Ijc0NSIgZm9udC1zaXplPSIyNiIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iIzA4NzQ3NiI+Te+8mjIwMCDihpIgMjQwPC90ZXh0PgogICAgPC9nPgogICAgPGcgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMDg3NDc2IiBzdHJva2Utd2lkdGg9IjEuOCIgbWFya2VyLWVuZD0idXJsKCNjb21taXQtYXJyb3cpIj4KICAgICAgPHBhdGggZD0iTTQ3MSA3MThINDg2Ii8+CiAgICAgIDxwYXRoIGQ9Ik03NjEgNzE4SDc3NiIvPgogICAgPC9nPgoKICAgIDxwYXRoIGQ9Ik0yMDAgNzkwSDEwNTAiIHN0cm9rZT0iI2Q0ZTFlNSIvPgogICAgPHRleHQgeD0iMjAwIiB5PSI4MjAiIGZvbnQtc2l6ZT0iMjEiIGZpbGw9IiM5ODYxM2QiPuWJjeW6jyBiYXRjaCDmnKrmj5DkuqTml7bvvIzlkI7nu63ljbPkvb/lh4blpIflrozmiJDvvIzkuZ/kuI3og73otorov4flroPmjqjov5sgTeOAgjwvdGV4dD4KICAgIDx0ZXh0IHg9IjIwMCIgeT0iODUzIiBmb250LXNpemU9IjIwIiBmaWxsPSIjNjE3OTg0Ij7nqbrljLrpl7TlkIzmoLfmjqjov5sgTe+8m3NjaGVtYS1jaGFuZ2UgZmVuY2Ug5LiN5pS55Y+Y5a6M5pW05oCn5LiO5o+Q5Lqk6aG65bqP44CCPC90ZXh0PgogIDwvZz4KPC9zdmc+Cg==" alt="SN 将连续 WAL 切为 sync ranges 并生成 batches" decoding="async"></a><figcaption>WAL 提供连续消息流；SN 选择 cut points、生成 ranges 与 batches，再按序提交并推进 M。空区间同样推进 M。</figcaption></figure>
+<h4 id="section-5-2-1" tabindex="-1">5.2.1 生产侧：SN sync</h4>
+<p>Materializer 接收同一 VChannel 已确认、重排后的连续 WAL 消息流，由 SN 按 sync 策略切为首尾相接的 ranges，并为每个 range 生成一个 batch。每个 batch 覆盖 <code>(P,E]</code>：P 是前一批的结束边界，E 是本批 WAL 输入的完整消费边界。收集区间内全部 partition scopes 的 PK DELETE、predicate DELETE、UPDATE；即使区间内只有 Insert／TimeTick、没有任何 delta，也能确认该区间的 delta 输入完整。</p>
+<p>有 delta 时，按消息携带的 partition scope 分组；ALL_PARTITIONS 保留为一个 scope，不展开为具体 partition 列表。每个 scope 内按 rolling 策略生成一个或多个 L0。保存原始指令，不提前求值，也不将更新压成最后值；没有 delta 时，batch 的成员集合为空，不写空文件。</p>
+<p><strong>Sync 触发。</strong> 容量、等待时间、显式 Flush 等条件触发 sync。schema-change fence 是其中的强制 cut：切出旧 schema 的 delta buffer 并触发 sync，后续 delta 进入新 schema 的 buffer，保证单个文件不跨 schema_version。它不改变区间完整性、提交顺序或 M 的推进规则。</p>
+<p>SN 输出本批完整覆盖区间、L0 files 和成员 metadata，供 MixCoord 提交。文件准备完成尚不表示该 batch 可以被调度。</p>
+<p>Insert files 可独立 sync，保留前序 L1 注册依赖，不要求所有 L1 flush。</p>
+<h4 id="section-5-2-2" tabindex="-1">5.2.2 原子发布：batch 与 M</h4>
+<p>MixCoord 以一个 batch 的全部成员为原子可见单位。提交前，L0 compaction 调度侧不得选取该 batch 的任何成员；提交后，调度侧可以采用该批完整输出。</p>
+<p>发布分三步：</p>
+<ol>
+<li>建立 PREPARING attempt，分批写 files、L0 metadata 和成员引用，尚不可消费。</li>
+<li>全部输出持久化、完整区间确认、成员固定后置为 PREPARED。</li>
+<li>一个 etcd 条件事务校验 batch／M revision 及 <code>batch.start==M</code>，同时写 <code>COMMITTED＋M=batch.end</code>。</li>
+</ol>
+<p>提交必须满足以下规则：</p>
+<ul>
+<li><strong>Contiguous。</strong> <code>(P,E]</code> 覆盖全部 partition scopes 的三类 delta；区间边界来自完整 WAL 消费进度，文件中 records 的 min/max ts 只是内容统计。提交时必须有 <code>P=M</code>，不能留下 hole。</li>
+<li><strong>Ordered。</strong> batch 按覆盖区间先后提交，不能越过未完成区间推进 M。文件准备可以并行；后续文件写完，不代表后续区间可以提前供调度侧采用。</li>
+<li><strong>M 随 range 推进。</strong> 提交成功后 <code>M=E</code>，有无 delta 都一样。例如 <code>(120,200]</code> 没有 delta，提交空成员 batch 后仍将 M 从 120 推进到 200。空 TimeTick 可以合并为较大区间提交，不必每个 tick 写一次 metadata。</li>
+</ul>
+<p><strong>Batch metadata。</strong> VChannel 级 M／C 和 batch 使用以下布局：</p>
+<pre><code class="language-text">datacoord-meta/delta-channel/{collectionID}/{vchannel}/progress/M
+datacoord-meta/delta-channel/{collectionID}/{vchannel}/progress/C
+datacoord-meta/delta-channel/{collectionID}/{vchannel}/batches/B42
+  → {
+      coverage_start_exclusive: 80,
+      coverage_end_inclusive: 120,
+      state: PREPARING | PREPARED | COMMITTED | DROPPED,
+      l0_segments: [
+        {partition_id: 10, segment_id: 10001},
+        {partition_id: -1, segment_id: 10002}
+      ]
+    }
+</code></pre>
+<p>M、C 用两个 KV，由各自完成侧更新。batch header 直接保存成员列表；成员继续通过既有 L0 SegmentInfo／FieldBinlog log IDs 或 storage manifest 找到 N 个文件，不把全部 paths 填进 progress，也不改物理路径规则。列表需满足 etcd 单 value／request 限制。</p>
+<p>batch ID 标识稳定的持久化 attempt，废弃重建使用新 ID。消费者只枚举 COMMITTED 且结束边界不超过 M 的成员；单个文件存在或 <code>endTs≤M</code> 不构成采用依据。完全已发布区间不重发，gap／交叉 overlap 不静默通过。<a href="https://etcd.io/docs/v3.6/learning/api/#transaction">etcd transaction</a> 原子更新的是 batch 的调度可见状态与 M；文件及 L0 metadata 可分批写入，不依赖 S3 rename。</p>
+<p>原子性约束是调度侧对 batch 成员集的 all-or-nothing 采用，不要求生产侧所有文件同时写成功；这里采用 <a href="https://github.com/meta/rocksdb/wiki/Atomic-flush">atomic flush</a> 的准备与提交分离原则。</p>
+<h4 id="section-5-2-3" tabindex="-1">5.2.3 消费侧：L0 compaction 分发</h4>
+<p>MixCoord 从 <code>(C,M]</code> 中选择一个完整的 dispatch range <code>(C,E]</code>，确认其全部已提交 L0 成员，调度 DN 将逻辑指令分发到目标 segment。L0 不执行 predicate／UPDATE；PK DELETE／point UPDATE 可用 BF，predicate DELETE 发至 scope 内全部适用 targets。</p>
+<p class="design-choice"><strong>Phase 1 取舍。</strong> 采用 range 隔离＋C：锁住本轮全部适用 target sealed segments，直到整个 range 的分发结果持久化、C 推进后才允许它们进入 Mix。接受较长的 Mix 等待，避免为每个 segment 持久化一份独立的 delta 分发水位。</p>
+<p>分发与 Mix 准入使用以下协议：</p>
+<ol>
+<li><strong>确定并占用 targets。</strong> 在与 Mix 共用的准入临界区内，按 scope 和时间资格选齐、校验本轮全部 targets，原子检查并设置它们的 <code>isCompacting</code>。有冲突或 target 已被替换，则整轮延期、重新选择；不能跳过被占用的 target 后就宣布完成。</li>
+<li><strong>在 range 占用下分发。</strong> target 占用由 range 持有，覆盖其全部 L0 成员与分发子任务；不能等 BF 命中后才决定锁谁。子任务可分别完成并提交结果，但任何单个 L0／子任务的完成都不能提前释放 targets。这里采用 <a href="https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/tablet.cc#L1724">compaction 输入隔离</a>的原则，具体占用由本方案的 range／task 生命周期管理。</li>
+<li><strong>完整提交后释放。</strong> 全部适用分发结果持久化后，保存 <code>C=E</code>，再释放 range 的 target 占用。此后 Mix 才能原子取得自己的 input 占用，并冻结各 input 的 manifest／deltalog 文件集合。</li>
+</ol>
+<figure class="problem-figure"><a href="assets/predicate-delete-and-point-update/l0-range-isolation.svg" target="_blank" rel="noopener" aria-label="查看大图：完整 range 的 target 占用与 Mix 准入"><img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMTAwIiBoZWlnaHQ9Ijg0MCIgdmlld0JveD0iMCAwIDExMDAgODQwIiByb2xlPSJpbWciIGFyaWEtbGFiZWxsZWRieT0idGl0bGUgZGVzYyI+CiAgPHRpdGxlIGlkPSJ0aXRsZSI+UGhhc2UgMe+8mnJhbmdlIOmalOemu+S4jiBDIOWFseWQjOS/neaKpCBNaXgg5YeG5YWlPC90aXRsZT4KICA8ZGVzYyBpZD0iZGVzYyI+TWl4Q29vcmQg6YCJ5oup5bey5a6M5pW05Y+R5biD55qEIEwwIOaIkOWRmCBB44CBQu+8jOW9ouaIkCBkaXNwYXRjaCByYW5nZSAoODAsMTIwXe+8jOmAgueUqCB0YXJnZXRzIOS4uiBTMeOAgVMy44CCcmFuZ2Ug5LiOIE1peCDljp/lrZDnq57kuokgdGFyZ2V0cyDnmoQgaXNDb21wYWN0aW5n44CCcmFuZ2Ug5oyB5pyJ5Lik6ICF5Y2g55So77yM6KaG55uW5YWo6YOo5YiG5Y+R5a2Q5Lu75Yqh44CC5Y2z5L2/IFMxIOWIhuWPkeWujOaIkOW5tuaMgeS5heWMlue7k+aenO+8jOWPquimgSBTMiDku43miafooYzmiJbph43or5XvvIzmtonlj4ogUzEg5oiWIFMyIOeahCBNaXgg6YO95LiN6IO95YeG5YWl44CC5YWo6YOoIHRhcmdldHMg5YiG5Y+R57uT5p6c5oyB5LmF5YyW5ZCO77yM5YWI5L+d5a2YIEM9MTIw77yM5YaN6YeK5pS+IHJhbmdlIOWNoOeUqOOAgumaj+WQjiBNaXgg5Y+W5b6X5YW2IGlucHV0cyDnmoQgaXNDb21wYWN0aW5n77yM5bm25Ya757uTIG1hbmlmZXN0IOWSjCBkZWx0YWxvZyDmlofku7bpm4blkIjvvIxETiDlj6rmjInluo/miafooYzov5nkupvovpPlhaXjgIJyYW5nZS90YXNrIOiusOW9leS4jiBDIOivgeaYjuWujOaVtOaAp++8jGlzQ29tcGFjdGluZyDmj5DkvpvpmpTnprvjgII8L2Rlc2M+CiAgPGRlZnM+CiAgICA8bWFya2VyIGlkPSJhcnJvdyIgbWFya2VyV2lkdGg9IjkiIG1hcmtlckhlaWdodD0iOSIgcmVmWD0iNyIgcmVmWT0iNC41IiBvcmllbnQ9ImF1dG8iPjxwYXRoIGQ9Ik0wIDBMOCA0LjVMMCA5IiBmaWxsPSJub25lIiBzdHJva2U9IiM3MTg3OTUiIHN0cm9rZS13aWR0aD0iMS42Ii8+PC9tYXJrZXI+CiAgPC9kZWZzPgogIDxyZWN0IHdpZHRoPSIxMTAwIiBoZWlnaHQ9Ijg0MCIgcng9IjEyIiBmaWxsPSIjZjdmYWZiIi8+CiAgPGcgZm9udC1mYW1pbHk9IlBpbmdGYW5nIFNDLE1pY3Jvc29mdCBZYUhlaSxzYW5zLXNlcmlmIiBmaWxsPSIjMjQzZTRhIj4KICAgIDx0ZXh0IHg9IjUwIiB5PSI0NCIgZm9udC1zaXplPSIyOCIgZm9udC13ZWlnaHQ9IjYwMCI+UmFuZ2Ug6ZqU56a777yLQ++8muaVtOauteaPkOS6pOWQjuaJjeaUvuihjCBNaXg8L3RleHQ+CiAgICA8dGV4dCB4PSI1MCIgeT0iODAiIGZvbnQtc2l6ZT0iMjEiIGZpbGw9IiM2MTc5ODQiPuW3suWPkeW4gyBMMCDmiJDlkZggQe+8j0IgwrcgKEMsRV09KDgwLDEyMF0gwrcgdGFyZ2V0cz17UzEsUzJ9PC90ZXh0PgoKICAgIDxyZWN0IHg9IjUwIiB5PSIxMTAiIHdpZHRoPSIxMDAwIiBoZWlnaHQ9IjkyIiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iI2I3Y2RkNiIvPgogICAgPHRleHQgeD0iNTUwIiB5PSIxNTAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI2MDAiPumAiem9kCByYW5nZSDmiJDlkZjlj4ogdGFyZ2V0c++8jOWOn+WtkOWPluW+lyB0YXJnZXQg5Y2g55SoPC90ZXh0PgogICAgPHRleHQgeD0iNTUwIiB5PSIxODUiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjEiIGZpbGw9IiM2MTc5ODQiPuS4jiBNaXggaW5wdXQg55qEIGlzQ29tcGFjdGluZyDlhrLnqoHml7bvvIzmlbTova7lu7bmnJ/lubbph43mlrDpgInmi6k8L3RleHQ+CiAgICA8cGF0aCBkPSJNNTUwIDIwNFYyMzEiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzcxODc5NSIgc3Ryb2tlLXdpZHRoPSIyLjUiIG1hcmtlci1lbmQ9InVybCgjYXJyb3cpIi8+CgogICAgPHJlY3QgeD0iNTAiIHk9IjI0MCIgd2lkdGg9IjEwMDAiIGhlaWdodD0iNDA1IiByeD0iMTAiIGZpbGw9IiNmZmY1ZTkiIHN0cm9rZT0iI2M5OTU1ZSIgc3Ryb2tlLXdpZHRoPSIyIi8+CiAgICA8dGV4dCB4PSI1NTAiIHk9IjI3OSIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZm9udC1zaXplPSIyNCIgZm9udC13ZWlnaHQ9IjYwMCIgZmlsbD0iIzk4NjEzZCI+UmFuZ2Ug5oyB5pyJIFMx77yPUzIg55qEIGlzQ29tcGFjdGluZ++8jOimhuebluWFqOmDqOWtkOS7u+WKoTwvdGV4dD4KCiAgICA8cmVjdCB4PSI5MCIgeT0iMzEwIiB3aWR0aD0iNDIwIiBoZWlnaHQ9Ijk1IiByeD0iOCIgZmlsbD0id2hpdGUiIHN0cm9rZT0iIzg4YjdiNCIvPgogICAgPHRleHQgeD0iMzAwIiB5PSIzNDciIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjYiIGZvbnQtd2VpZ2h0PSI2MDAiPlMxPC90ZXh0PgogICAgPHRleHQgeD0iMzAwIiB5PSIzODMiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjMiIGZpbGw9IiMwODc0NzYiPuWIhuWPkeWujOaIkO+8jOe7k+aenOW3suaMgeS5heWMljwvdGV4dD4KCiAgICA8cmVjdCB4PSI1OTAiIHk9IjMxMCIgd2lkdGg9IjQyMCIgaGVpZ2h0PSI5NSIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiNjOTk1NWUiLz4KICAgIDx0ZXh0IHg9IjgwMCIgeT0iMzQ3IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjI2IiBmb250LXdlaWdodD0iNjAwIj5TMjwvdGV4dD4KICAgIDx0ZXh0IHg9IjgwMCIgeT0iMzgzIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjIzIiBmaWxsPSIjOTg2MTNkIj7ku43lnKjmiafooYzvvI/ph43or5U8L3RleHQ+CgogICAgPHJlY3QgeD0iOTAiIHk9IjQzMCIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI1MCIgcng9IjYiIGZpbGw9IiNmNmU1ZDgiLz4KICAgIDx0ZXh0IHg9IjU1MCIgeT0iNDYzIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjI0IiBmb250LXdlaWdodD0iNjAwIiBmaWxsPSIjOTg2MTNkIj5NaXgoUzEp77yPTWl4KFMyKe+8j01peChTMSxTMikg5Z2H5LiN6IO95YeG5YWlPC90ZXh0PgogICAgPHBhdGggZD0iTTU1MCA0ODRWNTM2IiBmaWxsPSJub25lIiBzdHJva2U9IiM3MTg3OTUiIHN0cm9rZS13aWR0aD0iMi41IiBtYXJrZXItZW5kPSJ1cmwoI2Fycm93KSIvPgogICAgPHJlY3QgeD0iNDAwIiB5PSI0OTUiIHdpZHRoPSIzMDAiIGhlaWdodD0iMzEiIGZpbGw9IiNmZmY1ZTkiLz4KICAgIDx0ZXh0IHg9IjU1MCIgeT0iNTE4IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjIxIiBmaWxsPSIjNjE3OTg0Ij7nm7TliLDmiYDmnIkgdGFyZ2V0cyDlrozmiJA8L3RleHQ+CgogICAgPHJlY3QgeD0iOTAiIHk9IjU0NSIgd2lkdGg9IjkyMCIgaGVpZ2h0PSI2NSIgcng9IjgiIGZpbGw9IiNlN2YzZjEiIHN0cm9rZT0iIzg4YjdiNCIvPgogICAgPHRleHQgeD0iNTUwIiB5PSI1ODYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjUiIGZvbnQtd2VpZ2h0PSI2MDAiIGZpbGw9IiMwODc0NzYiPuWFqOmDqOWIhuWPkee7k+aenOW3suaMgeS5heWMliDihpIg5L+d5a2YIEM9MTIwPC90ZXh0PgoKICAgIDxwYXRoIGQ9Ik01NTAgNjQ3VjY4MSIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNzE4Nzk1IiBzdHJva2Utd2lkdGg9IjIuNSIgbWFya2VyLWVuZD0idXJsKCNhcnJvdykiLz4KICAgIDx0ZXh0IHg9IjU5MCIgeT0iNjcyIiBmb250LXNpemU9IjIwIiBmaWxsPSIjNjE3OTg0Ij5DIOaMgeS5heWMluWQju+8jOmHiuaUviByYW5nZSDljaDnlKg8L3RleHQ+CiAgICA8cmVjdCB4PSI1MCIgeT0iNjkwIiB3aWR0aD0iMTAwMCIgaGVpZ2h0PSI4NSIgcng9IjgiIGZpbGw9IndoaXRlIiBzdHJva2U9IiM4OGI3YjQiLz4KICAgIDx0ZXh0IHg9IjU1MCIgeT0iNzI2IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjI1IiBmb250LXdlaWdodD0iNjAwIj5NaXgg5Y+W5b6XIGlucHV0IGlzQ29tcGFjdGluZ++8jOWGu+e7kyBtYW5pZmVzdO+8j2RlbHRhbG9nPC90ZXh0PgogICAgPHRleHQgeD0iNTUwIiB5PSI3NjAiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGZvbnQtc2l6ZT0iMjIiIGZpbGw9IiMwODc0NzYiPkROIOWPquaMieW6j+aJp+ihjOWGu+e7k+eahCBkZWx0YXPvvIzml6DpnIDov73ouKrliIblj5Hov5vluqY8L3RleHQ+CgogICAgPHRleHQgeD0iNTAiIHk9IjgxNyIgZm9udC1zaXplPSIyMSIgZmlsbD0iIzYxNzk4NCI+cmFuZ2XvvI90YXNrIOiusOW9leS4jiBDIOivgeaYjuWujOaVtOaAp++8m2lzQ29tcGFjdGluZyDpmpTnprvliIblj5HkuI4gcmV3cml0ZeOAgjwvdGV4dD4KICA8L2c+Cjwvc3ZnPgo=" alt="完整 range 的 target 占用与 Mix 准入" decoding="async"></a><figcaption>S1 已完成、S2 尚未完成时，两者均不能进入 Mix；整个 range 提交并推进 C 后才释放占用。</figcaption></figure>
+<p>例如 <code>C=80、E=120</code>，range 的 L0 成员为 A/B/C：只有三个成员都完成全部适用 targets、结果持久化，才能推进 <code>C=120</code>。空 range、无适用 target 或 BF 无命中也计入完成判断，无须写假文件或单独更新 segment progress。锁负责隔离，range／task 完成记录与 C 负责证明完整性；只有锁本身不能证明前缀完整。</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="设计表格，可横向滚动"><table>
+<thead>
+<tr>
+<th>路线</th>
+<th>完整性与 Mix 准入</th>
+<th>代价</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Phase 1：range 隔离＋C</td>
+<td>range 持有全部适用 targets 的 <code>isCompacting</code>；全部结果提交并推进 C 后放行 Mix</td>
+<td>任一子任务未完成，整个 target 集合继续等待；涉及 10,000 个 targets 时，它们的 Mix 都等待本轮完成</td>
+</tr>
+<tr>
+<td>替代：per-segment 分发水位</td>
+<td>每个 segment 持久化已完整收到的 delta 区间终点；零输出也推进，Mix 根据各 input 水位检查输入完整性</td>
+<td>增加 progress KV 更新与恢复逻辑。有文件输出时可随现有 metadata 提交；零输出 targets 原本无需更新，现在也要写入进度</td>
+</tr>
+</tbody></table>
+</div>
+<p>两条路线都需要持久化实际 deltalogs／manifest 引用。新增写放大主要出现在稀疏 PK 操作：本轮覆盖很多 targets、只有少量产生文件时，逐 segment 显式推进会让零输出 targets 也产生 metadata 写入。进度可以按 range 合并提交，不必每条 mutation／每个 TimeTick 都写；批量提交减少 RPC 次数，不消除 KV 更新的复制、持久化成本。predicate DELETE 向全部适用 targets 分发指令，这些 targets 原本就有文件引用更新，progress 的边际写入成本相对较小。</p>
+<h4 id="section-5-2-4" tabindex="-1">5.2.4 输出与契约</h4>
+<p>本模块交付已提交 batch 与 L0 files、目标 segment 的 deltalogs／文件引用，以及 VChannel 的持久化水位 M／C。</p>
+<p>消费者只使用权威已提交成员；L0 分发按完整区间推进，<code>C≤M</code>。一个区间的全部 L0 对全部适用 targets 完成分发、结果持久化之后，才能跨过该区间。</p>
+<p>调度侧必须向后续 rewrite plan 提供完整适用前缀，不能把后面的已分发 records 与遗漏前序 delta 的输入视图交给执行端。例如先物化 UPDATE@100、遗漏 DELETE@90，会使旧 predicate 在更新后的 base 上得到错误结果；保留旧日志或仅阻止 C／DeleteCP 推进都不能修复这次错误 rewrite。已提交 batch／file-set 和 M／C 建立完整性依据，§5.2.3 的 range 隔离阻止 rewrite 读到尚未完成的分发输入，DeltaExecutor 不再重复验证。这里的 ordered 是逻辑前缀的交付顺序，不要求所有物理任务串行完成。</p>
+<p>Growing 的覆盖继续受既有 seal 和安全调度条件保护；target 被 Mix 替换时仍须保持后缀覆盖。C 持久化前保留完成依据。load 不直接消费 C，也不新增每个 sealed segment 的 <code>dispatch_ts</code>；它由 Delegator 取得正确 manifest／deltalog／L0／buffer 输入。</p>
+<p>采用 Parquet 外层列＋Protobuf payload，格式面向 load、forward 和 ordered replay。一个文件只属于一个 collection／VChannel／partition scope，并共用一个 schema_version；partition scope 可为 ALL_PARTITIONS。旧文件保留 legacy reader adapter，不要求升级时重写。</p>
+<p><strong>FileMetadata 是一个 L0 delta file 的文件级 metadata</strong>，文件内所有 records 共用，只保存一次。<strong>DeltaRecord 是文件中每行 delta 的逻辑格式</strong>，<code>ts / op_type / pk / payload</code> 分别对应 Parquet 的列；只有 payload 列保存 serialized Protobuf bytes。以下为逻辑 schema，具体 wire 字段号在实现中确定。</p>
+<pre><code class="language-text">FileMetadata {
+  delta_format_version, schema_version,
+  collection_id, vchannel, partition_scope, pk_type
+}
+
+DeltaRecord {
+  ts, op_type,
+  pk: nullable INT64 / STRING,
+  payload: nullable BYTE_ARRAY  // serialized Protobuf
+}
+</code></pre>
+<div class="table-wrap" tabindex="0" role="region" aria-label="设计表格，可横向滚动"><table>
+<thead>
+<tr>
+<th>op_type</th>
+<th>pk</th>
+<th>payload</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PK_DELETE</td>
+<td>目标 PK</td>
+<td>无</td>
+</tr>
+<tr>
+<td>PREDICATE_DELETE</td>
+<td>无</td>
+<td><code>{ predicate: TypedExpr }</code></td>
+</tr>
+<tr>
+<td>POINT_UPDATE</td>
+<td>目标 PK</td>
+<td><code>{ assignments: Assignment[] }</code></td>
+</tr>
+<tr>
+<td>PREDICATE_UPDATE</td>
+<td>无</td>
+<td><code>{ predicate, assignments }</code>，仅预留</td>
+</tr>
+</tbody></table>
+</div>
+<p>PK IN 请求在 delta file 中按 PK 展开为多条 POINT_UPDATE records，各自携带同一组 assignments；单条 record 仍对应一个 PK。</p>
+<pre><code class="language-text">Assignment {
+  field_id
+  oneof rhs { literal: TypedValue; expression: TypedExpr /* reserved */ }
+}
+TypedValue {
+  data_type
+  oneof value {
+    int64_value; bool_value; double_value; string_value;
+    timestamp_us_value; array_value: TypedArrayValue;
+    null_value: google.protobuf.NullValue
+  }
+}
+TypedArrayValue { element_type; values; element_validity }
+</code></pre>
+<p><code>delta_format_version</code> 选择协议 reader，schema_version 绑定表达式解释上下文。INT8／16／32 的类型信息不能因使用 int64 承载而丢失；double literal 可用于 predicate，不扩大 UPDATE 类型范围。<code>false / 0 / &quot;&quot; / [] / NULL / 未赋值</code> 均须保留 presence，复用现有 typed messages 并补齐显式 NULL。</p>
+<p><strong>完整混写文件示例。</strong> 以下三次操作写入同一个 L0 delta file，count 的 field ID 为 105：</p>
+<pre><code class="language-sql">UPDATE t SET count = 20 WHERE pk == 100;  -- mutation_ts = 90
+DELETE FROM t WHERE count == 20;         -- mutation_ts = 95
+DELETE FROM t WHERE pk == 200;           -- mutation_ts = 100
+</code></pre>
+<p><code>F1.parquet</code> 的解码后逻辑内容如下。示例将 payload bytes 展开为 Protobuf 字段，便于阅读；文件仍按 Parquet 列式存储。</p>
+<pre><code class="language-text">FileMetadata {
+  delta_format_version: 1
+  schema_version: 7
+  collection_id: 10
+  vchannel: &quot;v1&quot;
+  partition_scope: ALL_PARTITIONS
+  pk_type: Int64
+}
+
+Records [
+  {
+    ts: 90, op_type: POINT_UPDATE, pk: 100
+    payload: {
+      assignments: [
+        { field_id: 105, literal: { data_type: Int64, int64_value: 20 } }
+      ]
+    }
+  },
+  {
+    ts: 95, op_type: PREDICATE_DELETE, pk: null
+    payload: {
+      predicate {
+        unary_range_expr {
+          column_info { field_id: 105, data_type: Int64 }
+          op: Equal
+          value { int64_val: 20 }
+        }
+      }
+    }
+  },
+  { ts: 100, op_type: PK_DELETE, pk: 200, payload: null }
+]
+</code></pre>
+<p>这里共三行 DeltaRecord，分别是 point UPDATE、predicate DELETE、PK DELETE；FileMetadata 不重复出现在各行中。<code>pk: null</code>／<code>payload: null</code> 表示相应 Parquet 列的空值。</p>
+<p>Delegator 加载 L0 后须能遍历 ts/op/scope、使用 PK 做 BF，并重复转发 payload bytes；执行端才解析 predicate／assignments。外层 <code>op_type</code> 直接选择路由和执行分支。predicate UPDATE 和 expression RHS 仅预留格式；Phase 1 收到这些分支时返回不支持，不能静默跳过。</p>
+<h4 id="section-5-2-5" tabindex="-1">5.2.5 Crash recovery、GC 与升级切换</h4>
+<p>每个 VChannel 恢复时先串行整理 M、C 和 batch，再启动新 materialization：</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="设计表格，可横向滚动"><table>
+<thead>
+<tr>
+<th>持久化状态</th>
+<th>恢复动作</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>PREPARING</td>
+<td>CAS 标 DROPPED；未发布产物交 GC，区间从 WAL 重做</td>
+</tr>
+<tr>
+<td>PREPARED</td>
+<td>确认衔接 M，复用输出，仅重试最终提交</td>
+</tr>
+<tr>
+<td>COMMITTED</td>
+<td>采用已提交结果，不重复 sync；尚未被 C 覆盖则继续分发</td>
+</tr>
+<tr>
+<td>COMMITTED 且 <code>C≥batch.end</code></td>
+<td>标 DROPPED，交异步 GC</td>
+</tr>
+<tr>
+<td>DROPPED</td>
+<td>继续清理，不恢复任务</td>
+</tr>
+</tbody></table>
+</div>
+<p>未完成 dispatch range 的区间、L0 成员、targets 和任务归属进入持久化 task metadata。恢复先依据这些记录重建 target 占用，再开放 Mix 准入；<code>isCompacting</code> 的内存值不能作为恢复后的唯一依据。单个子任务失败或清理，不释放所属 range 的 targets；先恢复／重试完整分发。C 已覆盖 range 时，可据此恢复完成状态并清理占用，不能因迟到的清理误释放另一任务持有的 targets。</p>
+<p>提交成功但响应丢失时，以恢复读到的持久化状态为准。所有状态转换使用 CAS，DROPPED 不可复活。旧进程虽已消失，在途远端请求仍可能竞争；recovery CAS 失败后重读并按新状态处理。若旧请求已提交，则采用该结果，不能换 revision 后继续强写 DROPPED。未知状态、缺失引用或不一致 coverage 应报错保留证据，不能一概清除。<a href="https://etcd.io/docs/v3.6/learning/api_guarantees/">etcd API guarantees</a>描述了这类提交结果不确定性。</p>
+<p>成功 batch 的退出顺序是“分发结果持久化 → C 持久化 → batch 标 DROPPED → 异步 GC”。C 覆盖后，batch metadata 可退出，其成员 L0 files 仍按原生命周期、retention 和 pin 保护回收，不要求等物理文件全部删除。</p>
+<p>废弃 attempt 不推进 M／C。其垃圾清理先 files、再 L0 metadata、最后 batch metadata，或先持久化转交清理责任；任何失败都保留继续清理所需引用。未登记、迟到文件的 orphan 覆盖需接入现有 <a href="../../internal/datacoord/garbage_collector.go">GC</a> 和 <a href="../agent_guides/storage/path_contract.md">storage path contract</a>。</p>
+<p><strong>升级切换。</strong> 先停止继续产生 legacy 协议输出、收齐旧 buffer／在途 materialization，再按旧机制完成 legacy L0 的全部分发和持久化提交，随后开放新 batch 分发。旧 reader 保留，M／C 从明确切换点接续；不按旧文件最大 ts 猜测，也不等待旧文件物理 GC。该门槛和恢复后的接续须持久化。</p>
+<h4 id="section-5-2-6" tabindex="-1">5.2.6 当前实现与改造</h4>
+<p><strong>可复用。</strong> <a href="../../internal/streamingnode/server/wal/vchannel/l0materializer/wal.go">L0 Materializer</a> 的有序 buffer、输出流程，<a href="../../internal/storage/serde_delta.go">delta reader/writer</a> 的 Parquet／legacy reader，以及 <a href="../../internal/datacoord/compaction_task_l0.go">L0 task</a> 的目标筛选、结果提交和生命周期管理。现有 <a href="../../internal/datacoord/compaction_inspector.go">compaction 调度</a>已有 input <code>isCompacting</code> 与 channel 级 L0／Mix 执行互斥；L0 的 input 标记目前仅覆盖输入 L0。</p>
+<p><strong>需增强。</strong> 支持三类 delta 的完整区间 batch、batch／M 原子提交、空区间推进和 schema-change fence。将 L0／Mix 的排斥细化为完整 range 的 target 占用，补齐持久化任务归属与恢复、C 提交后释放及 Mix 文件集合冻结；这些新增保证不能由当前单 task 的 channel 互斥直接推出。</p>
+<h3 id="section-5-3" tabindex="-1">5.3 DN full rewrite：按序物化并替换 segment</h3>
+<p>DN full rewrite 读取各 input segment 的 base 与适用 deltas，执行更新和删除，将存活行写为 replacement segment。</p>
+<h4 id="section-5-3-1" tabindex="-1">5.3.1 输入到重写输出</h4>
+<p>MixCoord 按 §5.2.3 的协议取得 input segments 的 <code>isCompacting</code>：未完成的 dispatch range 占用这些 inputs 时，Mix 不能准入；取得占用后，从已提交 metadata 冻结各 input 的 manifest／deltalog 文件集合，生成 plan。占用保持至 replacement 输出 metadata 提交完成，L0 不能在此期间继续向这些 inputs 追加 delta。</p>
+<pre><code class="language-text">完整 range 分发提交，C 已推进 → 释放 range 占用
+  → Mix 原子取得 S1、S2 的 isCompacting，冻结输入
+  → S1：base₁ ＋ pending deltalogs₁ → 按序执行
+    S2：base₂ ＋ pending deltalogs₂ → 按序执行
+  → 合并写出 replacement，提交后释放 Mix 占用
+</code></pre>
+<p><strong>DN 无需追踪 delta 分发进度。</strong> 输入完整性由上游 range 提交与 C 保证，<code>isCompacting</code> 阻止 L0 继续向这些 inputs 追加 delta，或其他 rewrite 替换这些 inputs。DN 只按各 input 的冻结文件集合建立 DeltaExecutor，按 <code>mutation_ts</code> 执行尚未消化的适用 deltas；不读取 M／C、不等待新的 L0 分发，也不新增 segment-level progress metadata。不同 inputs 的 base、行时间范围及 pending records 可以不同，不要求 base 对齐。</p>
+<p>DeltaExecutor 按 input segment 创建。mergeSplit 为 S1 创建 executor₁，处理完 S1 后释放，再为 S2 创建 executor₂；mergeSort 为各 input 保持独立 executor，随 reader 交错执行。每个 executor 只处理本 input 的 rows 和 deltas，offsets／执行状态不跨 input 复用。</p>
+<p>一个 input 可拆为多个 data batches，每批均按序执行该 input 的整段适用 mutations，直到所有 batches 处理完成。多个 inputs 可共用 writer；输出 segment 的合并／拆分不改变 executor 的作用域。</p>
+<p>DeltaExecutor 复用既有类型与 compaction 数据访问能力，实现同一受限表达式、literal SET、NULL 和时间资格；predicate 仅 TRUE 时删除。</p>
+<h4 id="section-5-3-2" tabindex="-1">5.3.2 DROP FIELD：block-and-drain gate</h4>
+<p>DROP FIELD 会移除历史 mutation 求值所需的数据。即使旧列已被读入本次 rewrite，仍可能有引用它的 delta 尚在 message queue、SN buffer 或 L0 中；若先输出不含旧列的 replacement，这些 delta 后续到达时就无法执行。因此，物理删列必须经过 block-and-drain gate。</p>
+<p><strong>Gate 契约。</strong> 对同一 collection 的 drop-target field ID，只要仍有一条 fence 前已接受、引用该字段的 delta，尚未向全部适用 segments 完成持久化交付，就禁止物理删列 rewrite 准入。判断覆盖 message queue、SN buffer、L0 和在途 dispatch，不能仅以当前待调度 L0 列表为空作为依据。已物化进 base 的变更无需重新写入 deltalog；BF 无命中的 target 也不必写空文件，由完整分发的覆盖证明确认完成。</p>
+<pre><code class="language-text">Block：建立 DROP fence，新 mutation 不得再引用 c
+  → Drain：旧 delta 继续消费、sync、分发，直至全部适用 targets 持久化交付完成
+  → Rewrite 准入：取得 inputs 的 isCompacting，固定 manifest／deltalog 文件集合
+  → 执行：保留旧列参与按序 delta execution，输出时再移除 c
+</code></pre>
+<p>Block 由 schema fence 和 Proxy→SN 的 schemaVersion 校验关闭新引用，其他字段的 mutations 继续接受。Fence 前合法进入 WAL 的旧 mutation 仍须执行，不能因 latest schema 已不含 c 而被拒绝或跳过。Drain 期间，旧消息的消费和 L0 分发继续推进；不得提前占住会阻止分发的 <code>isCompacting</code>，以免 rewrite 等待 delta、分发又等待 rewrite 释放占用。</p>
+<p>精细 gate 只等待 drop-target field 的历史依赖；允许更保守地等待整个 VChannel 的 <code>C ≥ x</code>，其中 x 是该业务 VChannel 上 DROP fence 的本地 WAL TimeTick，<code>C ≤ M</code> 同时保证此前的 sync 完整性。多 VChannels 分别检查各自边界，不直接使用 CChannel 的 TimeTick。MixCoord 将本次 write schema 与对应 fence 关联后判定准入，Segment 无需保存历次 DROP 的 timestamp。</p>
+<p><strong>Execution schema 与 write schema 分离。</strong> Execution schema 保留输入物理列中历史 deltas 依赖的字段及类型；reader 不能先按 latest schema 排除 dropped field。Phase 1 可以读取全部输入物理列，完成每个 input 的有序 delta execution 后，再按 write schema 投影并写出存活行。</p>
+<p>以下按单个 VChannel 的 TimeTick 示意，S1 中 <code>pk=1, c=5</code>：</p>
+<pre><code class="language-sql">UPDATE t SET c = 15 WHERE pk == 1; -- @110
+DELETE FROM t WHERE c == 5;       -- @120
+ALTER TABLE t DROP COLUMN c;      -- @130
+</code></pre>
+<p>Gate 放行后，DeltaExecutor 先将 c 更新为 15，再执行 DELETE；该行不命中，输出时保留该行并移除 c。若没有 UPDATE@110，则 DELETE@120 删除该行。不能先删列，再尝试补算迟到的历史 delta。</p>
+<p>这个 gate 覆盖所有实际移除旧列的 rewrite，包括普通 Mix、Sort、clustering 和 <a href="../../internal/datanode/compactor/bump_schema_version_compactor.go">bump-schema rewrite</a>。<a href="https://github.com/ClickHouse/ClickHouse/blob/master/src/Storages/MergeTree/MergeTreeData.cpp#L13296">ClickHouse</a> 会拒绝删除仍被未完成 mutation 引用的列；这里采用其历史依赖保护原则，将 gate 放在物理删列 rewrite 的准入处。</p>
+<h4 id="section-5-3-3" tabindex="-1">5.3.3 Backfill：逻辑等价物化与列值覆盖</h4>
+<p><strong>Internal backfill。</strong> 当前 <a href="../../internal/datanode/compactor/bump_schema_version_compactor.go">BumpSchemaVersionCompaction</a> 不只生成 function outputs，也会物化缺失普通列；移除旧列则走 full rewrite，并遵守 §5.3.2。</p>
+<p>普通列的 NULL／default 物化，在同一 schema 下不改变逻辑值：</p>
+<pre><code class="language-text">物化前：age 没有物理列，reader 返回 default=18
+物化后：age 物理列保存 18
+</code></pre>
+<p>这类逻辑等价物化不需要额外作为 UPDATE 排入 delta 时间线，也不会改变 predicate 的命中结果；已有 updates／deletes 仍须保留。当前 function-output 物化支持 BM25 的 SparseFloatVector 和 MinHash 的 BinaryVector，均不在 Phase 1 predicate／UPDATE 的支持范围内。若将来 internal backfill 改为覆盖已可见的 scalar 值，则同样需要下面的顺序契约；<code>isCompacting</code> 和 manifest commit lock 本身不提供 DML 顺序。</p>
+<p><strong>External backfill。</strong> Spark 基于 snapshot prepare 列文件和 manifest，随后通过 <a href="../../internal/datacoord/services_commit_backfill.go">CommitBackfillResult</a> 提交。每最多 512 个 segments 形成一个 <code>BatchUpdateManifest V2</code>，每批获得 CChannel 所在 PChannel 的 TimeTick；整个 Spark job 没有统一的业务 mutation timestamp，也不保证 job 级原子发布。</p>
+<pre><code class="language-text">CreateSnapshot（请求带 TTL 的 compaction protection）
+  → Spark prepare 列文件和 manifest
+  → CommitBackfillResult：分批 append CChannel WAL
+  → FastAck → MixCoord/DataCoord callback 发布 metadata
+  → API 返回成功；业务 DML 仍可能尚未 consume／apply
+</code></pre>
+<p>CChannel 是集群的 Control Channel；本路径不向 collection 的业务 VChannels 写入对应消息或 barrier。SN 处理通用 WAL 持久化、恢复和 broadcast ACK，不在本地 segments 上执行这些列值变化。Snapshot 的 compaction protection 在 TTL 内保护输入 segments 不被 full rewrite 替换，但不阻塞 DML 或 L0 分发。因此，这条结果发布链路没有建立 backfill 与业务 deltas 的相对执行顺序，不能直接比较两侧 TimeTick 来判定哪条 mutation 更早。</p>
+<p>External backfill 的 <code>coalesce / overwrite / replace</code> 可以改变逻辑列值。若历史 predicate 尚待回放，替换 base 会改变其求值依据：</p>
+<pre><code class="language-text">初始：S 的所有行 age=20，row_ts&lt;100
+DELETE@100 WHERE age==18：在线执行不命中
+External backfill 发布 age=18 的列数据
+后续 DN 回放 DELETE@100：若读取 backfill 后的 base，所有行会被误删
+</code></pre>
+<p>PK-only UPDATE 虽不重新选择 predicate 命中行，但与 backfill 修改同一 cell 时，执行次序仍决定最终值；当前没有契约规定应采用哪个次序。现有 delete-by-expr／partial-upsert 的 Query 也会受 backfill 可见性影响，但 WAL 已固定 PK 集合或完整新行，compaction 不再重算原表达式。直接 PK-delete 不依赖被 backfill 改写的非 PK 列值。</p>
+<p><strong>兼容性待决。</strong> External backfill 与新 deltas 的顺序及准入协议尚未定稿。暂停新写、等待 TSafe 或 C 追平都不能消除尚未物化的历史 predicates；manifest commit lock 也只能保护引用发布。现有 external callback 还通过 <a href="../../internal/datacoord/ddl_callbacks_batch_update_manifest.go">UpdateManifestVersion</a> 绕过该锁，版本号递增不能证明引用完整。若允许共存，必须为业务 VChannels 建立逻辑生效边界，并衔接边界前的 delta 执行／物化、backfill 状态发布和后续回放；Phase 1 的 collection 级功能互斥是候选方案，约束须覆盖可回放历史，不能只检查当前运行的任务。</p>
+<h4 id="section-5-3-4" tabindex="-1">5.3.4 输出与契约</h4>
+<p>输出更新后的存活行及兼容的 base/index 元数据。删除行不写出，已消化的 deltas 不再作为 pending deltalogs 携带到输出。新 segment 加载时，由输入组装与 overlap 处理排除已消化操作、补齐尚未物化的后缀；初始 Records 可为空，加载后缀后会再次积累 histories／deletes。</p>
+<p>full rewrite 可改变 offsets，并按既有流程构建和加载新 segment；不承诺复用旧 vector 文件或 ANN index。</p>
+<p>普通 insert flush 不产生这个 mutation 消化边界。初始 segment 必须加载全部适用历史，不能用 flush／seal 时间或 DmlPosition 跳过 deltas。</p>
+<p>row_ts 保持有效诞生时间。Mix 输出的 StartPosition／DmlPosition timestamp 优先按各输出 insert logs 的实际最小／最大有效行时间计算；缺少统计时使用输入最小 Start／最大 Dml 的保守范围，并保留导入 commit-time 处理。这些位置还承载 WAL／恢复信息，不能作为字段更新时间或判定 delta 已消化范围的依据。</p>
+<p>后续 <a href="../../internal/datacoord/compaction_task_l0.go">L0 目标筛选</a> 仍按 scope 和有效起始时间选择目标，不要求两个完整时间区间相交；<a href="../../internal/datacoord/meta.go">Mix 输出 metadata</a> 保留这一筛选所需的时间范围。新 segment 创建得晚不能让旧行漏掉尚未分发的删除。</p>
+<p>replacement 复用 §5.4 的加载交接：即使旧 QN 已执行到 @120，而本次 rewrite 只消化了截至 100 的完整输入，新 segment 也必须从自身 deltalog、适用 L0、buffer 和 catch-up 收齐 <code>&gt;100</code>。该操作不必仍在内存 buffer 中。旧 segment 及 Records 由原有 pin／lease 保护，替换且使用者退出后释放。</p>
+<p>full rewrite 折叠的更新历史不随新 base 保留。沿用当前 Milvus 的历史查询边界，不新增跨 rewrite 的 UNDO／time-travel；在途请求继续由旧 segment 生命周期保护。</p>
+<p>DeltaExecutor 消化 plan 中的适用 pending deltas，不重放已被 base 消化的操作。rewrite 提交后，后续尚未分发的 ranges 按当前 targets 选择 replacement segment，不能再将其结果提交给已退出的 inputs。</p>
+<h4 id="section-5-3-5" tabindex="-1">5.3.5 当前实现与改造</h4>
+<p><strong>可复用。</strong> <a href="../../internal/datanode/compactor/mix_compactor.go">Mix compactor</a> 的数据读取、重写输出流程，以及 <a href="../../internal/compaction/entity_filter.go">EntityFilter</a> 的 PK-delete／TTL 处理。</p>
+<p><strong>需增强。</strong> 增加受限 DeltaExecutor，让 Sort、Mix、clustering 和 schema rewrite 在调度侧固定的完整输入上按序执行 predicate delete 与 UPDATE；接通 range／Mix 准入互斥，保证重写期间的输入稳定。分离 execution schema 与 write schema，并在所有物理删列路径接入 §5.3.2 的 block-and-drain gate，保护尚待执行的旧字段依赖。</p>
+<p>另需补齐 §5.3.3 的 external backfill 顺序／准入协议与 manifest 发布对接。</p>
+<h3 id="section-5-4" tabindex="-1">5.4 Delegator：在线分发与加载交接</h3>
+<p>Delegator 将在线 mutations 送到适用 segments，并在 segment load 时组装历史输入、完成与实时链路的交接。</p>
+<h4 id="section-5-4-1" tabindex="-1">5.4.1 在线分发与 load 数据流</h4>
+<p>三类操作进入同一个有序分发入口。PK DELETE／point UPDATE 解码外层 PK 后做 BF；predicate 不在 Delegator 求值，保留序列化 payload，转发到 scope 内适用 segments。Growing 执行层虽然在同一 SN 进程中，仍需解析并执行 payload。共享 bytes 保留至后续 loading segments 不再需要；某个 Growing 已执行不构成释放依据。</p>
+<p>加载复用现有交接流程，将三类 delta 一并纳入：</p>
+<pre><code class="language-text">加载 base 和 segment 自带 deltalogs
+  → 补充适用 L0 → 补充 Delegator 实时 buffer
+  → catch-up 加载期间新输入
+  → 最终交接至固定 H，加入 distribution
+  → &gt;H 的实时输入继续进入同一执行序列
+</code></pre>
+<p>历史数据可并行读取、解码并入队，执行仍按顺序。H 固定本次 load 的历史范围终点，只证明输入交接完整；A 随该历史输入的实际异步 apply 推进，追到 H 即历史完成。二者均为 query side 加载期的内存状态，不是 compaction 进度或持久化 segment metadata。</p>
+<p><strong>重叠处理。</strong> segment deltalog、L0 和 buffer 可能重复表示同一操作。统一 apply 入口只跳过已完整执行的前缀：先完成 <code>(80,120]</code>，再消费 <code>(100,150]</code> 时跳过 <code>≤120</code>，执行其后部分。同 ts 的所有 records 完成后才能推进水位；无命中区间也随完整输入的执行完成而完成。</p>
+<h4 id="section-5-4-2" tabindex="-1">5.4.2 输出与契约</h4>
+<p>向执行端交付有序 mutations；load 还交付固定历史终点 H，并由执行端维护实际完成水位 A。Delegator 是 query side 的输入提供端，负责向 segment 交付完整适用前缀并保持逻辑顺序。在线分发的成功表示实际 apply 完成；加载可以先交接输入，再异步回放历史，但后续实时操作必须排在历史后面。</p>
+<p>pipeline 只有在本批所有适用在线 apply 完成后才推进 TSafe。RPC 入队不算完成，失败处理也不能把未完成 segment 继续当作已就绪数据参与查询。</p>
+<p>加入 distribution 不要求 <code>A≥H</code>；查询保留既有 TSafe、distribution 检查，并对最终 Q_TS 在 segment 级等待：</p>
+<pre><code class="language-text">channel：实际 Q_TS 已被实时可读进度覆盖
+segment：A ≥ min(Q_TS,H)
+</code></pre>
+<p>例如 <code>H=150、A=120、TSafe=170</code>：Q_TS=140 等历史到 140；Q_TS=160 等历史到 150。历史追平后，即使没有新 mutation，也可读取 Q_TS=160，无须向每个 segment 发送空 TimeTick。若此时有 UPDATE@160 到达，它必须等历史完成；同步实时链路会因此拖住 channel TSafe。这是该交接方式的已知代价。</p>
+<p>Delegator 通过正确的 target／manifest、DeleteCP 保留、pin 和 catch-up 组装完整输入，不能在 segment deltalog、L0 与 buffer 交接时引入 hole。完整性承诺覆盖到执行入口，segment 不再独立证明一次 WAL 前缀，也无需读取 M／C 或新增持久化 <code>dispatch_ts</code>。</p>
+<h4 id="section-5-4-3" tabindex="-1">5.4.3 当前实现与改造</h4>
+<p><strong>可复用。</strong> <a href="../../internal/querynodev2/delegator/delegator_data.go">loadStreamDelete</a> 的 L0／buffer 补齐、catch-up 和 distribution 交接，以及 <a href="../../internal/querynodev2/pipeline/delete_node.go">delete pipeline</a> 的 apply 完成后推进 TSafe。</p>
+<p><strong>需增强。</strong> 将分发、缓存和 load 补齐扩展为三类 delta 的统一有序链路，补齐 overlap 处理与历史异步 apply 的查询等待，避免遗漏、越序和读取尚未执行完成的状态。</p>
+<h3 id="section-5-5" tabindex="-1">5.5 Segment：执行 mutations，并让查询读取 overlay</h3>
+<p>Growing／Sealed segment 执行收到的 mutations，并将字段版本和删除结果叠加到原 base/index，供查询读取。</p>
+<h4 id="section-5-5-1" tabindex="-1">5.5.1 Mutation 到查询结果</h4>
+<p><strong>Mutation 执行与 Records。</strong></p>
+<p>point UPDATE 对每个目标 PK 查找本地全部符合时间资格的 offsets，去除已删除行，再向目标字段追加版本。predicate DELETE 通过现有表达式执行器读取 base/index＋UpdatesRecord，取得 TRUE offsets，检查存活与时间资格后接入 DeletedRecord 的共同 offset-apply 逻辑；拟增加 <code>DeleteApplyNode / ApplyDeletesMap</code>。实现须处理 selection／exclusion bitmap 的方向，并固定 Growing 的适用 row 范围，避免误删后续插入。</p>
+<p>UpdatesRecord 采用以下结构：</p>
+<pre><code class="language-text">field_id → FieldUpdates
+  field-level RW lock
+  absl::btree_map&lt;offset, HistoryHandle&gt;
+    → boost::container::deque&lt;VersionEntry&gt;
+      VersionEntry = (mutation_ts, is_null, value)
+</code></pre>
+<p>仅为被更新 cell 创建 history，按顺序追加，用 <code>upper_bound(Q_TS)</code> 找最新 <code>ts≤Q_TS</code> 版本。B-tree 支持按 offset 点查和窗口枚举；离散查询则按输入 offsets 查找或相交。INT／BOOL／TIMESTAMPTZ 内联，VARCHAR／ARRAY 使用不可变 Arrow owning Buffer；同一 assignment 可共享 payload。NULL 是独立版本，空字符串、空数组和无 assignment 分别表达。采用 owning Buffer 的生命周期原则见 <a href="https://arrow.apache.org/docs/cpp/memory.html#buffers">Arrow Buffers</a>。</p>
+<p>字段锁保护目录和 histories。读取者在锁内复制定长值或取得变长 owner，再解锁；不能带着失效 iterator、裸指针或 string_view 离开锁。多字段 apply 的完整性由查询进度保证：需要 @100 的查询在所有字段完成前等待，旧 Q_TS 只读取可见旧版本。后续 mutation 也不能越过未完成操作。</p>
+<p><strong>过滤与取值。</strong></p>
+<p>base/index 仍然只表示原字段值。对每个数据访问节点和 Q_TS，先计算 base，再读取可见 delta 并修正结果：</p>
+<pre><code class="language-text">B = base 的命中 offsets
+U = 当前字段在 Q_TS 下存在可见 update 的 offsets
+D = 对 U 的最新可见值重新求值后的命中 offsets
+
+result = (B - U) ∪ D
+</code></pre>
+<p>例如 base <code>count=10</code>、update <code>count=20</code> 时，<code>count&gt;15</code> 必须补入该行；反向更新则移除旧命中。旧 index 的空命中、min/max 或 all-null 可以跳过 base 分支，不能同时剪掉 delta。</p>
+<p>NULL 路径同时修正 result 和 validity，logical nodes 继续使用现有 SQL 三值逻辑。多字段表达式对相关字段 updated offsets 的并集重算，并在同一 Q_TS 取齐值。SELECT 先取可见 update，只有无可见版本才回退 base；显式 NULL 不能回退。GroupBy、排序、聚合、rerank、字符串／ARRAY 访问和 iterative filtering 等所有实际取值入口都须遵守。</p>
+<p>这是 base＋delta 读取的成熟原则，可参考 <a href="https://github.com/apache/kudu/blob/1.18.1/docs/design-docs/tablet.md">Kudu REDO deltas</a>；本方案保留 Milvus 的非唯一 PK 和既有查询去重行为，不引入 Kudu 的唯一键或 UNDO 体系。</p>
+<h4 id="section-5-5-2" tabindex="-1">5.5.2 输出与契约</h4>
+<p>执行产生 UpdatesRecord 中的字段版本、DeletedRecord 中的删除记录；查询返回当前 Q_TS 对应的 overlay 结果。</p>
+<p>对 mutation 只处理 <code>row_ts &lt; mutation_ts</code> 且仍存活的适用行。UPDATE 更新本地全部匹配 PK offsets，<code>row_ts</code> 和未修改字段不变。predicate 使用操作时刻的字段状态，后续 SET 不复活已删除行。在线、恢复与 DN 回放遵守同一语义。</p>
+<p>Segment 信任输入提供端交付的是完整适用前缀，不自行枚举 WAL／L0 或维护另一套连续性证明。执行端负责按 <code>mutation_ts</code> apply、完整处理同 ts records，并按 §5.4 的规则 skip overlap。记录间的 timestamp 不必数值连续；A 记录实际执行完成进度，不用于重新验证上游是否遗漏输入。</p>
+<p><strong>生命周期。</strong></p>
+<p>无论 Raw 还是 Vortex local format，serving base/index 保持原表示，overlay 统一修正查询。普通 schema/index Reopen 不得清空 UpdatesRecord。L0 sync 或分发完成也不能释放 history，因为 base 尚未吸收更新。</p>
+<p>histories 保留到 segment 释放，或替换后旧使用者退出。请求 pin／lease 覆盖实际依赖 segment 的执行、reduce 和 output fill。没有同 segment Consolidation 时，同一 Q_TS 的追加版本不会破坏两阶段 Retrieve；需要核对既有生命周期覆盖，不新增独立跨阶段切换协议。</p>
+<h4 id="section-5-5-3" tabindex="-1">5.5.3 当前实现与改造</h4>
+<p><strong>可复用。</strong> <a href="../../internal/core/src/segcore/InsertRecord.h">InsertRecord</a> 的 PK 定位、<a href="../../internal/core/src/segcore/DeletedRecord.h">DeletedRecord</a> 的删除记录与查询屏蔽，以及既有 <a href="../../internal/core/src/common/ValueOp.h">三值逻辑</a>。</p>
+<p><strong>需增强。</strong> 增加 UpdatesRecord、predicate 到 offsets 的删除入口及查询 overlay 读取，使过滤与取值都反映 Q_TS 下可见的更新和删除。</p>
+<hr>
+<p>当前实现说明基于设计 worktree 的 <code>06c5fec04ae700d2e4c1693549e05fe8216da70e</code>，源码链接指向该 worktree。各模块的新增契约仍需实现与验证；Consolidation、资源管控和性能优化不属于本期范围。</p>
+</article><footer class="footer">可离线阅读 · <a href="20261030-sync-predicate-delete-and-point-update-design-zh.md">Markdown 源稿</a></footer></main><script>(() => {
+const menu=document.getElementById('menu');
+const close=()=>{document.body.classList.remove('nav-open');menu.setAttribute('aria-expanded','false');};
+menu.addEventListener('click',()=>menu.setAttribute('aria-expanded',String(document.body.classList.toggle('nav-open'))));
+document.getElementById('veil').addEventListener('click',close);
+document.addEventListener('keydown',event=>{if(event.key==='Escape'&&document.body.classList.contains('nav-open')){close();menu.focus();}});
+document.getElementById('sidebar').addEventListener('click',event=>{if(event.target.closest('a'))close();});
+document.getElementById('print').addEventListener('click',()=>window.print());
+const headings=[...document.querySelectorAll('article h2,article h3')];
+const links=[...document.querySelectorAll('.sidebar a[href^="#section-"]')];
+let queued=false;
+const update=()=>{queued=false;let current;for(const heading of headings){if(heading.getBoundingClientRect().top<=110)current=heading;else break;}const section=current?.id||'';const chapter=section.match(/^section-\d+/)?.[0];links.forEach(link=>{const active=link.classList.contains('chapter-nav')?link.hash==='#'+chapter:link.hash==='#'+section;link.classList.toggle('active',active);if(active)link.setAttribute('aria-current','location');else link.removeAttribute('aria-current');});};
+window.addEventListener('scroll',()=>{if(!queued){queued=true;requestAnimationFrame(update);}},{passive:true});window.addEventListener('resize',update);update();
+})();</script></body></html>

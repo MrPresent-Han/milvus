@@ -1,0 +1,1062 @@
+[
+  {
+    "round": "ab1",
+    "phase": "first_access",
+    "start": 1793343175.0188549,
+    "end": 1793343190.5110703,
+    "count": 10000,
+    "errors": 0,
+    "p50_ms": 7.526301500547561,
+    "p95_ms": 63.851258501199474,
+    "p99_ms": 110.37964079900121,
+    "mean_ms": 15.468287499112922,
+    "stddev_ms": 20.890759148932915,
+    "qps": 645.4854741591295,
+    "settled_at": 1793343310.7543175,
+    "arms": {
+      "base": {
+        "VmRSS": {
+          "baseline": 1956.3671875,
+          "peak": 1961.6796875,
+          "post120": 1955.11328125,
+          "peak_delta": 5.3125,
+          "retained_delta": -1.25390625
+        },
+        "RssAnon": {
+          "baseline": 654.29296875,
+          "peak": 659.60546875,
+          "post120": 653.0390625,
+          "peak_delta": 5.3125,
+          "retained_delta": -1.25390625
+        },
+        "RssFile": {
+          "baseline": 1302.07421875,
+          "peak": 1302.07421875,
+          "post120": 1302.07421875,
+          "peak_delta": 0.0,
+          "retained_delta": 0.0
+        },
+        "cgroup_bytes": {
+          "baseline": 2468.7578125,
+          "peak": 2474.16796875,
+          "post120": 2470.140625,
+          "peak_delta": 5.41015625,
+          "retained_delta": 1.3828125
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6353910.0,
+            "after": 6353910.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057059.0,
+            "after": 10057059.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.10099387168884277
+      },
+      "query": {
+        "VmRSS": {
+          "baseline": 1948.640625,
+          "peak": 4965.828125,
+          "post120": 4920.859375,
+          "peak_delta": 3017.1875,
+          "retained_delta": 2972.21875
+        },
+        "RssAnon": {
+          "baseline": 647.22265625,
+          "peak": 730.48828125,
+          "post120": 685.45703125,
+          "peak_delta": 83.265625,
+          "retained_delta": 38.234375
+        },
+        "RssFile": {
+          "baseline": 1301.41796875,
+          "peak": 4235.33984375,
+          "post120": 4235.40234375,
+          "peak_delta": 2933.921875,
+          "retained_delta": 2933.984375
+        },
+        "cgroup_bytes": {
+          "baseline": 2424.435546875,
+          "peak": 5452.76953125,
+          "post120": 5420.4765625,
+          "peak_delta": 3028.333984375,
+          "retained_delta": 2996.041015625
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 2929.6875,
+          "milvus_storage_filesystem_read_bytes": 3072594064.0,
+          "internal_cache_cell_access_miss_bytes_total": 3072000000.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 10000.0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6432857.0,
+            "after": 6432857.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057060.0,
+            "after": 10057060.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 3072000000.0,
+            "delta": 3072000000.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.10034871101379395
+      }
+    },
+    "adjusted": {
+      "VmRSS": {
+        "aligned_peak_delta": 3012.33984375,
+        "retained_delta": 2973.47265625
+      },
+      "RssAnon": {
+        "aligned_peak_delta": 78.41796875,
+        "retained_delta": 39.48828125
+      },
+      "RssFile": {
+        "aligned_peak_delta": 2933.921875,
+        "retained_delta": 2933.984375
+      },
+      "cgroup_bytes": {
+        "aligned_peak_delta": 3022.970703125,
+        "retained_delta": 2994.658203125
+      }
+    }
+  },
+  {
+    "round": "ab1",
+    "phase": "repeat_hot",
+    "start": 1793343310.8686697,
+    "end": 1793343318.5500245,
+    "count": 10000,
+    "errors": 0,
+    "p50_ms": 6.760751999536296,
+    "p95_ms": 12.887144497835832,
+    "p99_ms": 23.637725481785328,
+    "mean_ms": 7.650991155402517,
+    "stddev_ms": 5.8047051105656156,
+    "qps": 1301.853684796764,
+    "settled_at": 1793343438.8045802,
+    "arms": {
+      "base": {
+        "VmRSS": {
+          "baseline": 1955.11328125,
+          "peak": 1961.578125,
+          "post120": 1962.3046875,
+          "peak_delta": 6.46484375,
+          "retained_delta": 7.19140625
+        },
+        "RssAnon": {
+          "baseline": 653.0390625,
+          "peak": 659.50390625,
+          "post120": 659.55859375,
+          "peak_delta": 6.46484375,
+          "retained_delta": 6.51953125
+        },
+        "RssFile": {
+          "baseline": 1302.07421875,
+          "peak": 1302.07421875,
+          "post120": 1303.109375,
+          "peak_delta": 0.0,
+          "retained_delta": 1.03515625
+        },
+        "cgroup_bytes": {
+          "baseline": 2470.142578125,
+          "peak": 2476.3671875,
+          "post120": 2480.65234375,
+          "peak_delta": 6.224609375,
+          "retained_delta": 10.509765625
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6353910.0,
+            "after": 6353910.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057059.0,
+            "after": 10057059.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.1002197265625
+      },
+      "query": {
+        "VmRSS": {
+          "baseline": 4920.859375,
+          "peak": 4931.18359375,
+          "post120": 4913.841796875,
+          "peak_delta": 10.32421875,
+          "retained_delta": -7.017578125
+        },
+        "RssAnon": {
+          "baseline": 685.45703125,
+          "peak": 695.72265625,
+          "post120": 677.455078125,
+          "peak_delta": 10.265625,
+          "retained_delta": -8.001953125
+        },
+        "RssFile": {
+          "baseline": 4235.40234375,
+          "peak": 4235.4609375,
+          "post120": 4236.38671875,
+          "peak_delta": 0.05859375,
+          "retained_delta": 0.984375
+        },
+        "cgroup_bytes": {
+          "baseline": 5420.474609375,
+          "peak": 5431.82421875,
+          "post120": 5410.59765625,
+          "peak_delta": 11.349609375,
+          "retained_delta": -9.876953125
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 0.0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 10000.0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6432857.0,
+            "after": 6432857.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057060.0,
+            "after": 10057060.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 3072000000.0,
+            "after": 3072000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.10059261322021484
+      }
+    },
+    "adjusted": {
+      "VmRSS": {
+        "aligned_peak_delta": 9.6875,
+        "retained_delta": -14.208984375
+      },
+      "RssAnon": {
+        "aligned_peak_delta": 9.6875,
+        "retained_delta": -14.521484375
+      },
+      "RssFile": {
+        "aligned_peak_delta": 0.05859375,
+        "retained_delta": -0.05078125
+      },
+      "cgroup_bytes": {
+        "aligned_peak_delta": 10.77734375,
+        "retained_delta": -20.38671875
+      }
+    }
+  },
+  {
+    "round": "ab2",
+    "phase": "first_access",
+    "start": 1793343633.1888645,
+    "end": 1793343648.282109,
+    "count": 10000,
+    "errors": 0,
+    "p50_ms": 7.250782000483014,
+    "p95_ms": 62.11567545087745,
+    "p99_ms": 111.38717834804999,
+    "mean_ms": 15.071030563217937,
+    "stddev_ms": 20.678806622098477,
+    "qps": 662.5480667951691,
+    "settled_at": 1793343768.5257878,
+    "arms": {
+      "base": {
+        "VmRSS": {
+          "baseline": 1966.609375,
+          "peak": 1966.953125,
+          "post120": 1950.90625,
+          "peak_delta": 0.34375,
+          "retained_delta": -15.703125
+        },
+        "RssAnon": {
+          "baseline": 656.3515625,
+          "peak": 656.6953125,
+          "post120": 640.65234375,
+          "peak_delta": 0.34375,
+          "retained_delta": -15.69921875
+        },
+        "RssFile": {
+          "baseline": 1310.2578125,
+          "peak": 1310.2578125,
+          "post120": 1310.25390625,
+          "peak_delta": 0.0,
+          "retained_delta": -0.00390625
+        },
+        "cgroup_bytes": {
+          "baseline": 2436.26953125,
+          "peak": 2437.078125,
+          "post120": 2419.029296875,
+          "peak_delta": 0.80859375,
+          "retained_delta": -17.240234375
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6353910.0,
+            "after": 6353910.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057059.0,
+            "after": 10057059.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.10020947456359863
+      },
+      "query": {
+        "VmRSS": {
+          "baseline": 1931.59765625,
+          "peak": 4937.38671875,
+          "post120": 4879.421875,
+          "peak_delta": 3005.7890625,
+          "retained_delta": 2947.82421875
+        },
+        "RssAnon": {
+          "baseline": 622.71875,
+          "peak": 693.2734375,
+          "post120": 635.24609375,
+          "peak_delta": 70.5546875,
+          "retained_delta": 12.52734375
+        },
+        "RssFile": {
+          "baseline": 1308.87890625,
+          "peak": 4244.11328125,
+          "post120": 4244.17578125,
+          "peak_delta": 2935.234375,
+          "retained_delta": 2935.296875
+        },
+        "cgroup_bytes": {
+          "baseline": 2397.693359375,
+          "peak": 5411.31640625,
+          "post120": 5365.66015625,
+          "peak_delta": 3013.623046875,
+          "retained_delta": 2967.966796875
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 2929.6875,
+          "milvus_storage_filesystem_read_bytes": 3072594080.0,
+          "internal_cache_cell_access_miss_bytes_total": 3072000000.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 10000.0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6432857.0,
+            "after": 6432857.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057060.0,
+            "after": 10057060.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 3072000000.0,
+            "delta": 3072000000.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.10193085670471191
+      }
+    },
+    "adjusted": {
+      "VmRSS": {
+        "aligned_peak_delta": 3005.6875,
+        "retained_delta": 2963.52734375
+      },
+      "RssAnon": {
+        "aligned_peak_delta": 70.453125,
+        "retained_delta": 28.2265625
+      },
+      "RssFile": {
+        "aligned_peak_delta": 2935.234375,
+        "retained_delta": 2935.30078125
+      },
+      "cgroup_bytes": {
+        "aligned_peak_delta": 3013.220703125,
+        "retained_delta": 2985.20703125
+      }
+    }
+  },
+  {
+    "round": "ab2",
+    "phase": "repeat_hot",
+    "start": 1793343768.6418273,
+    "end": 1793343775.9797637,
+    "count": 10000,
+    "errors": 0,
+    "p50_ms": 6.412344999262132,
+    "p95_ms": 11.293194998324905,
+    "p99_ms": 28.023697987628125,
+    "mean_ms": 7.311213012297958,
+    "stddev_ms": 5.893472105822293,
+    "qps": 1362.7809581637725,
+    "settled_at": 1793343896.2361634,
+    "arms": {
+      "base": {
+        "VmRSS": {
+          "baseline": 1950.90625,
+          "peak": 1952.59375,
+          "post120": 1956.39453125,
+          "peak_delta": 1.6875,
+          "retained_delta": 5.48828125
+        },
+        "RssAnon": {
+          "baseline": 640.65234375,
+          "peak": 642.33984375,
+          "post120": 646.078125,
+          "peak_delta": 1.6875,
+          "retained_delta": 5.42578125
+        },
+        "RssFile": {
+          "baseline": 1310.25390625,
+          "peak": 1310.25390625,
+          "post120": 1310.31640625,
+          "peak_delta": 0.0,
+          "retained_delta": 0.0625
+        },
+        "cgroup_bytes": {
+          "baseline": 2419.029296875,
+          "peak": 2420.83203125,
+          "post120": 2422.296875,
+          "peak_delta": 1.802734375,
+          "retained_delta": 3.267578125
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6353910.0,
+            "after": 6353910.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057059.0,
+            "after": 10057059.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.10023951530456543
+      },
+      "query": {
+        "VmRSS": {
+          "baseline": 4879.421875,
+          "peak": 4910.359375,
+          "post120": 4884.546875,
+          "peak_delta": 30.9375,
+          "retained_delta": 5.125
+        },
+        "RssAnon": {
+          "baseline": 635.24609375,
+          "peak": 666.12109375,
+          "post120": 640.24609375,
+          "peak_delta": 30.875,
+          "retained_delta": 5.0
+        },
+        "RssFile": {
+          "baseline": 4244.17578125,
+          "peak": 4244.23828125,
+          "post120": 4244.30078125,
+          "peak_delta": 0.0625,
+          "retained_delta": 0.125
+        },
+        "cgroup_bytes": {
+          "baseline": 5365.66015625,
+          "peak": 5399.2109375,
+          "post120": 5369.6640625,
+          "peak_delta": 33.55078125,
+          "retained_delta": 4.00390625
+        },
+        "counter_deltas": {
+          "milvus_proxy_scanned_remote_mb": 0.0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0
+        },
+        "query_requests": 10000.0,
+        "cache_changes": {
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+            "before": 6488.0,
+            "after": 6488.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+            "before": 1052001640.0,
+            "after": 1052001640.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+            "before": 6432857.0,
+            "after": 6432857.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+            "before": 416000000.0,
+            "after": 416000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+            "before": 10057060.0,
+            "after": 10057060.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+            "before": 3072000000.0,
+            "after": 3072000000.0,
+            "delta": 0.0
+          },
+          "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+            "before": 0.0,
+            "after": 0.0,
+            "delta": 0.0
+          }
+        },
+        "max_sample_gap_seconds": 0.10022187232971191
+      }
+    },
+    "adjusted": {
+      "VmRSS": {
+        "aligned_peak_delta": 31.73828125,
+        "retained_delta": -0.36328125
+      },
+      "RssAnon": {
+        "aligned_peak_delta": 31.67578125,
+        "retained_delta": -0.42578125
+      },
+      "RssFile": {
+        "aligned_peak_delta": 0.0625,
+        "retained_delta": 0.0625
+      },
+      "cgroup_bytes": {
+        "aligned_peak_delta": 34.287109375,
+        "retained_delta": 0.736328125
+      }
+    }
+  }
+]

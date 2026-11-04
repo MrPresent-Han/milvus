@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="418" viewBox="0 0 960 418" role="img" aria-labelledby="title desc">
+  <title id="title">现有 delete-by-expr 的 PK 展开成本</title>
+  <desc id="desc">一条删除表达式先通过 Query 变成大量命中 PK，再经 Proxy 写入 WAL，并进入 StreamingNode 的 deleteBuffer。传输和缓冲量随命中行数增长。</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#718795" stroke-width="1.6"/></marker></defs>
+  <rect width="960" height="418" rx="12" fill="#f7fafb"/>
+  <g font-family="PingFang SC,Microsoft YaHei,sans-serif" fill="#243e4a">
+    <text x="32" y="44" font-size="25" font-weight="600">一个删除条件，为什么会产生大量数据搬运？</text>
+    <rect x="32" y="78" width="236" height="112" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
+    <text x="52" y="112" font-size="22" font-weight="600">一条 expr</text>
+    <text x="52" y="150" font-size="21" font-family="SFMono-Regular,Consolas,monospace">age == 18</text>
+    <path d="M280 134H325" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="342" y="78" width="202" height="112" rx="8" fill="white" stroke="#c4d4dc"/>
+    <text x="443" y="120" font-size="24" font-weight="600" text-anchor="middle">Query</text>
+    <text x="443" y="157" font-size="21" text-anchor="middle">查询命中 PK</text>
+    <path d="M558 134H604" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="624" y="78" width="304" height="112" rx="8" fill="#fff0e7" stroke="#d6a07f"/>
+    <text x="644" y="112" font-size="22" font-weight="600">N 个 PK</text>
+    <text x="644" y="149" font-size="21" font-family="SFMono-Regular,Consolas,monospace">[7, 19, 42, …]</text>
+    <path d="M776 200V231H444V259" fill="none" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <text x="32" y="235" font-size="21" fill="#906046">结果随命中行数增长</text>
+    <rect x="32" y="277" width="896" height="74" rx="8" fill="white" stroke="#d6a07f"/>
+    <text x="480" y="323" font-size="23" text-anchor="middle">Proxy 接收 PK → WAL 传输 → StreamingNode deleteBuffer</text>
+    <text x="32" y="391" font-size="21" fill="#617984">示意：很短的删除意图，变成需要传输和缓冲的大批量 PK。</text>
+  </g>
+</svg>

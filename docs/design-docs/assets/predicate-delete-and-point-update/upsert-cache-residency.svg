@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="466" viewBox="0 0 960 466" role="img" aria-labelledby="title desc">
+  <title id="title">小字段更新引起未修改 raw data 的 cache 驻留</title>
+  <desc id="desc">为了修改 checked，partial-upsert 需要读取完整旧行。随机 PK 分散命中多块 CacheCells，每块中的未修改 raw vector 也被加载。请求结束后这些数据仍可能留在 cache 中。</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#718795" stroke-width="1.6"/></marker></defs>
+  <rect width="960" height="466" rx="12" fill="#f7fafb"/>
+  <g font-family="PingFang SC,Microsoft YaHei,sans-serif" fill="#243e4a">
+    <text x="32" y="44" font-size="25" font-weight="600">只想改 checked，却读入了未修改的宽列</text>
+    <rect x="32" y="77" width="295" height="78" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
+    <text x="180" y="124" font-size="23" text-anchor="middle">SET checked = true</text>
+    <path d="M341 116H389" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="410" y="77" width="518" height="78" rx="8" fill="white" stroke="#c4d4dc"/>
+    <text x="669" y="109" font-size="23" font-weight="600" text-anchor="middle">Query 完整旧行</text>
+    <text x="669" y="140" font-size="21" text-anchor="middle">checked ＋ vector ＋ VARCHAR ＋ …</text>
+    <path d="M669 164V194" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <text x="32" y="217" font-size="22">随机 PK 分散命中多个 raw-vector CacheCells</text>
+    <g fill="#e7eef5" stroke="#b0c3d2" stroke-width="1.5">
+      <rect x="32" y="242" width="164" height="110" rx="6"/><rect x="215" y="242" width="164" height="110" rx="6"/><rect x="398" y="242" width="164" height="110" rx="6"/><rect x="581" y="242" width="164" height="110" rx="6"/><rect x="764" y="242" width="164" height="110" rx="6"/>
+    </g>
+    <g stroke="#c3d1dd" stroke-width="1"><path d="M44 264H184M44 286H184M44 308H184M44 330H184M227 264H367M227 286H367M227 308H367M227 330H367M410 264H550M410 286H550M410 308H550M410 330H550M593 264H733M593 286H733M593 308H733M593 330H733M776 264H916M776 286H916M776 308H916M776 330H916"/></g>
+    <g fill="#bb673d"><circle cx="68" cy="275" r="7"/><circle cx="277" cy="320" r="7"/><circle cx="464" cy="253" r="7"/><circle cx="688" cy="299" r="7"/><circle cx="813" cy="275" r="7"/></g>
+    <circle cx="42" cy="381" r="7" fill="#bb673d"/><text x="62" y="389" font-size="20">请求选中的行</text>
+    <rect x="250" y="371" width="18" height="18" rx="2" fill="#e7eef5" stroke="#b0c3d2"/><text x="280" y="389" font-size="20">一并载入的未修改 raw data</text>
+    <text x="32" y="437" font-size="22" font-weight="600" fill="#906046">请求结束 ≠ cache 立即清空；额外工作集仍可能驻留。</text>
+  </g>
+</svg>

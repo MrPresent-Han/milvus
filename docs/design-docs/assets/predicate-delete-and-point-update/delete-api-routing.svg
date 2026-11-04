@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="790" viewBox="0 0 820 790" role="img" aria-labelledby="title desc">
+  <title id="title">Delete API 的路径选择</title>
+  <desc id="desc">合法表达式先判断能否直接提取 PK：可以则走 PK-delete，否则判断完整表达式是否属于 native 支持集，支持则直接提交 native predicate。合法但不支持的表达式走旧 query-PK 路径，只有这一路径检查 collection 是否已加载；未加载则拒绝，已加载则查询 PK 后提交 PK-delete。路径在 WAL append 前选定。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#718795" stroke-width="1.6"/></marker>
+  </defs>
+  <rect width="820" height="790" rx="12" fill="#f7fafb"/>
+  <g fill="none" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)">
+    <path d="M220 88V122"/>
+    <path d="M390 180H492"/>
+    <path d="M220 235V297"/>
+    <path d="M405 355H492"/>
+    <path d="M220 410V472"/>
+    <path d="M405 530H492"/>
+    <path d="M220 585V642"/>
+    <path d="M400 688H492"/>
+  </g>
+  <g font-family="PingFang SC,Microsoft YaHei,sans-serif" fill="#243e4a" text-anchor="middle">
+    <rect x="40" y="22" width="360" height="66" rx="8" fill="white" stroke="#c4d4dc"/>
+    <text x="220" y="63" font-size="24" font-weight="600">Delete API：合法表达式</text>
+
+    <path d="M220 125L390 180L220 235L50 180Z" fill="white" stroke="#a9bec9"/>
+    <text x="220" y="189" font-size="24">可直接提取 PK？</text>
+    <text x="445" y="166" font-size="23">是</text>
+    <text x="246" y="276" font-size="23">否</text>
+    <rect x="500" y="137" width="280" height="86" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
+    <text x="640" y="173" font-size="25" font-weight="600">PK-delete</text>
+    <text x="640" y="206" font-size="23">WAL append</text>
+
+    <path d="M220 300L405 355L220 410L35 355Z" fill="white" stroke="#a9bec9"/>
+    <text x="220" y="347" font-size="23">完整表达式属于</text>
+    <text x="220" y="377" font-size="23">native 支持集？</text>
+    <text x="450" y="341" font-size="23">是</text>
+    <text x="246" y="451" font-size="23">否</text>
+    <rect x="500" y="312" width="280" height="86" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
+    <text x="640" y="348" font-size="25" font-weight="600">native predicate</text>
+    <text x="640" y="381" font-size="23">WAL append</text>
+
+    <path d="M220 475L405 530L220 585L35 530Z" fill="white" stroke="#a9bec9"/>
+    <text x="220" y="538" font-size="23">collection 已 loaded？</text>
+    <text x="450" y="516" font-size="23">否</text>
+    <text x="246" y="626" font-size="23">是</text>
+    <rect x="500" y="487" width="280" height="86" rx="8" fill="#fff0e7" stroke="#d6a07f"/>
+    <text x="640" y="523" font-size="25" font-weight="600">拒绝请求</text>
+    <text x="640" y="556" font-size="23">collection 未加载</text>
+
+    <rect x="40" y="650" width="360" height="76" rx="8" fill="white" stroke="#c4d4dc"/>
+    <text x="220" y="682" font-size="25" font-weight="600">旧 query-PK 路径</text>
+    <text x="220" y="712" font-size="23">查询命中 PK</text>
+    <rect x="500" y="650" width="280" height="76" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
+    <text x="640" y="682" font-size="25" font-weight="600">PK-delete</text>
+    <text x="640" y="712" font-size="23">WAL append</text>
+    <text x="410" y="767" font-size="23" fill="#617984">只有旧 query-PK 路径依赖 collection 已 loaded。</text>
+  </g>
+</svg>

@@ -1,5 +1,7 @@
 # Predicate Deletes and Delta-Based Updates
 
+> 当前方案见 [Predicate delete 与 PK inplace-update：Phase 1 中文设计](20261030-sync-predicate-delete-and-point-update-design-zh.md)：两类操作均实时同步 apply，UPDATE 支持 PK 等值／IN 条件及已定标量类型的整 cell 常量 SET，不做 Consolidation。以下冻结正文保留为历史依据；其范围和机制不自动延续到当前方案。
+
 > **Real-time design baseline — frozen 2026-10-27, scoped amendments 2026-10-29.** The original design body is preserved from revision `94530c48ce3502b8fc212720630522766ee4913e`, except for the explicitly reopened scheduling clarification in Section 9.2.8 and SET-only scope/Proxy-sugar clarification in Section 10.8.1, with corresponding scope references updated. Other open questions remain unresolved; this is not an implemented feature. Here, "real-time" includes its asynchronous historical replay plus synchronous live-apply design, not synchronous execution before WAL acknowledgement.
 >
 > The [separate follow-up design](20261027-predicate-delete-and-update-deltas-async.md) records real-time PK updates plus asynchronous predicate deletes. Its changed semantics are not adopted here. The 2026-10-29 amendments return to the synchronous-live predicate-delete path to settle best-effort compaction statistics and fallback, and narrow native UPDATE to INT/ARRAY constant replacement with explicitly non-atomic Proxy sugar; other baseline sections remain frozen unless explicitly reopened.

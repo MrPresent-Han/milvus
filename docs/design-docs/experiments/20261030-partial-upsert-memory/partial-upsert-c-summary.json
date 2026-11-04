@@ -1,0 +1,1061 @@
+[
+  {
+    "phase": "first_upsert",
+    "age": 101,
+    "start": 1793346130.1852963,
+    "end": 1793346940.303291,
+    "count": 10000,
+    "errors": 0,
+    "p50_ms": 802.8940139997758,
+    "p95_ms": 816.5223154498563,
+    "p99_ms": 1042.8287759399925,
+    "mean_ms": 809.9439152580014,
+    "stddev_ms": 76.5464332826556,
+    "qps": 12.343880847443861,
+    "settled_at": 1793347060.5891974,
+    "arms": {
+      "base": {
+        "memory_MiB": {
+          "VmRSS": {
+            "baseline": 1978.6796875,
+            "peak": 1994.75390625,
+            "post120": 1984.62890625,
+            "peak_delta": 16.07421875,
+            "retained_delta": 5.94921875
+          },
+          "RssAnon": {
+            "baseline": 663.61328125,
+            "peak": 679.625,
+            "post120": 669.375,
+            "peak_delta": 16.01171875,
+            "retained_delta": 5.76171875
+          },
+          "RssFile": {
+            "baseline": 1315.06640625,
+            "peak": 1315.12890625,
+            "post120": 1315.25390625,
+            "peak_delta": 0.0625,
+            "retained_delta": 0.1875
+          },
+          "cgroup_bytes": {
+            "baseline": 2465.404296875,
+            "peak": 2484.203125,
+            "post120": 2466.3984375,
+            "peak_delta": 18.798828125,
+            "retained_delta": 0.994140625
+          }
+        },
+        "cpu_seconds_active": 70.88,
+        "cpu_seconds_post120": 11.220000000000013,
+        "process_io_active": {
+          "rchar": 55696604,
+          "wchar": 114820429,
+          "syscr": 360580,
+          "syscw": 131379,
+          "read_bytes": 0,
+          "write_bytes": 0,
+          "cancelled_write_bytes": 0
+        },
+        "cpu_throttle_active": {
+          "nr_periods": 8101,
+          "nr_throttled": 0,
+          "throttled_time": 0,
+          "nr_burst": 0,
+          "burst_time": 0
+        },
+        "counter_deltas_active_plus_idle": {
+          "process_cpu_seconds_total": 82.19999999999999,
+          "milvus_proxy_scanned_remote_mb": 0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "milvus_storage_filesystem_write_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0,
+          "woodpecker_client_append_bytes_sum": 2670.0,
+          "woodpecker_client_writer_bytes_written": 2670.0,
+          "woodpecker_client_reader_bytes_read": 0.0,
+          "milvus_querynode_consume_bytes_counter": 0.0
+        },
+        "gauges": {
+          "internal_cache_loaded_bytes": {
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+              "before": 416000000.0,
+              "after": 416000000.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+              "before": 6488.0,
+              "after": 6488.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+              "before": 10057059.0,
+              "after": 10057059.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+              "before": 1052001640.0,
+              "after": 1052001640.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+              "before": 6353910.0,
+              "after": 6353910.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_entity_num": {
+            "milvus_querynode_entity_num{collection_id=\"470113868670567849\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"4\",segment_state=\"Sealed\"}": {
+              "before": 1000000.0,
+              "after": 1000000.0,
+              "delta": 0.0
+            },
+            "milvus_querynode_entity_num{collection_id=\"470113868670567849\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"4\",segment_state=\"Growing\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_entity_size": {
+            "milvus_querynode_entity_size{collection_id=\"470113868670567849\",node_id=\"4\",segment_state=\"Growing\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "milvus_querynode_entity_size{collection_id=\"470113868670567849\",node_id=\"4\",segment_state=\"Sealed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_delete_buffer_row_num": {
+            "milvus_querynode_delete_buffer_row_num{channel_name=\"pu-ab-base-1030-rootcoord-dml_0_470113868670567849v0\",node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_delete_buffer_size": {
+            "milvus_querynode_delete_buffer_size{channel_name=\"pu-ab-base-1030-rootcoord-dml_0_470113868670567849v0\",node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_level_zero_size": {
+            "milvus_querynode_level_zero_size{channel_name=\"pu-ab-base-1030-rootcoord-dml_0_470113868670567849v0\",collection_id=\"470113868670567849\",node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_streamingnode_partial_update_version_index_bytes": {
+            "milvus_streamingnode_partial_update_version_index_bytes{node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          }
+        },
+        "request_counter_deltas": {
+          "milvus_proxy_req_count{cause=\"\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",function_name=\"GetQuerySegmentInfo\",node_id=\"4\",status=\"success\"}": 1.0
+        },
+        "segments_before": [
+          {
+            "id": 470113868679611338,
+            "rows": 260112,
+            "state": 3
+          },
+          {
+            "id": 470113868679611339,
+            "rows": 3538,
+            "state": 3
+          },
+          {
+            "id": 470113868680031596,
+            "rows": 255490,
+            "state": 3
+          },
+          {
+            "id": 470113868680041597,
+            "rows": 251410,
+            "state": 3
+          },
+          {
+            "id": 470113868680051598,
+            "rows": 229450,
+            "state": 3
+          }
+        ],
+        "segments_settled": [
+          {
+            "id": 470113868679611338,
+            "rows": 260112,
+            "state": 3
+          },
+          {
+            "id": 470113868679611339,
+            "rows": 3538,
+            "state": 3
+          },
+          {
+            "id": 470113868680031596,
+            "rows": 255490,
+            "state": 3
+          },
+          {
+            "id": 470113868680041597,
+            "rows": 251410,
+            "state": 3
+          },
+          {
+            "id": 470113868680051598,
+            "rows": 229450,
+            "state": 3
+          }
+        ],
+        "max_sample_gap_seconds": 0.10473251342773438
+      },
+      "query": {
+        "memory_MiB": {
+          "VmRSS": {
+            "baseline": 1901.90625,
+            "peak": 5191.375,
+            "post120": 5007.07421875,
+            "peak_delta": 3289.46875,
+            "retained_delta": 3105.16796875
+          },
+          "RssAnon": {
+            "baseline": 596.3125,
+            "peak": 906.859375,
+            "post120": 712.1171875,
+            "peak_delta": 310.546875,
+            "retained_delta": 115.8046875
+          },
+          "RssFile": {
+            "baseline": 1305.59375,
+            "peak": 4294.76953125,
+            "post120": 4294.95703125,
+            "peak_delta": 2989.17578125,
+            "retained_delta": 2989.36328125
+          },
+          "cgroup_bytes": {
+            "baseline": 2320.87109375,
+            "peak": 5655.7890625,
+            "post120": 5474.10546875,
+            "peak_delta": 3334.91796875,
+            "retained_delta": 3153.234375
+          }
+        },
+        "cpu_seconds_active": 129.47,
+        "cpu_seconds_post120": 13.219999999999999,
+        "process_io_active": {
+          "rchar": 110680216,
+          "wchar": 3704680906,
+          "syscr": 549242,
+          "syscw": 1064174,
+          "read_bytes": 4096,
+          "write_bytes": 3115597824,
+          "cancelled_write_bytes": 0
+        },
+        "cpu_throttle_active": {
+          "nr_periods": 8102,
+          "nr_throttled": 0,
+          "throttled_time": 0,
+          "nr_burst": 0,
+          "burst_time": 0
+        },
+        "counter_deltas_active_plus_idle": {
+          "process_cpu_seconds_total": 142.74,
+          "milvus_proxy_scanned_remote_mb": 2930.462890625,
+          "milvus_storage_filesystem_read_bytes": 3072597126.0,
+          "milvus_storage_filesystem_write_bytes": 29998174.0,
+          "internal_cache_cell_access_miss_bytes_total": 3072813056.0,
+          "internal_cache_evicted_bytes_total": 0.0,
+          "woodpecker_client_append_bytes_sum": 55145102.0,
+          "woodpecker_client_writer_bytes_written": 55145102.0,
+          "woodpecker_client_reader_bytes_read": 0.0,
+          "milvus_querynode_consume_bytes_counter": 45399670.0
+        },
+        "gauges": {
+          "internal_cache_loaded_bytes": {
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+              "before": 416000000.0,
+              "after": 416000000.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+              "before": 6352.0,
+              "after": 6352.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+              "before": 10057061.0,
+              "after": 10057061.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 3072000000.0,
+              "delta": 3072000000.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 49344000.0,
+              "delta": 49344000.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+              "before": 1052001645.0,
+              "after": 1052001645.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+              "before": 5233396.0,
+              "after": 6193396.0,
+              "delta": 960000.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_entity_num": {
+            "milvus_querynode_entity_num{collection_id=\"470114691933002299\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"2\",segment_state=\"Sealed\"}": {
+              "before": 1000000.0,
+              "after": 990000.0,
+              "delta": -10000.0
+            },
+            "milvus_querynode_entity_num{collection_id=\"470114691933002299\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"2\",segment_state=\"Growing\"}": {
+              "before": 0.0,
+              "after": 10000.0,
+              "delta": 10000.0
+            }
+          },
+          "milvus_querynode_entity_size": {
+            "milvus_querynode_entity_size{collection_id=\"470114691933002299\",node_id=\"2\",segment_state=\"Growing\"}": {
+              "before": 0.0,
+              "after": 41280000.0,
+              "delta": 41280000.0
+            },
+            "milvus_querynode_entity_size{collection_id=\"470114691933002299\",node_id=\"2\",segment_state=\"Sealed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_delete_buffer_row_num": {
+            "milvus_querynode_delete_buffer_row_num{channel_name=\"pu-ab-upsert-1030-rootcoord-dml_0_470114691933002299v0\",node_id=\"2\"}": {
+              "before": 0.0,
+              "after": 10000.0,
+              "delta": 10000.0
+            }
+          },
+          "milvus_querynode_delete_buffer_size": {
+            "milvus_querynode_delete_buffer_size{channel_name=\"pu-ab-upsert-1030-rootcoord-dml_0_470114691933002299v0\",node_id=\"2\"}": {
+              "before": 0.0,
+              "after": 1200000.0,
+              "delta": 1200000.0
+            }
+          },
+          "milvus_querynode_level_zero_size": {
+            "milvus_querynode_level_zero_size{channel_name=\"pu-ab-upsert-1030-rootcoord-dml_0_470114691933002299v0\",collection_id=\"470114691933002299\",node_id=\"2\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_streamingnode_partial_update_version_index_bytes": {
+            "milvus_streamingnode_partial_update_version_index_bytes{node_id=\"2\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          }
+        },
+        "request_counter_deltas": {
+          "milvus_proxy_req_count{cause=\"\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",function_name=\"Upsert\",node_id=\"2\",status=\"success\"}": 10000.0,
+          "milvus_proxy_req_count{cause=\"\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",function_name=\"GetQuerySegmentInfo\",node_id=\"2\",status=\"success\"}": 1.0,
+          "milvus_proxy_req_count{cause=\"\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",function_name=\"DescribeCollection\",node_id=\"2\",status=\"success\"}": 16.0
+        },
+        "segments_before": [
+          {
+            "id": 470114691941964193,
+            "rows": 248550,
+            "state": 3
+          },
+          {
+            "id": 470114691942334437,
+            "rows": 259450,
+            "state": 3
+          },
+          {
+            "id": 470114691942344438,
+            "rows": 251530,
+            "state": 3
+          },
+          {
+            "id": 470114691942354439,
+            "rows": 240470,
+            "state": 3
+          }
+        ],
+        "segments_settled": [
+          {
+            "id": 470114691941964193,
+            "rows": 248550,
+            "state": 3
+          },
+          {
+            "id": 470114691942334437,
+            "rows": 259450,
+            "state": 3
+          },
+          {
+            "id": 470114691942344438,
+            "rows": 251530,
+            "state": 3
+          },
+          {
+            "id": 470114691942354439,
+            "rows": 240470,
+            "state": 3
+          }
+        ],
+        "max_sample_gap_seconds": 0.11101841926574707
+      }
+    },
+    "adjusted": {
+      "VmRSS": {
+        "aligned_peak_delta_MiB": 3290.24609375,
+        "retained_delta_MiB": 3099.21875
+      },
+      "RssAnon": {
+        "aligned_peak_delta_MiB": 311.38671875,
+        "retained_delta_MiB": 110.04296875
+      },
+      "RssFile": {
+        "aligned_peak_delta_MiB": 2989.11328125,
+        "retained_delta_MiB": 2989.17578125
+      },
+      "cgroup_bytes": {
+        "aligned_peak_delta_MiB": 3336.736328125,
+        "retained_delta_MiB": 3152.240234375
+      },
+      "cpu_seconds_active": 58.59
+    }
+  },
+  {
+    "phase": "repeat_upsert",
+    "age": 102,
+    "start": 1793347061.2203794,
+    "end": 1793347876.5742064,
+    "count": 10000,
+    "errors": 0,
+    "p50_ms": 803.1273339993277,
+    "p95_ms": 829.9174779495388,
+    "p99_ms": 1200.9702303900667,
+    "mean_ms": 815.2465144149808,
+    "stddev_ms": 87.86620594205064,
+    "qps": 12.264614047128422,
+    "settled_at": 1793347996.9922812,
+    "arms": {
+      "base": {
+        "memory_MiB": {
+          "VmRSS": {
+            "baseline": 1984.62890625,
+            "peak": 1998.9375,
+            "post120": 1979.47265625,
+            "peak_delta": 14.30859375,
+            "retained_delta": -5.15625
+          },
+          "RssAnon": {
+            "baseline": 669.375,
+            "peak": 683.62109375,
+            "post120": 664.15625,
+            "peak_delta": 14.24609375,
+            "retained_delta": -5.21875
+          },
+          "RssFile": {
+            "baseline": 1315.25390625,
+            "peak": 1315.31640625,
+            "post120": 1315.31640625,
+            "peak_delta": 0.0625,
+            "retained_delta": 0.0625
+          },
+          "cgroup_bytes": {
+            "baseline": 2466.3984375,
+            "peak": 2559.28125,
+            "post120": 2137.4375,
+            "peak_delta": 92.8828125,
+            "retained_delta": -328.9609375
+          }
+        },
+        "cpu_seconds_active": 75.76999999999998,
+        "cpu_seconds_post120": 10.980000000000018,
+        "process_io_active": {
+          "rchar": 56917956,
+          "wchar": 113198904,
+          "syscr": 359336,
+          "syscw": 129832,
+          "read_bytes": 4096,
+          "write_bytes": 0,
+          "cancelled_write_bytes": 0
+        },
+        "cpu_throttle_active": {
+          "nr_periods": 8152,
+          "nr_throttled": 0,
+          "throttled_time": 0,
+          "nr_burst": 0,
+          "burst_time": 0
+        },
+        "counter_deltas_active_plus_idle": {
+          "process_cpu_seconds_total": 86.9,
+          "milvus_proxy_scanned_remote_mb": 0,
+          "milvus_storage_filesystem_read_bytes": 0.0,
+          "milvus_storage_filesystem_write_bytes": 0.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0,
+          "woodpecker_client_append_bytes_sum": 1602.0,
+          "woodpecker_client_writer_bytes_written": 1602.0,
+          "woodpecker_client_reader_bytes_read": 0.0,
+          "milvus_querynode_consume_bytes_counter": 0.0
+        },
+        "gauges": {
+          "internal_cache_loaded_bytes": {
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+              "before": 416000000.0,
+              "after": 416000000.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+              "before": 6488.0,
+              "after": 6488.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+              "before": 10057059.0,
+              "after": 10057059.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+              "before": 1052001640.0,
+              "after": 1052001640.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+              "before": 6353910.0,
+              "after": 6353910.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_entity_num": {
+            "milvus_querynode_entity_num{collection_id=\"470113868670567849\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"4\",segment_state=\"Sealed\"}": {
+              "before": 1000000.0,
+              "after": 1000000.0,
+              "delta": 0.0
+            },
+            "milvus_querynode_entity_num{collection_id=\"470113868670567849\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"4\",segment_state=\"Growing\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_entity_size": {
+            "milvus_querynode_entity_size{collection_id=\"470113868670567849\",node_id=\"4\",segment_state=\"Growing\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "milvus_querynode_entity_size{collection_id=\"470113868670567849\",node_id=\"4\",segment_state=\"Sealed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_delete_buffer_row_num": {
+            "milvus_querynode_delete_buffer_row_num{channel_name=\"pu-ab-base-1030-rootcoord-dml_0_470113868670567849v0\",node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_delete_buffer_size": {
+            "milvus_querynode_delete_buffer_size{channel_name=\"pu-ab-base-1030-rootcoord-dml_0_470113868670567849v0\",node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_level_zero_size": {
+            "milvus_querynode_level_zero_size{channel_name=\"pu-ab-base-1030-rootcoord-dml_0_470113868670567849v0\",collection_id=\"470113868670567849\",node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_streamingnode_partial_update_version_index_bytes": {
+            "milvus_streamingnode_partial_update_version_index_bytes{node_id=\"4\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          }
+        },
+        "request_counter_deltas": {
+          "milvus_proxy_req_count{cause=\"\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",function_name=\"GetQuerySegmentInfo\",node_id=\"4\",status=\"success\"}": 1.0
+        },
+        "segments_before": [
+          {
+            "id": 470113868679611338,
+            "rows": 260112,
+            "state": 3
+          },
+          {
+            "id": 470113868679611339,
+            "rows": 3538,
+            "state": 3
+          },
+          {
+            "id": 470113868680031596,
+            "rows": 255490,
+            "state": 3
+          },
+          {
+            "id": 470113868680041597,
+            "rows": 251410,
+            "state": 3
+          },
+          {
+            "id": 470113868680051598,
+            "rows": 229450,
+            "state": 3
+          }
+        ],
+        "segments_settled": [
+          {
+            "id": 470113868679611338,
+            "rows": 260112,
+            "state": 3
+          },
+          {
+            "id": 470113868679611339,
+            "rows": 3538,
+            "state": 3
+          },
+          {
+            "id": 470113868680031596,
+            "rows": 255490,
+            "state": 3
+          },
+          {
+            "id": 470113868680041597,
+            "rows": 251410,
+            "state": 3
+          },
+          {
+            "id": 470113868680051598,
+            "rows": 229450,
+            "state": 3
+          }
+        ],
+        "max_sample_gap_seconds": 0.10288405418395996
+      },
+      "query": {
+        "memory_MiB": {
+          "VmRSS": {
+            "baseline": 5007.07421875,
+            "peak": 5269.26953125,
+            "post120": 5108.87890625,
+            "peak_delta": 262.1953125,
+            "retained_delta": 101.8046875
+          },
+          "RssAnon": {
+            "baseline": 712.1171875,
+            "peak": 934.5078125,
+            "post120": 773.92578125,
+            "peak_delta": 222.390625,
+            "retained_delta": 61.80859375
+          },
+          "RssFile": {
+            "baseline": 4294.95703125,
+            "peak": 4334.76171875,
+            "post120": 4334.953125,
+            "peak_delta": 39.8046875,
+            "retained_delta": 39.99609375
+          },
+          "cgroup_bytes": {
+            "baseline": 5474.09765625,
+            "peak": 5657.58984375,
+            "post120": 5314.560546875,
+            "peak_delta": 183.4921875,
+            "retained_delta": -159.537109375
+          }
+        },
+        "cpu_seconds_active": 149.60000000000002,
+        "cpu_seconds_post120": 13.120000000000005,
+        "process_io_active": {
+          "rchar": 125374263,
+          "wchar": 653939407,
+          "syscr": 538488,
+          "syscw": 1014268,
+          "read_bytes": 0,
+          "write_bytes": 41582592,
+          "cancelled_write_bytes": 0
+        },
+        "cpu_throttle_active": {
+          "nr_periods": 8153,
+          "nr_throttled": 0,
+          "throttled_time": 0,
+          "nr_burst": 0,
+          "burst_time": 0
+        },
+        "counter_deltas_active_plus_idle": {
+          "process_cpu_seconds_total": 162.85999999999999,
+          "milvus_proxy_scanned_remote_mb": 0.0,
+          "milvus_storage_filesystem_read_bytes": 15720.0,
+          "milvus_storage_filesystem_write_bytes": 45000273.0,
+          "internal_cache_cell_access_miss_bytes_total": 0.0,
+          "internal_cache_evicted_bytes_total": 0.0,
+          "woodpecker_client_append_bytes_sum": 55157801.0,
+          "woodpecker_client_writer_bytes_written": 55157801.0,
+          "woodpecker_client_reader_bytes_read": 0.0,
+          "milvus_querynode_consume_bytes_counter": 45399670.0
+        },
+        "gauges": {
+          "internal_cache_loaded_bytes": {
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"disk\"}": {
+              "before": 416000000.0,
+              "after": 416000000.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"memory\"}": {
+              "before": 6352.0,
+              "after": 6352.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_index\",location=\"disk\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_index\",location=\"memory\"}": {
+              "before": 10057061.0,
+              "after": 10057061.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"disk\"}": {
+              "before": 3072000000.0,
+              "after": 3072000000.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"disk\"}": {
+              "before": 49344000.0,
+              "after": 98688000.0,
+              "delta": 49344000.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"disk\"}": {
+              "before": 1052001645.0,
+              "after": 1052001645.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"scalar_field\",location=\"mixed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"other\",location=\"memory\"}": {
+              "before": 6193396.0,
+              "after": 6577396.0,
+              "delta": 384000.0
+            },
+            "internal_cache_loaded_bytes{data_type=\"vector_field\",location=\"memory\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_entity_num": {
+            "milvus_querynode_entity_num{collection_id=\"470114691933002299\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"2\",segment_state=\"Sealed\"}": {
+              "before": 990000.0,
+              "after": 990000.0,
+              "delta": 0.0
+            },
+            "milvus_querynode_entity_num{collection_id=\"470114691933002299\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",node_id=\"2\",segment_state=\"Growing\"}": {
+              "before": 10000.0,
+              "after": 10000.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_entity_size": {
+            "milvus_querynode_entity_size{collection_id=\"470114691933002299\",node_id=\"2\",segment_state=\"Growing\"}": {
+              "before": 41280000.0,
+              "after": 82720000.0,
+              "delta": 41440000.0
+            },
+            "milvus_querynode_entity_size{collection_id=\"470114691933002299\",node_id=\"2\",segment_state=\"Sealed\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_querynode_delete_buffer_row_num": {
+            "milvus_querynode_delete_buffer_row_num{channel_name=\"pu-ab-upsert-1030-rootcoord-dml_0_470114691933002299v0\",node_id=\"2\"}": {
+              "before": 10000.0,
+              "after": 20000.0,
+              "delta": 10000.0
+            }
+          },
+          "milvus_querynode_delete_buffer_size": {
+            "milvus_querynode_delete_buffer_size{channel_name=\"pu-ab-upsert-1030-rootcoord-dml_0_470114691933002299v0\",node_id=\"2\"}": {
+              "before": 1200000.0,
+              "after": 2400000.0,
+              "delta": 1200000.0
+            }
+          },
+          "milvus_querynode_level_zero_size": {
+            "milvus_querynode_level_zero_size{channel_name=\"pu-ab-upsert-1030-rootcoord-dml_0_470114691933002299v0\",collection_id=\"470114691933002299\",node_id=\"2\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          },
+          "milvus_streamingnode_partial_update_version_index_bytes": {
+            "milvus_streamingnode_partial_update_version_index_bytes{node_id=\"2\"}": {
+              "before": 0.0,
+              "after": 0.0,
+              "delta": 0.0
+            }
+          }
+        },
+        "request_counter_deltas": {
+          "milvus_proxy_req_count{cause=\"\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",function_name=\"Upsert\",node_id=\"2\",status=\"success\"}": 10000.0,
+          "milvus_proxy_req_count{cause=\"\",collection_name=\"pu_ab_memory_1m\",db_name=\"default\",function_name=\"GetQuerySegmentInfo\",node_id=\"2\",status=\"success\"}": 1.0
+        },
+        "segments_before": [
+          {
+            "id": 470114691941964193,
+            "rows": 248550,
+            "state": 3
+          },
+          {
+            "id": 470114691942334437,
+            "rows": 259450,
+            "state": 3
+          },
+          {
+            "id": 470114691942344438,
+            "rows": 251530,
+            "state": 3
+          },
+          {
+            "id": 470114691942354439,
+            "rows": 240470,
+            "state": 3
+          }
+        ],
+        "segments_settled": [
+          {
+            "id": 470114691941964193,
+            "rows": 248550,
+            "state": 3
+          },
+          {
+            "id": 470114691942334437,
+            "rows": 259450,
+            "state": 3
+          },
+          {
+            "id": 470114691942344438,
+            "rows": 251530,
+            "state": 3
+          },
+          {
+            "id": 470114691942354439,
+            "rows": 240470,
+            "state": 3
+          }
+        ],
+        "max_sample_gap_seconds": 0.12018346786499023
+      }
+    },
+    "adjusted": {
+      "VmRSS": {
+        "aligned_peak_delta_MiB": 259.875,
+        "retained_delta_MiB": 106.9609375
+      },
+      "RssAnon": {
+        "aligned_peak_delta_MiB": 220.1328125,
+        "retained_delta_MiB": 67.02734375
+      },
+      "RssFile": {
+        "aligned_peak_delta_MiB": 39.7421875,
+        "retained_delta_MiB": 39.93359375
+      },
+      "cgroup_bytes": {
+        "aligned_peak_delta_MiB": 301.59765625,
+        "retained_delta_MiB": 169.423828125
+      },
+      "cpu_seconds_active": 73.83000000000004
+    }
+  }
+]

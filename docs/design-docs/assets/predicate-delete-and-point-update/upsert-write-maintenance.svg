@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="450" viewBox="0 0 960 450" role="img" aria-labelledby="title desc">
+  <title id="title">小字段更新生成完整新行的写入与维护成本</title>
+  <desc id="desc">partial-upsert 仅修改 checked，但新的完整行还包含未修改的 vector 和 VARCHAR。完整行 Insert 和旧行 Delete 之后，新增数据还要参与后台 compaction 与 index build。这与读取旧行引起的 cache 驻留是不同的成本。</desc>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#718795" stroke-width="1.6"/></marker></defs>
+  <rect width="960" height="450" rx="12" fill="#f7fafb"/>
+  <g font-family="PingFang SC,Microsoft YaHei,sans-serif" fill="#243e4a">
+    <text x="32" y="44" font-size="25" font-weight="600">只改一个字段，也会生成完整的新行</text>
+    <text x="32" y="107" font-size="22">旧行</text>
+    <rect x="112" y="76" width="238" height="53" rx="5" fill="white" stroke="#c4d4dc"/><text x="231" y="110" font-size="21" text-anchor="middle">checked = false</text>
+    <rect x="362" y="76" width="264" height="53" rx="5" fill="#e7eef5" stroke="#b0c3d2"/><text x="494" y="110" font-size="21" text-anchor="middle">vector（未修改）</text>
+    <rect x="638" y="76" width="290" height="53" rx="5" fill="#e7eef5" stroke="#b0c3d2"/><text x="783" y="110" font-size="21" text-anchor="middle">VARCHAR（未修改）</text>
+    <path d="M494 142V177" stroke="#718795" stroke-width="2" marker-end="url(#arrow)"/>
+    <path d="M783 142V177" stroke="#718795" stroke-width="2" marker-end="url(#arrow)"/>
+    <text x="32" y="220" font-size="22">新行</text>
+    <rect x="112" y="189" width="238" height="53" rx="5" fill="#e7f3f1" stroke="#88b7b4"/><text x="231" y="223" font-size="21" font-weight="600" text-anchor="middle">checked = true</text>
+    <rect x="362" y="189" width="264" height="53" rx="5" fill="#fff0e7" stroke="#d6a07f"/><text x="494" y="223" font-size="21" text-anchor="middle">同一份 vector</text>
+    <rect x="638" y="189" width="290" height="53" rx="5" fill="#fff0e7" stroke="#d6a07f"/><text x="783" y="223" font-size="21" text-anchor="middle">同一份 VARCHAR</text>
+    <text x="362" y="279" font-size="21" fill="#906046">未修改字段，也随完整新行再次写入</text>
+    <rect x="32" y="310" width="314" height="70" rx="8" fill="white" stroke="#c4d4dc"/><text x="189" y="353" font-size="22" text-anchor="middle">Insert 新行 ＋ Delete 旧行</text>
+    <path d="M359 345H399" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="419" y="310" width="224" height="70" rx="8" fill="white" stroke="#c4d4dc"/><text x="531" y="353" font-size="22" text-anchor="middle">Compaction</text>
+    <path d="M656 345H697" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)"/>
+    <rect x="717" y="310" width="211" height="70" rx="8" fill="white" stroke="#c4d4dc"/><text x="822" y="353" font-size="22" text-anchor="middle">Index build</text>
+    <text x="32" y="422" font-size="21" fill="#617984">重复写入未修改的数据，也带来额外的后台维护工作。</text>
+  </g>
+</svg>
