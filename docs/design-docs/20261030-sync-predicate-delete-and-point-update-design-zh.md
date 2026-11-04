@@ -529,7 +529,7 @@ Gate 放行后，DeltaExecutor 先将 c 更新为 15，再执行 DELETE；该行
 物化后：age 物理列保存 18
 ```
 
-这类逻辑等价物化不需要额外作为 UPDATE 排入 delta 时间线，也不会改变 predicate 的命中结果；已有 updates／deletes 仍须保留。当前 function-output 物化支持 BM25 的 SparseFloatVector 和 MinHash 的 BinaryVector，均不在 Phase 1 predicate／UPDATE 的支持范围内。若将来 internal backfill 改为覆盖已可见的 scalar 值，则同样需要下面的顺序契约；`isCompacting` 和 manifest commit lock 本身不提供 DML 顺序。
+这类逻辑等价物化不需要额外作为 UPDATE 排入 delta 时间线，也不会改变 predicate 的命中结果；已有 updates／deletes 仍须保留。当前 function-output 物化支持 BM25 的 SparseFloatVector 和 MinHash 的 BinaryVector，均不在 Phase 1 predicate／UPDATE 的支持范围内。若将来 internal backfill 改为覆盖已可见的 scalar 值，则同样受下面的持续 gate 约束；`isCompacting` 和 manifest commit lock 本身不提供 DML 顺序。
 
 **External backfill。** Spark 基于 snapshot prepare 列文件和 manifest，随后通过 [CommitBackfillResult](../../internal/datacoord/services_commit_backfill.go) 提交。每最多 512 个 segments 形成一个 `BatchUpdateManifest V2`，每批获得 CChannel 所在 PChannel 的 TimeTick；整个 Spark job 没有统一的业务 mutation timestamp，也不保证 job 级原子发布。
 
@@ -552,9 +552,29 @@ External backfill 发布 age=18 的列数据
 后续 DN 回放 DELETE@100：若读取 backfill 后的 base，所有行会被误删
 ```
 
-PK-only UPDATE 虽不重新选择 predicate 命中行，但与 backfill 修改同一 cell 时，执行次序仍决定最终值；当前没有契约规定应采用哪个次序。现有 delete-by-expr／partial-upsert 的 Query 也会受 backfill 可见性影响，但 WAL 已固定 PK 集合或完整新行，compaction 不再重算原表达式。直接 PK-delete 不依赖被 backfill 改写的非 PK 列值。
+现有 delete-by-expr／partial-upsert 的 Query 也会受 backfill 可见性影响，但 WAL 已固定 PK 集合或完整新行，compaction 不再重算原表达式。直接 PK-delete 不依赖被 backfill 改写的非 PK 列值。
 
-**兼容性待决。** External backfill 与新 deltas 的顺序及准入协议尚未定稿。暂停新写、等待 TSafe 或 C 追平都不能消除尚未物化的历史 predicates；manifest commit lock 也只能保护引用发布。现有 external callback 还通过 [UpdateManifestVersion](../../internal/datacoord/ddl_callbacks_batch_update_manifest.go) 绕过该锁，版本号递增不能证明引用完整。若允许共存，必须为业务 VChannels 建立逻辑生效边界，并衔接边界前的 delta 执行／物化、backfill 状态发布和后续回放；Phase 1 的 collection 级功能互斥是候选方案，约束须覆盖可回放历史，不能只检查当前运行的任务。
+**已定：block + drain + block。** 对本次 backfill 的 collection 建立持续的 native predicate 准入 gate。这里的 predicate 指依赖业务字段值求命中行的逻辑指令，不包含已确定目标 PK 的删除；逻辑等价的 NULL／default 物化也不需要这条 gate。一次 block 贯穿以下全过程，drain 后仍保持 block：
+
+```text
+BLOCK：在相关业务 VChannels 建立准入 fence，拒绝新的 native predicate deltas
+  → DRAIN：收齐 fence 前已接受的完整历史
+      WAL／streaming buffer → L0 → 在途 dispatch → segment deltalogs
+      → full rewrite 按序执行，使历史 predicates 的结果物化进 replacement base
+  → KEEP BLOCK：创建 snapshot protection → Spark prepare → backfill 发布
+  → KEEP BLOCK：query side 采用新状态，或隔离尚未切换的旧状态
+  → UNBLOCK：新 predicate 只能在与 backfill 结果兼容的状态上执行
+```
+
+Drain 覆盖 streaming、L0、segment deltalogs 及各阶段在途数据，不能只检查当前 segment 的文件列表或待调度任务。终点是相关历史 predicates 已经 full rewrite 消化、结果持久化；残留副本后续不会再对 backfill 后的 base 重新求值，不要求等待物理 GC。TSafe 只证明查询侧 apply，C 只证明分发完成，均不能单独放行此 gate。旧历史的消费、sync、L0 分发和 rewrite 在 block 期间继续推进。
+
+历史消化在创建 backfill snapshot、prepare 文件之前完成：snapshot compaction protection 会阻止这些 inputs 的 full rewrite，而 rewrite 又会改变 segment／offset 身份；基于旧输入 prepare 的结果不能直接套用到 replacement。
+
+Block 持续到 backfill metadata 发布和 query side 状态切换完成。`CommitBackfillResult` 返回不代表相关 serving segments 已采用新 base；未切换的旧状态不得接收新 predicate，在途旧查询仍由原有 pin／lease 保护。作业分批发布时，解除 gate 须覆盖其作用域内全部拟发布结果及对应服务状态，不能因一个 batch 或一次提交 RPC 返回就放行。Unloaded collection 则须保证后续 load 使用已发布的新状态。
+
+**仍待决：PK-update 同列覆盖规则。** PK-only UPDATE 不通过业务字段 predicate 选行，不属于上述 predicate 准入 gate；但与 backfill 修改同一 cell 时，两种执行次序会产生不同值。当前尚未规定相对顺序或覆盖优先级，此问题独立保留为待决。
+
+**Manifest 发布对接。** 现有 external callback 还通过 [UpdateManifestVersion](../../internal/datacoord/ddl_callbacks_batch_update_manifest.go) 绕过 segment manifest commit lock，版本号递增不能证明引用完整。这部分并发校验仍需补齐；manifest lock 保护引用发布，不替代上述持续 gate。
 
 #### 5.3.4 输出与契约
 
@@ -580,7 +600,7 @@ DeltaExecutor 消化 plan 中的适用 pending deltas，不重放已被 base 消
 
 **需增强。** 增加受限 DeltaExecutor，让 Sort、Mix、clustering 和 schema rewrite 在调度侧固定的完整输入上按序执行 predicate delete 与 UPDATE；接通 range／Mix 准入互斥，保证重写期间的输入稳定。分离 execution schema 与 write schema，并在所有物理删列路径接入 §5.3.2 的 block-and-drain gate，保护尚待执行的旧字段依赖。
 
-另需补齐 §5.3.3 的 external backfill 顺序／准入协议与 manifest 发布对接。
+接入 §5.3.3 的 external backfill 持续 gate：关闭新 predicate 准入，证明跨 streaming／L0／deltalog 的历史已完整物化，并在发布和 query side 切换完成后放行；补齐 manifest 发布并发校验。PK-update 同列覆盖规则仍待定。
 
 ### 5.4 Delegator：在线分发与加载交接
 
