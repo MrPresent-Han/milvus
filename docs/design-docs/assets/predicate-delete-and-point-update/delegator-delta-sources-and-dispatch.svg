@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1100" height="1560" viewBox="0 0 1100 1560" role="img" aria-labelledby="title desc">
   <title id="title">持久化数据与 Delegator buffer 的两条逻辑线</title>
-  <desc id="desc">上半图区分两条逻辑线，使用同一组 C、M 和 mutation_ts 时间轴。持久化数据的覆盖职责为：目标 segment 的 base 加 deltalogs 负责截至 C 的前缀，已提交 L0 files 负责 (C,M]，WAL suffix 负责 M 之后。启用 M 交接回收后的 Delegator buffer 视图为：截至 C 的历史已交给目标 segment，不再由 Delegator 提供；L0 buffer 提供 (C,M]，streaming buffer 提供 M 之后。C 的回收须在采用含分发结果的 target 后发生；M 的回收须等所需 L0 达到可转发状态。各线的当前取数区间连续且互斥，交接、load pin 与 GC 仍可能暂时保留旧物理副本。下半图保留 Delegator 按操作类型的分发：PK DELETE 与 point UPDATE 解码 PK 做 segment Bloom Filter，predicate DELETE 不求值，按 scope 转发序列化 payload。Growing 与 Sealed 执行层解析 payload 并按序执行。</desc>
+  <desc id="desc">上半图区分两条逻辑线，使用同一组 C、M 和 mutation_ts 时间轴。持久化数据的覆盖职责为：目标 segment 的 base 加 deltalogs 负责截至 C 的前缀，已提交 L0 files 负责 (C,M]，WAL suffix 负责 M 之后。M／C 交接完成后的 Delegator buffer 视图为：截至 C 的历史已交给目标 segment，不再由 Delegator 提供；L0 buffer 提供 (C,M]，streaming buffer 提供 M 之后。C 的回收须在采用含分发结果的 target 后发生；M 的回收须等所需 L0 达到可转发状态。各线的当前取数区间连续且互斥，交接、load pin 与 GC 仍可能暂时保留旧物理副本。下半图保留 Delegator 按操作类型的分发：PK DELETE 与 point UPDATE 解码 PK 做 segment Bloom Filter，predicate DELETE 不求值，按 scope 转发序列化 payload。Growing 与 Sealed 执行层解析 payload 并按序执行。</desc>
   <defs>
     <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0L8 4.5L0 9" fill="none" stroke="#718795" stroke-width="1.6"/></marker>
     <marker id="teal-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0L8 4.5L0 9" fill="none" stroke="#087476" stroke-width="1.6"/></marker>
@@ -39,7 +39,7 @@
       <text x="280" y="378" font-size="20" fill="#617984">旧 WAL／L0 文件可延迟 GC；C 只证明分发持久化，不代表 full rewrite 已执行。</text>
 
       <text x="44" y="454" font-size="23" font-weight="600">Delegator buffer</text>
-      <text x="44" y="485" font-size="20" fill="#617984">启用 M 交接回收后</text>
+      <text x="44" y="485" font-size="20" fill="#617984">M／C 交接完成后</text>
       <g text-anchor="middle">
         <rect id="buffer-handed-off" x="280" y="411" width="310" height="113" fill="#f3f5f7" stroke="#c5cfd6"/>
         <text x="435" y="447" font-size="22" fill="#617984">由目标 segment 接管</text>
