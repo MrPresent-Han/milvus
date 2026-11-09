@@ -1,24 +1,26 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 535" role="img" aria-label="M gate + 每个 target 的完整前缀 cursor"><title>M gate + 每个 target 的完整前缀 cursor</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="535" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
-<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">M gate + 每个 target 的完整前缀 cursor</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 555" role="img" aria-label="L0 消费侧：分发结果或只推进 cursor"><title>L0 消费侧：分发结果或只推进 cursor</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="555" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
+<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">L0 消费侧：分发结果或只推进 cursor</text>
 <rect x="30" y="65" width="940" height="80" rx="8" fill="#edf7f6" stroke="#8dbfbd"/>
 <text x="500.0" y="93" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">已持久化 M=200；本轮选择 E=200</text>
-<text x="500.0" y="119" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">选齐具体 partition + ALL_PARTITIONS 中的适用 L0</text>
-<path d="M500,145 L500,173" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<text x="500.0" y="119" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">完整检查各 segment 的区间，包含具体 partition + ALL_PARTITIONS</text>
+<path d="M500,145 L500,167 L175,167 L175,190" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,145 L500,190" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,167 L825,167 L825,190" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
 <rect x="30" y="190" width="290" height="125" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
 <text x="175.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S1：cursor 80 → 200</text>
 <text x="175.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">(80,200] 全部适用结果持久化</text>
 <text x="175.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">发布 deltalogs + cursor=200</text>
 <rect x="355" y="190" width="290" height="125" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
-<text x="500.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S2：cursor 100 → 200</text>
-<text x="500.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">完整检查 (100,200]，BF 无命中</text>
-<text x="500.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">只更新 cursor，不写空文件</text>
+<text x="500.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S2：cursor-only → 200</text>
+<text x="500.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">无适用 delta，或 BF 无命中</text>
+<text x="500.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">检查完整区间后只更新 cursor</text>
 <rect x="680" y="190" width="290" height="125" rx="8" fill="#fff5e7" stroke="#dfc497"/>
-<text x="825.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S3：cursor 100</text>
-<text x="825.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">(100,200] 仍未完成</text>
-<text x="825.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">继续等待／重试此 target</text>
-<text x="30" y="356" font-size="17" fill="#137f80" font-weight="650" text-anchor="start">按 target 发布</text>
-<text x="30" y="386" font-size="17" fill="#243f4d" font-weight="400" text-anchor="start">单个 target 不能暴露部分前缀；不同 targets 可以独立完成。</text>
-<rect x="30" y="413" width="940" height="81" rx="8" fill="#f0f4f6" stroke="#d6e1e6"/>
-<text x="50" y="444" font-size="17" fill="#243f4d" font-weight="650" text-anchor="start">S1、S2 已对齐：可参加同一次 Mix；不必等待 S3。</text>
-<text x="50" y="474" font-size="16" fill="#647c88" font-weight="400" text-anchor="start">输入 L0 仍保留，直到所有适用 targets 的交付结果均已持久化。</text>
+<text x="825.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S3：cursor 仍为 100</text>
+<text x="825.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">(100,200] 尚有未完成交付</text>
+<text x="825.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">L0 消费侧继续等待／重试</text>
+<text x="30" y="355" font-size="17" fill="#137f80" font-weight="650" text-anchor="start">按 segment 发布</text>
+<text x="30" y="385" font-size="17" fill="#243f4d" font-weight="400" text-anchor="start">完整覆盖才推进；不同 segments 可以独立完成，不要求全 channel 原子更新。</text>
+<rect x="30" y="414" width="940" height="100" rx="8" fill="#f0f4f6" stroke="#d6e1e6"/>
+<text x="50" y="447" font-size="17" fill="#243f4d" font-weight="650" text-anchor="start">Mix 只检查：S1、S2 已对齐，可以 Mix；涉及 S3 的 Mix 暂不调度。</text>
+<text x="50" y="478" font-size="16" fill="#647c88" font-weight="400" text-anchor="start">若本轮有输入 L0，仍须等其全部适用 targets 持久化完成后才退出。</text>
 </g></svg>

@@ -17,16 +17,16 @@
 <path d="M500,130 L500,152 L755,152 L755,190" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
 <rect x="30" y="190" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
 <text x="245.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">SN Materializer</text>
-<text x="245.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">连续 WAL → L0 files</text>
-<text x="245.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">全部 scopes 完成 → 持久化 M</text>
+<text x="245.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">有 delta 写 L0 files；空区间不写文件</text>
+<text x="245.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">完整覆盖全部 scopes → 持久化 M</text>
 <rect x="540" y="190" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
 <text x="755.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">WALSummary + live events</text>
 <text x="755.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">TransformLog 历史／实时连续交付</text>
 <path d="M245,278 L245,303" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
 <path d="M755,278 L755,303" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
 <rect x="30" y="303" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
-<text x="245.0" y="331" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">MixCoord / DN L0 dispatch</text>
-<text x="245.0" y="357" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">M gate；按 target cursor 收齐适用前缀</text>
+<text x="245.0" y="331" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">MixCoord L0 消费侧 / DN</text>
+<text x="245.0" y="357" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">M gate；完整前缀分发 / cursor-only 推进</text>
 <text x="245.0" y="381" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">结果引用 + segment cursor 配套发布</text>
 <rect x="540" y="303" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
 <text x="755.0" y="331" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">QN TransformLogBuffer</text>
@@ -35,8 +35,8 @@
 <path d="M245,391 L245,416" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
 <path d="M755,391 L755,416" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
 <rect x="30" y="416" width="430" height="75" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
-<text x="245.0" y="444" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Segment deltalogs + cursor</text>
-<text x="245.0" y="470" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">各 target 独立推进完整覆盖</text>
+<text x="245.0" y="444" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">已发布数据 + segment cursor</text>
+<text x="245.0" y="470" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">有输出或无输出，各 segment 均按完整覆盖推进</text>
 <rect x="540" y="416" width="430" height="75" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
 <text x="755.0" y="444" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">本地 Sealed registration</text>
 <text x="755.0" y="470" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">load → catchup → live apply</text>
@@ -44,7 +44,7 @@
 <path d="M755,491 L755,519" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
 <rect x="30" y="519" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
 <text x="245.0" y="547" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Mix admission → DN full rewrite</text>
-<text x="245.0" y="573" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">inputs cursor 对齐到 E，持有 input 占用</text>
+<text x="245.0" y="573" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">只选 cursor 已对齐的 inputs，持有 input 占用</text>
 <text x="245.0" y="597" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">各 input 按序执行 pending deltas</text>
 <rect x="540" y="519" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
 <text x="755.0" y="547" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">UpdatesRecord / DeletedRecord</text>

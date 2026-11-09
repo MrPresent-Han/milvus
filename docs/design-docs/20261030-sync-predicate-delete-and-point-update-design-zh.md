@@ -113,7 +113,7 @@ native predicate 在 WAL ACK 时不知道实际命中数。`delete_count` 的 un
 | `mutation_ts` | mutation 的有效 WAL TimeTick；transaction 内取 CommitTxn TimeTick | WAL、TransformLog 和 delta record |
 | `M` | VChannel 级 delta 持久化发布水位：三类 delta 已完整持久化并登记的连续前缀的结束时间戳 | 复用持久化的 `transform_materialized_time_tick`，供 L0 调度使用 |
 | Segment cursor | `transform_start_after_timetick`：加载该版本的 base＋deltalogs 后，TransformLog 从此时间戳之后继续 replay | 与 segment 数据版本绑定的持久化 metadata |
-| `E` | 本次 dispatch 的完整结束边界；Mix inputs 对齐后，也是输出继承的共同 cursor | 固定在 compaction plan 中，不新增 VChannel 水位 |
+| `E` | 本轮 delta 分发或 cursor-only 推进的完整结束边界；Mix inputs 对齐后，也是输出继承的共同 cursor | 固定在对应任务／compaction plan 中，不新增 VChannel 水位 |
 | `catchupFrontier`／`drainedTo` | 前者是本次 catchup 的固定终点；后者是该 physical segment 已完成的 apply 进度 | QN TransformLogBuffer registration 的内存状态 |
 | `Q_TS`／`transforming_timetick` | 前者是查询 MVCC timestamp；后者是 QueryMVCC 为该请求确定的 Sealed transform 执行要求 | QueryView 查询计划与执行等待 |
 
@@ -306,7 +306,7 @@ delta.ts    = mutation_ts
 本模块将连续 WAL 中的 mutations 持久化为 L0 delta files，再按完整前缀分发到目标 segment。MixCoord 结合 delta 统计选择 full rewrite 候选。
 
 - SN 切分 sync ranges、写入并登记 L0，推进持久化水位 M。
-- MixCoord 中的 DataCoord 用 M 控制 L0 调度准入，按 segment cursor 组织完整前缀分发，并选择 cursor 已对齐的 full rewrite inputs。
+- MixCoord 中的 L0 调度侧用 M 控制完整前缀分发与 cursor-only 推进；Mix 调度侧只选择 cursor 已对齐的 inputs。
 - DN 执行 L0 分发。
 
 ![SN 将连续 WAL 切为 sync ranges，按序推进 M](assets/predicate-delete-and-point-update/sn-delta-sync-ranges.svg "SN 选择完整 cut points；全部 scopes 完成后推进 M，空区间同样推进。schema-change@240 只增加强制 cut。")
@@ -324,7 +324,7 @@ Materializer 接收同一 VChannel 已确认、按有效 TimeTick 重排的 WAL 
 
 L0 文件保存原始指令，逐条保留 UPDATE。SN Materializer 的输入不含历史 Sealed segments 在 `mutation_ts` 的列值，因此 sync 时无法判断哪些行满足 predicate。
 
-**空区间推进。** <mark style="background-color: #c5c5c5; color: inherit">没有 delta 的完整区间也推进 M，不生成 L0 或空文件。</mark>例如 `M=120`，WAL 已确认消费至 200，且 `(120,200]` 只有 Insert／TimeTick：SN 完成该区间的发布依赖后，持久化 `M=200`。MixCoord 据此确认空区间，并推进适用 targets 的 segment cursor，无需生成 delta 文件或执行 DN 分发。空区间进度可合并提交；前序 range 仍在 sync 或 retry 时，不能越过它推进 M。
+**空区间推进。** <mark style="background-color: #c5c5c5; color: inherit">没有 delta 的完整区间也推进 M，不生成 L0 或空文件。</mark>例如 `M=120`，WAL 已确认消费至 200，且 `(120,200]` 只有 Insert／TimeTick：SN 完成该区间的发布依赖后，只持久化 `M=200`。M 表达完整覆盖边界，不停在最后一条 delta 的 timestamp。连续空区间的 M 更新可合并，但须定期发布，不等待新的 delta 到来；前序 range 仍在 sync 或 retry 时，不能越过它。消费侧据此推进 segment cursor，见 §5.2.3。
 
 **Sync 触发。** 容量、等待时间、显式 Flush 等条件触发 sync；持续无 delta 时也定期发布已确认的覆盖进度。schema-change fence 是强制 cut：旧 schema 的 delta 先 sync，后续 delta 进入新 schema 的 buffer，保证单个文件不跨 schema_version。
 
@@ -362,9 +362,9 @@ MixCoord 读取 M 时，使用包含该 M 发布前全部 L0 登记结果的 met
 
 这个方案用 crash 后重写未发布区间的代价，省去独立 batch metadata、发布状态机和 batch GC。提交结果不确定时先读回持久化 M，再决定是否重建，遵循 [etcd 提交确认语义](https://etcd.io/docs/v3.6/learning/api_guarantees/#operation-completed)。
 
-#### 5.2.3 消费侧：按 segment cursor 分发完整前缀
+#### 5.2.3 消费侧：完整前缀分发与 cursor 推进
 
-MixCoord 为本轮分发选择固定终点 `E ≤ 已持久化 M`。对每个 target，从它已提交的 segment cursor 出发，收齐 `(cursor,E]` 内全部适用 L0，合并具体 partition 与 ALL_PARTITIONS 的记录，再交给 DN 按 `mutation_ts` 分发。同一 transaction／TimeTick 的记录不能跨越提交边界。
+MixCoord 的 L0 调度侧为本轮覆盖选择固定终点 `E ≤ 已持久化 M`。对每个 segment，从它已提交的 cursor 出发，检查 `(cursor,E]` 内全部适用 L0，包含具体 partition 与 ALL_PARTITIONS。需要交付的记录由 DN 按 `mutation_ts` 分发；已证明没有适用记录的区间走 cursor-only 推进。同一 transaction／TimeTick 的记录不能跨越提交边界。
 
 - PK DELETE／point UPDATE 由 DN 按 PK 与 target BF 筛选；UPDATE 保留 PK 列表与共享 assignments。
 - predicate DELETE 分发至 scope 内全部适用 targets，在 L0 dispatch 时不求值。
@@ -372,19 +372,27 @@ MixCoord 为本轮分发选择固定终点 `E ≤ 已持久化 M`。对每个 ta
 
 **按 target 提交。** 一个 target 的适用前缀全部持久化后，将 deltalog 文件引用与 `cursor=E` 作为同一数据版本发布。只完成部分文件时不能推进 cursor，也不能向 Mix 暴露可被当作完整输入的部分结果。各 targets 可独立完成；不等待本轮其他 targets 才释放已完成 target 的占用。
 
-<mark style="background-color: #c5c5c5; color: inherit">空区间或 BF 无命中也推进对应 segment cursor，不写空文件；无适用 target 则记录任务完成。</mark>完整性由 M、已发布 L0 集合和任务的完整检查范围证明，不由命中数或 records 的 max ts 推断。
+**Cursor-only 推进。** <mark style="background-color: #c5c5c5; color: inherit">没有 L0 输入的空区间，以及完整检查后 BF 无命中的区间，都可只持久化推进 segment cursor，不写 deltalog。</mark>推进对象覆盖该 VChannel 中 cursor 落后的有效 Sealed segments，不限于 DN dispatch plan 的 targets。对每个 segment，须根据已持久化 M 和对应的已发布 L0 集合，确认 `(cursor,E]` 已完整交付或不影响该 segment；未被选为 target 本身不构成证明。Cursor 与原有 base／deltalogs 配套发布。
 
 ![M 限制生产边界，各 segment 独立推进完整前缀 cursor](assets/predicate-delete-and-point-update/l0-segment-cursor-dispatch.svg)
 
-**Mix 按 cursor 对齐准入。** <mark style="background-color: #c5c5c5; color: inherit">只有本次 inputs 的 segment cursors 相同，Mix 才能生成 plan；输出继承共同 cursor E。</mark>准入时同时取得这些 inputs 的占用，并固定各自的数据引用与 cursor，避免生成 plan 后又收到 L0 delta。其他未参与 Mix 的 segments 可以继续落后，不需要 range-wide 占用。
+**连续空区间合并 batch。** L0 消费侧将已确认的连续 empty ranges 合并，例如 `(100,120] + (120,150] + (150,200] → (100,200]`，一次 cursor-only batch 将相关 segments 推进到 200。合并不能跨过尚未交付的适用 delta。每个 segment 仍须持久化自己的 cursor；合并减少同一 segment 的重复更新，不要求每次 M 变化都立即更新全部 segments。
+
+- 从最早尚未推进的已确认空区间开始计算合并等待时间，后续空区间到来不重置计时。
+- 达到最长合并等待时间后，固定当前已确认的终点 E 并启动 batch；持续没有 delta 也必须触发。
+- 最长合并等待时间作为配置项，具体值待定。该上限约束合并等待，不替代完整覆盖和提交成功条件。
+
+![SN 发布空区间 M，L0 消费侧在最长等待内合并推进 segment cursors，Mix 只检查结果](assets/predicate-delete-and-point-update/empty-range-cursor-batch.svg "没有 delta 也推进；多个连续空区间合并为一轮 segment metadata 更新。")
+
+**Mix 按 cursor 对齐准入。** <mark style="background-color: #c5c5c5; color: inherit">Mix 调度只检查 inputs 的 cursor 是否已对齐，不临时发起 dispatch 或 cursor-only 补齐；输出继承共同 cursor E。</mark>未对齐时暂不调度，等待 L0 消费侧独立推进。准入时同时取得这些 inputs 的占用，并固定各自的数据引用与 cursor，避免生成 plan 后又发生覆盖变化。其他未参与 Mix 的 segments 可以继续落后，不需要 range-wide 占用。
 
 例如 S1、S2 的 cursors 均为 200，而 S3 为 100：S1＋S2 可以 Mix，S1＋S3 必须等待 cursor 对齐。若 Mix 对 S1 已执行 `DELETE@110 age=18`（未命中）和 `UPDATE@120 age=18`，而 S3 尚未收到这两条操作，提前合并后再重放旧 DELETE 会误删 S1 来源的行。
 
-![绿色对勾表示 cursor 对齐可 Mix，红色叉号表示不对齐须等待](assets/predicate-delete-and-point-update/mix-cursor-admission.svg "只约束本次 Mix 的 inputs；其余 target 的进度不阻塞这次 Mix。")
+![绿色对勾表示 cursor 对齐可 Mix，红色叉号表示不对齐暂不调度](assets/predicate-delete-and-point-update/mix-cursor-admission.svg "L0 消费侧负责推进；Mix 只检查本次 inputs，不触发补齐。")
 
 **L0 的退出条件。** Task metadata 固定输入 L0、targets、各 target 的起点与 E，并记录结果提交状态。全部适用 targets 完成持久化交付后，输入 L0 才可标为 Dropped／Compacted。已完成 target 再次遇到相同输入时，跳过 cursor 已覆盖的前缀。
 
-- 同一 target 的 dispatch 与 Mix 互斥；任务恢复依据持久化归属重建占用。
+- 同一 segment 的 dispatch／cursor-only 发布与 Mix 互斥；任务恢复依据持久化归属重建占用。
 - target 被 Mix 替换后，<mark style="background-color: #c5c5c5; color: inherit">尚未分发的后缀仍须覆盖 new compactTo segment。</mark>旧任务不得向已退出的 input 提交；由 compactTo 的继承 cursor 衔接剩余范围。
 - Growing／新发布 L1 的覆盖沿用 §5.2.1 的前序 L1 gate 与现有生命周期约束。
 
@@ -498,6 +506,8 @@ Records [
 
 MixCoord 读取持久化 task 的输入 L0、targets、区间终点 E 和结果状态，结合各 target 的数据版本与 cursor 恢复进度。恢复单位是任务内的 target 交付，不再依赖 VChannel 级分发水位。
 
+Cursor-only batch 的 L0 输入可为空，仍保留目标 segments 与固定终点 E，复用下表的状态判断。已完成的 segment 不重复推进；未完成部分恢复 cursor-only metadata 提交，无需 DN 分发。
+
 | Target 的持久化状态 | 恢复动作 |
 | --- | --- |
 | cursor 尚未覆盖 E，且 target 仍有效 | 恢复该 target 的任务占用，复用已完成输出并继续剩余分发；完整结果提交后推进 cursor，再释放占用。 |
@@ -548,15 +558,16 @@ MixCoord 根据实际删除比例、predicate／update 积压及既有文件条�
 可直接复用：
 
 - [L0 Materializer](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/streamingnode/server/wal/vchannel/l0materializer/wal.go) 的有序 buffer、串行输出与持久化 M，以及现有 Parquet／legacy reader。
-- [L0 结果提交](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/datacoord/compaction/task/l0_transform.go) 已会结合 M 和剩余 L0 限制 segment cursor，并为已检查但无 PK 命中的 target 更新 cursor。
+- [L0 结果提交](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/datacoord/compaction/task/l0_transform.go) 已会结合 M 和剩余 L0 限制 segment cursor，并为已检查但无 PK 命中的 target 更新 cursor；当前推进仍依赖 L0 task 及其返回的 targets。
 - 既有 task 生命周期、segment 数据版本发布和 full rewrite policy。
 
 当前 cursor 校验限制的是结果提交时能证明的覆盖边界，**尚未保证 L0 调度只分发完整前缀**。本设计需要增强：
 
-- M 覆盖三类 delta 与空区间；补充 `sync_end`、schema-change cut 和调度侧 M gate。
+- M 覆盖三类 delta；将普通无 delta 区间纳入定期发布，补充 `sync_end`、schema-change cut 和调度侧 M gate。
 - 将整批重做改为只 retry Fn，固定输出 ID；恢复时清理 M 之后未发布 L0，拒绝旧 owner 迟到提交。
 - 按各 target cursor 组织完整前缀 dispatch，包括 ALL_PARTITIONS overlap、零输出 cursor 更新，以及结果引用与 cursor 的一致发布。
-- Mix 准入增加 cursor 对齐，并与 input 占用、plan 快照绑定；任务恢复与 L0 GC 按 target 完成状态判断。
+- 增加不依赖 L0 文件或 DN target 结果的 cursor-only 推进，连续空区间合并 batch，并设置最长合并等待时间，避免无 delta 的 segments 长期停滞。
+- Mix 只检查 cursor 对齐，并与 input 占用、plan 快照绑定；补齐由 L0 消费侧独立完成，任务恢复与 L0 GC 按 target 完成状态判断。
 - 增加 QN segment-stats RPC、独立轮询与统计 cache，使用实际删除比例；增加 predicate／update 积压的独立 full rewrite trigger。
 
 ### 5.3 DN full rewrite：按序物化并替换 segment

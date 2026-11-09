@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" role="img" aria-label="空区间推进：M → cursor-only batch → Mix 准入"><title>空区间推进：M → cursor-only batch → Mix 准入</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="800" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
+<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">空区间推进：M → cursor-only batch → Mix 准入</text>
+<rect x="30" y="65" width="940" height="86" rx="8" fill="#edf7f6" stroke="#8dbfbd"/>
+<text x="500.0" y="93" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">SN：完整观察 WAL，持续无 delta 也定期持久化 M</text>
+<text x="500.0" y="119" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">不写 L0 文件；不越过尚未完成的前序 sync range</text>
+<rect x="30" y="185" width="290" height="80" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
+<text x="175.0" y="213" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">(100,120]</text>
+<text x="175.0" y="239" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">无 delta · M=120</text>
+<rect x="355" y="185" width="290" height="80" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
+<text x="500.0" y="213" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">(120,150]</text>
+<text x="500.0" y="239" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">无 delta · M=150</text>
+<rect x="680" y="185" width="290" height="80" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
+<text x="825.0" y="213" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">(150,200]</text>
+<text x="825.0" y="239" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">无 delta · M=200</text>
+<path d="M500,151 L500,168 L175,168 L175,185" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,151 L500,185" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,168 L825,168 L825,185" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M175,265 L175,287 L500,287 L500,310" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,265 L500,310" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M825,265 L825,287 L500,287" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="310" width="940" height="125" rx="8" fill="#edf5fb" stroke="#9bbad1"/>
+<text x="500.0" y="338" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">L0 消费侧：连续空区间合并为 (100,200]</text>
+<text x="500.0" y="364" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">从最早待推进空区间计时；新空区间不重置等待</text>
+<text x="500.0" y="388" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">达到最长合并等待时间 → 固定 E=200，启动 batch</text>
+<text x="500.0" y="412" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">不等待下一条 delta；不跨过未完成的适用 delta</text>
+<path d="M500,435 L500,468" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="468" width="940" height="72" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="500.0" y="496" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Cursor-only batch：只持久化各 segment cursor</text>
+<text x="500.0" y="522" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">先确认各自 (cursor,200] 完整覆盖；包括未进入 DN dispatch plan 的 segments</text>
+<rect x="30" y="560" width="290" height="59" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
+<text x="175.0" y="588" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S1：100 → 200</text>
+<rect x="355" y="560" width="290" height="59" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
+<text x="500.0" y="588" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S2：120 → 200</text>
+<rect x="680" y="560" width="290" height="59" rx="8" fill="#eef8f0" stroke="#9ac9a9"/>
+<text x="825.0" y="588" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S3：150 → 200</text>
+<path d="M500,540 L500,550 L175,550 L175,560" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,540 L500,560" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,550 L825,550 L825,560" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<text x="500" y="651" font-size="16" fill="#647c88" font-weight="400" text-anchor="middle">每个 segment 独立发布；合并将多轮更新变为一轮，不写 deltalog。</text>
+<rect x="30" y="680" width="940" height="86" rx="8" fill="#f0f4f6" stroke="#d6e1e6"/>
+<text x="500.0" y="708" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Mix：只检查已持久化的 inputs cursor 是否对齐</text>
+<text x="500.0" y="734" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">已对齐才调度；未对齐暂不调度，不临时发起 dispatch 或 cursor-only 补齐</text>
+</g></svg>
