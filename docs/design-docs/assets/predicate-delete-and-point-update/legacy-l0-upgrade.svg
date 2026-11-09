@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="558" viewBox="0 0 1080 558" role="img" aria-labelledby="title desc">
+  <title id="title">先升级 MixCoord，再升级 SN：两类 legacy L0 如何处理</title>
+  <desc id="desc">以新版 MixCoord 接管时已提交的 L0 metadata 为界。A 已登记，继续按旧机制分发。B 的文件虽已上传，但登记尚未提交；旧 SN 的请求被拒，游标不推进。新版 SN 接管后从持久化游标重放 WAL，将未完成区间写为新版 L0。该 VChannel 的全部 legacy L0 分发结果持久化后，MixCoord 才开始分发通过 M gate 的新版 L0。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L8 4 0 8Z" fill="#718795"/></marker>
+  </defs>
+  <rect width="1080" height="558" rx="12" fill="#f7fafb"/>
+  <g font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#243e4a">
+    <text x="32" y="45" font-size="27" font-weight="600">升级顺序：MixCoord 先接管，SN 后接管</text>
+    <rect x="32" y="72" width="1016" height="66" rx="8" fill="#e6eef3" stroke="#9db5c1"/>
+    <text x="540" y="113" text-anchor="middle" font-size="23" font-weight="600">新版 MixCoord 接管时，legacy L0 的 metadata 登记是否已提交？</text>
+    <g fill="none" stroke="#718795" stroke-width="2.4" marker-end="url(#arrow)">
+      <path d="M540 138V156H282V177"/>
+      <path d="M540 156H798V177"/>
+    </g>
+    <rect x="32" y="183" width="498" height="116" rx="8" fill="#edf6f3" stroke="#8db6ae"/>
+    <rect x="550" y="183" width="498" height="116" rx="8" fill="#fff4ed" stroke="#c99979"/>
+    <text x="54" y="216" font-size="22" font-weight="600" fill="#186455">A · 已登记</text>
+    <text x="54" y="254" font-size="21">MixCoord 按旧机制分发 A。</text>
+    <text x="572" y="216" font-size="22" font-weight="600" fill="#934b2c">B · 未登记（文件已上传）</text>
+    <text x="572" y="254" font-size="21">MixCoord 拒绝旧 SN 的登记请求。</text>
+    <text x="572" y="282" font-size="19" fill="#526d77">旧 sync 的 materialization 游标停在原处。</text>
+    <g fill="none" stroke="#718795" stroke-width="2.4" marker-end="url(#arrow)">
+      <path d="M282 299V327"/>
+      <path d="M798 299V327"/>
+    </g>
+    <rect x="32" y="333" width="498" height="88" rx="8" fill="#fff" stroke="#8db6ae"/>
+    <rect x="550" y="333" width="498" height="88" rx="8" fill="#fff" stroke="#9db5c1"/>
+    <text x="54" y="370" font-size="21" font-weight="600">全部已登记 legacy L0 分发完成</text>
+    <text x="54" y="400" font-size="20">分发结果持久化，新版 L0 可以参与调度。</text>
+    <text x="572" y="370" font-size="21" font-weight="600">新版 SN 接管，从持久化游标重放 WAL</text>
+    <text x="572" y="400" font-size="20">将未完成区间写为新版 L0，推进 M。</text>
+    <g fill="none" stroke="#718795" stroke-width="2.4">
+      <path d="M282 421V448H798V421"/>
+      <path d="M540 448V470" marker-end="url(#arrow)"/>
+    </g>
+    <rect x="150" y="476" width="780" height="58" rx="8" fill="#e7f3f1" stroke="#78aaa7"/>
+    <text x="540" y="513" text-anchor="middle" font-size="23" font-weight="600" fill="#186455">MixCoord 调度该 VChannel 通过 M gate 的新版 L0</text>
+  </g>
+</svg>

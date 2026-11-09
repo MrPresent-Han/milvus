@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="482" viewBox="0 0 1080 482" role="img" aria-labelledby="title desc">
+  <title id="title">同一组 delta，提前 Mix 会怎样改变删除结果？</title>
+  <desc id="desc">初始 S1 的 pk=1、age=17，S2 的 pk=2、age=18。先按 age=18 删除，再把 pk=1 的 age 更新为 18。两侧分发完整才做 Mix，则 S3 只剩 pk=1。如果 S2 尚未收到 DELETE 就做 Mix，S3 两行都是 18。对整个 S3 重放 DELETE 会误删 pk=1，跳过则会漏删 pk=2。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="6" markerHeight="6" orient="auto"><path d="M0 0 8 4 0 8Z" fill="#718795"/></marker>
+  </defs>
+  <rect width="1080" height="482" rx="12" fill="#f7fafb"/>
+  <g font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#243e4a">
+    <text x="36" y="45" font-size="27" font-weight="600">相同的两条 delta，何时允许 Mix？</text>
+    <text x="36" y="82" font-size="21">初始行　S1 (pk=1, age=17)　 ·　 S2 (pk=2, age=18)</text>
+    <rect x="36" y="104" width="428" height="46" rx="6" fill="#e6eef3"/>
+    <rect x="516" y="104" width="528" height="46" rx="6" fill="#e6eef3"/>
+    <path d="M470 127H507" fill="none" stroke="#718795" stroke-width="2" marker-end="url(#arrow)"/>
+    <g font-family="Menlo, monospace" font-size="19">
+      <text x="55" y="134">@90  DELETE WHERE age=18</text>
+      <text x="535" y="134">@100 UPDATE SET age=18 WHERE pk=1</text>
+    </g>
+    <rect x="36" y="174" width="470" height="276" rx="9" fill="#edf6f3" stroke="#8db6ae"/>
+    <rect x="526" y="174" width="518" height="276" rx="9" fill="#fdf0ef" stroke="#cd9a97"/>
+    <g fill="none" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M57 204l7 7 15-17" stroke="#137a3e"/>
+      <path d="M548 195l17 17m0-17-17 17" stroke="#bc3434"/>
+    </g>
+    <g font-size="23" font-weight="600">
+      <text x="91" y="214" fill="#176439">本轮分发已提交，允许 Mix</text>
+      <text x="581" y="214" fill="#992f30">S2 尚缺 DELETE，禁止 Mix</text>
+    </g>
+    <g font-size="21">
+      <text x="56" y="262">S1　@90 保留 pk=1，@100 改为 18</text>
+      <text x="56" y="299">S2　@90 删除 pk=2</text>
+      <text x="546" y="262">S1　pk=1 更新为 18</text>
+      <text x="546" y="299">S2　pk=2 仍为 18</text>
+    </g>
+    <path d="M56 322H486M546 322H1024" stroke="#c1cece"/>
+    <g font-size="22" font-weight="600">
+      <text x="56" y="364" fill="#186455">S3 只留下 pk=1，age=18</text>
+      <text x="546" y="364" fill="#992f30">若提前 Mix，S3 两行的 age 都是 18</text>
+    </g>
+    <g font-size="20">
+      <text x="546" y="401">对 S3 重放 DELETE → 误删 pk=1</text>
+      <text x="546" y="430">对 S3 跳过 DELETE → 漏删 pk=2</text>
+    </g>
+  </g>
+</svg>

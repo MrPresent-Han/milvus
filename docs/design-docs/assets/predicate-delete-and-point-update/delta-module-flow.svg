@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="960" height="1180" viewBox="0 0 960 1180" role="img" aria-labelledby="title desc">
   <title id="title">Delta 在 query side 与 compaction side 的模块协作数据流</title>
-  <desc id="desc">Proxy 提交逻辑 delta 到 WAL。同一 delta 进入两条链路。Compaction side 的 L0 delta 模块包含 SN 生产和 MixCoord 提交、调度分发：SN Materializer 写 L0 files，MixCoord 中的 DataCoord 原子提交 batch 与 M，再调度 DN 将逻辑指令分发到目标 segment deltalogs。DN full rewrite 独立读取 base 和 deltalogs，执行更新与删除，写出新 segment。Query side 经 Delegator 分发给 StreamingNode 的 Growing 和 QueryNode worker 的 Sealed segments，执行后写入 UpdatesRecord 或 DeletedRecord，查询读取 base/index 加 delta，看到更新值并屏蔽删除行。新 segment 加载 base 和未物化后缀后，替换查询侧 segment，继续在线消费。</desc>
+  <desc id="desc">Proxy 提交逻辑 delta 到 WAL。同一 delta 进入两条链路。Compaction side 的 L0 delta 模块包含 SN 生产和 MixCoord 调度分发：SN Materializer 写 L0 files，SN 持久化 M，MixCoord 用 M gate 选择完整 delta range，再调度 DN 分发到目标 segment deltalogs。DN full rewrite 独立读取 base 和 deltalogs，执行更新与删除，写出新 segment。Query side 经 Delegator 分发给 StreamingNode 的 Growing 和 QueryNode worker 的 Sealed segments，执行后写入 UpdatesRecord 或 DeletedRecord，查询读取 base/index 加 delta，看到更新值并屏蔽删除行。新 segment 加载 base 和未物化后缀后，替换查询侧 segment，继续在线消费。</desc>
   <defs>
     <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#718795" stroke-width="1.6"/></marker>
     <marker id="return-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#087476" stroke-width="1.6"/></marker>
@@ -63,11 +63,11 @@
     <text x="240" y="420" font-size="22">生产：连续 WAL → L0 files</text>
 
     <rect x="65" y="475" width="350" height="65" rx="8" fill="white" stroke="#d7bca9"/>
-    <text x="240" y="516" font-size="25">L0 files＋batch</text>
+    <text x="240" y="516" font-size="25">L0 files · 持久化 M</text>
 
     <rect x="65" y="580" width="350" height="95" rx="8" fill="white" stroke="#d7bca9"/>
     <text x="240" y="615" font-size="25" font-weight="600">MixCoord / DataCoord</text>
-    <text x="240" y="648" font-size="22">提交 batch · 调度 DN 分发</text>
+    <text x="240" y="648" font-size="22">M gate · 调度完整 range</text>
 
     <rect x="65" y="720" width="350" height="65" rx="8" fill="white" stroke="#d7bca9"/>
     <text x="240" y="762" font-size="25">目标 segment deltalogs</text>

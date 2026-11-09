@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="775" viewBox="0 0 1100 775" role="img" aria-labelledby="title desc">
+<title id="title">M gate：逐个登记，完整前缀才可调度</title><desc id="desc">同一 sync range (80,120] 的三个 L0 跨 ALL_PARTITIONS、P1、P2。F1、F2、F3 逐个写入并登记；全部完成前 M 仍为 80，任何成员都不可调度。全部登记后持久化 M=120，调度侧枚举完整前缀，按 mutation_ts 分发，全部 targets 持久化后推进 C。</desc>
+<defs><marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0L8 4.5L0 9" fill="none" stroke="#718795" stroke-width="1.6"/></marker></defs>
+<rect width="1100" height="775" rx="12" fill="#f7fafb"/>
+<g font-family="PingFang SC,Microsoft YaHei,sans-serif" fill="#243e4a">
+<text x="36" y="48" font-size="28" fill="#243e4a" font-weight="600" text-anchor="start">M gate：逐个登记，完整前缀才可调度</text>
+<text x="36" y="88" font-size="22" fill="#617984" font-weight="400" text-anchor="start">同一 VChannel · sync range (80,120] · 全部输出 sync_end=120</text>
+<rect x="36" y="121" width="296" height="139" rx="8" fill="white" stroke="#b7cdd6"/>
+<text x="184" y="155" font-size="25" fill="#243e4a" font-weight="600" text-anchor="middle">F1</text>
+<text x="184" y="191" font-size="21" fill="#243e4a" font-weight="400" text-anchor="middle">ALL_PARTITIONS</text>
+<text x="184" y="230" font-size="23" fill="#087476" font-weight="400" text-anchor="middle">DELETE@90</text>
+<rect x="402" y="121" width="296" height="139" rx="8" fill="white" stroke="#b7cdd6"/>
+<text x="550" y="155" font-size="25" fill="#243e4a" font-weight="600" text-anchor="middle">F2</text>
+<text x="550" y="191" font-size="21" fill="#243e4a" font-weight="400" text-anchor="middle">P1</text>
+<text x="550" y="230" font-size="23" fill="#087476" font-weight="400" text-anchor="middle">UPDATE@110</text>
+<rect x="768" y="121" width="296" height="139" rx="8" fill="white" stroke="#b7cdd6"/>
+<text x="916" y="155" font-size="25" fill="#243e4a" font-weight="600" text-anchor="middle">F3</text>
+<text x="916" y="191" font-size="21" fill="#243e4a" font-weight="400" text-anchor="middle">P2</text>
+<text x="916" y="230" font-size="23" fill="#087476" font-weight="400" text-anchor="middle">UPDATE@115</text>
+<path d="M336 190H392" fill="none" stroke="#718795" stroke-width="2.4" marker-end="url(#arrow)"/>
+<path d="M702 190H758" fill="none" stroke="#718795" stroke-width="2.4" marker-end="url(#arrow)"/>
+<text x="550" y="297" font-size="21" fill="#617984" font-weight="400" text-anchor="middle">按序写文件、登记 L0 metadata；每个完成后继续下一个</text>
+<rect x="36" y="322" width="1028" height="102" rx="8" fill="#fae9e7" stroke="#c58e83"/>
+<text x="550" y="362" font-size="25" fill="#8a382d" font-weight="600" text-anchor="middle">M 仍为 80：已登记 F1／F2 也不可调度</text>
+<text x="550" y="398" font-size="21" fill="#8a382d" font-weight="400" text-anchor="middle">文件记录早于 120，不改变其 sync_end=120 的准入条件</text>
+<path d="M550 427V463" fill="none" stroke="#718795" stroke-width="2.4" marker-end="url(#arrow)"/>
+<rect x="36" y="474" width="1028" height="78" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
+<text x="550" y="523" font-size="25" fill="#087476" font-weight="600" text-anchor="middle">全部 scopes 的输出登记成功 → 持久化 M=120</text>
+<path d="M550 555V591" fill="none" stroke="#718795" stroke-width="2.4" marker-end="url(#arrow)"/>
+<rect x="36" y="602" width="1028" height="108" rx="8" fill="white" stroke="#b7cdd6"/>
+<text x="550" y="642" font-size="24" fill="#243e4a" font-weight="600" text-anchor="middle">调度完整 (C,120]：选齐 L0，按 mutation_ts 保序分发</text>
+<text x="550" y="681" font-size="23" fill="#087476" font-weight="400" text-anchor="middle">全部 targets 的结果持久化后，才推进 C=120</text>
+<text x="550" y="752" font-size="21" fill="#617984" font-weight="400" text-anchor="middle">有效文件集合来自 L0 metadata；完整发布边界来自 M。</text>
+</g></svg>

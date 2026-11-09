@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="734" viewBox="0 0 920 734" role="img" aria-labelledby="title desc">
+  <title id="title">VersionEntry 的定长值、共享 Buffer 与 NULL</title>
+  <desc id="desc">定长值保存在各行的 VersionEntry 内。name 的 offset 42 和 73 各追加一个版本，并与正在读取的查询引用同一份不可变 Buffer。显式 NULL、空字符串和空数组都追加版本，未赋值的字段沿用该查询可见的版本或 base。</desc>
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0 0L8 4L0 8Z" fill="#2c726f"/></marker>
+  </defs>
+  <style>
+    text{font-family:"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif;fill:#213b47;font-size:18px}
+    .heading{font-weight:650;font-size:22px}
+    .small{fill:#486371;font-size:16px}
+    .mono{font-family:"SFMono-Regular",Consolas,"Liberation Mono","PingFang SC",monospace}
+    .panel{fill:#fff;stroke:#cfdee4}
+    .ref{fill:none;stroke:#2c726f;stroke-width:2.4;marker-end:url(#arrow)}
+  </style>
+  <rect width="920" height="734" rx="12" fill="#f4f8f9"/>
+  <g id="inline">
+    <rect class="panel" x="16" y="16" width="888" height="136" rx="8"/>
+    <text class="heading" x="38" y="52">定长值直接存放在 VersionEntry 中</text>
+    <text class="mono" x="38" y="111">SET count = 20</text>
+    <path d="M231 103H298" class="ref"/>
+    <rect x="314" y="67" width="565" height="68" rx="6" fill="#eef4f7" stroke="#b3c8d1"/>
+    <text class="small" x="330" y="91">count · offset 42 · VersionEntry</text>
+    <text class="mono" x="330" y="120">mutation_ts=100   is_null=false   value=20</text>
+  </g>
+  <g id="shared">
+    <rect class="panel" x="16" y="164" width="888" height="254" rx="8"/>
+    <text class="heading" x="38" y="201">变长值共享同一份 payload</text>
+    <text class="small" x="38" y="231">同一个 segment 内执行 SET name = 'reviewed'</text>
+    <g fill="#eef4f7" stroke="#b3c8d1">
+      <rect x="38" y="251" width="430" height="40" rx="5"/>
+      <rect x="38" y="303" width="430" height="40" rx="5"/>
+      <rect x="38" y="355" width="430" height="40" rx="5"/>
+    </g>
+    <text class="mono" x="52" y="277">offset 42 · VersionEntry @110 · value</text>
+    <text class="mono" x="52" y="329">offset 73 · VersionEntry @110 · value</text>
+    <text x="52" y="381">正在读取该值的查询 · 持有引用至读取完成</text>
+    <path d="M468 271H491L554 300H576" class="ref"/>
+    <path d="M468 323H576" class="ref"/>
+    <path d="M468 375H491L554 346H576" class="ref"/>
+    <rect x="584" y="276" width="295" height="94" rx="7" fill="#def1ed" stroke="#67a59b" stroke-width="2"/>
+    <text x="731" y="314" text-anchor="middle">不可变 Arrow Buffer</text>
+    <text class="mono" x="731" y="346" text-anchor="middle" font-weight="650">'reviewed'</text>
+  </g>
+  <g id="null-and-absence">
+    <rect class="panel" x="16" y="430" width="888" height="288" rx="8"/>
+    <text class="heading" x="38" y="468">显式 NULL、空值与未赋值</text>
+    <rect x="38" y="488" width="841" height="36" fill="#e9f0f3"/>
+    <g class="small">
+      <text x="50" y="513">本次 assignment</text><text x="325" y="513">写入 history</text><text x="605" y="513">查询读值</text>
+    </g>
+    <g fill="none" stroke="#dce6ea">
+      <path d="M38 568H879M38 612H879M38 656H879"/>
+    </g>
+    <text class="mono" x="50" y="553">SET name = NULL</text><text x="325" y="553">追加版本 · is_null=true</text><text x="605" y="553" font-weight="650">NULL</text>
+    <text class="mono" x="50" y="597">SET name = ''</text><text x="325" y="597">追加版本 · is_null=false</text><text x="605" y="597">空字符串</text>
+    <text class="mono" x="50" y="641">SET tags = []</text><text x="325" y="641">追加版本 · is_null=false</text><text x="605" y="641">空数组</text>
+    <text x="50" y="685">未给该字段赋值</text><text x="325" y="685">不追加版本</text><text x="605" y="685">已有可见版本或 base</text>
+  </g>
+</svg>

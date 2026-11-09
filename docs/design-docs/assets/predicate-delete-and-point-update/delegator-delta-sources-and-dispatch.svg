@@ -82,10 +82,10 @@
 
       <rect x="89" y="754" width="229" height="80" rx="7" fill="#edf7f5" stroke="#9fc6c2"/>
       <text x="203" y="788" font-size="24" font-weight="600">Point UPDATE</text>
-      <text x="203" y="818" font-size="20" fill="#617984">pk + assignments + ts</text>
+      <text x="203" y="818" font-size="19" fill="#617984">PK 列表 + assignments</text>
       <rect x="369" y="754" width="640" height="80" rx="7" fill="#edf7f5" stroke="#9fc6c2"/>
-      <text x="689" y="787" font-size="22" font-weight="600">解码 PK → segment BF → 候选 segments</text>
-      <text x="689" y="818" font-size="20" fill="#617984">转发：PK + serialized assignments + ts</text>
+      <text x="689" y="787" font-size="22" font-weight="600">逐 PK 检查 BF → 每个 segment 的候选 PK 子集</text>
+      <text x="689" y="818" font-size="20" fill="#617984">转发：PK 子集 + 一份 assignments bytes + ts</text>
 
       <rect x="89" y="874" width="229" height="80" rx="7" fill="#fff4e8" stroke="#d4b38b"/>
       <text x="203" y="908" font-size="23" font-weight="600">Predicate DELETE</text>

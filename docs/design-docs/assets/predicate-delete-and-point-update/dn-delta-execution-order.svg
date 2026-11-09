@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="890" height="310" viewBox="0 0 890 310" role="img" aria-labelledby="title desc">
+  <title id="title">DeltaExecutor 的执行顺序决定哪些行写入 compactTo</title>
+  <desc id="desc">S1 有一行 pk=101、count=10。@90 将 count 设为 20，@95 删除 count 等于 20 的行。按时间顺序执行会删除该行。若先执行 DELETE，它读到 10，漏掉该行；随后 UPDATE 把 count 设为 20，writer 错误地保留该行。</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="5" markerHeight="5" orient="auto">
+      <path d="M0 0 8 4 0 8z" fill="#647b85"/>
+    </marker>
+  </defs>
+  <rect width="890" height="310" rx="10" fill="#f7fafb"/>
+  <g font-family="PingFang SC, Microsoft YaHei, sans-serif" fill="#243e4a">
+    <text x="24" y="38" font-size="22" font-weight="600">S1 输入行</text>
+    <text x="150" y="38" font-size="22" font-family="Menlo, monospace">pk=101, count=10</text>
+    <g fill="#526a76" font-size="17">
+      <text x="151" y="80">第一步</text><text x="437" y="80">第二步</text><text x="693" y="80">compactTo 输出</text>
+    </g>
+    <rect x="12" y="93" width="866" height="88" rx="8" fill="#eaf5ee" stroke="#9ac4a6"/>
+    <rect x="12" y="198" width="866" height="88" rx="8" fill="#fcf0ee" stroke="#d6a19a"/>
+    <g fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m29 129 5 6 12-14" stroke="#237143"/>
+      <path d="m29 230 15 15m0-15-15 15" stroke="#a13a31"/>
+    </g>
+    <g font-size="20" font-weight="600">
+      <text x="53" y="139" fill="#21643d">按序</text><text x="53" y="245" fill="#96352c">逆序</text>
+    </g>
+    <g font-size="21" font-family="Menlo, monospace">
+      <text x="151" y="129">@90 UPDATE</text><text x="437" y="129">@95 DELETE</text>
+      <text x="151" y="235">@95 DELETE</text><text x="437" y="235">@90 UPDATE</text>
+    </g>
+    <g font-size="19">
+      <text x="151" y="158">将 count 设为 20</text><text x="437" y="158">count == 20，命中</text>
+      <text x="151" y="264">读到 10，count == 20 为假</text><text x="437" y="264">将 count 设为 20</text>
+    </g>
+    <g fill="none" stroke="#647b85" stroke-width="2" marker-end="url(#arrow)">
+      <path d="M389 137h29"/><path d="M644 137h29"/>
+      <path d="M389 243h29"/><path d="M644 243h29"/>
+    </g>
+    <g font-size="20" font-weight="600">
+      <text x="693" y="144" fill="#21643d">不写出 pk=101</text>
+      <text x="693" y="249" fill="#96352c">错误保留 pk=101</text>
+    </g>
+  </g>
+</svg>

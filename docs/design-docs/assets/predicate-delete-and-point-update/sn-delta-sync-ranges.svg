@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1100" height="870" viewBox="0 0 1100 870" role="img" aria-labelledby="title desc">
-  <title id="title">SN 将连续 WAL 消息流切为 ranges，生成 batches 并按序推进 M</title>
-  <desc id="desc">上方 WAL 输出是一条连续、按序且已完整消费至 240 的消息流，包含 PK DELETE@90、UPDATE@110、Insert、TimeTick 和 predicate DELETE@220、schema-change@240；WAL 不提供预先切好的 sync batches。SN Materializer 按 sync 策略选择 120、200、240 作为 cut points，将输入切为相接的 (80,120]、(120,200]、(200,240]，分别生成 B1、B2、B3。B2 没有 delta，不写空文件；schema-change 只强制本次 cut。MixCoord 中的 DataCoord 按区间顺序原子提交 batch COMMITTED 状态与 M，依次将 M 从 80 推进至 120、200、240，不能越过未提交区间。</desc>
+  <title id="title">SN 将连续 WAL 切为 sync ranges，完整登记后按序推进 M</title>
+  <desc id="desc">上方 WAL 输出是一条连续、按序且已完整消费至 240 的消息流，包含 PK DELETE@90、UPDATE@110、Insert、TimeTick 和 predicate DELETE@220、schema-change@240；WAL 不提供预先切好的 sync ranges。SN Materializer 按 sync 策略选择 120、200、240 作为 cut points，将输入切为相接的 (80,120]、(120,200]、(200,240]，逐段 sync；中间区间没有 delta，不生成 L0。schema-change 强制 cut。每段全部 scopes 的输出登记后，SN 持久化 M；MixCoord 仅采用 sync_end 不超过已持久化 M 的 L0。</desc>
   <defs>
     <marker id="flow-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0L8 4.5L0 9" fill="none" stroke="#718795" stroke-width="1.6"/></marker>
     <marker id="commit-arrow" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0 0L8 4.5L0 9" fill="none" stroke="#087476" stroke-width="1.6"/></marker>
   </defs>
   <rect width="1100" height="870" rx="12" fill="#f7fafb"/>
   <g font-family="PingFang SC,Microsoft YaHei,sans-serif" fill="#243e4a">
-    <text x="32" y="44" font-size="28" font-weight="600">SN sync：连续 WAL → SN split → batches → M</text>
+    <text x="32" y="44" font-size="28" font-weight="600">SN sync：连续 WAL → SN split → sync → M</text>
     <text x="32" y="81" font-size="21" fill="#617984">同一 VChannel · 初始 M=80 · 已确认的完整 WAL 输入至 240</text>
 
     <text x="32" y="168" font-size="23" font-weight="600">WAL 输出</text>
@@ -21,7 +21,6 @@
       <circle cx="620" cy="176" r="5"/>
       <circle cx="750" cy="176" r="5"/>
       <circle cx="865" cy="176" r="5"/>
-      <circle cx="1020" cy="176" r="5"/>
     </g>
     <g text-anchor="middle" font-size="19">
       <text x="190" y="211">80</text>
@@ -35,9 +34,13 @@
       <text x="750" y="211" fill="#617984">TimeTick@200</text>
       <text x="865" y="126">predicate DELETE</text>
       <text x="865" y="152">@220</text>
-      <text x="973" y="244" fill="#98613d">schema-change@240</text>
     </g>
-    <path d="M1020 183V220" fill="none" stroke="#98613d" stroke-width="1.5"/>
+    <g id="schema-change-event">
+      <path d="M1050 184V219" stroke="#a23c1c" stroke-width="3"/>
+      <path d="M1050 165l11 11-11 11-11-11Z" fill="#a23c1c" stroke="white" stroke-width="2"/>
+      <rect x="790" y="218" width="280" height="46" rx="7" fill="#a23c1c"/>
+      <text x="930" y="249" text-anchor="middle" font-size="24" font-weight="700" fill="white">schema-change@240</text>
+    </g>
     <path d="M625 246V289" fill="none" stroke="#718795" stroke-width="2.5" marker-end="url(#flow-arrow)"/>
 
     <rect x="180" y="302" width="890" height="300" rx="10" fill="#eef4f5" stroke="#c5d7df"/>
@@ -46,13 +49,15 @@
     <text x="32" y="474" font-size="22" font-weight="600">Materializer</text>
     <g id="sn-cut-points" fill="none" stroke="#087476" stroke-width="2">
       <path d="M200 385H1050"/>
-      <path d="M200 376V395M480 376V395M770 376V395M1050 376V395"/>
+      <path d="M200 376V395M480 376V395M770 376V395"/>
     </g>
+    <path d="M1050 264V376" stroke="#a23c1c" stroke-width="2.5" stroke-dasharray="6 5"/>
+    <path d="M1050 376V395" stroke="#a23c1c" stroke-width="4"/>
     <g font-size="19" fill="#087476">
       <text x="200" y="369">P=80</text>
       <text x="480" y="369" text-anchor="middle">cut@120</text>
       <text x="770" y="369" text-anchor="middle">cut@200</text>
-      <text x="1050" y="369" text-anchor="end">cut@240</text>
+      <text x="1038" y="369" text-anchor="end" fill="#a23c1c" font-weight="700">强制 cut@240</text>
     </g>
     <g fill="none" stroke="#718795" stroke-width="2" marker-end="url(#flow-arrow)">
       <path d="M335 388V420"/>
@@ -61,22 +66,22 @@
     </g>
     <g text-anchor="middle">
       <rect x="200" y="428" width="270" height="149" rx="8" fill="white" stroke="#b7cdd6"/>
-      <text x="335" y="465" font-size="24" font-weight="600">B1： (80,120]</text>
+      <text x="335" y="465" font-size="24" font-weight="600">(80,120]</text>
       <path d="M217 481H453" stroke="#dce4e8"/>
       <text x="335" y="516" font-size="22">L0 files：F1、F2</text>
-      <text x="335" y="550" font-size="20" fill="#617984">文件及成员 metadata</text>
+      <text x="335" y="550" font-size="20" fill="#617984">文件写入、L0 登记</text>
 
       <rect x="490" y="428" width="270" height="149" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
-      <text x="625" y="465" font-size="24" font-weight="600">B2： (120,200]</text>
+      <text x="625" y="465" font-size="24" font-weight="600">(120,200]</text>
       <path d="M507 481H743" stroke="#c7dfdc"/>
       <text x="625" y="516" font-size="23" font-weight="600" fill="#087476">没有 delta</text>
-      <text x="625" y="550" font-size="20">成员为空，不写文件</text>
+      <text x="625" y="550" font-size="20">不生成 L0 或空文件</text>
 
       <rect x="780" y="428" width="270" height="149" rx="8" fill="white" stroke="#b7cdd6"/>
-      <text x="915" y="465" font-size="24" font-weight="600">B3： (200,240]</text>
+      <text x="915" y="465" font-size="24" font-weight="600">(200,240]</text>
       <path d="M797 481H1033" stroke="#dce4e8"/>
       <text x="915" y="516" font-size="22">旧 schema 的 L0 files</text>
-      <text x="915" y="550" font-size="20" fill="#98613d">schema-change 触发 cut</text>
+      <text x="915" y="550" font-size="20" fill="#a23c1c" font-weight="600">schema-change 触发 cut</text>
     </g>
 
     <g fill="none" stroke="#718795" stroke-width="2.5" marker-end="url(#flow-arrow)">
@@ -85,18 +90,18 @@
       <path d="M915 579V663"/>
     </g>
     <rect x="180" y="613" width="890" height="36" rx="5" fill="#f7fafb"/>
-    <text x="625" y="638" text-anchor="middle" font-size="19" fill="#617984">每次提交同时持久化 batch.state=COMMITTED 与 M=batch.end</text>
-    <text x="32" y="708" font-size="23" font-weight="600">MixCoord</text>
-    <text x="32" y="741" font-size="20" fill="#617984">按序原子提交</text>
+    <text x="625" y="638" text-anchor="middle" font-size="19" fill="#617984">每段全部 scopes 完成文件写入与登记后，SN 持久化 M</text>
+    <text x="32" y="708" font-size="23" font-weight="600">VChannel</text>
+    <text x="32" y="741" font-size="20" fill="#617984">持久化 M</text>
     <g text-anchor="middle">
       <rect x="200" y="671" width="270" height="94" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
-      <text x="335" y="709" font-size="21">Commit B1</text>
+      <text x="335" y="709" font-size="21">全部输出已登记</text>
       <text x="335" y="745" font-size="26" font-weight="600" fill="#087476">M：80 → 120</text>
       <rect x="490" y="671" width="270" height="94" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
-      <text x="625" y="709" font-size="21">Commit B2</text>
+      <text x="625" y="709" font-size="21">空区间已确认</text>
       <text x="625" y="745" font-size="26" font-weight="600" fill="#087476">M：120 → 200</text>
       <rect x="780" y="671" width="270" height="94" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
-      <text x="915" y="709" font-size="21">Commit B3</text>
+      <text x="915" y="709" font-size="21">旧 schema 输出已登记</text>
       <text x="915" y="745" font-size="26" font-weight="600" fill="#087476">M：200 → 240</text>
     </g>
     <g fill="none" stroke="#087476" stroke-width="1.8" marker-end="url(#commit-arrow)">
@@ -105,7 +110,7 @@
     </g>
 
     <path d="M200 790H1050" stroke="#d4e1e5"/>
-    <text x="200" y="820" font-size="21" fill="#98613d">前序 batch 未提交时，后续即使准备完成，也不能越过它推进 M。</text>
-    <text x="200" y="853" font-size="20" fill="#617984">空区间同样推进 M；schema-change fence 不改变完整性与提交顺序。</text>
+    <text x="200" y="820" font-size="21" fill="#98613d">前序 range 未完成时，后续输入留在 buffer，不能越过它推进 M。</text>
+    <text x="200" y="853" font-size="20" fill="#617984">MixCoord / QueryTarget：只采用 sync_end ≤ 已持久化 M 的 L0。</text>
   </g>
 </svg>
