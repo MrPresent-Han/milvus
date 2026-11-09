@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 650" role="img" aria-label="Segment load：持久化 cursor → catchup → live apply"><title>Segment load：持久化 cursor → catchup → live apply</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="650" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
+<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">Segment load：持久化 cursor → catchup → live apply</text>
+<rect x="30" y="62" width="940" height="80" rx="8" fill="#edf7f6" stroke="#8dbfbd"/>
+<text x="500.0" y="90" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">同一数据版本：base + segment deltalogs + cursor=100</text>
+<text x="500.0" y="116" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">先按序加载／执行持久化 deltas，再 replay &gt;100</text>
+<text x="30" y="182" font-size="17" fill="#2c6ca2" font-weight="650" text-anchor="start">TransformLog 连续输入</text>
+<rect x="225" y="202" width="475" height="58" rx="8" fill="#eef3fb" stroke="#b0c3d8"/>
+<rect x="700" y="202" width="270" height="58" rx="8" fill="#f8f2e8" stroke="#dcc5a0"/>
+<text x="462" y="237" font-size="17" fill="#243f4d" font-weight="400" text-anchor="middle">(100,150]：本次历史 catchup</text>
+<text x="835" y="237" font-size="17" fill="#243f4d" font-weight="400" text-anchor="middle">&gt;150：live suffix</text>
+<text x="225" y="283" font-size="14" fill="#647c88" font-weight="400" text-anchor="start">cursor=100</text>
+<text x="700" y="283" font-size="14" fill="#647c88" font-weight="400" text-anchor="end">catchupFrontier=150（固定）</text>
+<text x="30" y="346" font-size="16" fill="#243f4d" font-weight="650" text-anchor="start">t0 · 已加载</text>
+<rect x="225" y="322" width="475" height="36" rx="4" fill="#eef2f6" stroke="#cfdce4"/>
+<text x="242" y="346" font-size="16" fill="#243f4d" font-weight="650" text-anchor="start">drainedTo=100</text>
+<text x="725" y="346" font-size="15" fill="#647c88" font-weight="400" text-anchor="start">历史待执行</text>
+<text x="30" y="416" font-size="16" fill="#243f4d" font-weight="650" text-anchor="start">t1 · catchup</text>
+<rect x="225" y="392" width="475" height="36" rx="4" fill="#eef2f6" stroke="#cfdce4"/>
+<rect x="225" y="392" width="285.0" height="36" rx="4" fill="#c7e5d2" stroke="#9fcbb0"/>
+<text x="242" y="416" font-size="16" fill="#243f4d" font-weight="650" text-anchor="start">drainedTo=130</text>
+<text x="725" y="416" font-size="15" fill="#647c88" font-weight="400" text-anchor="start">未完成历史仍在前</text>
+<text x="30" y="486" font-size="16" fill="#243f4d" font-weight="650" text-anchor="start">t2 · 历史完成</text>
+<rect x="225" y="462" width="475" height="36" rx="4" fill="#eef2f6" stroke="#cfdce4"/>
+<rect x="225" y="462" width="475" height="36" rx="4" fill="#c7e5d2" stroke="#9fcbb0"/>
+<text x="242" y="486" font-size="16" fill="#243f4d" font-weight="650" text-anchor="start">drainedTo=150</text>
+<text x="725" y="486" font-size="15" fill="#647c88" font-weight="400" text-anchor="start">接入 live，@160 才可执行</text>
+<rect x="30" y="535" width="940" height="84" rx="8" fill="#f0f4f6" stroke="#d6e1e6"/>
+<text x="48" y="566" font-size="17" fill="#243f4d" font-weight="650" text-anchor="start">Query：pin 同一 physical segment → 等待所需 transforming_timetick</text>
+<text x="48" y="596" font-size="16" fill="#647c88" font-weight="400" text-anchor="start">live apply 继续推进 drainedTo；cursor 是持久化覆盖，drainedTo 是实际执行。</text>
+</g></svg>

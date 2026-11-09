@@ -1,90 +1,64 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="960" height="1180" viewBox="0 0 960 1180" role="img" aria-labelledby="title desc">
-  <title id="title">Delta 在 query side 与 compaction side 的模块协作数据流</title>
-  <desc id="desc">Proxy 提交逻辑 delta 到 WAL。同一 delta 进入两条链路。Compaction side 的 L0 delta 模块包含 SN 生产和 MixCoord 调度分发：SN Materializer 写 L0 files，SN 持久化 M，MixCoord 用 M gate 选择完整 delta range，再调度 DN 分发到目标 segment deltalogs。DN full rewrite 独立读取 base 和 deltalogs，执行更新与删除，写出新 segment。Query side 经 Delegator 分发给 StreamingNode 的 Growing 和 QueryNode worker 的 Sealed segments，执行后写入 UpdatesRecord 或 DeletedRecord，查询读取 base/index 加 delta，看到更新值并屏蔽删除行。新 segment 加载 base 和未物化后缀后，替换查询侧 segment，继续在线消费。</desc>
-  <defs>
-    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#718795" stroke-width="1.6"/></marker>
-    <marker id="return-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L9 5L0 10" fill="none" stroke="#087476" stroke-width="1.6"/></marker>
-  </defs>
-  <rect width="960" height="1180" rx="12" fill="#f7fafb"/>
-  <rect x="510" y="225" width="420" height="900" rx="10" fill="#eef7f6" stroke="#d4e7e4"/>
-  <rect x="30" y="225" width="420" height="900" rx="10" fill="#fbf3ed" stroke="#ead8cb"/>
-  <rect x="50" y="300" width="380" height="510" rx="9" fill="#fffaf6" stroke="#c99c7c" stroke-width="2"/>
-  <g fill="none" stroke="#718795" stroke-width="2.5" marker-end="url(#arrow)">
-    <path d="M420 80H532"/>
-    <path d="M680 128V194H30V395H57"/>
-    <path d="M680 194H930V350H903"/>
-    <path d="M727.5 400V477"/>
-    <path d="M727.5 615V662"/>
-    <path d="M727.5 770V842"/>
-    <path d="M240 435V467"/>
-    <path d="M240 540V572"/>
-    <path d="M240 675V712"/>
-    <path d="M240 785V842"/>
-    <path d="M240 960V997"/>
-  </g>
-  <g fill="none" stroke="#087476" stroke-width="2.5" stroke-dasharray="7 5" marker-end="url(#return-arrow)">
-    <path d="M415 1055H552"/>
-    <path d="M895 1055H920V550H903"/>
-  </g>
-  <g font-family="PingFang SC,Microsoft YaHei,sans-serif" fill="#243e4a" text-anchor="middle">
-    <rect x="140" y="32" width="280" height="96" rx="8" fill="white" stroke="#b7cdd6"/>
-    <text x="280" y="73" font-size="28" font-weight="600">Proxy</text>
-    <text x="280" y="108" font-size="24">提交逻辑 mutation</text>
-    <text x="478" y="65" font-size="23" fill="#617984">delta</text>
-    <rect x="540" y="32" width="280" height="96" rx="8" fill="#e7f3f1" stroke="#88b7b4"/>
-    <text x="680" y="73" font-size="28" font-weight="600">WAL</text>
-    <text x="680" y="108" font-size="24">保存逻辑操作</text>
-    <text x="480" y="177" font-size="23" fill="#617984">同一组逻辑 delta，进入两条消费链路</text>
-
-    <text x="727.5" y="270" font-size="28" font-weight="600" fill="#087476">Query side</text>
-    <text x="240" y="270" font-size="28" font-weight="600" fill="#98613d">Compaction side</text>
-
-    <rect x="560" y="300" width="335" height="100" rx="8" fill="white" stroke="#a9c9c5"/>
-    <text x="727.5" y="342" font-size="27" font-weight="600">Delegator</text>
-    <text x="727.5" y="378" font-size="24">分发 delta／load 补齐</text>
-
-    <rect x="560" y="485" width="335" height="130" rx="8" fill="white" stroke="#a9c9c5"/>
-    <text x="727.5" y="524" font-size="27" font-weight="600">Segment</text>
-    <text x="727.5" y="559" font-size="21">Growing（SN）／Sealed（QN）</text>
-    <text x="727.5" y="594" font-size="24">执行 UPDATE / DELETE</text>
-
-    <rect x="560" y="670" width="335" height="100" rx="8" fill="white" stroke="#a9c9c5"/>
-    <text x="727.5" y="711" font-size="26">UpdatesRecord</text>
-    <text x="727.5" y="748" font-size="26">DeletedRecord</text>
-
-    <rect x="560" y="850" width="335" height="115" rx="8" fill="#dcefeb" stroke="#88b7b4"/>
-    <text x="727.5" y="884" font-size="27" font-weight="600">查询读取</text>
-    <text x="727.5" y="919" font-size="25">base/index＋delta</text>
-    <text x="727.5" y="948" font-size="23">更新值可读，删除行不可见</text>
-
-    <text x="240" y="333" font-size="25" font-weight="600" fill="#98613d">L0 delta 模块</text>
-    <rect x="65" y="355" width="350" height="80" rx="8" fill="white" stroke="#d7bca9"/>
-    <text x="240" y="388" font-size="26" font-weight="600">SN Materializer</text>
-    <text x="240" y="420" font-size="22">生产：连续 WAL → L0 files</text>
-
-    <rect x="65" y="475" width="350" height="65" rx="8" fill="white" stroke="#d7bca9"/>
-    <text x="240" y="516" font-size="25">L0 files · 持久化 M</text>
-
-    <rect x="65" y="580" width="350" height="95" rx="8" fill="white" stroke="#d7bca9"/>
-    <text x="240" y="615" font-size="25" font-weight="600">MixCoord / DataCoord</text>
-    <text x="240" y="648" font-size="22">M gate · 调度完整 range</text>
-
-    <rect x="65" y="720" width="350" height="65" rx="8" fill="white" stroke="#d7bca9"/>
-    <text x="240" y="762" font-size="25">目标 segment deltalogs</text>
-
-    <rect x="65" y="850" width="350" height="110" rx="8" fill="white" stroke="#d7bca9"/>
-    <text x="240" y="884" font-size="27" font-weight="600">DN full rewrite</text>
-    <text x="240" y="917" font-size="24">读取 base＋deltalogs</text>
-    <text x="240" y="946" font-size="24">执行更新与删除</text>
-
-    <rect x="65" y="1005" width="350" height="100" rx="8" fill="#f6e5d8" stroke="#c99c7c"/>
-    <text x="240" y="1047" font-size="27" font-weight="600">新 segment</text>
-    <text x="240" y="1083" font-size="23">更新值写入／删除行不写出</text>
-
-    <rect x="560" y="1005" width="335" height="100" rx="8" fill="white" stroke="#88b7b4"/>
-    <text x="727.5" y="1047" font-size="27" font-weight="600">加载新 segment</text>
-    <text x="727.5" y="1083" font-size="24">base＋未物化后缀</text>
-    <text x="480" y="1037" font-size="22" fill="#087476">load</text>
-    <text x="480" y="1158" font-size="24" fill="#617984">新 segment 加载后，替换查询侧 segment 并接续在线链路</text>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 860" role="img" aria-label="从 Proxy 到 storage side 与 query side"><title>从 Proxy 到 storage side 与 query side</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="860" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
+<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">从 Proxy 到 storage side 与 query side</text>
+<rect x="110" y="62" width="200" height="68" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="210.0" y="90" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Proxy</text>
+<text x="210.0" y="116" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">逻辑 mutation</text>
+<rect x="400" y="62" width="200" height="68" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="500.0" y="90" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">WAL</text>
+<text x="500.0" y="116" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">有序、完整的操作</text>
+<path d="M310,95 L400,95" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="690" y="62" width="270" height="68" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="825.0" y="90" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">SN Growing</text>
+<text x="825.0" y="116" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">本地有序 apply</text>
+<path d="M600,95 L690,95" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<text x="35" y="172" font-size="18" fill="#137f80" font-weight="650" text-anchor="start">Storage side</text>
+<text x="560" y="172" font-size="18" fill="#2c6ca2" font-weight="650" text-anchor="start">Query side</text>
+<path d="M500,130 L500,152 L245,152 L245,190" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M500,130 L500,152 L755,152 L755,190" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="190" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="245.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">SN Materializer</text>
+<text x="245.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">连续 WAL → L0 files</text>
+<text x="245.0" y="268" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">全部 scopes 完成 → 持久化 M</text>
+<rect x="540" y="190" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="755.0" y="218" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">WALSummary + live events</text>
+<text x="755.0" y="244" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">TransformLog 历史／实时连续交付</text>
+<path d="M245,278 L245,303" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M755,278 L755,303" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="303" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="245.0" y="331" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">MixCoord / DN L0 dispatch</text>
+<text x="245.0" y="357" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">M gate；按 target cursor 收齐适用前缀</text>
+<text x="245.0" y="381" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">结果引用 + segment cursor 配套发布</text>
+<rect x="540" y="303" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="755.0" y="331" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">QN TransformLogBuffer</text>
+<text x="755.0" y="357" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">每 VChannel 共享；本地 scope / PK BF</text>
+<text x="755.0" y="381" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">predicate 交给适用 segments 执行</text>
+<path d="M245,391 L245,416" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M755,391 L755,416" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="416" width="430" height="75" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="245.0" y="444" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Segment deltalogs + cursor</text>
+<text x="245.0" y="470" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">各 target 独立推进完整覆盖</text>
+<rect x="540" y="416" width="430" height="75" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="755.0" y="444" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">本地 Sealed registration</text>
+<text x="755.0" y="470" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">load → catchup → live apply</text>
+<path d="M245,491 L245,519" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M755,491 L755,519" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="519" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="245.0" y="547" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Mix admission → DN full rewrite</text>
+<text x="245.0" y="573" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">inputs cursor 对齐到 E，持有 input 占用</text>
+<text x="245.0" y="597" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">各 input 按序执行 pending deltas</text>
+<rect x="540" y="519" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="755.0" y="547" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">UpdatesRecord / DeletedRecord</text>
+<text x="755.0" y="573" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">更新值与删除状态叠加原 base/index</text>
+<path d="M245,607 L245,634" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M755,607 L755,634" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="634" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="245.0" y="662" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">compactTo segment</text>
+<text x="245.0" y="688" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">存活行 + 新 base；cursor = E</text>
+<text x="245.0" y="712" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">后续只接续 &gt; E</text>
+<rect x="540" y="634" width="430" height="88" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="755.0" y="662" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">QueryView 查询</text>
+<text x="755.0" y="688" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">pin physical segment</text>
+<text x="755.0" y="712" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">等待所需 transform apply，再按 Q_TS 读取</text>
+<path d="M460,679 L500,679 L500,454 L540,454" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<text x="490" y="780" font-size="16" fill="#647c88" font-weight="400" text-anchor="middle">新 base 与匹配 cursor 一起加载；历史后缀来自 TransformLog</text>
+</g></svg>

@@ -111,6 +111,6 @@
 
     <path d="M200 790H1050" stroke="#d4e1e5"/>
     <text x="200" y="820" font-size="21" fill="#98613d">前序 range 未完成时，后续输入留在 buffer，不能越过它推进 M。</text>
-    <text x="200" y="853" font-size="20" fill="#617984">MixCoord / QueryTarget：只采用 sync_end ≤ 已持久化 M 的 L0。</text>
+    <text x="200" y="853" font-size="20" fill="#617984">MixCoord：只采用 sync_end ≤ 已持久化 M 的 L0。</text>
   </g>
 </svg>

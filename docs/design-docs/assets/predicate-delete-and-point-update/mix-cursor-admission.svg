@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 470" role="img" aria-label="Mix 只检查本次 inputs 的 cursor 是否对齐"><title>Mix 只检查本次 inputs 的 cursor 是否对齐</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="470" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
+<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">Mix 只检查本次 inputs 的 cursor 是否对齐</text>
+<rect x="30" y="70" width="455" height="320" rx="8" fill="#f0f8f2" stroke="#99c9a5"/>
+<rect x="515" y="70" width="455" height="320" rx="8" fill="#fff4f3" stroke="#dca8a4"/>
+<text x="52" y="108" font-size="33" fill="#24864d" font-weight="650" text-anchor="start">✓</text>
+<text x="97" y="105" font-size="20" fill="#24864d" font-weight="650" text-anchor="start">允许 Mix：共同 cursor = 200</text>
+<rect x="55" y="130" width="405" height="78" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="257.5" y="158" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S1 cursor=200 + S2 cursor=200</text>
+<text x="257.5" y="184" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">base 可以不同，完整覆盖终点相同</text>
+<path d="M257,208 L257,235" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="55" y="238" width="405" height="102" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="257.5" y="266" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">compactTo cursor=200</text>
+<text x="257.5" y="292" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">取得这两个 inputs 的占用，按序 rewrite</text>
+<text x="257.5" y="316" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">后续只接续 &gt;200</text>
+<text x="537" y="108" font-size="33" fill="#bc4343" font-weight="650" text-anchor="start">✗</text>
+<text x="581" y="105" font-size="20" fill="#bc4343" font-weight="650" text-anchor="start">等待：inputs cursor 不同</text>
+<rect x="540" y="130" width="405" height="78" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="742.5" y="158" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">S1 cursor=200 + S3 cursor=100</text>
+<text x="742.5" y="184" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">S3 尚未取得完整的 (100,200]</text>
+<path d="M742,208 L742,235" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="540" y="238" width="405" height="102" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="742.5" y="266" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">先让 S3 完整覆盖到 200</text>
+<text x="742.5" y="292" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">避免将进度不同的行合入同一新 base</text>
+<text x="742.5" y="316" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">然后重新校验并取得 input 占用</text>
+<text x="500" y="437" font-size="18" fill="#647c88" font-weight="400" text-anchor="middle">S3 的落后只阻塞涉及 S3 的 Mix，不阻塞 S1 + S2。</text>
+</g></svg>

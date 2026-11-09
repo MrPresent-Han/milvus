@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 800" role="img" aria-label="QueryView：WAL → TransformLog → QN 本地 segments"><title>QueryView：WAL → TransformLog → QN 本地 segments</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="800" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
+<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">QueryView：WAL → TransformLog → QN 本地 segments</text>
+<rect x="30" y="65" width="590" height="70" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="325.0" y="93" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">RecoveryStorage 有序观察 WAL</text>
+<text x="325.0" y="119" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">同一 mutation_ts 顺序与完整 transaction</text>
+<rect x="700" y="65" width="270" height="70" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="835.0" y="93" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">SN 本地 Growing</text>
+<text x="835.0" y="119" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">解析 payload 并执行</text>
+<path d="M620,100 L700,100" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M325,135 L325,160 L175,160 L175,180" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M325,135 L325,160 L490,160 L490,180" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="180" width="280" height="80" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="170.0" y="208" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">WALSummary</text>
+<text x="170.0" y="234" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">持久化历史</text>
+<rect x="350" y="180" width="280" height="80" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="490.0" y="208" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Live events</text>
+<text x="490.0" y="234" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">持续有序输入</text>
+<path d="M175,260 L175,281 L325,281 L325,300" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M490,260 L490,281 L325,281 L325,300" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="300" width="590" height="72" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="325.0" y="328" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">TransformLog subscription</text>
+<text x="325.0" y="354" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">历史 prefix + live suffix，无缺口交接</text>
+<path d="M325,372 L325,400" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="400" width="940" height="74" rx="8" fill="#edf5fb" stroke="#9bbad1"/>
+<text x="500.0" y="428" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">QN · 每 VChannel 一个 TransformLogBuffer</text>
+<text x="500.0" y="454" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">本地 Sealed registrations：catchup 后接入 live apply</text>
+<text x="700" y="224" font-size="16" fill="#647c88" font-weight="650" text-anchor="start">Storage side 另行</text>
+<text x="700" y="252" font-size="16" fill="#647c88" font-weight="400" text-anchor="start">WAL → L0 → dispatch</text>
+<text x="700" y="280" font-size="15" fill="#647c88" font-weight="400" text-anchor="start">Query recovery 不加载 L0</text>
+<rect x="30" y="505" width="940" height="54" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="48" y="538" font-size="17" fill="#2c6ca2" font-weight="650" text-anchor="start">PK DELETE</text>
+<text x="270" y="538" font-size="16" fill="#243f4d" font-weight="400" text-anchor="start">PK → 本地 segment BF → 候选 PK</text>
+<rect x="30" y="570" width="940" height="54" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="48" y="603" font-size="17" fill="#2c6ca2" font-weight="650" text-anchor="start">POINT UPDATE</text>
+<text x="270" y="603" font-size="16" fill="#243f4d" font-weight="400" text-anchor="start">PK 列表 → 本地 BF → PK 子集 + 一份 assignments</text>
+<rect x="30" y="635" width="940" height="54" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="48" y="668" font-size="17" fill="#2c6ca2" font-weight="650" text-anchor="start">PREDICATE DELETE</text>
+<text x="270" y="668" font-size="16" fill="#243f4d" font-weight="400" text-anchor="start">按 scope → 全部适用 segments；此处不求值</text>
+<rect x="30" y="716" width="940" height="61" rx="8" fill="#edf7f6" stroke="#8dbfbd"/>
+<text x="500.0" y="744" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Segment executor：解析 payload，按序 apply 到 Records</text>
+</g></svg>

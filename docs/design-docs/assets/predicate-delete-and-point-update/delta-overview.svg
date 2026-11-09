@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 510" role="img" aria-label="同一组逻辑指令，两条消费路径"><title>同一组逻辑指令，两条消费路径</title><defs><marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="#6c8791"/></marker></defs><rect width="1000" height="510" fill="white"/><g font-family="-apple-system,BlinkMacSystemFont,PingFang SC,Microsoft YaHei,sans-serif">
+<text x="28" y="36" font-size="22" fill="#243f4d" font-weight="650" text-anchor="start">同一组逻辑指令，两条消费路径</text>
+<rect x="110" y="65" width="180" height="62" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="200.0" y="93" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Client</text>
+<rect x="410" y="65" width="180" height="62" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="500.0" y="93" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Proxy</text>
+<rect x="710" y="65" width="180" height="62" rx="8" fill="#edf7f6" stroke="#8dbfbd"/>
+<text x="800.0" y="93" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">WAL</text>
+<path d="M290,96 L410,96" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M590,96 L710,96" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M800,127 L800,153 L245,153 L245,180" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M800,153 L755,153 L755,180" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="180" width="430" height="102" rx="8" fill="#edf7f6" stroke="#8dbfbd"/>
+<text x="245.0" y="208" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">持久化路径</text>
+<text x="245.0" y="234" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">SN L0 → MixCoord / DN dispatch</text>
+<text x="245.0" y="258" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">→ Segment deltalogs</text>
+<rect x="540" y="180" width="430" height="102" rx="8" fill="#edf5fb" stroke="#9bbad1"/>
+<text x="755.0" y="208" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">在线路径</text>
+<text x="755.0" y="234" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">SN 本地 Growing</text>
+<text x="755.0" y="258" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">TransformLog → QN Sealed</text>
+<path d="M245,282 L245,310" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<path d="M755,282 L755,310" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<rect x="30" y="310" width="430" height="84" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="245.0" y="338" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">DN full rewrite → 新 segment</text>
+<text x="245.0" y="364" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">将更新与删除物化到新数据</text>
+<rect x="540" y="310" width="430" height="84" rx="8" fill="#f5f8fa" stroke="#d6e1e6"/>
+<text x="755.0" y="338" font-size="18" fill="#243f4d" font-weight="650" text-anchor="middle">Records → 查询</text>
+<text x="755.0" y="364" font-size="15" fill="#647c88" font-weight="400" text-anchor="middle">base/index + 更新版本与删除状态</text>
+<path d="M245,394 L245,437 L755,437 L755,394" fill="none" stroke="#6c8791" stroke-width="1.7" marker-end="url(#a)"/>
+<text x="500" y="480" font-size="16" fill="#647c88" font-weight="400" text-anchor="middle">新 segment 加载 base 与 TransformLog 后缀，再接入在线路径</text>
+</g></svg>

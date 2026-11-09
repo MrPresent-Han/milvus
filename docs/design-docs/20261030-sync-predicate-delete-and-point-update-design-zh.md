@@ -1,6 +1,6 @@
 # Predicate delete 与 PK inplace-update
 
-Phase 1 设计 · 2026-11-04 · 设计稿，尚未实现
+Phase 1 设计 · 2026-11-09 · 设计稿，尚未实现
 
 ## 1. 功能定义
 
@@ -51,14 +51,7 @@ PK inplace-update 的预期收益是：**避免 scalar 变更生成完整新行�
 
 客户端的 predicate delete 和 PK inplace-update 经 Proxy 写入 WAL。同一份操作随后进入两条链路：持久化链路保存变更并在后台形成新 segment，在线链路更新正在服务的数据。
 
-```architecture
-Client → Proxy → WAL
-                 ├─ 持久化：L0 delta 模块（SN → MixCoord / DN 分发）
-                                               → Segment deltalog
-                                               → DN full rewrite → 新 segment
-                 └─ 在线：Delegator → Growing / Sealed → Records → 查询
-新 segment → 加载 base 与未物化后缀 → 接入在线路径
-```
+![同一组逻辑指令分别用于实时查询和持久化重放](assets/predicate-delete-and-point-update/delta-overview.svg "同一组逻辑指令分别用于实时查询和持久化重放。")
 
 ### 3.1 持久化链路：从操作到新 segment
 
@@ -66,7 +59,7 @@ L0 delta 模块中，SN Materializer 将 WAL 中的操作保存为 L0 delta file
 
 ### 3.2 在线链路：从操作到查询结果
 
-Delegator 从 WAL 接收操作，分别交给 StreamingNode 本地的 Growing segments 和 QN worker 上的 Sealed segments。两者将更新或删除应用到所持有的数据，使后续查询看到字段变化和删除结果。
+StreamingNode 本地 Growing 消费有序 WAL；QN 通过 QueryView 的 TransformLog subscription 接收历史与实时操作，应用到本地 Sealed segments。两者将更新和删除叠加到原数据，使查询看到相应结果。
 
 查询侧加载新 segment 后，接入在线链路并继续接收后续操作。两条链路由此衔接：同一份操作既影响当前查询，也进入后续加载使用的数据。
 
@@ -105,7 +98,7 @@ native predicate 在 WAL ACK 时不知道实际命中数。`delete_count` 的 un
 | Proxy / WAL | API 请求 → WAL 消息 | 校验请求，提交逻辑 mutation |
 | L0 delta／MixCoord 调度 | WAL 消息、delta 统计 → segment deltalogs／compaction plan | 生产并分发 L0，结合 delta 统计调度 full rewrite |
 | DN full rewrite | base＋deltalogs → 新 segment | 合并 base 与 deltas，写出替代 segment |
-| Delegator | WAL／L0／buffer → segment | 在线 mutation 分发与 segment load 补齐 |
+| QueryView／TransformLog | WALSummary／实时 WAL → 本地 segments | 交付历史与实时 mutations，完成 catchup 和查询等待 |
 | Segment | base/index＋mutations → 查询结果 | 执行更新与删除，提供 overlay 读取 |
 
 下图展示一个 delta 从 Proxy 进入后，如何经各模块分别作用于在线查询和 compaction 输出。
@@ -114,23 +107,17 @@ native predicate 在 WAL ACK 时不知道实际命中数。`delete_count` 的 un
 
 ### 4.3 时间与进度的含义
 
-| 记号 | 含义 | 维护位置 |
+| 记号／字段 | 含义 | 维护位置 |
 | --- | --- | --- |
 | `row_ts` | 物理行的有效诞生时间，UPDATE 不改变它 | 行数据；导入沿用现有 commit-time 处理 |
-| `mutation_ts` | mutation 的有效 WAL TimeTick；transaction 内取 CommitTxn TimeTick | WAL 和 delta record |
-| `M` | VChannel 级 delta 持久化发布水位，即三类 delta 已完整持久化并提交的连续前缀的结束时间戳 | 复用 SN 的 VChannel `transform_materialized_time_tick`，持久化到 etcd 后供 MixCoord 使用 |
-| `C` | VChannel 级 delta 分发完成水位，即已完整分发至全部适用目标且分发结果已持久化的连续前缀的结束时间戳，`C≤M` | 持久化到 etcd，由 compaction 完成侧推进 |
-| `H` | Query side 本次 load 的历史异步回放范围终点，即输入交接结束时间戳；所需历史 deltas 已完整入队，交接后固定 | Delegator／segment 加载期内存状态，不持久化 |
-| `A` | Query side 历史异步 apply 的完成水位；`ts≤A` 的本次所需历史 deltas 均已执行完成 | segment 加载期内存状态，不持久化 |
-| `TSafe / Q_TS` | TSafe 证明 channel 的实时可读进度；Q_TS 是查询实际使用的 MVCC timestamp | 查询准入与执行 |
+| `mutation_ts` | mutation 的有效 WAL TimeTick；transaction 内取 CommitTxn TimeTick | WAL、TransformLog 和 delta record |
+| `M` | VChannel 级 delta 持久化发布水位：三类 delta 已完整持久化并登记的连续前缀的结束时间戳 | 复用持久化的 `transform_materialized_time_tick`，供 L0 调度使用 |
+| Segment cursor | `transform_start_after_timetick`：加载该版本的 base＋deltalogs 后，TransformLog 从此时间戳之后继续 replay | 与 segment 数据版本绑定的持久化 metadata |
+| `E` | 本次 dispatch 的完整结束边界；Mix inputs 对齐后，也是输出继承的共同 cursor | 固定在 compaction plan 中，不新增 VChannel 水位 |
+| `catchupFrontier`／`drainedTo` | 前者是本次 catchup 的固定终点；后者是该 physical segment 已完成的 apply 进度 | QN TransformLogBuffer registration 的内存状态 |
+| `Q_TS`／`transforming_timetick` | 前者是查询 MVCC timestamp；后者是 QueryMVCC 为该请求确定的 Sealed transform 执行要求 | QueryView 查询计划与执行等待 |
 
-DeleteCP 指定 deleteBuffer 可安全回收的前缀边界。当前实现根据 VChannel 加载范围内的有效 L0 集合[计算](../../internal/datacoord/handler.go)：
-
-```text
-DeleteCP = L0 非空 ? min(L0.StartPosition) : VChannel.seekPosition
-```
-
-Phase 1 复用 DeleteCP 字段，改由 Delegator 当前已采用 QueryTarget 携带的 C 给出，不再独立推导分发完成边界。M 对应的输入 ready 后，通过 M handoff 回收 streaming 副本，交接见 §5.4。M／C 均不是 query apply 进度；Recovery CP 管理 WAL 恢复。任一 record 的最大 timestamp 都不能单独证明前缀完整。
+Segment cursor 证明该数据版本已包含截至该时间的全部适用 mutations，或这些 mutations 不影响它；它不表示 QN 已完成 apply。M 管理 L0 生产，segment cursor 管理持久化覆盖，`drainedTo` 管理实际执行，三者分别推进。
 
 ## 5. 模块详细设计与实现改造
 
@@ -156,7 +143,7 @@ DELETE FROM t WHERE age >= 18 AND (name LIKE '%review%' OR name LIKE '%urgent%')
 DELETE FROM t WHERE PHRASE_MATCH(description, 'vector database', 1);
 ```
 
-Phase 1 将 native predicate DELETE 的 predicate 上限设为 **10 KiB**，因为 Delegator 需要向 scope 内所有适用 segments 转发完整 predicate。Proxy 在 WAL append 前检查编译后的 `proto.Size(predicate) <= 10_240`，超限直接 reject，不拆分表达式。
+Phase 1 将 native predicate DELETE 的 predicate 上限设为 **10 KiB**，因为完整 predicate 需要 fan-out 到 scope 内所有适用 segments。Proxy 在 WAL append 前检查编译后的 `proto.Size(predicate) <= 10_240`，超限直接 reject，不拆分表达式。
 
 **Point UPDATE。** 使用独立入口，接受 PK 等值或 PK IN 常量列表与 literal assignments：
 
@@ -319,7 +306,7 @@ delta.ts    = mutation_ts
 本模块将连续 WAL 中的 mutations 持久化为 L0 delta files，再按完整前缀分发到目标 segment。MixCoord 结合 delta 统计选择 full rewrite 候选。
 
 - SN 切分 sync ranges、写入并登记 L0，推进持久化水位 M。
-- MixCoord 中的 DataCoord 用 M 控制 L0 调度准入，维护分发水位 C、target 隔离与 full rewrite 候选选择。
+- MixCoord 中的 DataCoord 用 M 控制 L0 调度准入，按 segment cursor 组织完整前缀分发，并选择 cursor 已对齐的 full rewrite inputs。
 - DN 执行 L0 分发。
 
 ![SN 将连续 WAL 切为 sync ranges，按序推进 M](assets/predicate-delete-and-point-update/sn-delta-sync-ranges.svg "SN 选择完整 cut points；全部 scopes 完成后推进 M，空区间同样推进。schema-change@240 只增加强制 cut。")
@@ -332,22 +319,22 @@ Materializer 接收同一 VChannel 已确认、按有效 TimeTick 重排的 WAL 
 
 - ALL_PARTITIONS 保留为一个 scope，不展开为具体 partition 列表。
 - 每个 scope 按 rolling 策略生成一个或多个 L0，逐个完成文件写入与 metadata 登记。
-- 每个 L0 的 metadata 保留所属 sync range 的结束时间戳 `sync_end=E`，复用当前 Materializer 的 checkpoint／`DmlPosition.timestamp`；同一 range 的所有输出使用同一个 E。
+- 在现有 L0 metadata 中补充所属 sync range 的结束时间戳 `sync_end=E`；同一 range 的所有输出使用同一个 E。`DmlPosition` 保留原有位置语义，不用 records 的末尾位置冒充完整 sync 边界。
 - 文件 records 的 min/max ts 仅作内容统计，不是 range contiguous 的证据，也不用于 M gate。
 
 L0 文件保存原始指令，逐条保留 UPDATE。SN Materializer 的输入不含历史 Sealed segments 在 `mutation_ts` 的列值，因此 sync 时无法判断哪些行满足 predicate。
 
-**空区间推进。** <mark style="background-color: #c5c5c5; color: inherit">没有 delta 的完整区间也推进 M，不生成 L0 或空文件。</mark>例如 `M=C=120`，WAL 已确认消费至 200，且 `(120,200]` 只有 Insert／TimeTick：SN 直接持久化 `M=200`；MixCoord 确认该区间无待分发 L0 后，持久化 `C=200`，无需 DN task。空区间进度可合并提交；前序 range 仍在 sync 或 retry 时，不能越过它推进 M。
+**空区间推进。** <mark style="background-color: #c5c5c5; color: inherit">没有 delta 的完整区间也推进 M，不生成 L0 或空文件。</mark>例如 `M=120`，WAL 已确认消费至 200，且 `(120,200]` 只有 Insert／TimeTick：SN 完成该区间的发布依赖后，持久化 `M=200`。MixCoord 据此确认空区间，并推进适用 targets 的 segment cursor，无需生成 delta 文件或执行 DN 分发。空区间进度可合并提交；前序 range 仍在 sync 或 retry 时，不能越过它推进 M。
 
 **Sync 触发。** 容量、等待时间、显式 Flush 等条件触发 sync；持续无 delta 时也定期发布已确认的覆盖进度。schema-change fence 是强制 cut：旧 schema 的 delta 先 sync，后续 delta 进入新 schema 的 buffer，保证单个文件不跨 schema_version。
 
-- Insert files 可独立 sync，保留前序 L1 注册依赖，不要求所有 L1 flush。
+- Insert files 独立 sync；发布本轮 L0 前，沿用现有前序 L1 gate，等待该 VChannel 所有 partitions 中在 E 前创建的 L1 完成最终发布或确认退出。
 
 #### 5.2.2 M 发布、retry 与 crash recovery
 
 **以 M 发布完整前缀。** 复用 VChannel metadata 中的 `transform_materialized_time_tick` 作为 M。SN 先完成 `(P,E]` 内全部 scopes 的文件写入和 L0 metadata 登记，再将 M 单调推进至 E 并持久化；不要求将全部 L0 metadata 与 M 放进一个 etcd 事务。
 
-<mark style="background-color: #c5c5c5; color: inherit">L0 compaction 和 QueryTarget 只采用 `sync_end ≤ 已持久化 M` 的有效 L0。</mark>因此文件虽已逐个登记，M 发布前仍不可作为新输入；M 发布后才能取得完整前缀。这里采用 committed watermark 控制消费可见性的原则，类似 [Kafka 只向消费者交付 committed messages](https://kafka.apache.org/44/design/design/#replication)。
+<mark style="background-color: #c5c5c5; color: inherit">L0 compaction 只采用 `sync_end ≤ 已持久化 M` 的有效 L0。</mark>因此文件虽已逐个登记，M 发布前仍不可作为新输入；M 发布后才能取得完整前缀。这里采用 committed watermark 控制消费可见性的原则，类似 [Kafka 只向消费者交付 committed messages](https://kafka.apache.org/44/design/design/#replication)。
 
 ![M gate 将逐个登记的 L0 作为完整前缀放行](assets/predicate-delete-and-point-update/l0-m-gate.svg)
 
@@ -375,44 +362,37 @@ MixCoord 读取 M 时，使用包含该 M 发布前全部 L0 登记结果的 met
 
 这个方案用 crash 后重写未发布区间的代价，省去独立 batch metadata、发布状态机和 batch GC。提交结果不确定时先读回持久化 M，再决定是否重建，遵循 [etcd 提交确认语义](https://etcd.io/docs/v3.6/learning/api_guarantees/#operation-completed)。
 
-#### 5.2.3 消费侧：L0 compaction 分发
+#### 5.2.3 消费侧：按 segment cursor 分发完整前缀
 
-MixCoord 每轮固定 `E=已持久化 M`，枚举 `(C,E]` 内全部有效 L0，合并 ALL_PARTITIONS 与具体 partition scopes 的适用指令，再调度 DN 分发。文件可分多个子任务处理，但不能按数量／大小只选取其中一部分就推进 C；各 target 的 delta 按 `mutation_ts` 保序交付，同一 ts 的全部 records 均须保留。
+MixCoord 为本轮分发选择固定终点 `E ≤ 已持久化 M`。对每个 target，从它已提交的 segment cursor 出发，收齐 `(cursor,E]` 内全部适用 L0，合并具体 partition 与 ALL_PARTITIONS 的记录，再交给 DN 按 `mutation_ts` 分发。同一 transaction／TimeTick 的记录不能跨越提交边界。
 
-若 M 在本轮执行期间继续推进，新增后缀留给下一轮。完整输入的证明来自 M 和 L0 metadata，完整分发的证明来自本轮任务完成与 C。
+- PK DELETE／point UPDATE 由 DN 按 PK 与 target BF 筛选；UPDATE 保留 PK 列表与共享 assignments。
+- predicate DELETE 分发至 scope 内全部适用 targets，在 L0 dispatch 时不求值。
+- M 继续推进不改变在途任务的 E，新后缀进入后续任务。
 
-- PK DELETE／point UPDATE 可用 BF 筛选 targets。
-- predicate DELETE 发至 scope 内全部适用 targets。
-- L0 分发不执行 predicate／UPDATE。
+**按 target 提交。** 一个 target 的适用前缀全部持久化后，将 deltalog 文件引用与 `cursor=E` 作为同一数据版本发布。只完成部分文件时不能推进 cursor，也不能向 Mix 暴露可被当作完整输入的部分结果。各 targets 可独立完成；不等待本轮其他 targets 才释放已完成 target 的占用。
 
-**分发对 Mix 的原子可见性。** 同一个 dispatch range 可以分多个子任务写入 targets。<mark style="background-color: #c5c5c5; color: inherit">只要还有 target 未完成，Mix 就不能从这一轮的任何 target 取输入。</mark>若此时执行 Mix compaction，就可能将已消化本轮 delta 的行和仍待回放的行写入同一个 compactTo segment。
+<mark style="background-color: #c5c5c5; color: inherit">空区间或 BF 无命中也推进对应 segment cursor，不写空文件；无适用 target 则记录任务完成。</mark>完整性由 M、已发布 L0 集合和任务的完整检查范围证明，不由命中数或 records 的 max ts 推断。
 
-![同一条 DELETE 在提前 Mix 后重放会误删 pk=1，跳过则会漏删 pk=2](assets/predicate-delete-and-point-update/mix-partial-dispatch.svg)
+![M 限制生产边界，各 segment 独立推进完整前缀 cursor](assets/predicate-delete-and-point-update/l0-segment-cursor-dispatch.svg)
 
-**Phase 1 采用 range 隔离＋C。** MixCoord 持有全部 targets 的占用，直到本轮分发结果全部持久化并推进 C。这样 DN 取得的每个 input 都有完整的适用前缀，无需记录 per-segment 分发水位。
+**Mix 按 cursor 对齐准入。** <mark style="background-color: #c5c5c5; color: inherit">只有本次 inputs 的 segment cursors 相同，Mix 才能生成 plan；输出继承共同 cursor E。</mark>准入时同时取得这些 inputs 的占用，并固定各自的数据引用与 cursor，避免生成 plan 后又收到 L0 delta。其他未参与 Mix 的 segments 可以继续落后，不需要 range-wide 占用。
 
-1. **确定并占用 targets。** 在与 Mix 共用的准入临界区内，按 scope 和时间资格选齐、校验本轮全部 targets，原子检查并设置它们的 `isCompacting`。有冲突或 target 已被替换，则整轮延期、重新选择；不能跳过被占用的 target 后就宣布完成。
-2. **在 range 占用下分发。** target 占用由 range 持有，覆盖其全部 L0 成员与分发子任务；不能等 BF 命中后才决定锁谁。子任务可分别完成并提交结果，但任何单个 L0／子任务的完成都不能提前释放 targets。这里采用 [compaction 输入隔离](https://github.com/apache/kudu/blob/1.18.1/src/kudu/tablet/tablet.cc#L1724)的原则，具体占用由本方案的 range／task 生命周期管理。
-3. **完整提交后释放。** 全部适用分发结果持久化后，保存 `C=E`，再释放 range 的 target 占用。此后 Mix 才能原子取得自己的 input 占用，并将各 input 的已提交数据引用写入 compaction plan。
+例如 S1、S2 的 cursors 均为 200，而 S3 为 100：S1＋S2 可以 Mix，S1＋S3 必须等待 cursor 对齐。若 Mix 对 S1 已执行 `DELETE@110 age=18`（未命中）和 `UPDATE@120 age=18`，而 S3 尚未收到这两条操作，提前合并后再重放旧 DELETE 会误删 S1 来源的行。
 
-![完整 range 的 target 占用与 Mix 准入](assets/predicate-delete-and-point-update/l0-range-isolation.svg "S1 已完成、S2 尚未完成时，两者均不能进入 Mix；整个 range 提交并推进 C 后才释放占用。")
+![绿色对勾表示 cursor 对齐可 Mix，红色叉号表示不对齐须等待](assets/predicate-delete-and-point-update/mix-cursor-admission.svg "只约束本次 Mix 的 inputs；其余 target 的进度不阻塞这次 Mix。")
 
-<mark style="background-color: #c5c5c5; color: inherit">空 range、无适用 target 或 BF 无命中均由 range／task 完成记录确认覆盖，无须写空文件。</mark>
+**L0 的退出条件。** Task metadata 固定输入 L0、targets、各 target 的起点与 E，并记录结果提交状态。全部适用 targets 完成持久化交付后，输入 L0 才可标为 Dropped／Compacted。已完成 target 再次遇到相同输入时，跳过 cursor 已覆盖的前缀。
 
-- C 持久化前保留 range／task 完成依据。
-- Growing 的覆盖继续受既有 seal 与安全调度条件保护。
-- target 被 Mix 替换后，<mark style="background-color: #c5c5c5; color: inherit">尚未分发的后缀仍须覆盖 new compactTo segment。</mark>
+- 同一 target 的 dispatch 与 Mix 互斥；任务恢复依据持久化归属重建占用。
+- target 被 Mix 替换后，<mark style="background-color: #c5c5c5; color: inherit">尚未分发的后缀仍须覆盖 new compactTo segment。</mark>旧任务不得向已退出的 input 提交；由 compactTo 的继承 cursor 衔接剩余范围。
+- Growing／新发布 L1 的覆盖沿用 §5.2.1 的前序 L1 gate 与现有生命周期约束。
 
-分发完成后，目标 segment 的 deltalogs／manifest 引用与 M／C 进入 QueryTarget，供 Delegator 按 §5.4 接管输入。
-
-| 路线 | 完整性与 Mix 准入 | 代价 |
-| --- | --- | --- |
-| Phase 1：range 隔离＋C | range 持有全部适用 targets 的 `isCompacting`；全部结果提交并推进 C 后放行 Mix | 任一子任务未完成，整个 target 集合继续等待；涉及 10,000 个 targets 时，它们的 Mix 都等待本轮完成 |
-| ~~替代：per-segment 分发水位~~（Phase 1 未采用） | ~~每个 segment 持久化已完整收到的 delta 区间终点；零输出也推进，Mix 根据各 input 水位检查输入完整性~~ | ~~增加 progress KV 更新与恢复逻辑；有文件输出时可随现有 metadata 提交，稀疏 PK 操作涉及的零输出 targets 也须额外写进度~~ |
+Segment 数据版本和 cursor 共同进入 DataView／QueryView 加载信息，查询侧据此从 TransformLog 取得后缀，见 §5.4。
 
 #### 5.2.4 L0 delta file 格式
 
-使用 Parquet 外层列＋Protobuf payload，面向 load、forward 和 ordered replay：
+使用 Parquet 外层列＋Protobuf payload，服务 storage-side dispatch 与 full rewrite 的 ordered replay。Query side 的历史／实时交付使用 TransformLog，不从独立 L0 files 恢复：
 
 - 每个文件属于一个 collection／VChannel／partition scope，共用一个 schema_version，scope 可为 ALL_PARTITIONS。
 - <mark style="background-color: #c5c5c5; color: inherit">旧文件通过 legacy reader adapter 读取，不要求升级时重写。</mark>
@@ -511,27 +491,30 @@ Records [
 
 本例的三个 PK 路由到同一 VChannel，并写入同一分片。文件共三行，第一行的三个 PK 共用一份 `count = 20`。
 
-- 外层 ts／op_type／PK 可直接读取，payload 保留为可重复转发的 Protobuf bytes，分发流程见 §5.4.1。
+- DN 可直接读取外层 ts／op_type／PK 做路由，predicate／assignments 保留 serialized bytes，执行端再解析。
 - predicate UPDATE 和 expression RHS 仅预留格式，Phase 1 收到这些分支时返回不支持，不能静默跳过。
 
 #### 5.2.5 MixCoord 重启后如何恢复 L0 分发任务
 
-恢复单位是**整个 dispatch range**。任务创建时固定本轮 range 的终点 `E`，并将它与 L0 成员、全部 targets 和子任务归属一起保存在 task metadata 中。重启后，MixCoord 从该 VChannel 的 `progress/C` 读取已提交的分发水位 `C`，判断它是否已覆盖本轮 range。
+MixCoord 读取持久化 task 的输入 L0、targets、区间终点 E 和结果状态，结合各 target 的数据版本与 cursor 恢复进度。恢复单位是任务内的 target 交付，不再依赖 VChannel 级分发水位。
 
-| 分发水位 `C` 是否已到达本轮终点 `E` | MixCoord 的恢复动作 |
+| Target 的持久化状态 | 恢复动作 |
 | --- | --- |
-| `C < E` | 先重建本轮全部 targets 的 `isCompacting` 占用，再开放 Mix 准入。复用已持久化的子任务结果，继续未完成的分发。全部结果持久化后，先提交 `C = E`，再释放本轮占用。 |
-| `C ≥ E` | 将本轮视为已完成，跳过重新分发。按任务归属清理仍由本轮持有的占用。 |
+| cursor 尚未覆盖 E，且 target 仍有效 | 恢复该 target 的任务占用，复用已完成输出并继续剩余分发；完整结果提交后推进 cursor，再释放占用。 |
+| 对应数据版本的 cursor 已覆盖 E | 确认已完成交付，不重复追加；补齐 task 完成记录并清理本任务持有的占用。 |
+| 原 target 已被 Mix 替换 | 用已提交的 compactTo 关系与继承 cursor 确认覆盖；未覆盖后缀转到当前适用 targets，不向旧 input 补交结果。 |
 
-分发完成后的退出顺序是“<mark style="background-color: #c5c5c5; color: inherit">分发结果持久化 → C 持久化 → 输入 L0 标 Dropped → 异步 GC</mark>”。C 覆盖后无需等待物理 GC 才开始下一轮；保留已有 retention 和引用保护。
+恢复任务归属后再开放相关 segments 的 Mix 准入。退出顺序为：<mark style="background-color: #c5c5c5; color: inherit">全部适用 target 的结果与 cursor 持久化 → 输入 L0 标 Dropped → 异步 GC。</mark>Task 完成依据保留到 L0 退出已持久化，迟到清理只能释放本任务持有的占用。
 
-未发布 L0 由 §5.2.2 的恢复流程标记 Dropped，且不推进 M／C。文件清理完成后再删除对应 L0 metadata；未登记的上传产物交给现有 orphan GC，避免提前丢失清理依据。
+未发布 L0 由 §5.2.2 的恢复流程标记 Dropped，不推进 M 或任何 segment cursor。文件清理完成后再删除对应 L0 metadata；未登记的上传产物交给现有 orphan GC。
 
 **升级切换。** 先升级 MixCoord，再升级 SN。新版 MixCoord 接管时按 VChannel 持久化协议切换点，从接管起拒绝旧 SN 新增 legacy L0 登记。接管以旧 MixCoord 已失去 metadata 提交权为前提：切换前已提交的登记保留，在途请求不能在切换后补交。
 
 ![MixCoord 先接管：已登记的 legacy L0 继续分发，未登记区间由新版 SN 重放为新版 L0](assets/predicate-delete-and-point-update/legacy-l0-upgrade.svg)
 
 新版 SN 接管后，Proxy 可继续 append 新 delta，SN 可先写入新版 L0 并推进 `M`。该 VChannel 的 legacy L0 分发结果全部持久化后，MixCoord 持久化放行状态并按 M gate 调度新版 delta ranges，文件 GC 可异步进行。
+
+Segment cursor 沿用 QueryView 的初始化与版本校验；未知 cursor 不满足 Mix 对齐条件，不能将两个未知值相等视为覆盖证明。
 
 #### 5.2.6 基于 delta 的 full rewrite 调度
 
@@ -556,7 +539,7 @@ MixCoord 根据实际删除比例、predicate／update 积压及既有文件条�
 
 例如 100 条 predicate 全部无命中，实际删除数为零，恢复时仍要执行这 100 条指令。积压统计按逻辑 mutation 去重，QN 在线 apply 完成后仍计入，直到 full rewrite 的输出提交后才清除对应输入的积压。
 
-候选仍须通过 §5.2.3 的 range 隔离与 `isCompacting` 准入。DN 按 compaction plan 执行完整适用前缀，实际删除结果以执行为准。
+候选仍须通过 §5.2.3 的 cursor 对齐与 input `isCompacting` 准入。DN 按 compaction plan 执行完整适用前缀，实际删除结果以执行为准。
 
 **待定参数。** Pending predicate 数量和 update 数据量的阈值、统计口径及调度优先级待定。RPC 字段、统计与进度的一致采样、轮询周期和 cache 上限在实现设计中确定。
 
@@ -564,20 +547,17 @@ MixCoord 根据实际删除比例、predicate／update 积压及既有文件条�
 
 可直接复用：
 
-- [L0 Materializer](../../internal/streamingnode/server/wal/vchannel/l0materializer/wal.go) 的有序 buffer、串行输出及 VChannel materialized cursor 持久化流程。
-- [delta reader/writer](../../internal/storage/serde_delta.go) 的 Parquet／legacy reader。
-- [L0 task](../../internal/datacoord/compaction_task_l0.go) 的目标筛选、结果提交与生命周期管理。
-- 现有 full rewrite policy 的文件数量、大小和删除比例判断，以及 Segcore 的累计删除计数。[调度信号](https://github.com/milvus-io/milvus/blob/46f3354858e6e84a06105bd1a2302672b623708d/internal/datacoord/compaction/policy/helpers.go#L49-L86) · [删除计数](https://github.com/milvus-io/milvus/blob/46f3354858e6e84a06105bd1a2302672b623708d/internal/core/src/segcore/ChunkedSegmentSealedImpl.cpp#L4122-L4126)
+- [L0 Materializer](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/streamingnode/server/wal/vchannel/l0materializer/wal.go) 的有序 buffer、串行输出与持久化 M，以及现有 Parquet／legacy reader。
+- [L0 结果提交](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/datacoord/compaction/task/l0_transform.go) 已会结合 M 和剩余 L0 限制 segment cursor，并为已检查但无 PK 命中的 target 更新 cursor。
+- 既有 task 生命周期、segment 数据版本发布和 full rewrite policy。
 
-现有 [compaction 调度](../../internal/datacoord/compaction_inspector.go)提供 input `isCompacting` 与 channel 级 L0／Mix 互斥，但 L0 的 input 标记仅覆盖输入 L0，尚不能提供完整 range 的 target 隔离。需要增强：
+当前 cursor 校验限制的是结果提交时能证明的覆盖边界，**尚未保证 L0 调度只分发完整前缀**。本设计需要增强：
 
-- 将 M 扩展为覆盖三类 delta 和空区间的完整水位，接入 schema-change fence；当前普通空 TimeTick 不推进 M。
-- 在 L0 调度与 QueryTarget 增加持久化 M gate，按完整 `(C,M]` 组织保序分发；现有 L0 候选筛选不检查 M。
-- 将整批重做改为只 retry Fn，固定输出 ID；补齐旧 owner 的登记提交权校验和未发布 L0 恢复清理，避免 crash 后重复发布。
-- 增加完整 range 的 target 占用与持久化任务归属，恢复后可重建占用。
-- 在 C 提交后释放占用，Mix 取得 input 占用后再生成 plan。
-- 增加 QN segment-stats RPC、独立轮询和 MixCoord 内存 cache，以有效观测修正删除比例；混写 `EntriesNum` 退出删除行数估计。[当前 EntriesNum 累加](https://github.com/milvus-io/milvus/blob/46f3354858e6e84a06105bd1a2302672b623708d/internal/storage/statistics.go#L565-L570)
-- 增加 predicate／update 积压统计与独立 full rewrite trigger，使低删除比例或 unloaded segment 的积压也能触发调度。
+- M 覆盖三类 delta 与空区间；补充 `sync_end`、schema-change cut 和调度侧 M gate。
+- 将整批重做改为只 retry Fn，固定输出 ID；恢复时清理 M 之后未发布 L0，拒绝旧 owner 迟到提交。
+- 按各 target cursor 组织完整前缀 dispatch，包括 ALL_PARTITIONS overlap、零输出 cursor 更新，以及结果引用与 cursor 的一致发布。
+- Mix 准入增加 cursor 对齐，并与 input 占用、plan 快照绑定；任务恢复与 L0 GC 按 target 完成状态判断。
+- 增加 QN segment-stats RPC、独立轮询与统计 cache，使用实际删除比例；增加 predicate／update 积压的独立 full rewrite trigger。
 
 ### 5.3 DN full rewrite：按序物化并替换 segment
 
@@ -585,28 +565,28 @@ DN full rewrite 读取各 input segment 的 base 与适用 deltas，执行更新
 
 #### 5.3.1 输入到重写输出
 
-MixCoord 按 §5.2.3 取得 inputs 的 `isCompacting` 后，从各 input 的已提交 metadata 生成 [compaction plan](../../internal/datacoord/compaction_task_mix.go)。StorageV3 的 `Manifest` 引用具体 revision，plan 同时记录 input metadata 中的 binlog／deltalog 引用。DN 按本次 plan 读取数据。Mix 持有 input 占用直到 compactTo segment 的 metadata 提交，以阻止 L0 在 rewrite 期间向旧 inputs 追加 delta。
+MixCoord 按 §5.2.3 选择 cursor 已对齐到 E 的 inputs，取得这些 segments 的 `isCompacting` 后，将各 input 的 manifest／deltalog 引用与共同 E 固定在 compaction plan 中。DN 读取本次 plan 指定的数据版本；占用持续到 compactTo metadata 提交，阻止 L0 向这些 inputs 追加 delta。
 
 ```text
-完整 range 分发提交，C 已推进 → 释放 range 占用
-  → Mix 取得 S1、S2 的 isCompacting，将输入引用写入 plan
-  → S1：base₁ ＋ pending deltalogs₁ → 按序执行
-    S2：base₂ ＋ pending deltalogs₂ → 按序执行
-  → Mix compaction 写出 compactTo segment，提交输出 metadata 后释放占用
+S1：base₁ ＋ pending deltalogs₁，cursor=200
+S2：base₂ ＋ pending deltalogs₂，cursor=200
+  → 取得 S1、S2 占用，固定输入版本与 E=200
+  → 各 input 按 mutation_ts 执行自己的 pending deltas
+  → 写出 compactTo，发布新 base 与 cursor=200
+  → 后续 dispatch／TransformLog replay 仅接续 >200
 ```
 
-**DN 的执行契约。** 调度侧为每个 input 提供完整的适用 delta 前缀。DeltaExecutor 按 `mutation_ts` 从早到晚执行，predicate DELETE 用前序 UPDATE 生效后的字段值求值。DN 无需另行记录分发进度。
+**DN 的执行契约。** 上游为每个 input 提供完整、按序的适用前缀。DeltaExecutor 按 `mutation_ts` 从早到晚执行，predicate DELETE 使用前序 UPDATE 生效后的字段值求值。DN 无需重新枚举 L0 验证连续性。
 
 ![同一行先执行 UPDATE 再执行 predicate DELETE 会被删除，逆序执行则会被错误地写入 compactTo](assets/predicate-delete-and-point-update/dn-delta-execution-order.svg)
 
-- 各 input 的 base、行时间范围与 pending records 可以不同，不要求 base 对齐。
+- 对齐的是完整覆盖的结束时间，不是 base：各 input 的 base、行时间范围和 pending records 可以不同。
 - DeltaExecutor 以 input segment 为作用域，rows、offsets 与执行状态不跨 input 复用。
-- mergeSplit 处理完 S1 后释放 executor₁，再为 S2 创建 executor₂。
-- mergeSort 为各 input 保持独立 executor，随 reader 交错执行。
+- 执行支持同一受限表达式、literal SET、NULL 与时间资格；predicate 仅 TRUE 时删除。
 
-DeltaExecutor 复用既有类型与 compaction 数据访问能力，实现同一受限表达式、literal SET、NULL 和时间资格；predicate 仅 TRUE 时删除。
+DN 写出更新后的存活行，保留各行的 `row_ts`。<mark style="background-color: #c5c5c5; color: inherit">新 base 与 cursor=E 配套发布，已消化的 predicate 不得再在新 base 上求值。</mark>例如 `DELETE@110 age=18` 原来未命中，`UPDATE@120` 才将 age 改为 18；rewrite 后若从 100 重新 replay，这条旧 DELETE 就会误删。
 
-DN 将存活行更新后的字段值写入 compactTo，保留各行原有的 `row_ts`。compactTo 只回放已物化前缀之后的 delta。
+这里沿用 [Kudu compaction](https://github.com/apache/kudu/blob/1.18.1/docs/design-docs/compaction.md) 固定输入快照、衔接后续 mutations 的原则；本设计通过 input 占用与共同 cursor 完成衔接。
 
 #### 5.3.2 DROP FIELD：block-and-drain gate
 
@@ -614,10 +594,11 @@ DN 将存活行更新后的字段值写入 compactTo，保留各行原有的 `ro
 
 **最细粒度条件（按字段）。** <mark style="background-color: #c5c5c5; color: inherit">只需等 fence 前引用被删字段的 delta：WAL、SN buffer 中的在途记录先 sync 到 L0，再与已有 L0 中的相关记录一起持久化分发到全部适用的 Sealed segments。</mark>
 
-**Phase 1 按 VChannel 等待完整前缀。** MixCoord 直接检查该 collection 的每个业务 VChannel 是否达到 `C ≥ x`，其中 `x` 取该 VChannel 自己的 DROP TimeTick。这样会一并等待 fence 前的 PK DELETE、predicate DELETE 和 point UPDATE，无需判断每条 delta 引用了哪些字段。所有 VChannel 达标即可发布新 schema，无需等待 full rewrite。
+**Phase 1 等待所有适用 targets 完整覆盖 fence。** 对每个业务 VChannel 的 DROP TimeTick `x`，先等 `M ≥ x`，再完成截至 x 的完整 dispatch，使全部适用 targets 的 segment cursor 覆盖 x。判定包含前序 L1 发布和 compactTo 继承关系，不能只抽查当前一部分 segments。这样会一并等待 fence 前的三类 delta，无需分析引用字段；全部完成即可发布新 schema，无需等待 full rewrite。
 
 ```text
-Phase 1 DDL：各 VChannel 建立 DROP fence → 各自的 C ≥ x → 新 schema 生效
+Phase 1 DDL：各 VChannel 建立 DROP fence x
+  → M ≥ x → 全部适用 targets 的 cursor 覆盖 x → 新 schema 生效
 
 S1 下次正常 compaction：读旧列 c → 按序执行历史 delta → 按新 schema 写出存活行
 ```
@@ -661,7 +642,7 @@ DN full rewrite 在新列值上回放 DELETE@100 → 命中 S1 的所有行，�
 
 1. **Block**：在相关业务 VChannels 建立 fence，阻止新的 predicate DELETE 进入。
 2. **Drain**：收齐 fence 前仍在 WAL、SN buffer、L0、在途 dispatch 和 segment deltalog 中的相关历史。<mark style="background-color: #c5c5c5; color: inherit">DROP FIELD 等到完整分发即可生效。External backfill 必须先在旧 base 上按序执行前序 UPDATE 和历史 predicate DELETE，等 full rewrite 持久化执行结果后，再创建 backfill snapshot。</mark>
-3. **保持 Block**：从 Spark prepare 到全部 backfill 结果发布，持续阻止新 predicate。待 query side 已切换到新状态或旧视图已退出服务后，再放行。未加载的 collection 后续从新状态加载。
+3. **保持 Block**：从 Spark prepare 到全部 backfill 结果发布，持续阻止新 predicate。待 QueryView 已切换到 backfill 后的数据版本，或仍使用旧列值的视图已退出服务后，再放行。未加载的 collection 后续从新状态加载。
 
 **同一 cell 的 PK-update（待决）。** 如果 backfill 将某一行的 `age` 写为 18，PK-update 将它写为 21，两者缺少约定的执行顺序，最终值可能是 18 或 21。是否将这类 PK-update 纳入上述 predicate DELETE gate？
 
@@ -682,7 +663,7 @@ DN full rewrite 在新列值上回放 DELETE@100 → 命中 S1 的所有行，�
 
 #### 5.3.4 Mix compaction 后加载 compactTo segment 并释放旧 segment
 
-新 segment 复用 §5.4 的交接流程补齐后缀：即使旧 QN 已执行到 @120，而本次 rewrite 只消化了截至 100 的完整输入，也须从自身 deltalog、适用 L0、buffer 和 catch-up 收齐 `>100`；所需操作不必仍留在内存 buffer 中。
+compactTo 通过 QueryView 加载匹配的新 base、deltalogs 与 cursor=E，再从 TransformLog catchup `>E` 的后缀。即使旧 QN 已执行到 @120，而本次 rewrite 的 E=100，新 physical segment 仍须执行 `(100,120]` 后才能满足相同查询；历史可从 WALSummary 恢复。
 
 - 初始 Records 可为空，加载后缀后会再次积累 histories／deletes。
 - 新 base 不保留已折叠的更新历史，沿用 Milvus 的历史查询边界，不新增跨 rewrite 的 UNDO／time-travel。
@@ -694,76 +675,59 @@ DN full rewrite 在新列值上回放 DELETE@100 → 命中 S1 的所有行，�
 可直接复用 [Mix compactor](../../internal/datanode/compactor/mix_compactor.go) 的读取、重写输出流程，以及 [EntityFilter](../../internal/compaction/entity_filter.go) 的 PK-delete／TTL 处理。需要增强：
 
 - 增加受限 DeltaExecutor，使 Sort、Mix、clustering 和 schema rewrite 按序执行 predicate delete 与 UPDATE。
-- 接通 range／Mix 准入互斥，保证重写期间输入稳定。
+- 复用 input 占用保持 rewrite 输入稳定；将共同 cursor E 固定在 plan，输出继承 E。当前 Mix 取输入 cursor 的最小值，需要改为对齐准入后的精确继承。[当前 Mix cursor](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/datacoord/meta/meta.go#L2671)
 - 所有物理删列路径按 execution schema 回放历史 delta，再按 DDL 生效后发布的 write schema 写出。
 - 接入 §5.3.3 的持续 gate，完成历史物化、backfill 发布及 query side 切换后才恢复 predicate 准入。
 
-### 5.4 Delegator：在线分发与加载交接
+### 5.4 QueryView／TransformLog：历史与实时 mutation 交付
 
-Delegator 将在线 mutations 送到适用 segments，并在 segment load 时组装历史输入、完成与实时链路的交接。
+QueryView 为查询固定 schema 与数据资源；TransformLog 将完整、有序的 mutations 交给本地 segments，完成 load catchup、live apply 和查询等待。
 
-#### 5.4.1 Delta 分发与 buffer 交接
+#### 5.4.1 从 WAL 到本地 segments
 
-三类 delta 的覆盖职责沿同一时间线交接。持久化数据与 Delegator buffer 分为两条逻辑线：前者按 M／C 划分各持久化表示负责的区间；后者在采用对应输入后，以相同边界划分当前取数范围。下半图另行展开三类操作的 dispatch 路径。
+RecoveryStorage 有序观察 WAL，一路更新 SN 本地 Growing，另一路将逻辑 mutations 保存在 WALSummary。QN 通过 TransformLog subscription 获取历史与 live suffix，每个 VChannel 共用一个 TransformLogBuffer，本地 Sealed segments 注册到该 buffer 后接收适用操作。
 
-![持久化数据与 Delegator buffer 的两条逻辑线，以及三类操作的 dispatch 路径](assets/predicate-delete-and-point-update/delegator-delta-sources-and-dispatch.svg "上半图区分持久化表示的覆盖职责与完成交接后的 buffer 取数视图，各线按 C／M 划分连续、互斥的区间；下半图展示 PK BF 筛选与 predicate payload 转发。")
+![WALSummary 与 live 输入衔接为 TransformLog，QN 本地按操作类型分发](assets/predicate-delete-and-point-update/queryview-transform-flow.svg "历史与实时交付共用 TransformLog；独立 L0 files 只参与 storage-side dispatch。")
 
-**持久化覆盖。** 各表示负责以下逻辑取数范围，旧 WAL／L0 文件仍按各自生命周期保留：
+**三类操作在 QN 本地分发。**
 
-- `≤C`：目标 segment 的 base＋deltalogs。
-- `(C,M]`：已提交 L0。
-- `>M`：WAL suffix。
+- PK DELETE 读取 PK，按 partition scope 和本地 segment BF 筛选候选。
+- point UPDATE 逐 PK 做同样筛选。输入 `[101,102,103]` 若仅 101、103 可能命中 S1，就向 S1 交付这两个 PK、一份 assignments bytes 和原 mutation_ts。
+- predicate DELETE 将 serialized predicate 交给 scope 内所有适用 segments，执行端解析并求值。
 
-C 证明分发持久化，不表示 predicate 已被 full rewrite 求值、物化。
+SN 本地 Growing 同样解析并执行 predicate／assignments。SN 不为向远端 Sealed 分发 delta 而持有其 BF；该筛选在 QN 本地完成。
 
-**Buffer 交接。** 本期必须实现 query side 的 M／C 两种本地交接，由 QueryTarget 携带 M／C、已提交 L0 集合与 segment manifest 引用驱动：
+**TransformLog 的消息扩展。** 两种新 mutation 必须同时进入 WALSummary 持久化与 TransformLog 历史／实时编码。外层保留时间、scope 和 PK，predicate／assignments 作为可重复交付的 typed payload；同一 UPDATE 的 PK 列表共用 assignments。Transaction 保留完整操作集合，以 CommitTxn TimeTick 为有效时间，执行完整 entry 后才推进 apply 进度。
 
-- M 交接：所需 L0 达到可转发状态后回收 streaming 前缀，同段历史仍留在 L0 buffer，消除的是重复占用，不缩短必需保留的 delta 范围。
-- C 交接：采用包含分发结果的 target 后，以其 C 作为 DeleteCP 回收已覆盖的 L0 buffer，缩短必需保留的历史范围，释放对应缓存。
+#### 5.4.2 Segment load、catchup 与查询等待
 
-两种 handoff 都通常滞后于 etcd 中 M／C 的提交：target 传播、输入加载与本地采用需要时间。因此，<mark style="background-color: #c5c5c5; color: inherit">清理依据是 query side 已完成交接的 target 状态，不能把最新 etcd 水位当作本地交接完成边界。</mark>
+加载一个 Sealed segment 时，取得同一数据版本的 **base、deltalogs 与 segment cursor**，先加载 base 并按序执行其中的 deltas，再从 TransformLog replay `>cursor` 的后缀。<mark style="background-color: #c5c5c5; color: inherit">QueryView 不 preload 独立 L0 segments，也不以 L0 files 作为历史缺口的恢复来源。</mark>
 
-- 空区间依据 QueryTarget 携带的 M／C 完成交接，不要求加载空文件。
+TransformLogBuffer 为该 physical segment 固定有限的 `catchupFrontier`，以 `drainedTo` 跟踪实际 apply。Catchup 期间新消息继续保留；历史追平后接入 live dispatch，后续操作不能越过未完成的历史。此机制复用当前 [registration 生命周期](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/querynodev2/transformlogbuffer/buffer.go)。
 
-<mark style="background-color: #c5c5c5; color: inherit">完成交接后的取数视图为 L0 buffer `(C,M]` 和 streaming buffer `>M`</mark>，`≤C` 已由目标 segment 接管。Segment 处于 LOADING 时，Delegator 从 buffer 对加载期间新到的适用 delta 做 catchup，再将该 segment 接入实时分发。
+![同一 physical segment 从持久化 cursor 开始 catchup，再接入 live apply](assets/predicate-delete-and-point-update/queryview-catchup-progress.svg "cursor 绑定加载的数据版本；catchupFrontier 固定，drainedTo 随执行推进，两者都是本次 registration 的内存状态。")
 
-**操作分发。** L0／streaming 中的三类操作进入同一个有序入口：
+**查询等待实际使用的 physical segment。** QueryMVCC 按请求的一致性要求确定 `Q_TS` 与相应 `transforming_timetick`。QN pin 本次 QueryView 的 physical segment，再通过 `WaitTransformVisible` 等待该实例的 apply 覆盖所需 transform 时间。查询完成前保持同一资源绑定，不能用另一实例的进度代替。
 
-- PK DELETE 解码外层 PK 后做 BF，转发到候选 segments。
-- 对 point UPDATE，Delegator 从 `primary_keys` 逐 PK 检查各 segment 的 BF。假设输入为 `[101, 102, 103]`，S1 的 BF 仅对 101 和 103 返回可能命中，则向 S1 转发 `[101, 103]`、一份原始 assignments bytes 和原 `mutation_ts`。候选列表为空时跳过该 segment。
-- predicate DELETE 不在 Delegator 求值，序列化 payload 转发至 scope 内全部适用 segments。
+- `catchupFrontier` 用于历史准备，`drainedTo` 用于实际执行；接入 live 后仍按请求要求等待，不以“load 已返回”代替 apply 完成。
+- 无 mutation 的区间通过有序 barrier／SyncUp 表达覆盖。查询时间可以晚于最后一条 mutation，不能用 records max ts 推断缺失。
+- 若某条 mutation apply 失败，该 physical registration 失效；依赖它的查询失败并触发恢复，不能继续返回旧值。其余 registrations 可以继续消费。
 
-Delegator 转发 serialized predicate／assignments，由 Growing／Sealed 执行端解析。转发缓存按 M／C handoff 和 load pin 回收，不随单个 segment 的执行完成而释放。
-
-在线 apply 复用 PK-delete 的失败处理。假设 `UPDATE@120` 在 S1 上重试后仍失败。若 S1 继续服务，TSafe 推进到 120 后，`guaranteeTs=120` 的查询就可能读到旧值。Delegator 先将 S1 标记为 offline，等其余可读 segments 完成本批适用的 delta 后，pipeline 才将 TSafe 推进到批次结束时间。若可读 distribution 缺少 S1 的数据，需要完整结果的查询返回不可服务。
-
-#### 5.4.2 历史回放与查询准入
-
-Sealed segment load 时，Delegator 以本地已采用的 QueryTarget 中的 `C` 为界，衔接 segment manifest、L0 buffer 和 streaming buffer，通过 load pin 和 catchup 收齐截至 `H` 的所有适用 delta。各来源可并行读取，Delegator 按 `mutation_ts` 有序交付。这个完整性保证使 sealed segment 无需持久化独立的 delta 分发水位。
-
-历史输入交接完成时，Delegator 固定 `H`，将 segment 加入 distribution。Segment 按 §5.5.1 的规则异步回放，用 `A` 跟踪本次 load 的历史执行进度。`A = H` 表示历史回放完成。`>H` 的适用 delta 由实时分发接管，在同一执行序列中接续。
-
-![Segment load 的历史输入分段与 A／H 执行进度](assets/predicate-delete-and-point-update/segment-load-ah-progress.svg "上半图展示 segment 侧的历史与实时输入；下半图展示同一段历史在 t0、t1、t2 的执行状态：H 固定，A 推进至 H 后，实时 UPDATE@160 才可执行。")
-
-查询需要可读 distribution，并分别检查两个时间条件。
-
-- **Channel** 要求 `TSafe ≥ guaranteeTs`，确认实时消费已达到请求要求的时间。
-- **Segment** 要求 `A ≥ min(Q_TS, H)`，确认该 segment 已回放完本次 MVCC 快照所需的历史 delta。
-
-例如，`TSafe=170` 已满足请求的 `guaranteeTs=130`。若 S1 的 `H=150`、`A=120`，且 `(150,170]` 内没有适用于 S1 的实时 delta，读取 `Q_TS=140` 仍要等到 `A=140`。当 `A=H=150` 时，历史回放完成。此时 S1 可读，channel TSafe 已覆盖 160，因此查询可以读取 `Q_TS=160`，无需向 S1 发送空 TimeTick 或将 `A` 推进到 160。
+**历史与 buffer 回收。** QN TransformLogBuffer 按仍持有的 QueryViews 和 pending catchup 所需的最早位置保留历史。WALSummary 还须满足后续 reload 与受保护旧视图的历史需求。<mark style="background-color: #c5c5c5; color: inherit">M 推进只证明 L0 已物化，不能据此清理 query-side buffer 或 WALSummary 历史。</mark>回收沿用 QueryView retention。
 
 #### 5.4.3 当前实现与改造
 
 可直接复用：
 
-- [loadStreamDelete](../../internal/querynodev2/delegator/delegator_data.go) 的 L0／buffer 补齐、catch-up 和 distribution 交接。
-- [delete pipeline](../../internal/querynodev2/pipeline/delete_node.go) 的 apply 完成后推进 TSafe。
+- [TransformLog subscription](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/docs/design-docs/design_docs/qviews/pure_transform_subscription.md) 的历史／live 连续交接及共享 buffer。
+- [SegmentLoadInfo](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/datacoord/query_view_segment_load_info.go) 的版本绑定 cursor，以及 [QN load](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/querynodev2/qvresource/qv_physical_segment_loader.go) 的 base／deltalogs 加载。
+- [本地 PK BF 筛选](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/querynodev2/qvresource/qv_transform_segment.go)、catchup、retention 和 [physical segment 查询等待](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/querynodev2/qnview/segment_resource_handle.go)。
 
 需要增强：
 
-- 将分发、缓存与 load 补齐扩展为三类 delta 的有序链路，保留完整前缀并跳过重复部分。
-- 接通 QueryTarget 的 M／C 与输入引用交接，用已采用的 C 驱动 DeleteCP 清理，并实现 L0 ready 后的 M handoff 回收。
-- 增加历史异步 apply 的查询等待，避免读取尚未执行完成的状态。
+- 当前 [TransformLog 业务 payload](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/pkg/streaming/util/message/messageutil/transform_log.go) 只有 PK-delete；增加 predicate DELETE／point UPDATE 的 Summary 持久化、编码和消费，不能将新 mutation 当作无 payload barrier。
+- 扩展 [QueryMVCC 消息分类](https://github.com/milvus-io/milvus/blob/02600c6aa88b2419468defee5452e1768f6ff5c7/internal/streamingnode/server/wal/interceptors/timetick/mvcc/query_mvcc.go)，使两种 mutation 都进入 Growing／Transform 执行等待。
+- SN Growing 和 QN Sealed 接通同一 mutation 语义；QueryView pin 的 physical base 与其 UpdatesRecord 保持配套。
 
 ### 5.5 Segment：执行 mutations，并让查询读取 overlay
 
@@ -802,9 +766,7 @@ Growing／Sealed segment 执行收到的 mutations，并将字段版本和删除
 
 多字段 apply 通过查询进度保持完整性：需要 @100 的查询在所有字段完成前等待，旧 Q_TS 只读取可见旧版本。后续 mutation 同样不能越过这次未完成操作。
 
-**有序回放。** Delegator 保证交付给该 Segment 的适用 delta 前缀完整，且按 `mutation_ts` 有序。Segment 按交付顺序 apply，只跳过已完整执行的重叠前缀。
-
-`A` 记录本次 load 已完成的历史回放进度。同一 `mutation_ts` 的全部适用 records 执行完毕后，`A` 才能推进到该时间戳。已完整处理的区间即使无命中也推进 `A`。
+**有序回放。** Segment 信任上游交付前缀的完整性与顺序性。初始持久化 deltas 按序执行后，TransformLog 从匹配的 segment cursor 之后接续；同一 entry 的全部操作完成，registration 才推进 `drainedTo`。BF 无命中或 predicate 未命中也完成该 entry，重复交付只跳过已完整执行的前缀。
 
 #### 5.5.2 Overlay 过滤与取值
 
@@ -820,6 +782,8 @@ result = (B - U) ∪ D
 
 例如 base `count=10`、update `count=20` 时，`count>15` 必须补入该行，反向更新则移除旧命中。<mark style="background-color: #c5c5c5; color: inherit">旧 index 的空命中、min/max 或 all-null 可以剪掉 base 分支，仍须检查 delta</mark>，不能让更新后的命中提前丢失。
 
+**SN 整段 pruning 同样需要覆盖更新。** 若旧 statistics 为 `age∈[10,20]`，UPDATE 将一行改为 100，SN 不能在 QN 执行前就排除 `WHERE age=100` 的 segment。Phase 1 对可更新字段禁用基于旧 statistics 的整段排除；不受更新影响的字段仍可沿用原 pruning。
+
 各类读取入口遵守同一 overlay 规则：
 
 - 字段比较按可见更新修正布尔结果（`result`）及其是否已知（`validity`），再交给 `AND / OR / NOT`。例如 `SET age = NULL` 生效后，`age == 18` 为 `UNKNOWN`，所以 `WHERE NOT (age == 18)` 也不会选中该行。
@@ -831,7 +795,7 @@ result = (B - U) ∪ D
 
 #### 5.5.3 Records 生命周期
 
-- 普通 schema/index Reopen 不得清空 UpdatesRecord。
+- QueryView 的 schema/index 更新若复用同一 physical base，不得清空其 UpdatesRecord；切换 physical base 时按该版本 cursor 恢复。
 - L0 sync 或分发完成不释放 history，因为 base 尚未吸收更新。
 
 两阶段 Retrieve 先按 `Q_TS` 选出 offsets，再从同一 segment 读取这些 offsets 在 `Q_TS` 可见的字段版本。请求持有 segment pin 直到取值完成。
@@ -848,9 +812,9 @@ result = (B - U) ∪ D
 
 - 增加 UpdatesRecord，保存按 Q_TS 读取的字段版本。
 - 新增 `ApplyDeltaNode`，支持消费 predicate plan 的 bitmap，或在节点内按 PK 定位行并执行 mutation。
-- 接入过滤与取值的 overlay 读取，返回 Q_TS 下可见的更新和删除。
+- 接入过滤与取值的 overlay 读取，返回 Q_TS 下可见的更新和删除；SN segment pruning 对可更新字段避免使用旧 statistics 排除整段。
 - 提供 §5.2.6 的累计删除统计，保证计数与对应 apply 进度一致，并区分不同 loaded instances。
 
 ---
 
-当前实现说明基于设计 worktree 的 `06c5fec04ae700d2e4c1693549e05fe8216da70e`，源码链接指向该 worktree。
+本轮 QueryView、L0 cursor 与 Mix 行为核对基于 master `02600c6a`；相关源码链接固定到该版本。其余既有模块链接保留原设计 worktree 的实现参考。文中“需要增强”均为本设计要求，尚未实现。
