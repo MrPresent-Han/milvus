@@ -96,6 +96,36 @@ typedef void* CLoadCancellationSource;
 CLoadCancellationSource
 NewLoadCancellationSource();
 
+// The caller pins the segment and supplies a protected read boundary.
+typedef struct CUpdateStoreStats {
+    uint64_t fields;
+    uint64_t versions;
+    uint64_t distinct_field_offsets;
+    uint64_t entry_and_membership_bytes;
+    uint64_t reverse_scans;
+    uint64_t reverse_selected;
+    uint64_t overlay_batches;
+    uint64_t dictionary_probes;
+} CUpdateStoreStats;
+
+CStatus
+GetUpdateStoreStats(CSegmentInterface segment, CUpdateStoreStats* stats);
+
+CStatus
+GCUpdates(CSegmentInterface segment, uint64_t safe_ts);
+
+// Apply one routed mutation body to a pinned segment. The ID blob is schema.IDs;
+// each field ID has one serialized schema.UpdateLiteral. Input buffers are borrowed.
+CStatus
+ApplySegmentUpdates(CSegmentInterface segment,
+                    uint64_t timestamp,
+                    uint32_t ordinal,
+                    CProto ids,
+                    const int64_t* field_ids,
+                    const CProto* literals,
+                    int64_t field_count,
+                    CLoadCancellationSource cancellation);
+
 /**
  * @brief Request cancellation through the source
  * @param source: The cancellation source handle
@@ -310,7 +340,8 @@ AsyncRetrieveByOffsets(CTraceContext c_trace,
                        CSegmentInterface c_segment,
                        CRetrievePlan c_plan,
                        int64_t* offsets,
-                       int64_t len);
+                       int64_t len,
+                       uint64_t timestamp);
 
 // Read PK and timestamp for selected offsets, before reduction.
 // Returns Future<CRetrieveArrowResult>: $seg_offset, $id, $timestamp
