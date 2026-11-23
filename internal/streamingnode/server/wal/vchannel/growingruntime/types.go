@@ -39,6 +39,7 @@ type Runtime struct {
 	mu         sync.RWMutex
 	mvccCond   *sync.Cond
 	closed     bool
+	applyErr   error
 	collection *segcore.CCollection
 	// Each replay owns its ordered write schema, even when partition refresh
 	// borrows a collection whose serving dispatcher has already advanced.
@@ -49,6 +50,9 @@ type Runtime struct {
 	truncateDataVersion      qviews.DataVersion
 	hasTruncateDataVersion   bool
 	closeOnce                sync.Once
+	gcWorkers                sync.WaitGroup
+	viewFloors               qviews.ReadTimestamps
+	reservedGrowing          uint64 // Maximum exclusion of any store in this runtime generation.
 	queryRefs                int
 	appliedGrowingTimeTick   atomic.Uint64
 	appliedTransformTimeTick atomic.Uint64
@@ -176,6 +180,7 @@ func (r *Runtime) Close() {
 		if collection != nil {
 			collection.Release()
 		}
+		r.gcWorkers.Wait()
 	})
 }
 
