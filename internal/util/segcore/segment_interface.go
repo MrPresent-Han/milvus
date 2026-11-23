@@ -8,7 +8,11 @@ package segcore
 */
 import "C"
 
-import "context"
+import (
+	"context"
+
+	"github.com/milvus-io/milvus/pkg/v3/proto/messagespb"
+)
 
 // CSegment is the interface of a segcore segment.
 // TODO: We should separate the interface of CGrowingSegment and CSealedSegment,
@@ -77,8 +81,15 @@ type basicSegmentMethodSet interface {
 	// Delete deletes data from the segment.
 	Delete(ctx context.Context, request *DeleteRequest) (*DeleteResult, error)
 
+	// ApplyUpdates applies one committed assignment body to the attached physical store.
+	ApplyUpdates(ctx context.Context, timestamp uint64, ordinal uint32, update *messagespb.UpdateMessageBody) error
+
 	// Load invokes segment managed loading.
 	Load(ctx context.Context) error
+
+	// GCUpdates retains the visible update at safeTS and all later versions.
+	// Callers must protect earlier reads and finish replay through safeTS first.
+	GCUpdates(ctx context.Context, safeTS uint64) error
 
 	// Release releases the segment.
 	Release()

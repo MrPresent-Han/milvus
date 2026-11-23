@@ -10,6 +10,7 @@
 // or implied. See the License for the specific language governing permissions and limitations under the License
 
 #include "segcore/segment_c.h"
+#include "segcore/UpdatesRecord.h"
 
 #include <arrow/api.h>
 #include <arrow/c/abi.h>
@@ -1459,7 +1460,8 @@ AsyncRetrieveByOffsetsImpl(CTraceContext c_trace,
                            CRetrievePlan c_plan,
                            int64_t* offsets,
                            int64_t len,
-                           bool identity_take_allowed) {
+                           bool identity_take_allowed,
+                           uint64_t timestamp) {
     auto segment = static_cast<milvus::segcore::SegmentInterface*>(c_segment);
     auto plan = static_cast<const milvus::query::RetrievePlan*>(c_plan);
 
@@ -1468,8 +1470,13 @@ AsyncRetrieveByOffsetsImpl(CTraceContext c_trace,
     auto future = milvus::futures::Future<Result>::async(
         milvus::futures::getSearchCPUExecutor(),
         milvus::futures::ExecutePriority::HIGH,
-        [c_trace, segment, plan, offsets, len, identity_take_allowed](
-            folly::CancellationToken cancel_token) {
+        [c_trace,
+         segment,
+         plan,
+         offsets,
+         len,
+         identity_take_allowed,
+         timestamp](folly::CancellationToken cancel_token) {
             auto trace_ctx = milvus::tracer::TraceContext{
                 c_trace.traceID, c_trace.spanID, c_trace.traceFlags};
             milvus::tracer::AutoSpan span(
@@ -1489,16 +1496,19 @@ AsyncRetrieveByOffsetsImpl(CTraceContext c_trace,
                 plan->schema_, internal_segment, plan->access_entries_);
 
             auto retrieve_result =
-                identities_only
-                    ? internal_segment->RetrieveIdentitiesByOffsets(
-                          &trace_ctx,
-                          plan,
-                          offsets,
-                          len,
-                          identity_take_allowed,
-                          cancel_token)
-                    : segment->Retrieve(
-                          &trace_ctx, plan, offsets, len, cancel_token);
+                identities_only ? internal_segment->RetrieveIdentitiesByOffsets(
+                                      &trace_ctx,
+                                      plan,
+                                      offsets,
+                                      len,
+                                      identity_take_allowed,
+                                      cancel_token)
+                                : segment->Retrieve(&trace_ctx,
+                                                    plan,
+                                                    offsets,
+                                                    len,
+                                                    cancel_token,
+                                                    timestamp);
 
             if constexpr (identities_only) {
                 return ExportQueryScanResult(
@@ -1517,9 +1527,10 @@ AsyncRetrieveByOffsets(CTraceContext trace,
                        CSegmentInterface segment,
                        CRetrievePlan plan,
                        int64_t* offsets,
-                       int64_t len) {
+                       int64_t len,
+                       uint64_t timestamp) {
     return AsyncRetrieveByOffsetsImpl<false>(
-        trace, segment, plan, offsets, len, false);
+        trace, segment, plan, offsets, len, false, timestamp);
 }
 
 CFuture*
@@ -1530,7 +1541,7 @@ AsyncRetrieveIdentitiesByOffsets(CTraceContext trace,
                                  int64_t len,
                                  bool take_for_output_allowed) {
     return AsyncRetrieveByOffsetsImpl<true>(
-        trace, segment, plan, offsets, len, take_for_output_allowed);
+        trace, segment, plan, offsets, len, take_for_output_allowed, 0);
 }
 
 int64_t
@@ -1649,6 +1660,84 @@ PreInsert(CSegmentInterface c_segment, int64_t size, int64_t* offset) {
     try {
         auto segment = static_cast<milvus::segcore::SegmentGrowing*>(c_segment);
         *offset = segment->PreInsert(size);
+        return milvus::SuccessCStatus();
+    }
+    CGO_CATCH_AND_RETURN_CSTATUS
+}
+
+CStatus
+GetUpdateStoreStats(CSegmentInterface segment, CUpdateStoreStats* stats) {
+    try {
+        auto* native = dynamic_cast<milvus::segcore::SegmentInternalInterface*>(
+            static_cast<milvus::segcore::SegmentInterface*>(segment));
+        AssertInfo(native && stats, "missing segment update statistics target");
+        const auto& record = native->GetUpdatesRecord();
+        const auto store = record.StoreStatistics();
+        const auto read = record.Diagnostics();
+        *stats = {store.fields,
+                  store.versions,
+                  store.distinct_field_offsets,
+                  store.entry_and_membership_bytes,
+                  read.reverse_scans,
+                  read.reverse_selected,
+                  read.overlay_batches,
+                  read.dictionary_probes};
+        return milvus::SuccessCStatus();
+    }
+    CGO_CATCH_AND_RETURN_CSTATUS
+}
+
+CStatus
+GCUpdates(CSegmentInterface segment, uint64_t safe_ts) {
+    SCOPE_CGO_CALL_METRIC();
+    try {
+        AssertInfo(segment != nullptr, "GC requires a physical segment");
+        static_cast<milvus::segcore::SegmentInterface*>(segment)->GCUpdates(
+            safe_ts);
+        return milvus::SuccessCStatus();
+    }
+    CGO_CATCH_AND_RETURN_CSTATUS
+}
+
+CStatus
+ApplySegmentUpdates(CSegmentInterface segment,
+                    uint64_t timestamp,
+                    uint32_t ordinal,
+                    CProto ids_blob,
+                    const int64_t* field_ids,
+                    const CProto* literals,
+                    int64_t count,
+                    CLoadCancellationSource cancellation) {
+    SCOPE_CGO_CALL_METRIC();
+    try {
+        auto* native = dynamic_cast<milvus::segcore::SegmentInternalInterface*>(
+            static_cast<milvus::segcore::SegmentInterface*>(segment));
+        if (!native || count <= 0 || !field_ids || !literals) {
+            ThrowInfo(milvus::DataFormatBroken,
+                      "Invalid segment update arguments");
+        }
+        auto parse = [](CProto input, auto& message) {
+            if (!input.proto_blob || input.proto_size <= 0 ||
+                input.proto_size > std::numeric_limits<int>::max() ||
+                !message.ParseFromArray(input.proto_blob,
+                                        static_cast<int>(input.proto_size))) {
+                ThrowInfo(milvus::DataFormatBroken,
+                          "Invalid segment update protobuf");
+            }
+        };
+        milvus::proto::schema::IDs ids;
+        parse(ids_blob, ids);
+        std::vector<milvus::segcore::UpdateAssignment> assignments;
+        for (int64_t i = 0; i < count; ++i) {
+            auto& a =
+                assignments.emplace_back(milvus::segcore::UpdateAssignment{
+                    milvus::FieldId(field_ids[i]), {}});
+            parse(literals[i], a.literal);
+        }
+        auto* source = static_cast<folly::CancellationSource*>(cancellation);
+        milvus::OpContext ctx(source ? source->getToken()
+                                     : folly::CancellationToken{});
+        native->ApplyUpdates(ids, timestamp, ordinal, assignments, &ctx);
         return milvus::SuccessCStatus();
     }
     CGO_CATCH_AND_RETURN_CSTATUS

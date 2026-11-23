@@ -166,6 +166,9 @@ PhyUnaryRangeFilterExpr::ExecRangeVisitorImplArrayForIndex<proto::plan::Array>(
 
 void
 PhyUnaryRangeFilterExpr::Eval(EvalCtx& context, VectorPtr& result) {
+    update_candidates_ = context.get_bitmap_input();
+    auto reset_mask = folly::makeGuard([&] { update_candidates_ = {}; });
+
     auto input = context.get_offset_input();
     // Lazy offset readers must bind their mode before selecting an index.
     // A prefetch worker may read this plain bool, so join it before writing.
@@ -829,7 +832,8 @@ PhyUnaryRangeFilterExpr::ExecArrayEqualForIndex(EvalCtx& context,
             }
             return res;
         },
-        IndexValidityMode::Default);
+        IndexValidityMode::Default,
+        [&](const Array& row) { return row.is_same_array(val) ^ reverse; });
     if (reverse) {
         auto column = std::dynamic_pointer_cast<ColumnVector>(batch_res);
         AssertInfo(column != nullptr && column->IsBitmap(),
@@ -2698,11 +2702,14 @@ PhyUnaryRangeFilterExpr::ExecFMPatternCandidates(EvalCtx& context) {
             }
         };
 
-        ProcessDataByOffsets<std::string_view>(execute_sub_batch,
-                                               std::nullptr_t{},
-                                               &offsets,
-                                               compact_view,
-                                               compact_valid_view);
+        // offsets already reflects the outer candidate mask. The compact
+        // Take has its own position domain.
+        ProcessDataByOffsetsWithMask<std::string_view>(execute_sub_batch,
+                                                       std::nullptr_t{},
+                                                       &offsets,
+                                                       compact_view,
+                                                       compact_valid_view,
+                                                       {});
 
         for (size_t j = 0; j < offsets.size(); ++j) {
             if (!compact[j]) {
