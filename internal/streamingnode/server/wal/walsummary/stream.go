@@ -2,6 +2,7 @@ package walsummary
 
 import (
 	"context"
+	"errors"
 	"math"
 	"sync"
 
@@ -44,6 +45,10 @@ func (s *Stream) Subscribe(ctx context.Context, opt wal.TransformLogSubscription
 		defer stop()
 		defer cancel()
 		if err := s.read(subctx, opt); err != nil && subctx.Err() == nil {
+			if errors.Is(err, wal.ErrTransformLogStartPointTruncated) {
+				opt.Handler.Handle(wal.TransformLogStreamEvent{SubscriptionID: opt.SubscriptionID, VChannel: opt.VChannel, SubscriptionError: err})
+				return
+			}
 			// End the physical stream, allowing its owner to resume all subscriptions.
 			// Explicit subscription cancellation must not fail sibling subscriptions.
 			s.cancel(err)
@@ -71,15 +76,16 @@ func (s *Stream) read(ctx context.Context, opt wal.TransformLogSubscriptionOptio
 		if err != nil {
 			return err
 		}
+		if batch.FastForwardTimeTick > after && after < through {
+			return wal.ErrTransformLogStartPointTruncated
+		}
 		for _, entry := range batch.Entries {
 			if err := ctx.Err(); err != nil {
 				return err
 			}
 			opt.Handler.Handle(wal.TransformLogStreamEvent{SubscriptionID: opt.SubscriptionID, VChannel: opt.VChannel, Entry: entry})
 		}
-		// Accept Summary's retained lower bound, including an entirely retired
-		// bounded interval. Never advance beyond the requested end.
-		after = max(batch.CoveredThrough, min(batch.FastForwardTimeTick, through))
+		after = batch.CoveredThrough
 		if after >= through || after >= batch.ReadableThrough {
 			if opt.EndTimeTick == 0 || after >= through {
 				opt.Handler.Handle(wal.TransformLogStreamEvent{SubscriptionID: opt.SubscriptionID, VChannel: opt.VChannel, SyncUp: &wal.TransformLogSyncUp{TimeTick: after}})

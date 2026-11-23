@@ -108,7 +108,10 @@ func (sm *snQueryViewStateMachine) UpdateView(view *viewpb.QueryViewOfShard) {
 	}
 	if view.GetMeta() != nil {
 		priority := sm.meta.GetControl().GetPreparationPriority()
+		floor := sm.meta.ReadAdmissionFloor
 		sm.meta = proto.Clone(view.GetMeta()).(*viewpb.QueryViewMeta)
+		// The first Prepare or recovered Up fixed the retained physical history.
+		sm.meta.ReadAdmissionFloor = floor
 		// Priority belongs to the identity captured at first admission/recovery.
 		// A duplicate command (including an older sender omitting Control) may
 		// strengthen lifecycle control, but cannot rescore this view.
@@ -176,6 +179,18 @@ func (sm *snQueryViewStateMachine) OnUnrecoverable() {
 		// No pendingReport: Coord is not notified. The query path will
 		// detect the unavailable view and trigger replacement.
 		// No pendingPersist: persisted Up retained for retry on restart.
+	}
+}
+
+// OnRuntimeFailed retires a prepared physical runtime. Before publication
+// Coord must hear the failure. A published Up retains its restart record.
+func (sm *snQueryViewStateMachine) OnRuntimeFailed() {
+	switch sm.state {
+	case qviews.QueryViewStatePreparing, qviews.QueryViewStateReady:
+		sm.state = qviews.QueryViewStateUnrecoverable
+		sm.pendingReport = sm.buildReport()
+	case qviews.QueryViewStateUp, qviews.QueryViewStateUpRecovering:
+		sm.state = qviews.QueryViewStateUnrecoverable
 	}
 }
 

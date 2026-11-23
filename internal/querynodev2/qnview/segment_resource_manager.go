@@ -63,13 +63,18 @@ type viewResources struct {
 }
 
 type segmentBinding struct {
-	view        *viewResources
-	resource    *segmentResource
-	partitionID int64
-	manifest    int64
+	// A late binding needs fresh source identity even when another pristine read is cached.
+	verifySource bool
+	// Incompatible reservations retain their immutable source witness even if
+	// the physical instance fails and is retired during metadata acquisition.
+	originalSources []*querypb.SegmentLoadInfo
+	view            *viewResources
+	resource        *segmentResource
+	partitionID     int64
+	manifest        int64
 	// Zero-manifest requirements validate fresh metadata before reusing a read.
 	snapshot     *SegmentLoadInfoSnapshot
-	prepared     *preparedSegmentRead
+	prepared     *preparedSegmentRead // pinned before catch-up; published after its registration succeeds
 	reported     bool
 	retryAfter   time.Time
 	retryBackoff *backoff.ExponentialBackOff
@@ -85,16 +90,22 @@ type preparedSegmentRead struct {
 }
 
 type segmentBase struct {
-	ctx            context.Context
-	cancel         context.CancelFunc
-	anchor         *preparedSegmentRead
-	operationRefs  int // Query handles and metrics pins that prevent base pruning.
-	segment        TransformSegment
-	snapshot       SegmentLoadInfoSnapshot
-	registration   TransformRegistration
-	caughtUp       bool
-	catchupRunning bool
-	catchupErr     error
+	// Frozen source for each revision served by this physical update record.
+	// A present nil marks a revision served by conflicting descriptors.
+	manifestSources map[int64]*querypb.SegmentLoadInfo
+	retention       qviews.UpdateRetention
+	registrar       TransformSegmentRegistrar
+	coverage        []segments.UpdateField
+	ctx             context.Context
+	cancel          context.CancelFunc
+	anchor          *preparedSegmentRead
+	operationRefs   int // Query handles and metrics pins that prevent base pruning.
+	segment         TransformSegment
+	snapshot        SegmentLoadInfoSnapshot
+	registration    TransformRegistration
+	caughtUp        bool
+	catchupRunning  bool
+	catchupErr      error
 }
 
 // A resource remains in the registry through Closing. Bindings arriving during
@@ -117,6 +128,7 @@ type segmentResource struct {
 	dirty              bool
 	closing            bool
 	done               chan struct{}
+	preparing          bool // An out-of-lock prepare has selected a physical base.
 	cursor             int
 	// Query handles, metrics sampling and catch-up pin this incarnation until
 	// completion. Only bindings determine whether it can admit new consumers.
@@ -157,6 +169,22 @@ func (m *SegmentResourceManager) Acquire(req AcquireSegments) {
 			b := &segmentBinding{view: v, resource: r, partitionID: partition.GetPartitionId()}
 			if i < len(partition.GetSegmentManifestVersions()) {
 				b.manifest = partition.GetSegmentManifestVersions()[i]
+			}
+			for _, base := range r.bases {
+				if base.retention.Reserved != 0 {
+					b.verifySource = true
+				}
+				if base.retention.Reserved <= b.floor() {
+					continue
+				}
+				// The initial base exists even if preparing its first read failed.
+				// A legacy binding carries no independent source revision.
+				if b.manifest == 0 || b.manifest == snapshotManifestVersion(base.snapshot) {
+					b.originalSources = append(b.originalSources, base.snapshot.LoadInfo)
+				}
+				if source, served := base.manifestSources[b.manifest]; served {
+					b.originalSources = append(b.originalSources, source)
+				}
 			}
 			v.bindings[id] = b
 			r.bindings = append(r.bindings, b)
@@ -348,7 +376,7 @@ func (r *segmentResource) reconcile(schedulerCtx context.Context) error {
 			r.dirty = true
 			b = nil
 		}
-		if b != nil && (r.snapshot == nil || snapshotManifestVersion(*r.snapshot) < b.manifest || (b.manifest == 0 && b.snapshot == nil)) {
+		if b != nil && (r.snapshot == nil || snapshotManifestVersion(*r.snapshot) < b.manifest || ((b.manifest == 0 || b.verifySource) && b.snapshot == nil)) {
 			m.mu.Unlock()
 			ctx, cancel := mergeTaskContext(schedulerCtx, r.ctx)
 			snapshot, err := m.metadata.GetQueryViewSegmentLoadInfo(ctx, r.collectionID, r.id)
@@ -363,10 +391,9 @@ func (r *segmentResource) reconcile(schedulerCtx context.Context) error {
 			if err == nil {
 				snapshot.LoadInfo = proto.Clone(snapshot.LoadInfo).(*querypb.SegmentLoadInfo)
 				r.snapshot = &snapshot
-				if b.manifest == 0 {
-					b.snapshot = r.snapshot
-				}
+				b.snapshot = r.snapshot
 				if snapshotManifestVersion(snapshot) < b.manifest {
+					b.snapshot = nil
 					err = merr.WrapErrServiceNotReadyMsg("segment %d manifest is behind required version %d", r.id, b.manifest)
 				}
 			}
@@ -397,11 +424,12 @@ func (r *segmentResource) reconcile(schedulerCtx context.Context) error {
 			return nil
 		}
 		snapshot := *r.snapshot
-		if b.manifest == 0 {
+		if b.snapshot != nil && (b.manifest == 0 || snapshotManifestVersion(*b.snapshot) >= b.manifest) {
 			snapshot = *b.snapshot
 		}
 		collection := b.view.collection
 		b.view.operationRefs++
+		r.preparing = true
 		m.mu.Unlock()
 		r.retainBaseReads(anchors)
 		for _, read := range obsolete {
@@ -419,15 +447,14 @@ func (r *segmentResource) reconcile(schedulerCtx context.Context) error {
 		}
 		m.mu.Lock()
 		b.view.operationRefs--
+		r.preparing = false
 		if err != nil {
 			// A missing V2 artifact may have appeared since this attempt.
 			b.snapshot = nil
 			b.backoffLocked()
 		} else {
-			if b.manifest == 0 {
-				result.snapshot = snapshot.LoadInfo
-			}
-			b.resetRetryLocked()
+			result.snapshot = snapshot.LoadInfo
+			b.bindReadLocked(result)
 			r.reads = append(r.reads, result)
 		}
 		prepared = true
@@ -452,16 +479,15 @@ func (r *segmentResource) nextBindingLocked() (*segmentBinding, time.Time) {
 			go m.failView(b.view, b.prepared.base.catchupErr)
 			continue
 		}
-		if b.prepared == nil {
+		if b.prepared == nil && !b.conflictsWithReservedSource() {
 			for _, read := range r.reads {
-				if readMatchesBinding(read, b) && read.base.caughtUp && read.base.catchupErr == nil {
-					b.prepared = read
-					b.resetRetryLocked()
+				if read.base.catchupErr == nil && readMatchesBinding(read, b) {
+					b.bindReadLocked(read)
 					break
 				}
 			}
 		}
-		if b.prepared != nil && !b.reported {
+		if b.prepared != nil && b.prepared.base.caughtUp && !b.reported {
 			b.reported = true
 			cb, partition, id := b.view.req.OnReady, b.partitionID, r.id
 			if cb != nil {
@@ -476,28 +502,18 @@ func (r *segmentResource) nextBindingLocked() (*segmentBinding, time.Time) {
 		if b.view.collection == nil || b.view.buffer == nil || b.view.failed || b.prepared != nil {
 			continue
 		}
-		waiting := false
-		for _, read := range r.reads {
-			if readMatchesBinding(read, b) {
-				waiting = true
-				if read.base.catchupErr != nil {
-					go m.failView(b.view, read.base.catchupErr)
-				}
-			}
-		}
-		if waiting {
-			continue
-		}
 		if time.Now().Before(b.retryAfter) {
 			if retryAt.IsZero() || b.retryAfter.Before(retryAt) {
 				retryAt = b.retryAfter
 			}
 			continue
 		}
-		// External manifests may change the row domain. Never replace a required
-		// historical external base with the current one or retry that mismatch forever.
-		if r.snapshot != nil && b.manifest != 0 && typeutil.IsExternalCollection(b.view.collection.Schema()) && snapshotManifestVersion(*r.snapshot) > b.manifest {
-			go m.failView(b.view, merr.WrapErrServiceNotReadyMsg("required external segment %d manifest %d is unavailable in current metadata", r.id, b.manifest))
+		// After native reclamation, a late binding must prove that a fresh
+		// load reconstructs the original requested source. V2 has no
+		// manifest revision, so compare its complete immutable load info.
+		externalMismatch := b.manifest != 0 && r.snapshot != nil && snapshotManifestVersion(*r.snapshot) > b.manifest && typeutil.IsExternalCollection(b.view.collection.Schema())
+		if externalMismatch || b.conflictsWithReservedSource() {
+			go m.failView(b.view, merr.WrapErrServiceNotReadyMsg("required segment %d manifest %d is unavailable in current metadata", r.id, b.manifest))
 			continue
 		}
 		if selected < 0 || b.view.req.Meta.GetControl().GetPreparationPriority() > r.bindings[selected].view.req.Meta.GetControl().GetPreparationPriority() {
@@ -519,12 +535,57 @@ func (r *segmentResource) nextBindingLocked() (*segmentBinding, time.Time) {
 	return r.bindings[selected], retryAt
 }
 
-func readMatchesBinding(read *preparedSegmentRead, b *segmentBinding) bool {
-	if b.manifest == 0 && (b.snapshot == nil || !proto.Equal(read.snapshot, b.snapshot.LoadInfo)) {
+// Record the source on the physical base before publishing its read. The
+// additive read fork can retire while this base still owns a GC reservation.
+func (b *segmentBinding) bindReadLocked(read *preparedSegmentRead) {
+	base := read.base
+	if base.manifestSources == nil {
+		base.manifestSources = make(map[int64]*querypb.SegmentLoadInfo)
+	}
+	for _, revision := range []int64{read.manifest, b.manifest} {
+		source, served := base.manifestSources[revision]
+		if !served {
+			base.manifestSources[revision] = read.snapshot
+		} else if source != nil && source != read.snapshot && !proto.Equal(source, read.snapshot) {
+			// An older request can be served by a newer additive read. Fail
+			// closed if its revision alone cannot identify an original source.
+			base.manifestSources[revision] = nil
+		}
+	}
+	b.prepared = read
+	b.originalSources = nil
+	b.resetRetryLocked()
+}
+
+func (b *segmentBinding) conflictsWithReservedSource() bool {
+	if b.snapshot == nil || !b.verifySource {
 		return false
 	}
-	return read.schema == b.view.req.Meta.GetSchemaVersion() && read.load == b.view.req.Meta.GetLoadInfoVersion() &&
-		read.manifest >= b.manifest && (!typeutil.IsExternalCollection(b.view.collection.Schema()) || b.manifest == 0 || read.manifest == b.manifest)
+	if b.manifest != 0 && snapshotManifestVersion(*b.snapshot) != b.manifest {
+		return true
+	}
+	// A different committed V3 revision is independently addressable.
+	return slices.ContainsFunc(b.originalSources, func(original *querypb.SegmentLoadInfo) bool {
+		return !proto.Equal(original, b.snapshot.LoadInfo)
+	})
+}
+
+func (b *segmentBinding) floor() uint64 {
+	return b.view.req.Meta.GetReadAdmissionFloor().GetTransformingTimetick()
+}
+
+func readMatchesBinding(read *preparedSegmentRead, b *segmentBinding) bool {
+	if read.base.retention.Reserved > b.floor() || read.base.registrar != b.view.buffer.Registrar() ||
+		read.schema != b.view.req.Meta.GetSchemaVersion() || read.load != b.view.req.Meta.GetLoadInfoVersion() || read.manifest < b.manifest {
+		return false
+	}
+	if (b.manifest == 0 || b.verifySource) && (b.snapshot == nil || !proto.Equal(read.snapshot, b.snapshot.LoadInfo)) {
+		return false
+	}
+	if b.verifySource && !proto.Equal(read.base.snapshot.LoadInfo, b.snapshot.LoadInfo) {
+		return false
+	}
+	return b.manifest == 0 || read.manifest == b.manifest || (!b.verifySource && !typeutil.IsExternalCollection(b.view.collection.Schema()))
 }
 
 func (r *segmentResource) validateSnapshot(snapshot SegmentLoadInfoSnapshot) error {
@@ -567,10 +628,20 @@ func (r *segmentResource) prepare(ctx context.Context, b *segmentBinding, collec
 	var reuse segments.ReadState
 	// Normal sealed same-ID additive manifests preserve the row domain. External
 	// snapshots may replace it, so they require the same manifest revision to share.
+	coverage := collection.Collection().UpdateCoverage()
+	registrar := b.view.buffer.Registrar()
 	m.mu.Lock()
 	for _, candidate := range r.bases {
-		sameManifest := info.GetManifestPath() != "" && packed.SameManifestPath(candidate.snapshot.LoadInfo.GetManifestPath(), info.GetManifestPath())
-		if candidate.segment.TransformStartAfterTimeTick() <= info.GetTransformStartAfterTimetick() && (sameManifest || (!typeutil.IsExternalCollection(collection.Schema()) && candidate.snapshot.LoadInfo.GetNumOfRows() == info.GetNumOfRows())) {
+		if candidate.retention.Reserved > b.floor() || candidate.registrar != registrar || candidate.catchupErr != nil || !slices.Equal(candidate.coverage, coverage) {
+			continue
+		}
+		// Legacy additive reads may share the row domain, but a compacted
+		// record can only be attached to the exact source it compacted.
+		if (b.verifySource || candidate.retention.Reserved > 0) && !proto.Equal(candidate.snapshot.LoadInfo, snapshot.LoadInfo) {
+			continue
+		}
+		if candidate.segment.TransformStartAfterTimeTick() <= info.GetTransformStartAfterTimetick() &&
+			compatibleRowSource(candidate.snapshot.LoadInfo, snapshot.LoadInfo, typeutil.IsExternalCollection(collection.Schema())) {
 			base = candidate
 			break
 		}
@@ -590,7 +661,7 @@ func (r *segmentResource) prepare(ctx context.Context, b *segmentBinding, collec
 		}
 		segment = &transformStartSegment{TransformSegment: segment, startAfter: info.GetTransformStartAfterTimetick()}
 		baseCtx, cancel := context.WithCancel(r.ctx) //nolint:gosec // Ownership transfers to the base; resource closure or base retirement cancels it.
-		base = &segmentBase{segment: segment, snapshot: snapshot, ctx: baseCtx, cancel: cancel}
+		base = &segmentBase{registrar: registrar, coverage: coverage, segment: segment, snapshot: snapshot, ctx: baseCtx, cancel: cancel}
 		m.mu.Lock()
 		r.bases = append(r.bases, base)
 		r.operations.Add(1)
@@ -607,9 +678,26 @@ func (r *segmentResource) prepare(ctx context.Context, b *segmentBinding, collec
 	return &preparedSegmentRead{schema: b.view.req.Meta.GetSchemaVersion(), load: b.view.req.Meta.GetLoadInfoVersion(), manifest: snapshotManifestVersion(snapshot), base: base, read: read}, nil
 }
 
+// Additive revisions of a normal sealed manifest preserve its original rows.
+// A different manifest base or a legacy V2 descriptor needs an independent load.
+func compatibleRowSource(base, next *querypb.SegmentLoadInfo, external bool) bool {
+	if base.GetNumOfRows() != next.GetNumOfRows() || base.GetPartitionID() != next.GetPartitionID() || base.GetInsertChannel() != next.GetInsertChannel() {
+		return false
+	}
+	if base.GetManifestPath() == "" || next.GetManifestPath() == "" {
+		return proto.Equal(base, next)
+	}
+	if packed.SameManifestPath(base.GetManifestPath(), next.GetManifestPath()) {
+		return true
+	}
+	oldRoot, oldRev, oldErr := packed.UnmarshalManifestPath(base.GetManifestPath())
+	newRoot, newRev, newErr := packed.UnmarshalManifestPath(next.GetManifestPath())
+	return !external && oldErr == nil && newErr == nil && oldRoot == newRoot && oldRev < newRev
+}
+
 func (r *segmentResource) catchup(base *segmentBase) {
 	defer r.operations.Done()
-	reg, err := r.manager.buffer.RegisterSegment(base.ctx, base.segment)
+	reg, err := base.registrar.RegisterSegment(base.ctx, base.segment)
 	if err == nil {
 		err = reg.WaitCatchup(base.ctx)
 	}
@@ -837,7 +925,7 @@ func (r *segmentResource) pruneReadsLocked() []segments.ReadState {
 		latest[read.base] = read
 	}
 	for base, read := range latest {
-		if bound[base] {
+		if bound[base] || base.catchupErr != nil {
 			continue
 		}
 		for _, b := range r.bindings {
@@ -847,9 +935,9 @@ func (r *segmentResource) pruneReadsLocked() []segments.ReadState {
 			}
 		}
 	}
-	// A result awaiting catch-up is still the outcome of a live demand.
+	// Only an unfinished catch-up can still satisfy another pending binding.
 	for _, read := range r.reads {
-		if read.base.caughtUp {
+		if read.base.caughtUp || read.base.catchupErr != nil {
 			continue
 		}
 		for _, b := range r.bindings {
@@ -914,17 +1002,13 @@ func (r *segmentResource) pruneBasesLocked() []*segmentBase {
 	for _, read := range r.reads {
 		used[read.base] = true
 	}
+	pending := slices.ContainsFunc(r.bindings, func(b *segmentBinding) bool {
+		return b.prepared == nil && !b.view.failed
+	})
 	var retired []*segmentBase
 	kept := r.bases[:0]
 	for _, base := range r.bases {
-		pending := false
-		for _, b := range r.bindings {
-			if b.prepared == nil && !b.view.failed {
-				pending = true
-				break
-			}
-		}
-		if used[base] || base.operationRefs > 0 || base.catchupRunning || pending {
+		if used[base] || base.operationRefs > 0 || base.catchupRunning || (pending && base.catchupErr == nil) {
 			kept = append(kept, base)
 		} else {
 			retired = append(retired, base)
@@ -958,7 +1042,7 @@ func (r *segmentResource) pendingPriorityLocked() int32 {
 		}
 		waiting := false
 		for _, read := range r.reads {
-			if readMatchesBinding(read, b) {
+			if read.base.catchupErr == nil && readMatchesBinding(read, b) {
 				waiting = true
 				break
 			}

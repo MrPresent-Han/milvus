@@ -2,6 +2,7 @@ package queryresource
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -51,9 +52,11 @@ func (r *readSchemas) Prepare(_ context.Context, view walview.VChannelWALView) e
 	r.capture = view.CaptureQueryView
 	return nil
 }
-func (*readSchemas) ApplyLiveEvent(context.Context, walview.VChannelResourceEvent) {}
-func (*readSchemas) Advance(qviews.DataVersion)                                    {}
-func (*readSchemas) Close()                                                        {} // View guards own the pool references.
+func (*readSchemas) ApplyLiveEvent(context.Context, walview.VChannelResourceEvent) error {
+	return nil
+}
+func (*readSchemas) Advance(qviews.DataVersion) {}
+func (*readSchemas) Close()                     {} // View guards own the pool references.
 func (r *readSchemas) BindView(meta *viewpb.QueryViewMeta) QueryViewResource {
 	return &readSchemaBinding{module: r, meta: meta}
 }
@@ -210,15 +213,18 @@ type ReadRuntime struct {
 	idf       idfOracle
 }
 
-func (r *ReadRuntime) AcquireGrowingSegmentHandles(ctx context.Context, version qviews.DataVersion, partitions []int64) ([]snview.GrowingSegmentHandle, error) {
-	operationCtx, end, err := r.resources.begin(ctx)
-	if err != nil {
+func (r *ReadRuntime) AcquireGrowingSegmentHandles(ctx context.Context, version qviews.DataVersion, growingTS uint64, partitions []int64) ([]snview.GrowingSegmentHandle, error) {
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	handles, err := r.QueryRuntime.AcquireGrowingSegmentHandles(operationCtx, version, partitions)
+	operationCtx, end, err := r.resources.begin(ctx)
+	if err != nil {
+		return nil, r.acquisitionError(ctx, err)
+	}
+	handles, err := r.QueryRuntime.AcquireGrowingSegmentHandles(operationCtx, version, growingTS, partitions)
 	if err != nil {
 		end()
-		return nil, err
+		return nil, r.acquisitionError(ctx, err)
 	}
 	if len(handles) == 0 {
 		end()
@@ -245,6 +251,17 @@ func (r *ReadRuntime) AcquireGrowingSegmentHandles(ctx context.Context, version 
 		handles[i] = &readSchemaHandle{GrowingSegmentHandle: handle, schema: r.schema, done: done}
 	}
 	return handles, nil
+}
+
+// Keep the original caller separate from the context canceled by View retirement.
+func (r *ReadRuntime) acquisitionError(ctx context.Context, err error) error {
+	if callerErr := ctx.Err(); callerErr != nil {
+		return callerErr
+	}
+	if errors.Is(err, context.Canceled) {
+		return r.closedError(ctx)
+	}
+	return err
 }
 
 type readSchemaHandle struct {

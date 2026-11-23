@@ -17,6 +17,9 @@ func (h *SNQueryViewHandler) Statistics(ctx context.Context, req *viewpb.Statist
 		return 0, err
 	}
 	defer lease.Release()
+	if err := qviews.CheckReadAdmission(ctx, lease.Meta, req.GetMvcc()); err != nil {
+		return 0, err
+	}
 	runtime, err := h.queryRuntime(qviews.QueryViewKey{ShardID: shardID, QueryViewVersion: version})
 	if err != nil {
 		return 0, err
@@ -28,7 +31,7 @@ func (h *SNQueryViewHandler) Statistics(ctx context.Context, req *viewpb.Statist
 	if err != nil {
 		return 0, err
 	}
-	handles, err := runtime.AcquireGrowingSegmentHandles(ctx, version.DataVersion, partitions)
+	handles, err := runtime.AcquireGrowingSegmentHandles(ctx, version.DataVersion, req.GetMvcc().GetGrowingTimetick(), partitions)
 	if err != nil {
 		return 0, err
 	}
