@@ -19,10 +19,11 @@ package messageutil
 import (
 	"google.golang.org/protobuf/proto"
 
-	"github.com/milvus-io/milvus-proto/go-api/v3/msgpb"
 	"github.com/milvus-io/milvus-proto/go-api/v3/schemapb"
+	"github.com/milvus-io/milvus/pkg/v3/proto/messagespb"
 	"github.com/milvus-io/milvus/pkg/v3/proto/streamingpb"
 	"github.com/milvus-io/milvus/pkg/v3/streaming/util/message"
+	"github.com/milvus-io/milvus/pkg/v3/util/merr"
 )
 
 // TransformLogKind describes how a WAL message affects TransformLog.
@@ -32,7 +33,12 @@ const (
 	TransformLogKindNone TransformLogKind = iota
 	TransformLogKindDelete
 	TransformLogKindBarrier
+	TransformLogKindMutation
 )
+
+func (k TransformLogKind) HasPayload() bool {
+	return k == TransformLogKindDelete || k == TransformLogKindMutation
+}
 
 // ClassifyTransformLogMessage classifies a WAL message for TransformLog processing.
 func ClassifyTransformLogMessage(msg message.ImmutableMessage) TransformLogKind {
@@ -42,6 +48,8 @@ func ClassifyTransformLogMessage(msg message.ImmutableMessage) TransformLogKind 
 	switch msg.MessageType() {
 	case message.MessageTypeDelete:
 		return TransformLogKindDelete
+	case message.MessageTypeUpdate:
+		return TransformLogKindMutation
 	case message.MessageTypeInsert:
 		return TransformLogKindNone
 	case message.MessageTypeTxn:
@@ -51,8 +59,7 @@ func ClassifyTransformLogMessage(msg message.ImmutableMessage) TransformLogKind 
 	}
 }
 
-// A transaction is classified as a whole: any Delete takes precedence. Empty
-// transactions and sequences of Inserts are None; other transactions are barriers.
+// An update selects the ordered mutation envelope, including its sibling deletes.
 func classifyTransformTxn(txn message.ImmutableTxnMessage) TransformLogKind {
 	if txn == nil || txn.Size() == 0 {
 		return TransformLogKindNone
@@ -61,10 +68,14 @@ func classifyTransformTxn(txn message.ImmutableTxnMessage) TransformLogKind {
 	_ = txn.RangeOver(func(inner message.ImmutableMessage) error {
 		switch inner.MessageType() {
 		case message.MessageTypeDelete:
-			kind = TransformLogKindDelete
+			if kind != TransformLogKindMutation {
+				kind = TransformLogKindDelete
+			}
+		case message.MessageTypeUpdate:
+			kind = TransformLogKindMutation
 		case message.MessageTypeInsert:
 		default:
-			if kind != TransformLogKindDelete {
+			if !kind.HasPayload() {
 				kind = TransformLogKindBarrier
 			}
 		}
@@ -88,64 +99,65 @@ func (o TransformEntryOption) acceptDelete(partitionID int64, timeTick uint64) b
 	return o.DeleteFilter(partitionID, timeTick)
 }
 
-// BuildTransformLogEntry converts a WAL message into its transform log entry.
-// Inserts produce no entry; other payload-free messages produce a barrier
-// containing only their TimeTick. A filtered-out Delete still produces no entry.
-//
-// A committed Txn containing Delete produces one entry at the outer Txn
-// TimeTick, holding the Delete blocks of every Delete child.
+// BuildTransformLogEntry copies committed mutations in source order. Delete-only
+// transactions retain the original wire arm for older readers.
 func BuildTransformLogEntry(msg message.ImmutableMessage, opt TransformEntryOption) *streamingpb.TransformLogEntry {
-	switch ClassifyTransformLogMessage(msg) {
-	case TransformLogKindNone:
+	kind := ClassifyTransformLogMessage(msg)
+	if kind == TransformLogKindNone {
 		return nil
-	case TransformLogKindBarrier:
-		return &streamingpb.TransformLogEntry{TimeTick: msg.TimeTick()}
 	}
-	switch msg.MessageType() {
-	case message.MessageTypeDelete:
-		deleted := message.MustAsImmutableDeleteMessageV1(msg)
-		return transformEntryFromDeletes(msg.TimeTick(), []message.ImmutableDeleteMessageV1{deleted}, opt)
-	case message.MessageTypeTxn:
-		txn := message.AsImmutableTxnMessage(msg)
-		deletes := make([]message.ImmutableDeleteMessageV1, 0)
-		_ = txn.RangeOver(func(im message.ImmutableMessage) error {
-			if im.MessageType() == message.MessageTypeDelete {
-				deletes = append(deletes, message.MustAsImmutableDeleteMessageV1(im))
+	entry := &streamingpb.TransformLogEntry{TimeTick: msg.TimeTick()}
+	if !kind.HasPayload() {
+		return entry
+	}
+	var deletes streamingpb.TransformDeleteEntry
+	var mutations streamingpb.TransformMutationEntry
+	var ordinal uint64
+	appendBody := func(body message.ImmutableMessage) error {
+		// Transaction assembly validates that every body index fits uint32.
+		index := uint32(ordinal)
+		ordinal++
+		block := &streamingpb.TransformMutationBlock{SourceOrdinal: index}
+		switch body.MessageType() {
+		case message.MessageTypeDelete:
+			request := message.MustAsImmutableDeleteMessageV1(body).MustBody()
+			if !opt.acceptDelete(request.GetPartitionID(), entry.TimeTick) {
+				return nil
 			}
+			deleted := &streamingpb.TransformDeleteBlock{
+				PartitionId: request.GetPartitionID(), PrimaryKeys: proto.Clone(request.GetPrimaryKeys()).(*schemapb.IDs), SourceOrdinal: index,
+			}
+			if kind == TransformLogKindDelete {
+				deletes.Blocks = append(deletes.Blocks, deleted)
+				return nil
+			}
+			block.Mutation = &streamingpb.TransformMutationBlock_Delete{Delete: deleted}
+		case message.MessageTypeUpdate:
+			update := message.MustAsImmutableUpdateMessageV2(body)
+			block.Mutation = &streamingpb.TransformMutationBlock_Update{Update: proto.Clone(update.MustBody()).(*messagespb.UpdateMessageBody)}
+			if version := update.Header().SchemaVersion; version != nil {
+				block.SchemaVersion = proto.Int32(*version)
+			}
+		default:
 			return nil
-		})
-		return transformEntryFromDeletes(msg.TimeTick(), deletes, opt)
+		}
+		mutations.Blocks = append(mutations.Blocks, block)
+		return nil
+	}
+	if msg.MessageType() == message.MessageTypeTxn {
+		_ = message.AsImmutableTxnMessage(msg).RangeOver(appendBody)
+	} else {
+		_ = appendBody(msg)
+	}
+	switch {
+	case len(mutations.Blocks) > 0:
+		entry.Entry = &streamingpb.TransformLogEntry_Mutations{Mutations: &mutations}
+	case len(deletes.Blocks) > 0:
+		entry.Entry = &streamingpb.TransformLogEntry_Delete{Delete: &deletes}
 	default:
 		return nil
 	}
-}
-
-func transformEntryFromDeletes(timeTick uint64, deletes []message.ImmutableDeleteMessageV1, opt TransformEntryOption) *streamingpb.TransformLogEntry {
-	blocks := make([]*streamingpb.TransformDeleteBlock, 0, len(deletes))
-	for _, deleted := range deletes {
-		request := cloneDeleteRequest(deleted.MustBody())
-		if request == nil {
-			continue
-		}
-		if !opt.acceptDelete(request.GetPartitionID(), timeTick) {
-			continue
-		}
-		blocks = append(blocks, &streamingpb.TransformDeleteBlock{
-			PartitionId: request.GetPartitionID(),
-			PrimaryKeys: request.GetPrimaryKeys(),
-		})
-	}
-	if len(blocks) == 0 {
-		return nil
-	}
-	return &streamingpb.TransformLogEntry{
-		TimeTick: timeTick,
-		Entry: &streamingpb.TransformLogEntry_Delete{
-			Delete: &streamingpb.TransformDeleteEntry{
-				Blocks: blocks,
-			},
-		},
-	}
+	return entry
 }
 
 // PrimaryKeyCount counts the primary keys of a DeleteRequest.
@@ -163,9 +175,49 @@ func PrimaryKeyCount(ids *schemapb.IDs) int {
 	}
 }
 
-func cloneDeleteRequest(value *msgpb.DeleteRequest) *msgpb.DeleteRequest {
-	if value == nil {
-		return nil
+// VisitTransformMutations visits one complete entry in committed source order.
+// Barriers carry no body. Legacy delete entries and typed mixed entries share
+// the same apply callbacks and outer commit timestamp.
+func VisitTransformMutations(entry *streamingpb.TransformLogEntry, deleted func(*streamingpb.TransformDeleteBlock) error, updated func(uint32, *messagespb.UpdateMessageBody) error) error {
+	for _, block := range entry.GetDelete().GetBlocks() {
+		if block.GetPrimaryKeys().GetIntId() == nil && block.GetPrimaryKeys().GetStrId() == nil {
+			return merr.WrapErrDataIntegrityMsg("missing transform delete primary keys")
+		}
+		if err := deleted(block); err != nil {
+			return err
+		}
 	}
-	return proto.Clone(value).(*msgpb.DeleteRequest)
+	var previous uint32
+	for i, block := range entry.GetMutations().GetBlocks() {
+		if i > 0 && block.GetSourceOrdinal() <= previous {
+			return merr.WrapErrDataIntegrityMsg("unordered transform mutation ordinal")
+		}
+		previous = block.GetSourceOrdinal()
+		var err error
+		switch {
+		case block.GetDelete() != nil:
+			keys := block.GetDelete().GetPrimaryKeys()
+			if keys.GetIntId() == nil && keys.GetStrId() == nil {
+				return merr.WrapErrDataIntegrityMsg("missing transform delete primary keys")
+			}
+			err = deleted(block.GetDelete())
+		case block.GetUpdate() != nil:
+			update := block.GetUpdate()
+			if PrimaryKeyCount(update.GetPrimaryKeys()) == 0 || len(update.GetAssignments()) == 0 {
+				return merr.WrapErrDataIntegrityMsg("empty transform update")
+			}
+			for _, a := range update.GetAssignments() {
+				if a.GetLiteral() == nil {
+					return merr.WrapErrDataIntegrityMsg("missing transform update literal")
+				}
+			}
+			err = updated(block.GetSourceOrdinal(), update)
+		default:
+			return merr.WrapErrDataIntegrityMsg("missing transform mutation block")
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
